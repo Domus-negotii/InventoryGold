@@ -660,7 +660,12 @@ window.loadFromFirebase = async function() {
     </div>
     <div class="card no-print">
       <div class="card-header"><span class="card-title">All Orders</span>
-        <input class="form-control" style="width:170px;font-size:11px;padding:4px 8px;" placeholder="Search name / order #" id="order-search" oninput="renderOrders()">
+        <div style="display:flex;gap:7px;align-items:center;">
+          <input class="form-control" style="width:200px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / order # / CP#" id="order-search" oninput="renderOrders()">
+          <select class="form-control" style="width:130px;font-size:11px;padding:4px 8px;" id="order-method-filter" onchange="renderOrders()">
+            <option value="">All Methods</option><option>COD</option><option>LBC</option><option>INTERNATIONAL</option>
+          </select>
+        </div>
       </div>
       <div class="table-wrap"><table><thead><tr><th>Order #</th><th>Customer</th><th>Contact</th><th>Date</th><th>Admin</th><th>Rider</th><th>Payment</th><th>Items</th><th>Grand Total</th><th>Status</th><th>Checker</th><th>Actions</th></tr></thead><tbody id="orders-tbody"></tbody></table></div>
     </div>
@@ -683,14 +688,26 @@ window.loadFromFirebase = async function() {
     </div>
   </div>
     <div class="action-row no-print">
-      <div style="font-size:12px;color:var(--muted);">Review, edit, verify, then print invoices.</div>
-      <select class="form-control" style="width:130px;font-size:11px;padding:4px 8px;" id="checker-filter" onchange="renderChecker()">
-        <option value="">All</option><option value="Pending">Pending</option><option value="Verified">Verified</option>
-      </select>
+      <div style="font-size:12px;color:var(--muted);">Review, verify, then print invoices. Each shipping method has its own checker lane.</div>
+      <span id="checker-pending-count" style="font-size:12px;color:var(--orange);font-weight:600;"></span>
+    </div>
+    <!-- Shipping method tabs -->
+    <div class="section-tabs no-print" style="margin-bottom:13px;" id="checker-tabs">
+      <button class="tab-btn active" onclick="setCheckerTab('COD')">🏍️ COD</button>
+      <button class="tab-btn" onclick="setCheckerTab('LBC')">📦 LBC</button>
+      <button class="tab-btn" onclick="setCheckerTab('INTERNATIONAL')">✈️ INTERNATIONAL</button>
     </div>
     <div class="card no-print">
-      <div class="card-header"><span class="card-title">Checker Queue</span><span id="checker-pending-count" style="font-size:11px;color:var(--orange);"></span></div>
-      <div class="table-wrap"><table><thead><tr><th>Order #</th><th>Customer</th><th>Admin</th><th>Date</th><th>Items</th><th>Shipping</th><th>Grand Total</th><th>Checker</th><th>Actions</th></tr></thead><tbody id="checker-tbody"></tbody></table></div>
+      <div class="card-header">
+        <span class="card-title" id="checker-tab-label">COD – Checker Queue</span>
+        <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
+          <input class="form-control" style="width:180px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / CP #" id="checker-search" oninput="renderChecker()">
+          <select class="form-control" style="width:130px;font-size:11px;padding:4px 8px;" id="checker-filter" onchange="renderChecker()">
+            <option value="">All Status</option><option value="Pending">Pending</option><option value="Verified">Verified</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th>Order #</th><th>Customer</th><th>CP #</th><th>Admin</th><th>Date</th><th>Items</th><th>Shipping</th><th>Grand Total</th><th>Checker</th><th>Actions</th></tr></thead><tbody id="checker-tbody"></tbody></table></div>
     </div>
   </div>
 
@@ -742,8 +759,9 @@ window.loadFromFirebase = async function() {
     </div>
   </div>
     <div class="action-row no-print">
-      <div style="font-size:12px;color:var(--muted);">Riders grouped by designated location. Add/edit/delete per rider.</div>
-      <div style="display:flex;gap:7px;">
+      <div style="font-size:12px;color:var(--muted);">Riders grouped by designated location. Click a rider to see all parcel details.</div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;">
+        <input class="form-control" style="width:180px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search rider / customer / CP#" id="rider-search" oninput="renderRiders()">
         <button class="btn btn-outline no-print" onclick="openModal('modal-add-location')">+ Add Location</button>
         <button class="btn btn-gold no-print" onclick="openAddRider()">+ Add Rider</button>
       </div>
@@ -1026,6 +1044,21 @@ window.loadFromFirebase = async function() {
           </div>
           <div id="admin-list-display"></div>
         </div>
+
+        <div class="card">
+          <div class="card-header"><span class="card-title">🏍️ Rider Accounts</span><span style="font-size:10px;color:var(--muted);">Owner sets passwords</span></div>
+          <p style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Set passwords for riders. They log in via Rider Dashboard with their name + password.</p>
+          <div style="display:flex;gap:7px;margin-bottom:10px;align-items:flex-end;flex-wrap:wrap;">
+            <div class="form-group" style="flex:1;min-width:130px;"><label>Rider Name</label>
+              <select class="form-control" id="new-rider-pw-name">
+                <option value="">-- Select Rider --</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex:1;min-width:130px;"><label>Password</label><input type="password" class="form-control" id="new-rider-pw" placeholder="Set password"></div>
+            <button class="btn btn-gold" onclick="setRiderPassword()" style="white-space:nowrap;margin-bottom:0;">🔑 Set Password</button>
+          </div>
+          <div id="rider-pw-list-display"></div>
+        </div>
       </div>
 
       <div style="display:flex;flex-direction:column;gap:13px;">
@@ -1099,7 +1132,8 @@ window.loadFromFirebase = async function() {
     <div class="card">
       <div class="card-header">
         <span class="card-title">My Assigned Parcels</span>
-        <div style="display:flex;gap:7px;">
+        <div style="display:flex;gap:7px;flex-wrap:wrap;">
+          <input class="form-control" style="width:160px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / CP#" id="rider-parcel-search" oninput="renderRiderParcels()">
           <select class="form-control" style="width:130px;font-size:11px;padding:4px 8px;" id="rider-status-filter" onchange="renderRiderParcels()">
             <option value="">All Status</option>
             <option>In Transit</option><option>Delivering</option><option>Delivered</option>
@@ -1131,27 +1165,31 @@ window.loadFromFirebase = async function() {
 
 <!-- Encode/Edit Order -->
 <div class="modal-overlay" id="modal-encode">
-  <div class="modal" style="max-width:860px;">
+  <div class="modal" style="max-width:900px;">
     <div class="modal-header"><span class="modal-title" id="encode-title">Encode New Order</span><button class="modal-close" onclick="closeModal('modal-encode')">✕</button></div>
-    <div class="form-grid">
-      <div class="form-group"><label>Customer Name *</label><input class="form-control" id="enc-name" placeholder="Full name"></div>
-      <div class="form-group"><label>CP Number</label><input class="form-control" id="enc-contact" placeholder="09xx-xxx-xxxx"></div>
-      <div class="form-group" style="grid-column:1/-1"><label>Complete Address *</label><input class="form-control" id="enc-address" placeholder="House/Unit, Barangay, City, Province" oninput="autoAssignRider()"></div>
-      <div class="form-group"><label>City / Area</label><input class="form-control" id="enc-city" placeholder="e.g. LPC, Imus Cavite" oninput="autoAssignRider()"></div>
-      <div class="form-group"><label>Landmark</label><input class="form-control" id="enc-landmark" placeholder="Near..."></div>
-      <div class="form-group"><label>Date of Purchase</label><input type="date" class="form-control" id="enc-date"></div>
-      <div class="form-group"><label>Admin Name *</label><input class="form-control" id="enc-admin" placeholder="e.g. GLENDA, TIN, PAM"></div>
-      <div class="form-group"><label>Shipping Fee (₱)</label><input type="number" class="form-control" id="enc-shipping" value="0" min="0" oninput="calcEnc()"></div>
-      <div class="form-group"><label>Payment Method *</label>
-        <select class="form-control" id="enc-payment-method">
-          <option value="COD">💵 COD (Cash on Delivery)</option>
-          <option value="LBC">📦 LBC</option>
-          <option value="Via Bank">🏦 Via Bank</option>
+    <div class="form-grid" id="enc-form-fields">
+      <div class="form-group"><label>Customer Name *</label><input class="form-control enc-tab" id="enc-name" placeholder="Full name" onkeydown="encNextField(event,this)"></div>
+      <div class="form-group"><label>CP Number</label><input class="form-control enc-tab" id="enc-contact" placeholder="09xx-xxx-xxxx" onkeydown="encNextField(event,this)"></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Complete Address *</label><input class="form-control enc-tab" id="enc-address" placeholder="House/Unit, Barangay, City, Province" onkeydown="encNextField(event,this)" oninput="autoAssignRider()"></div>
+      <input type="hidden" id="enc-city" value="">
+      <div class="form-group"><label>Landmark / Pakuha sa</label><input class="form-control enc-tab" id="enc-landmark" placeholder="Near church, beside sari-sari..." onkeydown="encNextField(event,this)"></div>
+      <div class="form-group"><label>Date of Purchase</label><input type="date" class="form-control enc-tab" id="enc-date" onkeydown="encNextField(event,this)"></div>
+      <div class="form-group"><label>Admin Name *</label>
+        <select class="form-control enc-tab" id="enc-admin" onkeydown="encNextField(event,this)">
+          <option value="">-- Select Admin --</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Shipping Fee (₱)</label><input type="number" class="form-control enc-tab" id="enc-shipping" value="0" min="0" oninput="calcEnc()" onkeydown="encNextField(event,this)"></div>
+      <div class="form-group"><label>Shipping Method *</label>
+        <select class="form-control enc-tab" id="enc-payment-method" onkeydown="encNextField(event,this)" onchange="autoAssignRider()">
+          <option value="COD">🏍️ COD – Own Rider, Cash on Delivery</option>
+          <option value="LBC">📦 LBC – Payment First, LBC Delivers</option>
+          <option value="INTERNATIONAL">✈️ INTERNATIONAL – FedEx/DHL/EMS</option>
         </select>
       </div>
       <div class="form-group" style="grid-column:1/-1">
-        <label>Assign Rider *</label>
-        <select class="form-control" id="enc-rider" onchange="onRiderSelect()">
+        <label>Assign Rider</label>
+        <select class="form-control enc-tab" id="enc-rider" onchange="onRiderSelect()" onkeydown="encNextField(event,this)">
           <option value="">-- Select Rider --</option>
         </select>
         <div id="enc-rider-info" style="font-size:10.5px;color:var(--muted);margin-top:4px;display:none;">
@@ -1160,18 +1198,31 @@ window.loadFromFirebase = async function() {
       </div>
     </div>
     <hr class="divider">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;">
-      <span style="font-size:11px;font-weight:600;color:var(--gold);">ORDER ITEMS</span>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;flex-wrap:wrap;gap:7px;">
+      <div style="display:flex;align-items:center;gap:9px;">
+        <span style="font-size:11px;font-weight:600;color:var(--gold);">ORDER ITEMS</span>
+        <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);cursor:pointer;">
+          <input type="checkbox" id="enc-fixprice-mode" onchange="toggleFixPriceMode()"> Fix Price Mode
+        </label>
+      </div>
       <div style="display:flex;gap:6px;">
-        <select class="form-control" id="inv-quick-pick" style="width:220px;font-size:11px;padding:3px 7px;" onchange="addFromInventory()">
+        <select class="form-control" id="inv-quick-pick" style="width:230px;font-size:11px;padding:3px 7px;" onchange="addFromInventory()">
           <option value="">📦 Pick from Inventory...</option>
         </select>
-        <button class="btn btn-outline btn-sm" onclick="addItemRow('enc-items-tbody','calcEnc')">+ Manual</button>
+        <button class="btn btn-outline btn-sm" onclick="addItemRow('enc-items-tbody','calcEnc')">+ Add Row</button>
       </div>
     </div>
     <div style="overflow-x:auto;">
-      <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
-        <thead><tr style="background:rgba(201,168,76,0.08);"><th style="padding:6px 7px;color:var(--gold);font-size:9.5px;">Serial Code</th><th style="padding:6px 7px;color:var(--gold);font-size:9.5px;">Description</th><th style="padding:6px 7px;color:var(--gold);font-size:9.5px;">Qty</th><th style="padding:6px 7px;color:var(--gold);font-size:9.5px;">Grams</th><th style="padding:6px 7px;color:var(--gold);font-size:9.5px;">Per Gram (₱)</th><th style="padding:6px 7px;color:var(--gold);font-size:9.5px;">Total (₱)</th><th></th></tr></thead>
+      <table style="width:100%;border-collapse:collapse;font-size:11.5px;" id="enc-items-table">
+        <thead id="enc-items-thead"><tr style="background:rgba(201,168,76,0.08);">
+          <th style="padding:6px 7px;color:var(--gold);font-size:9.5px;">Serial Code</th>
+          <th style="padding:6px 7px;color:var(--gold);font-size:9.5px;">Description</th>
+          <th style="padding:6px 7px;color:var(--gold);font-size:9.5px;">Qty</th>
+          <th style="padding:6px 7px;color:var(--gold);font-size:9.5px;" id="enc-th-grams">Grams</th>
+          <th style="padding:6px 7px;color:var(--gold);font-size:9.5px;" id="enc-th-pergram">Per Gram (₱)</th>
+          <th style="padding:6px 7px;color:var(--gold);font-size:9.5px;">Total (₱) ✏️</th>
+          <th></th>
+        </tr></thead>
         <tbody id="enc-items-tbody"></tbody>
       </table>
     </div>
@@ -1309,15 +1360,23 @@ window.loadFromFirebase = async function() {
 
 <!-- Inventory Product -->
 <div class="modal-overlay" id="modal-inventory">
-  <div class="modal" style="max-width:500px;">
+  <div class="modal" style="max-width:520px;">
     <div class="modal-header"><span class="modal-title" id="inv-modal-title">Add Product</span><button class="modal-close" onclick="closeModal('modal-inventory')">✕</button></div>
+    <div class="form-group" style="margin-bottom:12px;">
+      <label>Item Type</label>
+      <select class="form-control" id="inv-type" onchange="toggleInvType()">
+        <option value="grams">⚖️ By Grams (gold/silver – no fixed qty)</option>
+        <option value="fixprice">🏷️ Fix Price (specific qty, no grams)</option>
+      </select>
+    </div>
     <div class="form-grid">
       <div class="form-group"><label>Serial Code *</label><input class="form-control" id="inv-code" placeholder="e.g. 18KP10V89"></div>
       <div class="form-group"><label>Description *</label><input class="form-control" id="inv-desc"></div>
-      <div class="form-group"><label>Grams</label><input type="number" class="form-control" id="inv-grams" value="0" oninput="calcInv()"></div>
-      <div class="form-group"><label>Per Gram (₱)</label><input type="number" class="form-control" id="inv-pergram" value="0" oninput="calcInv()"></div>
-      <div class="form-group"><label>Initial Qty</label><input type="number" class="form-control" id="inv-qty" value="0" min="0"></div>
-      <div class="form-group"><label>Unit Value (auto)</label><input class="form-control" id="inv-unitval" readonly style="background:rgba(201,168,76,0.08);color:var(--gold);"></div>
+      <div class="form-group inv-grams-row"><label>Grams (total in stock)</label><input type="number" class="form-control" id="inv-grams" value="0" oninput="calcInv()"></div>
+      <div class="form-group inv-grams-row"><label>Per Gram (₱)</label><input type="number" class="form-control" id="inv-pergram" value="0" oninput="calcInv()"></div>
+      <div class="form-group inv-grams-row"><label>Unit Value (auto)</label><input class="form-control" id="inv-unitval" readonly style="background:rgba(201,168,76,0.08);color:var(--gold);"></div>
+      <div class="form-group inv-fixprice-row" style="display:none;"><label>Fix Price (₱) per unit</label><input type="number" class="form-control" id="inv-fixprice" value="0"></div>
+      <div class="form-group inv-fixprice-row" style="display:none;"><label>Quantity *</label><input type="number" class="form-control" id="inv-qty" value="0" min="0"></div>
     </div>
     <input type="hidden" id="inv-edit-idx" value="">
     <div class="form-actions"><button class="btn btn-gold" onclick="saveInv()">💾 Save</button><button class="btn btn-outline" onclick="closeModal('modal-inventory')">Cancel</button></div>
@@ -1438,50 +1497,131 @@ function renderPage(n){
 }
 
 // ============ ORDER FORM ============
-// openEncodeModal() — replaced by updated version with rider/inventory pickers above
-function addItemRow(tbodyId,calcFn,it={}){
-  const row=document.createElement('tr');
-  row.innerHTML=`<td><input class="form-control" style="width:85px;font-size:11px;" value="${it.code||''}" oninput="${calcFn}()"></td>
-    <td><input class="form-control" style="width:150px;font-size:11px;" value="${it.desc||''}" oninput="${calcFn}()"></td>
-    <td><input type="number" class="form-control" style="width:52px;font-size:11px;" value="${it.qty||1}" min="1" oninput="${calcFn}()"></td>
-    <td><input type="number" class="form-control" style="width:72px;font-size:11px;" value="${it.grams||0}" oninput="${calcFn}()"></td>
-    <td><input type="number" class="form-control" style="width:82px;font-size:11px;" value="${it.pergram||0}" oninput="${calcFn}()"></td>
-    <td style="color:var(--gold);font-weight:600;min-width:75px;" class="row-total">${p(it.total||0)}</td>
+// Fix-price mode toggle
+let isFixPriceMode = false;
+function toggleFixPriceMode() {
+  isFixPriceMode = document.getElementById('enc-fixprice-mode')?.checked || false;
+  const gramsHdr = document.getElementById('enc-th-grams');
+  const pergramHdr = document.getElementById('enc-th-pergram');
+  if(gramsHdr) gramsHdr.style.display = isFixPriceMode ? 'none' : '';
+  if(pergramHdr) pergramHdr.style.display = isFixPriceMode ? 'none' : '';
+  // Rebuild rows
+  const rows = document.querySelectorAll('#enc-items-tbody tr');
+  rows.forEach(row => {
+    const gramsCell = row.cells[3]; const pergramCell = row.cells[4];
+    if(gramsCell) gramsCell.style.display = isFixPriceMode ? 'none' : '';
+    if(pergramCell) pergramCell.style.display = isFixPriceMode ? 'none' : '';
+  });
+}
+function ceilPeso(n) {
+  // Any decimal → round up to next whole peso
+  const ceil = Math.ceil(n);
+  return ceil;
+}
+function addItemRow(tbodyId, calcFn, it={}) {
+  const fixMode = isFixPriceMode || it.fixPrice;
+  const row = document.createElement('tr');
+  const totalVal = it.total || 0;
+  row.innerHTML = `
+    <td><input class="form-control" style="width:85px;font-size:11px;" value="${it.code||''}" onkeydown="rowTabNext(event,this)"></td>
+    <td><input class="form-control" style="width:150px;font-size:11px;" value="${it.desc||''}" onkeydown="rowTabNext(event,this)"></td>
+    <td><input type="number" class="form-control" style="width:52px;font-size:11px;" value="${it.qty||1}" min="1" oninput="${calcFn}()" onkeydown="rowTabNext(event,this)"></td>
+    <td style="${fixMode?'display:none':''}"><input type="number" class="form-control" style="width:72px;font-size:11px;" value="${it.grams||0}" oninput="${calcFn}()" onkeydown="rowTabNext(event,this)"></td>
+    <td style="${fixMode?'display:none':''}"><input type="number" class="form-control" style="width:82px;font-size:11px;" value="${it.pergram||0}" oninput="${calcFn}()" onkeydown="rowTabNext(event,this)"></td>
+    <td><input type="number" class="form-control row-total-input" style="width:90px;font-size:11px;color:var(--gold);font-weight:600;background:rgba(201,168,76,0.08);" value="${totalVal}" step="0.01" oninput="onManualTotal(this,'${calcFn}')" onkeydown="rowTabNext(event,this)"></td>
     <td><button class="btn btn-red btn-sm" onclick="this.closest('tr').remove();${calcFn}()">✕</button></td>`;
   document.getElementById(tbodyId).appendChild(row);
+  // Mark fix price rows
+  if(fixMode) row.dataset.fixprice = '1';
   window[calcFn]?.();
 }
-function getItems(id){
-  const rows=[];
-  document.querySelectorAll('#'+id+' tr').forEach(r=>{
-    const inp=r.querySelectorAll('input');if(!inp.length)return;
-    const qty=parseFloat(inp[2]?.value)||0,grams=parseFloat(inp[3]?.value)||0,pg=parseFloat(inp[4]?.value)||0;
-    rows.push({code:inp[0]?.value||'',desc:inp[1]?.value||'',qty,grams,pergram:pg,total:qty*grams*pg});
+function onManualTotal(input, calcFn) {
+  // When user manually edits total, clear the auto-calc grams/pergram
+  const row = input.closest('tr');
+  if(row) row.dataset.manualTotal = '1';
+  window[calcFn]?.();
+}
+function getItems(id) {
+  const rows = [];
+  document.querySelectorAll('#'+id+' tr').forEach(r => {
+    const inp = r.querySelectorAll('input'); if(!inp.length) return;
+    const qty = parseFloat(inp[2]?.value)||0;
+    const grams = parseFloat(inp[3]?.value)||0;
+    const pg = parseFloat(inp[4]?.value)||0;
+    const manualTotalInput = r.querySelector('.row-total-input');
+    const manualVal = parseFloat(manualTotalInput?.value)||0;
+    const calcTotal = qty * grams * pg;
+    // If grams or pergram is 0, use manual total; otherwise use auto-calc then apply ceiling
+    let total;
+    if(grams === 0 || pg === 0 || r.dataset.manualTotal === '1') {
+      total = manualVal;
+    } else {
+      total = ceilPeso(calcTotal);
+    }
+    const fixPrice = !!(r.dataset.fixprice === '1' || (grams === 0 && pg === 0));
+    rows.push({code:inp[0]?.value||'',desc:inp[1]?.value||'',qty,grams,pergram:pg,total,fixPrice});
   });
   return rows;
 }
-window.calcEnc=function(){
-  let iT=0;
-  document.querySelectorAll('#enc-items-tbody tr').forEach(r=>{
-    const inp=r.querySelectorAll('input');if(!inp.length)return;
-    const t=(parseFloat(inp[2]?.value)||0)*(parseFloat(inp[3]?.value)||0)*(parseFloat(inp[4]?.value)||0);
-    r.querySelector('.row-total').textContent=p(t);iT+=t;
+window.calcEnc = function() {
+  let iT = 0;
+  document.querySelectorAll('#enc-items-tbody tr').forEach(r => {
+    const inp = r.querySelectorAll('input'); if(!inp.length) return;
+    const qty = parseFloat(inp[2]?.value)||0;
+    const grams = parseFloat(inp[3]?.value)||0;
+    const pg = parseFloat(inp[4]?.value)||0;
+    const totalInput = r.querySelector('.row-total-input');
+    if(totalInput) {
+      if(r.dataset.manualTotal !== '1' && grams > 0 && pg > 0) {
+        const raw = qty * grams * pg;
+        const ceiled = ceilPeso(raw);
+        totalInput.value = ceiled;
+      }
+      iT += parseFloat(totalInput.value)||0;
+    }
   });
-  const sf=parseFloat(document.getElementById('enc-shipping').value)||0;
-  document.getElementById('enc-sf-disp').textContent=p(sf);
-  document.getElementById('enc-items-disp').textContent=p(iT);
-  document.getElementById('enc-grand-disp').textContent=p(iT+sf);
+  const sf = parseFloat(document.getElementById('enc-shipping').value)||0;
+  document.getElementById('enc-sf-disp').textContent = p(sf);
+  document.getElementById('enc-items-disp').textContent = p(iT);
+  document.getElementById('enc-grand-disp').textContent = p(iT + sf);
 };
-// saveOrder() — replaced by updated version with rider assignment above
+
+// Enter key → next field in encode modal
+function encNextField(e, el) {
+  if(e.key !== 'Enter') return;
+  e.preventDefault();
+  const fields = [...document.querySelectorAll('#modal-encode .enc-tab')];
+  const idx = fields.indexOf(el);
+  if(idx >= 0 && idx < fields.length - 1) fields[idx+1].focus();
+}
+// Tab to next row input on Enter
+function rowTabNext(e, el) {
+  if(e.key !== 'Enter') return;
+  e.preventDefault();
+  const allInputs = [...document.querySelectorAll('#enc-items-tbody input')];
+  const idx = allInputs.indexOf(el);
+  if(idx >= 0 && idx < allInputs.length - 1) allInputs[idx+1].focus();
+}
+// openEncodeModal() — replaced by updated version with rider/inventory pickers above
 function openEditOrder(i){
   const o=S.orders[i];
   document.getElementById('encode-title').textContent='Edit Order '+onum(i);
-  document.getElementById('enc-name').value=o.name;document.getElementById('enc-contact').value=o.contact;
-  document.getElementById('enc-address').value=o.address;document.getElementById('enc-city').value=o.city||'';
-  document.getElementById('enc-landmark').value=o.landmark||'';document.getElementById('enc-date').value=o.date;
-  document.getElementById('enc-admin').value=o.admin;document.getElementById('enc-shipping').value=o.shipping;
+  document.getElementById('enc-name').value=o.name;
+  document.getElementById('enc-contact').value=o.contact;
+  document.getElementById('enc-address').value=o.address;
+  document.getElementById('enc-city').value=o.city||'';
+  document.getElementById('enc-landmark').value=o.landmark||'';
+  document.getElementById('enc-date').value=o.date;
+  // Admin dropdown
+  populateAdminDropdown();
+  document.getElementById('enc-admin').value=o.admin||'';
+  document.getElementById('enc-shipping').value=o.shipping;
   document.getElementById('enc-edit-idx').value=i;
   const pm=document.getElementById('enc-payment-method'); if(pm) pm.value=o.paymentMethod||'COD';
+  // Fix price mode
+  const hasFixPrice = o.items.some(it=>it.fixPrice);
+  isFixPriceMode = hasFixPrice;
+  const fpc = document.getElementById('enc-fixprice-mode'); if(fpc) fpc.checked = hasFixPrice;
   // Populate and pre-select rider
   populateRiderDropdown();
   populateInvQuickPick();
@@ -1500,12 +1640,18 @@ function delOrder(i){if(!confirm('Delete order '+onum(i)+'?'))return;S.orders.sp
 // ============ RENDER ORDERS ============
 function renderOrders(){
   const q=(document.getElementById('order-search')?.value||'').toLowerCase();
+  const mf=(document.getElementById('order-method-filter')?.value||'');
   const tbody=document.getElementById('orders-tbody');
-  const list=S.orders.map((o,i)=>({o,i})).filter(({o,i})=>!q||o.name.toLowerCase().includes(q)||onum(i).includes(q));
+  const list=S.orders.map((o,i)=>({o,i})).filter(({o,i})=>{
+    if(mf && (o.paymentMethod||'COD')!==mf) return false;
+    if(!q) return true;
+    return o.name.toLowerCase().includes(q)||onum(i).includes(q)||(o.contact||'').includes(q);
+  });
+  const pm2cls = m => m==='INTERNATIONAL'?'green':m==='LBC'?'blue':'delivering';
   tbody.innerHTML=list.length?list.map(({o,i})=>`<tr>
     <td style="color:var(--gold);font-weight:600;">${onum(i)}</td><td style="font-weight:500;">${o.name}</td><td>${o.contact}</td><td>${o.date}</td><td>${o.admin}</td>
     <td style="font-size:11px;color:var(--blue);">🏍️ ${o.assignedRider||'—'}</td>
-    <td><span class="status ${o.paymentMethod==='Via Bank'?'green':o.paymentMethod==='LBC'?'blue':'delivering'}" style="font-size:9px;">${o.paymentMethod||'COD'}</span></td>
+    <td><span class="status ${pm2cls(o.paymentMethod||'COD')}" style="font-size:9px;">${o.paymentMethod||'COD'}</span></td>
     <td>${o.items.length}x</td><td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
     <td><span class="status ${sclass(o.status)}">${o.status}</span></td>
     <td><span class="checker-tag ${o.checkerStatus==='Verified'?'verified':'pending'}">${o.checkerStatus}</span></td>
@@ -1517,33 +1663,64 @@ function renderOrders(){
 }
 
 // ============ CHECKER ============
+let checkerTab = 'COD';
+function setCheckerTab(tab) {
+  checkerTab = tab;
+  document.querySelectorAll('#checker-tabs .tab-btn').forEach((b,i) =>
+    b.classList.toggle('active', ['COD','LBC','INTERNATIONAL'][i] === tab));
+  const labels = {COD:'🏍️ COD – Checker Queue', LBC:'📦 LBC – Checker Queue', INTERNATIONAL:'✈️ INTERNATIONAL – Checker Queue'};
+  const el = document.getElementById('checker-tab-label'); if(el) el.textContent = labels[tab]||tab;
+  renderChecker();
+}
 function renderChecker(){
-  const filt=document.getElementById('checker-filter')?.value||'';
-  const pending=S.orders.filter(o=>o.checkerStatus==='Pending').length;
-  document.getElementById('checker-pending-count').textContent=pending?`${pending} pending`:'All verified ✓';
-  const list=S.orders.map((o,i)=>({o,i})).filter(({o})=>!filt||o.checkerStatus===filt);
-  document.getElementById('checker-tbody').innerHTML=list.length?list.map(({o,i})=>`<tr>
-    <td style="color:var(--gold);font-weight:600;">${onum(i)}</td><td style="font-weight:500;">${o.name}</td><td>${o.admin}</td><td>${o.date}</td>
-    <td>${p(o.itemsTotal)}</td><td>${p(o.shipping)}</td><td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
+  const filt = document.getElementById('checker-filter')?.value||'';
+  const q = (document.getElementById('checker-search')?.value||'').toLowerCase();
+  const pending = S.orders.filter(o=>o.checkerStatus==='Pending').length;
+  document.getElementById('checker-pending-count').textContent = pending ? `⚠️ ${pending} pending` : '✅ All verified';
+  const list = S.orders.map((o,i)=>({o,i})).filter(({o}) => {
+    const method = o.paymentMethod || 'COD';
+    if(method !== checkerTab) return false;
+    if(filt && o.checkerStatus !== filt) return false;
+    if(q && !o.name.toLowerCase().includes(q) && !o.contact.includes(q) && !onum(S.orders.indexOf(o)).includes(q)) return false;
+    return true;
+  });
+  document.getElementById('checker-tbody').innerHTML = list.length ? list.map(({o,i}) => `<tr>
+    <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
+    <td style="font-weight:500;">${o.name}</td>
+    <td style="font-size:11px;">${o.contact||'—'}</td>
+    <td>${o.admin}</td><td>${o.date}</td>
+    <td>${p(o.itemsTotal)}</td><td>${p(o.shipping)}</td>
+    <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
     <td><span class="checker-tag ${o.checkerStatus==='Verified'?'verified':'pending'}">${o.checkerStatus}</span></td>
     <td style="display:flex;gap:3px;flex-wrap:wrap;">
       <button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️ Edit</button>
-      ${o.checkerStatus!=='Verified'?`<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`:''}
-      ${o.checkerStatus==='Verified'?`<button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️ Print</button>`:''}
+      ${o.checkerStatus!=='Verified'
+        ? `<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`
+        : `<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`}
+      <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
       <button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>
-    </td></tr>`).join(''):'<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:26px;">No orders</td></tr>';
+    </td></tr>`).join('') :
+    `<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No ${checkerTab} orders found</td></tr>`;
 }
-function verifyOrder(i){S.orders[i].checkerStatus='Verified';save();toast('✅ Verified!');renderChecker();}
+function verifyOrder(i){ S.orders[i].checkerStatus='Verified'; save(); toast('✅ Verified!'); renderChecker(); }
+function unverifyOrder(i){ S.orders[i].checkerStatus='Pending'; save(); toast('↩ Set back to Pending'); renderChecker(); }
 
 // ============ INVOICE ============
 function openInvoice(i){
   const o=S.orders[i];
-  const rows=o.items.map(it=>`<tr><td>${it.code}</td><td style="text-align:left;">${it.desc}</td><td>${it.qty}</td><td>${it.grams?it.grams+'g':'—'}</td><td>${it.pergram?p(it.pergram):'—'}</td><td style="font-weight:600;">${p(it.total)}</td></tr>`).join('');
+  const hasGrams = o.items.some(it => it.grams > 0 && !it.fixPrice);
+  const rows=o.items.map(it=>{
+    if(it.fixPrice || (!it.grams && !it.pergram)){
+      return `<tr><td>${it.code}</td><td style="text-align:left;">${it.desc}</td><td>${it.qty}</td><td>—</td><td>—</td><td style="font-weight:600;">${p(it.total)}</td></tr>`;
+    }
+    return `<tr><td>${it.code}</td><td style="text-align:left;">${it.desc}</td><td>${it.qty}</td><td>${it.grams?it.grams+'g':'—'}</td><td>${it.pergram?p(it.pergram):'—'}</td><td style="font-weight:600;">${p(it.total)}</td></tr>`;
+  }).join('');
   const blanks=Math.max(0,6-o.items.length);
+  const methodLabel = o.paymentMethod==='COD'?'Cash on Delivery':o.paymentMethod==='LBC'?'LBC Courier':o.paymentMethod==='INTERNATIONAL'?'International Shipping':'—';
   document.getElementById('invoice-area').innerHTML=`<div class="inv-wrap">
     <div class="inv-header">
       <div class="inv-brand"><h2>Goldchelle Online Enterprises</h2><p>Las Pinas City, Metro Manila, PH</p><p>📞 0917-130-7239</p><p>fb.com/goldchelleonlineenterprise</p></div>
-      <div class="inv-cod-label"><span class="cod-big">${o.paymentMethod||'COD'}</span><span class="inv-small">INVOICE</span></div>
+      <div class="inv-cod-label"><span class="cod-big">${o.paymentMethod||'COD'}</span><span class="inv-small">INVOICE · ${methodLabel}</span></div>
     </div>
     <div class="inv-fields">
       <div class="inv-field"><label>Name:</label><span>${o.name}</span></div>
@@ -1551,7 +1728,7 @@ function openInvoice(i){
       <div class="inv-field"><label>Address:</label><span>${o.address}</span></div>
       <div class="inv-field"><label>Date:</label><span>${o.date}</span></div>
     </div>
-    <div class="inv-landmark"><label>Landmark:</label><span>${o.landmark||''}</span></div>
+    <div class="inv-landmark"><label>Landmark:</label><span>${o.landmark||'—'}</span></div>
     <div class="inv-table-wrap"><table class="inv-table">
       <thead><tr><th>Serial Code</th><th style="text-align:left;">Item Description</th><th>Qty</th><th>Gram</th><th>Per Gram</th><th>Total</th></tr></thead>
       <tbody>${rows}${Array(blanks).fill('<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>').join('')}</tbody>
@@ -1572,7 +1749,13 @@ function openInvoice(i){
 // ============ TRACKING ============
 // renderTracking() — replaced above with rider column
 
-function updateStatus(i,v){S.orders[i].status=v;save();toast('Status → '+v);renderTracking();}
+function updateStatus(i,v){
+  S.orders[i].status=v;
+  save();
+  toast('Status → '+v);
+  renderTracking();
+  renderDash();
+}
 
 // ============ RIDERS BY LOCATION ============
 let curLocation='ALL';
@@ -1642,7 +1825,8 @@ function renderDailySales(){
   const adminDel={};del.forEach(o=>{if(o.admin)adminDel[o.admin]=(adminDel[o.admin]||0)+1;});
   const codRemit = del.filter(o=>!o.paymentMethod||o.paymentMethod==='COD').reduce((s,o)=>s+o.grandTotal,0);
   const lbcRemit = del.filter(o=>o.paymentMethod==='LBC').reduce((s,o)=>s+o.grandTotal,0);
-  const bankRemit = del.filter(o=>o.paymentMethod==='Via Bank').reduce((s,o)=>s+o.grandTotal,0);
+  const bankRemit = del.filter(o=>o.paymentMethod==='Via Bank'||o.paymentMethod==='INTERNATIONAL').reduce((s,o)=>s+o.grandTotal,0);
+  const intlRemit = del.filter(o=>o.paymentMethod==='INTERNATIONAL').reduce((s,o)=>s+o.grandTotal,0);
   const overall = codRemit + lbcRemit + bankRemit;
   document.getElementById('daily-sales-screen').innerHTML=`
     <div class="stats-grid">
@@ -1653,11 +1837,11 @@ function renderDailySales(){
     </div>
     <div class="two-col">
       <div class="card"><div class="card-header"><span class="card-title">Remit Summary</span></div>
-        <div class="info-row"><span style="color:var(--muted);">CASH (COD)</span><strong>${p(codRemit)}</strong></div>
-        <div class="info-row"><span style="color:var(--muted);">GCASH</span><strong>₱0.00</strong></div>
+        <div class="info-row"><span style="color:var(--muted);">COD (Cash on Delivery)</span><strong>${p(codRemit)}</strong></div>
         <div class="info-row"><span style="color:var(--muted);">LBC</span><strong>${p(lbcRemit)}</strong></div>
+        <div class="info-row"><span style="color:var(--muted);">INTERNATIONAL</span><strong>${p(intlRemit)}</strong></div>
         <div class="info-row"><span style="color:var(--muted);">VIA BANK</span><strong>${p(bankRemit)}</strong></div>
-        <div class="info-row"><span style="color:var(--muted);">PAID</span><strong>₱0.00</strong></div>
+        <div class="info-row"><span style="color:var(--muted);">GCASH</span><strong>₱0.00</strong></div>
         <div class="info-row" style="border-bottom:none;font-size:14px;"><strong>OVERALL</strong><strong style="color:var(--green);">${p(overall)}</strong></div>
       </div>
       <div class="card"><div class="card-header"><span class="card-title">Admin Incentives (₱25/delivered)</span></div>
@@ -1680,13 +1864,21 @@ function printDailySales(){
   const adminDel={};del.forEach(o=>{if(o.admin)adminDel[o.admin]=(adminDel[o.admin]||0)+1;});
   const codR = del.filter(o=>!o.paymentMethod||o.paymentMethod==='COD').reduce((s,o)=>s+o.grandTotal,0);
   const lbcR = del.filter(o=>o.paymentMethod==='LBC').reduce((s,o)=>s+o.grandTotal,0);
-  const bankR = del.filter(o=>o.paymentMethod==='Via Bank').reduce((s,o)=>s+o.grandTotal,0);
+  const intlR = del.filter(o=>o.paymentMethod==='INTERNATIONAL').reduce((s,o)=>s+o.grandTotal,0);
+  const bankR = del.filter(o=>o.paymentMethod==='Via Bank'||o.paymentMethod==='INTERNATIONAL').reduce((s,o)=>s+o.grandTotal,0);
   const overallR = codR + lbcR + bankR;
   const pw=document.getElementById('daily-sales-print');  const _printHTML = `<div class="print-daily-wrap">
-    <div class="print-daily-header"><div><h2 style="font-family:Georgia,serif;color:#9c7a2e;font-size:17px;margin:0;">Goldchelle Online Enterprises</h2><p style="font-size:10px;color:#555;">Las Pinas City, Metro Manila, PH | 0917-130-7239</p></div><div style="text-align:right;"><div style="font-size:15px;font-weight:700;color:#9c7a2e;">COD DAILY SALES RECORD</div><div style="font-size:11px;color:#555;">Date: ${d}</div></div></div>
+    <div class="print-daily-header"><div><h2 style="font-family:Georgia,serif;color:#9c7a2e;font-size:17px;margin:0;">Goldchelle Online Enterprises</h2><p style="font-size:10px;color:#555;">Las Pinas City, Metro Manila, PH | 0917-130-7239</p></div><div style="text-align:right;"><div style="font-size:15px;font-weight:700;color:#9c7a2e;">DAILY SALES RECORD</div><div style="font-size:11px;color:#555;">Date: ${d}</div></div></div>
     <div class="print-two-col">
-      <div class="print-box"><div class="print-box-title">Remit Summary</div><div class="print-row"><span>CASH (COD)</span><span style="font-weight:600;">${p(codR)}</span></div><div class="print-row"><span>GCASH</span><span>₱0.00</span></div><div class="print-row"><span>LBC</span><span style="font-weight:600;">${p(lbcR)}</span></div><div class="print-row"><span>VIA BANK</span><span style="font-weight:600;">${p(bankR)}</span></div><div class="print-row"><span>PAID</span><span>₱0.00</span></div><div class="print-row total-row"><span>OVERALL</span><span>${p(overallR)}</span></div></div>
-      <div class="print-box"><div class="print-box-title">COD Daily Parcels</div><div class="print-row"><span>Total Parcels</span><span style="font-weight:700;">${dayO.length}</span></div><div class="print-row"><span>Delivered</span><span style="color:#27ae60;font-weight:700;">${del.length}</span></div><div class="print-row"><span>Cancel/Balik</span><span style="color:#c0392b;font-weight:700;">${dayO.filter(o=>['Cancelled','For Return','Returned'].includes(o.status)).length}</span></div></div>
+      <div class="print-box"><div class="print-box-title">Remit Summary</div>
+        <div class="print-row"><span>COD (Cash on Delivery)</span><span style="font-weight:600;">${p(codR)}</span></div>
+        <div class="print-row"><span>LBC</span><span style="font-weight:600;">${p(lbcR)}</span></div>
+        <div class="print-row"><span>INTERNATIONAL</span><span style="font-weight:600;">${p(intlR)}</span></div>
+        <div class="print-row"><span>VIA BANK</span><span style="font-weight:600;">${p(bankR - intlR)}</span></div>
+        <div class="print-row"><span>GCASH</span><span>₱0.00</span></div>
+        <div class="print-row total-row"><span>OVERALL</span><span>${p(overallR)}</span></div>
+      </div>
+      <div class="print-box"><div class="print-box-title">Daily Parcels Summary</div><div class="print-row"><span>Total Parcels</span><span style="font-weight:700;">${dayO.length}</span></div><div class="print-row"><span>Delivered</span><span style="color:#27ae60;font-weight:700;">${del.length}</span></div><div class="print-row"><span>Cancel/Return</span><span style="color:#c0392b;font-weight:700;">${dayO.filter(o=>['Cancelled','For Return','Returned'].includes(o.status)).length}</span></div></div>
     </div>
     <div class="print-section-title">Admin Daily Incentives</div>
     <table class="print-table"><thead><tr><th>Admin</th><th>Parcels Delivered</th><th>Incentive</th></tr></thead><tbody>${Object.entries(adminDel).map(([a,c])=>`<tr><td style="font-weight:600;">${a}</td><td>${c}</td><td style="color:#27ae60;font-weight:700;">${p(c*25)}</td></tr>`).join('')}<tr style="background:#fff8e8;font-weight:700;"><td>TOTAL</td><td>${del.length}</td><td>${p(del.length*25)}</td></tr></tbody></table>
@@ -1981,86 +2173,132 @@ function switchInvTab(t){
   else btn.innerHTML='';
   renderInv(t);
 }
+function toggleInvType() {
+  const t = document.getElementById('inv-type')?.value || 'grams';
+  document.querySelectorAll('.inv-grams-row').forEach(el => el.style.display = t==='grams' ? '' : 'none');
+  document.querySelectorAll('.inv-fixprice-row').forEach(el => el.style.display = t==='fixprice' ? '' : 'none');
+}
 function renderInv(tab){
   const el=document.getElementById('inventory-content');
   if(tab==='list'){
-    const totalVal=S.inventory.reduce((s,it)=>s+(it.grams*it.pergram*it.qty),0);
+    const totalVal=S.inventory.reduce((s,it)=>{
+      if(it.itemType==='fixprice') return s+(it.fixPrice||0)*(it.qty||0);
+      return s+(it.grams||0)*(it.pergram||0);
+    },0);
     el.innerHTML=`<div class="stats-grid">
       <div class="stat-card gold"><div class="stat-label">Stock Value</div><div class="stat-value">${p(totalVal)}</div></div>
       <div class="stat-card blue"><div class="stat-label">Products</div><div class="stat-value">${S.inventory.length}</div></div>
-      <div class="stat-card green"><div class="stat-label">Total Units</div><div class="stat-value">${S.inventory.reduce((s,it)=>s+it.qty,0)}</div></div>
+      <div class="stat-card green"><div class="stat-label">Fix Price Items</div><div class="stat-value">${S.inventory.filter(it=>it.itemType==='fixprice').reduce((s,it)=>s+(it.qty||0),0)} pcs</div></div>
     </div>
-    <div class="card"><div class="table-wrap"><table><thead><tr><th>Serial Code</th><th>Description</th><th>Grams</th><th>Per Gram (₱)</th><th>Unit Value (₱)</th><th>Current Stock</th><th>Stock Value (₱)</th><th>Actions</th></tr></thead>
-    <tbody>${S.inventory.map((it,i)=>`<tr>
-      <td style="color:var(--gold);font-family:monospace;">${it.code}</td><td style="font-weight:500;">${it.desc}</td>
-      <td>${it.grams}g</td><td>${p(it.pergram)}</td><td style="color:var(--gold);">${p(it.grams*it.pergram)}</td>
-      <td style="${it.qty<=2?'color:var(--red);':'it.qty<=5?color:var(--orange):'}font-weight:700;">${it.qty} ${it.qty<=2?'⚠️':''}</td>
-      <td style="color:var(--green);font-weight:600;">${p(it.grams*it.pergram*it.qty)}</td>
-      <td style="display:flex;gap:3px;">
-        <button class="btn btn-outline btn-sm" onclick="openEditInv(${i})">✏️ Edit</button>
-        <button class="btn btn-green btn-sm" onclick="openStockModal('in',${i})">↑ In</button>
-        <button class="btn btn-orange btn-sm" onclick="openStockModal('out',${i})">↓ Out</button>
-        <button class="btn btn-red btn-sm" onclick="delInv(${i})">🗑️</button>
-      </td></tr>`).join('')||'<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:26px;">No products</td></tr>'}
+    <div class="card"><div class="table-wrap"><table><thead><tr>
+      <th>Serial Code</th><th>Description</th><th>Type</th><th>Stock / Grams</th><th>Price Info</th><th>Stock Value</th><th>Actions</th>
+    </tr></thead>
+    <tbody>${S.inventory.map((it,i)=>{
+      const isFix = it.itemType==='fixprice';
+      const stockDisplay = isFix
+        ? `<span style="font-weight:700;color:${it.qty<=2?'var(--red)':it.qty<=5?'var(--orange)':'var(--green)'};">${it.qty} pcs ${it.qty<=2?'⚠️':''}</span>`
+        : `<span style="font-weight:700;color:var(--blue);">${it.grams}g</span>`;
+      const priceInfo = isFix ? `₱${it.fixPrice}/pc` : `${it.pergram?p(it.pergram)+'/g':'—'}`;
+      const stockVal = isFix ? (it.fixPrice||0)*(it.qty||0) : (it.grams||0)*(it.pergram||0);
+      return `<tr>
+        <td style="color:var(--gold);font-family:monospace;">${it.code}</td>
+        <td style="font-weight:500;">${it.desc}</td>
+        <td><span class="status ${isFix?'blue':'gold'}" style="font-size:9px;">${isFix?'Fix Price':'By Grams'}</span></td>
+        <td>${stockDisplay}</td>
+        <td style="font-size:11.5px;">${priceInfo}</td>
+        <td style="color:var(--green);font-weight:600;">${p(stockVal)}</td>
+        <td style="display:flex;gap:3px;">
+          <button class="btn btn-outline btn-sm" onclick="openEditInv(${i})">✏️</button>
+          ${isFix?`<button class="btn btn-green btn-sm" onclick="openStockModal('in',${i})">↑ In</button>
+          <button class="btn btn-orange btn-sm" onclick="openStockModal('out',${i})">↓ Out</button>`:''}
+          <button class="btn btn-red btn-sm" onclick="delInv(${i})">🗑️</button>
+        </td></tr>`;
+    }).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:26px;">No products</td></tr>'}
     </tbody></table></div></div>`;
   }else if(tab==='stockin'||tab==='stockout'){
     const type=tab==='stockin'?'in':'out';
-    const logs=S.stockLog.filter(l=>l.type===type||l.type==='return');
+    const logs=S.stockLog.filter(l=>type==='in'?(l.type==='in'||l.type==='return'):l.type==='out');
     el.innerHTML=`<div class="card"><div class="card-header"><span class="card-title">${tab==='stockin'?'Stock In Log':'Stock Out Log'}</span></div>
-    <div class="table-wrap"><table><thead><tr><th>Date</th><th>Product</th><th>Type</th><th>Qty</th><th>Stock Before</th><th>Stock After</th><th>Reference / Notes</th><th>Actions</th></tr></thead>
-    <tbody>${logs.length?[...logs].reverse().map((l,ri)=>{
+    <div class="table-wrap"><table><thead><tr><th>Date</th><th>Product</th><th>Type</th><th>Qty/Grams</th><th>Before</th><th>After</th><th>Notes</th><th>Actions</th></tr></thead>
+    <tbody>${logs.length?[...logs].reverse().map((l)=>{
       const gi=S.stockLog.indexOf(l);
       const prod=S.inventory.find(it=>it.code===l.productCode);
+      const unit = prod?.itemType==='fixprice' ? 'pcs' : 'g';
       return `<tr><td>${l.date}</td><td style="font-weight:500;">${prod?prod.desc:l.productCode}</td>
         <td><span class="${l.type==='in'?'stock-in':l.type==='return'?'stock-in':'stock-out'}">${l.type==='in'?'↑ IN':l.type==='return'?'↩ RETURN':'↓ OUT'}</span></td>
-        <td style="font-weight:700;">${l.qty}</td><td style="color:var(--muted);">${l.before}</td><td style="color:var(--gold);font-weight:600;">${l.after}</td>
-        <td style="font-size:11.5px;">${l.notes||'—'}</td>
+        <td style="font-weight:700;">${l.qty}${unit}</td><td style="color:var(--muted);">${l.before}</td>
+        <td style="color:var(--gold);font-weight:600;">${l.after}</td>
+        <td style="font-size:11px;">${l.notes||'—'}</td>
         <td><button class="btn btn-red btn-sm" onclick="delStockLog(${gi})">🗑️</button></td></tr>`;
     }).join(''):'<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:26px;">No transactions</td></tr>'}
     </tbody></table></div></div>`;
   }else{
-    // Full ledger
     const logs=[...S.stockLog].sort((a,b)=>new Date(b.date)-new Date(a.date));
     el.innerHTML=`<div class="stats-grid">
-      <div class="stat-card green"><div class="stat-label">Total In</div><div class="stat-value">${S.stockLog.filter(l=>l.type==='in'||l.type==='return').reduce((s,l)=>s+l.qty,0)}</div></div>
-      <div class="stat-card red"><div class="stat-label">Total Out</div><div class="stat-value">${S.stockLog.filter(l=>l.type==='out').reduce((s,l)=>s+l.qty,0)}</div></div>
-      <div class="stat-card blue"><div class="stat-label">Transactions</div><div class="stat-value">${S.stockLog.length}</div></div>
+      <div class="stat-card green"><div class="stat-label">Total In Events</div><div class="stat-value">${S.stockLog.filter(l=>l.type==='in'||l.type==='return').length}</div></div>
+      <div class="stat-card red"><div class="stat-label">Total Out Events</div><div class="stat-value">${S.stockLog.filter(l=>l.type==='out').length}</div></div>
+      <div class="stat-card blue"><div class="stat-label">All Transactions</div><div class="stat-value">${S.stockLog.length}</div></div>
     </div>
     <div class="card"><div class="card-header"><span class="card-title">Full Stock Ledger</span></div>
-    <div class="table-wrap"><table><thead><tr><th>Date</th><th>Product</th><th>Serial Code</th><th>Type</th><th>Qty</th><th>Before</th><th>After</th><th>Notes</th><th>Actions</th></tr></thead>
+    <div class="table-wrap"><table><thead><tr><th>Date</th><th>Product</th><th>Code</th><th>Type</th><th>Qty</th><th>Before</th><th>After</th><th>Notes</th><th>Del</th></tr></thead>
     <tbody>${logs.length?logs.map(l=>{
       const gi=S.stockLog.indexOf(l);
       const prod=S.inventory.find(it=>it.code===l.productCode);
-      const typeMap={'in':'↑ Stock In','out':'↓ Stock Out','adj':'⚙ Adjustment','return':'↩ Return'};
+      const unit = prod?.itemType==='fixprice' ? ' pcs' : 'g';
+      const typeMap={'in':'↑ IN','out':'↓ OUT','adj':'⚙ Adj','return':'↩ Return'};
       const clsMap={'in':'stock-in','out':'stock-out','adj':'stock-adj','return':'stock-in'};
-      return `<tr><td>${l.date}</td><td style="font-weight:500;">${prod?prod.desc:l.productCode}</td><td style="font-family:monospace;font-size:11px;color:var(--gold);">${l.productCode}</td>
+      return `<tr><td>${l.date}</td><td style="font-weight:500;">${prod?prod.desc:l.productCode}</td>
+        <td style="font-family:monospace;font-size:10px;color:var(--gold);">${l.productCode}</td>
         <td><span class="${clsMap[l.type]||''}">${typeMap[l.type]||l.type}</span></td>
-        <td style="font-weight:700;">${l.qty}</td><td style="color:var(--muted);">${l.before}</td><td style="color:var(--gold);font-weight:600;">${l.after}</td>
+        <td style="font-weight:700;">${l.qty}${unit}</td>
+        <td style="color:var(--muted);">${l.before}</td>
+        <td style="color:var(--gold);font-weight:600;">${l.after}</td>
         <td style="font-size:11px;">${l.notes||'—'}</td>
         <td><button class="btn btn-red btn-sm" onclick="delStockLog(${gi})">🗑️</button></td></tr>`;
-    }).join(''):'<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:26px;">No stock transactions</td></tr>'}
+    }).join(''):'<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:26px;">No transactions</td></tr>'}
     </tbody></table></div></div>`;
   }
 }
 function calcInv(){
   const g=+document.getElementById('inv-grams').value||0,pg=+document.getElementById('inv-pergram').value||0;
-  document.getElementById('inv-unitval').value=p(g*pg);
+  const uv=document.getElementById('inv-unitval'); if(uv) uv.value=p(g*pg);
 }
 function openEditInv(i){
   const it=S.inventory[i];
   document.getElementById('inv-modal-title').textContent='Edit Product';
-  document.getElementById('inv-code').value=it.code;document.getElementById('inv-desc').value=it.desc;
-  document.getElementById('inv-grams').value=it.grams;document.getElementById('inv-pergram').value=it.pergram;
-  document.getElementById('inv-qty').value=it.qty;document.getElementById('inv-edit-idx').value=i;
-  calcInv();openModal('modal-inventory');
+  document.getElementById('inv-code').value=it.code;
+  document.getElementById('inv-desc').value=it.desc;
+  const t=it.itemType||'grams';
+  document.getElementById('inv-type').value=t;
+  toggleInvType();
+  document.getElementById('inv-grams').value=it.grams||0;
+  document.getElementById('inv-pergram').value=it.pergram||0;
+  const fpi=document.getElementById('inv-fixprice'); if(fpi) fpi.value=it.fixPrice||0;
+  document.getElementById('inv-qty').value=it.qty||0;
+  document.getElementById('inv-edit-idx').value=i;
+  calcInv(); openModal('modal-inventory');
 }
 function saveInv(){
-  const code=document.getElementById('inv-code').value.trim(),desc=document.getElementById('inv-desc').value.trim();
+  const code=document.getElementById('inv-code').value.trim();
+  const desc=document.getElementById('inv-desc').value.trim();
   if(!code||!desc){toast('⚠️ Code & description required');return;}
-  const obj={code,desc,grams:+document.getElementById('inv-grams').value||0,pergram:+document.getElementById('inv-pergram').value||0,qty:+document.getElementById('inv-qty').value||0};
+  const t=document.getElementById('inv-type')?.value||'grams';
+  let obj;
+  if(t==='fixprice'){
+    const qty=+document.getElementById('inv-qty').value||0;
+    const fp=+document.getElementById('inv-fixprice')?.value||0;
+    obj={code,desc,itemType:'fixprice',fixPrice:fp,qty,grams:0,pergram:0};
+  } else {
+    const grams=+document.getElementById('inv-grams').value||0;
+    const pergram=+document.getElementById('inv-pergram').value||0;
+    obj={code,desc,itemType:'grams',grams,pergram,qty:0,fixPrice:0};
+  }
   const idx=document.getElementById('inv-edit-idx').value;
-  if(idx!=='')S.inventory[+idx]=obj;else S.inventory.push(obj);
-  save();closeModal('modal-inventory');toast('✅ Product saved!');document.getElementById('inv-edit-idx').value='';document.getElementById('inv-modal-title').textContent='Add Product';renderInv(invTab);
+  if(idx!=='')S.inventory[+idx]=obj; else S.inventory.push(obj);
+  save();closeModal('modal-inventory');toast('✅ Product saved!');
+  document.getElementById('inv-edit-idx').value='';
+  document.getElementById('inv-modal-title').textContent='Add Product';
+  renderInv(invTab);
 }
 function delInv(i){if(!confirm('Delete product?'))return;S.inventory.splice(i,1);save();renderInv(invTab);toast('🗑️ Deleted');}
 
@@ -2071,9 +2309,13 @@ function openStockModal(type,prodIdx=null){
   document.getElementById('stock-date').value=today();
   document.getElementById('stock-notes').value='';
   document.getElementById('stock-qty').value='1';
-  // Populate product dropdown
+  // Populate product dropdown — only fix price items (grams items track by grams, not qty)
   const sel=document.getElementById('stock-product');
-  sel.innerHTML='<option value="">-- Select Product --</option>'+S.inventory.map((it,i)=>`<option value="${i}">${it.code} – ${it.desc} (Stock: ${it.qty})</option>`).join('');
+  sel.innerHTML='<option value="">-- Select Product --</option>'+S.inventory.map((it,i)=>{
+    const isGrams = it.itemType!=='fixprice';
+    const stockInfo = isGrams ? `${it.grams}g` : `${it.qty} pcs`;
+    return `<option value="${i}">[${isGrams?'⚖️':'🏷️'}] ${it.code} – ${it.desc} (${stockInfo})</option>`;
+  }).join('');
   if(prodIdx!==null)sel.value=prodIdx;
   updateStockPreview();
   openModal('modal-stock');
@@ -2085,15 +2327,14 @@ function updateStockPreview(){
   const type=document.getElementById('stock-type').value;
   if(idx===''){document.getElementById('stock-current').textContent='—';document.getElementById('stock-after').textContent='—';return;}
   const it=S.inventory[+idx];
-  const cur=it.qty;
+  const isGrams = it.itemType !== 'fixprice';
+  const cur = isGrams ? it.grams : it.qty;
+  const unit = isGrams ? 'g' : ' pcs';
   const after=type==='in'||type==='return'?cur+qty:cur-qty;
-  document.getElementById('stock-current').textContent=cur+' units';
-  document.getElementById('stock-after').textContent=after+' units'+(after<0?' ⚠️ NEGATIVE!':'');
+  document.getElementById('stock-current').textContent=cur+unit;
+  document.getElementById('stock-after').textContent=after+unit+(after<0?' ⚠️ NEGATIVE!':'');
   document.getElementById('stock-after').style.color=after<0?'var(--red)':'var(--gold)';
 }
-document.getElementById('stock-product').addEventListener('change',updateStockPreview);
-document.getElementById('stock-qty').addEventListener('input',updateStockPreview);
-document.getElementById('stock-type').addEventListener('change',updateStockPreview);
 
 function saveStock(){
   const idx=document.getElementById('stock-product').value;
@@ -2102,10 +2343,11 @@ function saveStock(){
   if(!qty){toast('Enter quantity');return;}
   const type=document.getElementById('stock-type').value;
   const it=S.inventory[+idx];
-  const before=it.qty;
+  const isGrams = it.itemType !== 'fixprice';
+  const before = isGrams ? it.grams : it.qty;
   const after=type==='in'||type==='return'?before+qty:before-qty;
   if(after<0&&!confirm('Stock will go negative. Continue?'))return;
-  it.qty=after;
+  if(isGrams) it.grams=after; else it.qty=after;
   S.stockLog.push({productCode:it.code,type,qty,date:document.getElementById('stock-date').value||today(),notes:document.getElementById('stock-notes').value,before,after});
   save();closeModal('modal-stock');toast('✅ Stock updated!');renderInv(invTab);
 }
@@ -2113,6 +2355,12 @@ function delStockLog(i){
   if(!confirm('Delete this stock transaction? Note: this does NOT reverse the stock change.'))return;
   S.stockLog.splice(i,1);save();renderInv(invTab);toast('🗑️ Log deleted');
 }
+// Stock modal event listeners (safe — run after DOM ready)
+document.addEventListener('DOMContentLoaded', function() {
+  const sp=document.getElementById('stock-product'); if(sp) sp.addEventListener('change',updateStockPreview);
+  const sq=document.getElementById('stock-qty'); if(sq) sq.addEventListener('input',updateStockPreview);
+  const st=document.getElementById('stock-type'); if(st) st.addEventListener('change',updateStockPreview);
+});
 
 // ============ SALES CALENDAR ============
 let calYear=new Date().getFullYear(),calMonth=new Date().getMonth();
@@ -2318,6 +2566,7 @@ function renderSettings(){
   document.getElementById('biz-contact').value=biz.contact||'0917-130-7239';
   document.getElementById('biz-social').value=biz.social||'fb.com/goldchelleonlineenterprise';
   renderAdminList();
+  renderRiderPwList();
   renderSettingsSummary();
 }
 function previewGov(){
@@ -2360,6 +2609,45 @@ function renderAdminList(){
       + delBtn
       + '</div></div>';
   }).join(''):'<p style="color:var(--muted);font-size:12px;padding:8px 0;">No accounts yet.</p>';
+}
+
+function setRiderPassword() {
+  const sel = document.getElementById('new-rider-pw-name');
+  const pw = document.getElementById('new-rider-pw').value;
+  if(!sel.value) { toast('⚠️ Select a rider'); return; }
+  if(!pw) { toast('⚠️ Enter a password'); return; }
+  const ri = +sel.value;
+  if(!S.riders[ri]) { toast('Rider not found'); return; }
+  S.riders[ri].password = pw;
+  save();
+  document.getElementById('new-rider-pw').value = '';
+  toast('✅ Password set for ' + S.riders[ri].name);
+  renderRiderPwList();
+}
+
+function renderRiderPwList() {
+  const el = document.getElementById('rider-pw-list-display'); if(!el) return;
+  const sel = document.getElementById('new-rider-pw-name');
+  if(sel) {
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">-- Select Rider --</option>' +
+      S.riders.map((r,i) => `<option value="${i}">${r.name} (📍 ${r.location||'—'})</option>`).join('');
+    if(cur) sel.value = cur;
+  }
+  el.innerHTML = S.riders.length ? S.riders.map((r,i) =>
+    `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--navy);border-radius:6px;margin-bottom:5px;">
+      <div><span style="font-size:12.5px;font-weight:600;">${r.name}</span>
+      <span style="font-size:10px;margin-left:8px;">${r.password?'<span style="color:var(--green);">✅ PW Set</span>':'<span style="color:var(--red);">❌ No Password</span>'}</span>
+      <span style="font-size:10px;color:var(--muted);margin-left:6px;">📍 ${r.location||'—'}</span></div>
+      <button class="btn btn-red btn-sm" onclick="clearRiderPassword(${i})">🗑️ Clear PW</button>
+    </div>`
+  ).join('') : '<p style="color:var(--muted);font-size:12px;">No riders yet. Add riders in Riders by Location.</p>';
+}
+
+function clearRiderPassword(ri) {
+  if(!confirm('Clear password for ' + S.riders[ri].name + '?')) return;
+  S.riders[ri].password = '';
+  save(); renderRiderPwList(); toast('Password cleared for ' + S.riders[ri].name);
 }
 function addAdminName(){
   const name=document.getElementById('new-admin-name').value.trim().toUpperCase();
@@ -2809,9 +3097,13 @@ function populateInvQuickPick() {
   const sel = document.getElementById('inv-quick-pick');
   if(!sel) return;
   sel.innerHTML = '<option value="">📦 Pick from Inventory...</option>'
-    + S.inventory.map((it,i) =>
-        `<option value="${i}">[${it.code}] ${it.desc} — ${it.grams}g @ ${p(it.pergram)}/g (Stock: ${it.qty})</option>`
-      ).join('');
+    + S.inventory.map((it,i) => {
+        const info = it.itemType==='fixprice'
+          ? `₱${it.fixPrice} fix | ${it.qty} pcs`
+          : `${it.grams}g @ ${p(it.pergram)}/g`;
+        const icon = it.itemType==='fixprice' ? '🏷️' : '⚖️';
+        return `<option value="${i}">${icon} [${it.code}] ${it.desc} — ${info}</option>`;
+      }).join('');
 }
 
 function addFromInventory() {
@@ -2820,15 +3112,38 @@ function addFromInventory() {
   if(idx === '') return;
   const it = S.inventory[parseInt(idx)];
   if(!it) return;
-  addItemRow('enc-items-tbody', 'calcEnc', {
-    code: it.code, desc: it.desc,
-    qty: 1, grams: it.grams, pergram: it.pergram,
-    total: 1 * it.grams * it.pergram
-  });
-  sel.value = ''; // reset picker
+  if(it.itemType === 'fixprice') {
+    // Fix price: set fix price mode and add with total = fixPrice
+    isFixPriceMode = true;
+    const fpc = document.getElementById('enc-fixprice-mode'); if(fpc) fpc.checked = true;
+    toggleFixPriceMode();
+    addItemRow('enc-items-tbody', 'calcEnc', {
+      code: it.code, desc: it.desc,
+      qty: 1, grams: 0, pergram: 0,
+      total: it.fixPrice || 0, fixPrice: true
+    });
+  } else {
+    addItemRow('enc-items-tbody', 'calcEnc', {
+      code: it.code, desc: it.desc,
+      qty: 1, grams: it.grams, pergram: it.pergram,
+      total: 1 * it.grams * it.pergram
+    });
+  }
+  sel.value = '';
   calcEnc();
 }
 
+function populateAdminDropdown() {
+  const sel = document.getElementById('enc-admin'); if(!sel) return;
+  const cur = sel.value;
+  const names = [...new Set([
+    ...(S.adminAccounts||[]).map(a=>a.name),
+    ...S.orders.map(o=>o.admin).filter(Boolean)
+  ])].sort();
+  sel.innerHTML = '<option value="">-- Select Admin --</option>' +
+    names.map(n=>`<option value="${n}"${n===cur?' selected':''}>${n}</option>`).join('');
+  if(cur) sel.value = cur;
+}
 function populateRiderDropdown() {
   const sel = document.getElementById('enc-rider');
   if(!sel) return;
@@ -2854,20 +3169,29 @@ function onRiderSelect() {
 // AUTO-ASSIGN RIDER BASED ON CITY / ADDRESS DETECTION
 // ============================================================
 function autoAssignRider() {
-  const city = (document.getElementById('enc-city')?.value || '').toLowerCase().trim();
   const address = (document.getElementById('enc-address')?.value || '').toLowerCase().trim();
-  const combined = city + ' ' + address;
-  if(!combined.trim()) return;
-  // Try to match against rider locations
-  let bestIdx = -1;
-  let bestScore = 0;
+  const method = document.getElementById('enc-payment-method')?.value || 'COD';
+  if(!address && method === 'COD') return;
+
+  // For LBC/INTERNATIONAL, no auto-assign needed (LBC/courier handles delivery)
+  if(method === 'LBC' || method === 'INTERNATIONAL') {
+    // Try to find an LBC-type rider
+    const lbcRider = S.riders.findIndex(r => r.type === 'LBC');
+    if(lbcRider >= 0) {
+      const sel = document.getElementById('enc-rider');
+      if(sel) { sel.value = lbcRider; onRiderSelect(); }
+    }
+    return;
+  }
+
+  // COD: match by address keywords against rider locations
+  let bestIdx = -1, bestScore = 0;
   S.riders.forEach((r, i) => {
     if(!r.location) return;
     const loc = r.location.toLowerCase();
-    // Score: full location match gets higher score
-    const locWords = loc.split(/[\s,]+/).filter(Boolean);
+    const locWords = loc.split(/[\s,]+/).filter(w => w.length > 2);
     let score = 0;
-    locWords.forEach(word => { if(word.length > 2 && combined.includes(word)) score++; });
+    locWords.forEach(word => { if(address.includes(word)) score += 2; });
     if(score > bestScore) { bestScore = score; bestIdx = i; }
   });
   if(bestIdx >= 0 && bestScore > 0) {
@@ -2875,7 +3199,7 @@ function autoAssignRider() {
     if(sel) {
       sel.value = bestIdx;
       onRiderSelect();
-      toast('📍 Rider auto-assigned: ' + S.riders[bestIdx].name + ' (' + S.riders[bestIdx].location + ')');
+      toast('📍 Auto-assigned: ' + S.riders[bestIdx].name + ' (' + S.riders[bestIdx].location + ')');
     }
   }
 }
@@ -2960,10 +3284,13 @@ function closeRiderDash() {
 function renderRiderParcels() {
   if(!currentRider) return;
   const filt = document.getElementById('rider-status-filter')?.value || '';
+  const q = (document.getElementById('rider-parcel-search')?.value||'').toLowerCase();
   // Get all orders assigned to this rider
   const myOrders = S.orders.map((o,i) => ({...o, idx:i}))
     .filter(o => o.assignedRider === currentRider.name);
-  const filtered = filt ? myOrders.filter(o => o.status === filt) : myOrders;
+  let filtered = filt ? myOrders.filter(o => o.status === filt) : myOrders;
+  if(q) filtered = filtered.filter(o =>
+    o.name.toLowerCase().includes(q) || (o.contact||'').includes(q) || onum(o.idx).includes(q));
 
   // Stats
   const del = myOrders.filter(o => o.status === 'Delivered');
@@ -3046,7 +3373,8 @@ function saveOrder() {
   const paymentMethod = document.getElementById('enc-payment-method')?.value || 'COD';
   const editIdx = document.getElementById('enc-edit-idx').value;
   const o = {
-    name, contact: document.getElementById('enc-contact').value,
+    name,
+    contact: document.getElementById('enc-contact').value,
     address: document.getElementById('enc-address').value,
     city: document.getElementById('enc-city').value,
     landmark: document.getElementById('enc-landmark').value,
@@ -3057,31 +3385,45 @@ function saveOrder() {
     riderRemarks: '', createdAt: new Date().toISOString()
   };
   if(editIdx !== '') {
-    Object.assign(S.orders[+editIdx], o);
+    // Editing existing order — preserve original status/checker
+    const orig = S.orders[+editIdx];
+    o.status = orig.status;
+    o.checkerStatus = orig.checkerStatus;
+    o.riderRemarks = orig.riderRemarks;
+    o.createdAt = orig.createdAt;
+    S.orders[+editIdx] = o;
+    toast('✅ Order updated!');
   } else {
     S.orders.push(o);
-    // ── AUTO-DEDUCT INVENTORY ──────────────────────────────────────
+    // ── AUTO-DEDUCT INVENTORY ON NEW ORDER ───────────────────────
     items.forEach(item => {
       if(!item.code) return;
       const invIdx = S.inventory.findIndex(it => it.code.toUpperCase() === item.code.toUpperCase());
       if(invIdx < 0) return;
       const inv = S.inventory[invIdx];
-      const deductQty = item.qty || 1;
-      const before = inv.qty;
-      const after = before - deductQty;
-      inv.qty = after;
-      S.stockLog.push({
-        productCode: inv.code,
-        type: 'out',
-        qty: deductQty,
-        date: o.date,
-        notes: 'Auto-deducted: Order by ' + name + ' (Admin: ' + admin + ')',
-        before, after
-      });
+      if(inv.itemType === 'fixprice') {
+        // Fix price: deduct by quantity
+        const deductQty = item.qty || 1;
+        const before = inv.qty;
+        const after = before - deductQty;
+        inv.qty = after;
+        S.stockLog.push({ productCode:inv.code, type:'out', qty:deductQty,
+          date:o.date, notes:'Auto: New order – '+name+' ('+admin+')', before, after });
+      } else {
+        // Grams-type: deduct by grams ordered
+        const deductGrams = (item.grams || 0) * (item.qty || 1);
+        if(deductGrams <= 0) return;
+        const before = inv.grams;
+        const after = before - deductGrams;
+        inv.grams = after;
+        S.stockLog.push({ productCode:inv.code, type:'out', qty:deductGrams,
+          date:o.date, notes:'Auto: New order – '+name+' ('+admin+')', before, after });
+      }
     });
     // ─────────────────────────────────────────────────────────────
+    toast('✅ Order saved! Stock updated.');
   }
-  save(); closeModal('modal-encode'); toast('✅ Order saved! Stock auto-updated.');
+  save(); closeModal('modal-encode');
   renderOrders(); renderDash();
 }
 
@@ -3090,7 +3432,8 @@ function saveOrder() {
 // ============================================================
 function openEncodeModal() {
   document.getElementById('encode-title').textContent = 'Encode New Order';
-  ['enc-name','enc-contact','enc-address','enc-city','enc-landmark','enc-admin'].forEach(id=>document.getElementById(id).value='');
+  ['enc-name','enc-contact','enc-address','enc-landmark'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('enc-city').value = '';
   document.getElementById('enc-date').value = today();
   document.getElementById('enc-shipping').value = '0';
   document.getElementById('enc-items-tbody').innerHTML = '';
@@ -3098,10 +3441,16 @@ function openEncodeModal() {
   document.getElementById('enc-rider').value = '';
   document.getElementById('enc-rider-info').style.display = 'none';
   const pm = document.getElementById('enc-payment-method'); if(pm) pm.value = 'COD';
+  isFixPriceMode = false;
+  const fpc = document.getElementById('enc-fixprice-mode'); if(fpc) fpc.checked = false;
+  const th3 = document.getElementById('enc-th-grams'); if(th3) th3.style.display = '';
+  const th4 = document.getElementById('enc-th-pergram'); if(th4) th4.style.display = '';
+  populateAdminDropdown();
   populateRiderDropdown();
   populateInvQuickPick();
   addItemRow('enc-items-tbody','calcEnc'); calcEnc();
   openModal('modal-encode');
+  setTimeout(()=>document.getElementById('enc-name')?.focus(), 120);
 }
 
 // ============================================================
@@ -3283,29 +3632,70 @@ function renderTracking() {
 // ============================================================
 function renderRiders() {
   renderLocTabs();
-  const filtered = curLocation==='ALL' ? S.riders : S.riders.filter(r=>r.location===curLocation);
+  const q = (document.getElementById('rider-search')?.value||'').toLowerCase();
+  let filtered = curLocation==='ALL' ? S.riders : S.riders.filter(r=>r.location===curLocation);
+  if(q) filtered = filtered.filter(r => r.name.toLowerCase().includes(q) ||
+    S.orders.some(o => o.assignedRider===r.name &&
+      (o.name.toLowerCase().includes(q)||(o.contact||'').includes(q))));
   document.getElementById('rider-loc-label').textContent = curLocation==='ALL'?'All Riders':'Riders – '+curLocation;
   document.getElementById('rider-loc-count').textContent = filtered.length+' rider(s)';
-  document.getElementById('riders-tbody').innerHTML = filtered.length ? filtered.map(r => {
+  let html = '';
+  filtered.forEach(r => {
     const ri = S.riders.indexOf(r);
-    const myOrders = S.orders.filter(o => o.assignedRider === r.name);
+    const myOrders = S.orders.map((o,i)=>({...o,idx:i})).filter(o => o.assignedRider === r.name);
     const delivered = myOrders.filter(o => o.status==='Delivered');
     const deduction = delivered.reduce((s,o) => s+o.grandTotal*0.1, 0);
-    return `<tr>
-      <td style="font-weight:600;">${r.name}</td>
+    html += `<tr style="background:rgba(201,168,76,0.04);cursor:pointer;" onclick="toggleRiderParcels(${ri})">
+      <td style="font-weight:700;color:var(--gold);">▶ ${r.name}</td>
       <td><span style="font-size:10px;padding:2px 7px;border-radius:20px;background:rgba(201,168,76,0.15);color:var(--gold);">📍 ${r.location||'—'}</span></td>
       <td><span class="status ${r.type==='LBC'?'blue':'green'}">${r.type}</span></td>
       <td>${r.contact}</td>
-      <td style="font-size:10.5px;">${r.password?'<span style="color:var(--green);">✅ Set</span>':'<span style="color:var(--red);">❌ No Password</span>'}</td>
-      <td style="color:var(--blue);">${myOrders.length} parcels</td>
+      <td style="font-size:10.5px;">${r.password?'<span style="color:var(--green);">✅ Set</span>':'<span style="color:var(--red);">❌ No PW</span>'}</td>
+      <td style="color:var(--blue);font-weight:600;">${myOrders.length} parcels</td>
       <td style="color:var(--green);">${delivered.length} delivered</td>
-      <td style="color:var(--red);font-size:11px;">-${p(deduction)}<br><span style="font-size:9px;color:var(--muted);">10% company</span></td>
+      <td style="color:var(--red);font-size:11px;">-${p(deduction)}</td>
       <td style="color:var(--green);font-weight:700;">${p(r.remit)}</td>
       <td style="display:flex;gap:3px;">
-        <button class="btn btn-outline btn-sm" onclick="openEditRider(${ri})">✏️</button>
-        <button class="btn btn-red btn-sm" onclick="delRider(${ri})">🗑️</button>
+        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openEditRider(${ri})">✏️</button>
+        <button class="btn btn-red btn-sm" onclick="event.stopPropagation();delRider(${ri})">🗑️</button>
       </td></tr>`;
-  }).join('') : '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No riders</td></tr>';
+    // Parcel detail rows (collapsed by default)
+    html += `<tr id="rider-parcels-${ri}" style="display:none;">
+      <td colspan="10" style="padding:0;">
+        <div style="background:var(--navy);padding:10px 14px;border-top:1px solid var(--navy-border);">
+          <div style="font-size:10.5px;font-weight:600;color:var(--gold);margin-bottom:8px;">📦 All Parcels – ${r.name}</div>
+          ${myOrders.length ? `<div class="table-wrap"><table style="font-size:11px;">
+            <thead><tr style="background:rgba(201,168,76,0.08);">
+              <th>Order #</th><th>Customer</th><th>CP #</th><th>Address</th><th>Date</th>
+              <th>Items</th><th>SF</th><th>Total</th><th>Status</th><th>Actions</th>
+            </tr></thead>
+            <tbody>${myOrders.map(o => `<tr>
+              <td style="color:var(--gold);font-weight:600;">${onum(o.idx)}</td>
+              <td style="font-weight:500;">${o.name}</td>
+              <td>${o.contact||'—'}</td>
+              <td style="font-size:10.5px;max-width:160px;">${o.address||'—'}</td>
+              <td>${o.date}</td>
+              <td style="font-size:10.5px;">${o.items.map(it=>`${it.code}×${it.qty}`).join(', ')}</td>
+              <td>${p(o.shipping)}</td>
+              <td style="color:var(--green);font-weight:700;">${p(o.grandTotal)}</td>
+              <td><span class="status ${sclass(o.status)}">${o.status}</span></td>
+              <td style="display:flex;gap:3px;">
+                <button class="btn btn-outline btn-sm" onclick="openEditOrder(${o.idx})">✏️ Edit</button>
+                <button class="btn btn-blue btn-sm" onclick="openInvoice(${o.idx})">🖨️</button>
+              </td>
+            </tr>`).join('')}</tbody>
+          </table></div>` : '<p style="color:var(--muted);font-size:11.5px;">No parcels assigned yet.</p>'}
+        </div>
+      </td></tr>`;
+  });
+  document.getElementById('riders-tbody').innerHTML = html ||
+    '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No riders</td></tr>';
+}
+
+function toggleRiderParcels(ri) {
+  const row = document.getElementById('rider-parcels-'+ri);
+  if(!row) return;
+  row.style.display = row.style.display==='none' ? '' : 'none';
 }
 
 // Update tracking table to have 9 cols
