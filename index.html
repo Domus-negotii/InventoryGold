@@ -403,7 +403,10 @@ window.syncToFirebase = function(S) {
       orders: S.orders||[], riders: S.riders||[], locations: S.locations||[],
       payroll: S.payroll||[], expenses: S.expenses||[], inventory: S.inventory||[],
       stockLog: S.stockLog||[], govSettings: S.govSettings||{},
-      adminNames: S.adminNames||[], bizInfo: S.bizInfo||{}
+      adminNames: S.adminNames||[], bizInfo: S.bizInfo||{},
+      adminAccounts: S.adminAccounts||[],
+      remitLog: S.remitLog||[], cashbondLog: S.cashbondLog||[],
+      benefitsLog: S.benefitsLog||[], tabPasswords: S.tabPasswords||{}
     }).then(() => {
       const el = document.getElementById('sync-indicator');
       if(el){ el.style.color='var(--green)'; el.textContent='☁ Synced'; }
@@ -419,7 +422,18 @@ window.loadFromFirebase = async function() {
   if(!window._fbReady || !window._db) return null;
   try {
     const snap = await window._db.collection('gce_state').doc('main').get();
-    return snap.exists ? snap.data() : null;
+    if(!snap.exists) return null;
+    const data = snap.data();
+    // Ensure new arrays exist
+    if(!data.remitLog) data.remitLog = [];
+    if(!data.cashbondLog) data.cashbondLog = [];
+    if(!data.benefitsLog) data.benefitsLog = [];
+    if(!data.tabPasswords) data.tabPasswords = {};
+    if(!data.adminAccounts) data.adminAccounts = [];
+    // Migrate old statuses from Firestore
+    const SM={'In Transit':'Preparing','Delivering':'Out for Delivery','For Return':'Update','Returned':'Cancelled'};
+    if(data.orders) data.orders.forEach(o=>{ if(SM[o.status]) o.status=SM[o.status]; });
+    return data;
   } catch(e) { return null; }
 };
 </script>
@@ -1559,6 +1573,9 @@ if(!S.tabPasswords)S.tabPasswords={checker:'',tracking:'',riders:''};
 if(S.inventory) S.inventory.forEach(it=>{ if(!it.itemType) it.itemType='grams'; });
 // Migrate existing orders missing paymentMethod
 if(S.orders) S.orders.forEach(o=>{ if(!o.paymentMethod) o.paymentMethod='COD'; });
+// Migrate old statuses to new statuses
+const STATUS_MAP={'In Transit':'Preparing','Delivering':'Out for Delivery','For Return':'Update','Returned':'Cancelled'};
+if(S.orders) S.orders.forEach(o=>{ if(STATUS_MAP[o.status]) o.status=STATUS_MAP[o.status]; });
 
 // Auth globals
 let currentUser = null;
@@ -1570,7 +1587,7 @@ if(!S.orders.length){
   const contacts=['9668936213','9561629544','9368253574','9178456321','9289765432','9451234567','9512345678','9623456789','9734567890','9845678901'];
   const cities=['LPC','Imus Cavite','Paranaque','Muntinlupa','Makati','LPC','Cavite','Paranaque','LPC','Muntinlupa'];
   const admins=['GLENDA','TIN','PAM','CHE','ANGIE','GLENDA','TIN','PAM','GLENDA','TIN'];
-  const statuses=['Delivered','Delivered','Delivered','In Transit','Delivering','Cancelled','For Return','Delivered','Delivered','Returned'];
+  const statuses=['Delivered','Delivered','Delivered','Preparing','Out for Delivery','Cancelled','Update','Delivered','Delivered','Ready'];
   const codes=[['18KP10V89','18KPV22'],['SNLTTV','SNLFGR'],['SNLBOX'],['18KP10V89'],['SNLTTV'],['18KPV22'],['SNLBOX','SNLTTV'],['18KP10V89'],['SNLFGR'],['SNLBOX']];
   const descs={  '18KP10V89':'18K Gold Pendant','18KPV22':'18K Gold Ring','SNLTTV':'Silver Necklace TTV','SNLFGR':'Silver Ring FGR','SNLBOX':'Silver Box Set'};
   const grm={'18KP10V89':2.5,'18KPV22':1.8,'SNLTTV':1.8,'SNLFGR':16.25,'SNLBOX':5.17};
@@ -1895,7 +1912,7 @@ function renderMyOrders() {
       <div class="stat-card blue"><div class="stat-label">In Transit</div><div class="stat-value">${list.filter(({o})=>o.status==='In Transit').length}</div></div>
       <div class="stat-card green"><div class="stat-label">Delivered</div><div class="stat-value">${del.length}</div></div>
       <div class="stat-card orange"><div class="stat-label">Incentive Earned</div><div class="stat-value">${p(del.length*25)}</div><div class="stat-sub">${del.length}×₱25</div></div>
-      <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${list.filter(({o})=>['Cancelled','For Return','Returned'].includes(o.status)).length}</div></div>
+      <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${list.filter(({o})=>['Cancelled','Update'].includes(o.status)).length}</div></div>
       <div class="stat-card purple"><div class="stat-label">Pending Checker</div><div class="stat-value">${list.filter(({o})=>o.checkerStatus==='Pending').length}</div></div>
     </div>`;
   }
@@ -2019,7 +2036,7 @@ function renderOrders() {
       <div class="stat-card green"><div class="stat-label">Delivered</div><div class="stat-value">${del.length}</div></div>
       <div class="stat-card blue"><div class="stat-label">In Transit</div><div class="stat-value">${list.filter(({o})=>o.status==='In Transit').length}</div></div>
       <div class="stat-card orange"><div class="stat-label">Total Revenue</div><div class="stat-value">${p(del.reduce((s,{o})=>s+o.grandTotal,0))}</div></div>
-      <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${list.filter(({o})=>['Cancelled','For Return','Returned'].includes(o.status)).length}</div></div>
+      <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${list.filter(({o})=>['Cancelled','Update'].includes(o.status)).length}</div></div>
       <div class="stat-card purple"><div class="stat-label">Pending Check</div><div class="stat-value">${list.filter(({o})=>o.checkerStatus==='Pending').length}</div></div>
     </div>`;
   }
@@ -2274,17 +2291,17 @@ function renderDailyParcels(){
 
 // ============ RETURNS ============
 function renderReturns(){
-  const st=['Cancelled','For Return','Returned'];
+  const st=['Cancelled','Update'];
   document.getElementById('return-stats').innerHTML=`
     <div class="stat-card red"><div class="stat-label">Cancelled</div><div class="stat-value">${S.orders.filter(o=>o.status==='Cancelled').length}</div></div>
-    <div class="stat-card purple"><div class="stat-label">For Return</div><div class="stat-value">${S.orders.filter(o=>o.status==='For Return').length}</div></div>
-    <div class="stat-card gold"><div class="stat-label">Returned</div><div class="stat-value">${S.orders.filter(o=>o.status==='Returned').length}</div></div>`;
-  const statuses=['In Transit','Delivering','Delivered','Cancelled','For Return','Returned'];
+    <div class="stat-card purple"><div class="stat-label">For Update</div><div class="stat-value">${S.orders.filter(o=>o.status==='Update').length}</div></div>
+    <div class="stat-card gold"><div class="stat-label">Delivered</div><div class="stat-value">${S.orders.filter(o=>o.status==='Delivered').length}</div></div>`;
+  const TRACK_STATUSES=['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'];
   document.getElementById('returns-tbody').innerHTML=S.orders.map((o,i)=>{
     if(!st.includes(o.status))return '';
     return `<tr><td style="color:var(--gold);">${onum(i)}</td><td style="font-weight:500;">${o.name}</td><td>${o.admin}</td><td>${o.date}</td><td style="color:var(--red);">${p(o.grandTotal)}</td><td><span class="status ${sclass(o.status)}">${o.status}</span></td>
-    <td><select class="form-control" style="width:125px;font-size:10.5px;padding:3px 6px;" onchange="updateStatus(${i},this.value)">${statuses.map(s=>`<option${o.status===s?' selected':''}>${s}</option>`).join('')}</select></td></tr>`;
-  }).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:26px;">No returns</td></tr>';
+    <td><select class="form-control" style="width:145px;font-size:10.5px;padding:3px 6px;" onchange="updateStatus(${i},this.value)">${TRACK_STATUSES.map(s=>`<option${o.status===s?' selected':''}>${s}</option>`).join('')}</select></td></tr>`;
+  }).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:26px;">No cancelled or for-update orders</td></tr>';
 }
 
 // ============ DAILY SALES RECORD ============
@@ -2303,7 +2320,7 @@ function renderDailySales(){
     <div class="stats-grid">
       <div class="stat-card gold"><div class="stat-label">Total Parcels</div><div class="stat-value">${dayO.length}</div></div>
       <div class="stat-card green"><div class="stat-label">Delivered</div><div class="stat-value">${del.length}</div></div>
-      <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${dayO.filter(o=>['Cancelled','For Return','Returned'].includes(o.status)).length}</div></div>
+      <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${dayO.filter(o=>['Cancelled','Update'].includes(o.status)).length}</div></div>
       <div class="stat-card blue"><div class="stat-label">Cash Remit</div><div class="stat-value">${p(overall)}</div></div>
     </div>
     <div class="two-col">
@@ -2349,7 +2366,7 @@ function printDailySales(){
         <div class="print-row"><span>GCASH</span><span>₱0.00</span></div>
         <div class="print-row total-row"><span>OVERALL</span><span>${p(overallR)}</span></div>
       </div>
-      <div class="print-box"><div class="print-box-title">Daily Parcels Summary</div><div class="print-row"><span>Total Parcels</span><span style="font-weight:700;">${dayO.length}</span></div><div class="print-row"><span>Delivered</span><span style="color:#27ae60;font-weight:700;">${del.length}</span></div><div class="print-row"><span>Cancel/Return</span><span style="color:#c0392b;font-weight:700;">${dayO.filter(o=>['Cancelled','For Return','Returned'].includes(o.status)).length}</span></div></div>
+      <div class="print-box"><div class="print-box-title">Daily Parcels Summary</div><div class="print-row"><span>Total Parcels</span><span style="font-weight:700;">${dayO.length}</span></div><div class="print-row"><span>Delivered</span><span style="color:#27ae60;font-weight:700;">${del.length}</span></div><div class="print-row"><span>Cancel/Return</span><span style="color:#c0392b;font-weight:700;">${dayO.filter(o=>['Cancelled','Update'].includes(o.status)).length}</span></div></div>
     </div>
     <div class="print-section-title">Admin Daily Incentives</div>
     <table class="print-table"><thead><tr><th>Admin</th><th>Parcels Delivered</th><th>Incentive</th></tr></thead><tbody>${Object.entries(adminDel).map(([a,c])=>`<tr><td style="font-weight:600;">${a}</td><td>${c}</td><td style="color:#27ae60;font-weight:700;">${p(c*25)}</td></tr>`).join('')}<tr style="background:#fff8e8;font-weight:700;"><td>TOTAL</td><td>${del.length}</td><td>${p(del.length*25)}</td></tr></tbody></table>
@@ -2369,7 +2386,7 @@ function switchPayTab(t){payTab=t;document.querySelectorAll('#pay-tabs .tab-btn'
 function renderPayroll(tab){
   const el=document.getElementById('payroll-content');
   if(tab==='riders'){
-    el.innerHTML=`<div class="card"><div class="card-header"><span class="card-title">Rider Remittance Summary</span></div><div class="table-wrap"><table><thead><tr><th>Rider</th><th>Location</th><th>Type</th><th>Total Remit</th><th>SF</th><th>Total Parcel</th><th>Deductions</th><th>Net Cash</th><th>Actions</th></tr></thead><tbody>${S.riders.map((r,i)=>`<tr><td style="font-weight:600;">${r.name}</td><td style="font-size:11px;">📍 ${r.location||'—'}</td><td><span class="status ${r.type==='LBC'?'blue':'green'}">${r.type}</span></td><td>${p(r.remit)}</td><td>${p(r.sf)}</td><td style="font-weight:600;">${p(r.totalParcel)}</td><td style="color:var(--red);">-${p(r.deductions)}</td><td style="color:var(--green);font-weight:700;">${p(r.netCash)}</td><td><button class="btn btn-outline btn-sm" onclick="openEditRider(${i})">✏️</button></td></tr>`).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px;">No riders</td></tr>'}</tbody></table></div></div>`;
+    el.innerHTML=`<div class="card"><div class="card-header"><span class="card-title">Rider Remittance Summary</span></div><div class="table-wrap"><table><thead><tr><th>Rider</th><th>Location</th><th>Type</th><th>Total Remit</th><th>SF</th><th>Total Parcel</th><th>Deductions</th><th>Net Cash</th></tr></thead><tbody>${S.riders.map((r,i)=>`<tr><td style="font-weight:600;">${r.name}</td><td style="font-size:11px;">📍 ${r.location||'—'}</td><td><span class="status ${r.type==='LBC'?'blue':'green'}">${r.type}</span></td><td>${p(r.remit)}</td><td>${p(r.sf)}</td><td style="font-weight:600;">${p(r.totalParcel)}</td><td style="color:var(--red);">-${p(r.deductions)}</td><td style="color:var(--green);font-weight:700;">${p(r.netCash)}</td></tr>`).join('')||'<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px;">No riders</td></tr>'}</tbody></table></div></div>`;
     return;
   }
   const list=S.payroll.filter(i=>i.period===tab);
@@ -2883,7 +2900,7 @@ function renderCalendar(){
     if(!dateMap[o.date])dateMap[o.date]={orders:0,delivered:0,revenue:0,cancelled:0};
     dateMap[o.date].orders++;
     if(o.status==='Delivered'){dateMap[o.date].delivered++;dateMap[o.date].revenue+=o.grandTotal;}
-    if(['Cancelled','For Return','Returned'].includes(o.status))dateMap[o.date].cancelled++;
+    if(['Cancelled','Update'].includes(o.status))dateMap[o.date].cancelled++;
   });
 
   let cells='';
@@ -2921,7 +2938,7 @@ function openDayDetail(dateStr){
       <div style="background:var(--navy);border-radius:7px;padding:10px;"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Orders</div><div style="font-size:18px;font-weight:700;color:var(--blue);">${dayO.length}</div></div>
       <div style="background:var(--navy);border-radius:7px;padding:10px;"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Delivered</div><div style="font-size:18px;font-weight:700;color:var(--green);">${del.length}</div></div>
       <div style="background:var(--navy);border-radius:7px;padding:10px;"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Revenue</div><div style="font-size:16px;font-weight:700;color:var(--gold);">${p(revenue)}</div></div>
-      <div style="background:var(--navy);border-radius:7px;padding:10px;"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Cancel/Return</div><div style="font-size:18px;font-weight:700;color:var(--red);">${dayO.filter(o=>['Cancelled','For Return','Returned'].includes(o.status)).length}</div></div>
+      <div style="background:var(--navy);border-radius:7px;padding:10px;"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Cancel/Return</div><div style="font-size:18px;font-weight:700;color:var(--red);">${dayO.filter(o=>['Cancelled','Update'].includes(o.status)).length}</div></div>
     </div>
     ${Object.keys(adminMap).length?`<div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Admin Incentives</div>${Object.entries(adminMap).map(([a,c])=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--navy-border);"><span style="font-weight:500;">${a}</span><span style="color:var(--green);">${c} parcels → ${p(c*25)}</span></div>`).join('')}`:''}
     ${dayO.length?`<div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 6px;">Orders</div>${dayO.map(o=>`<div style="font-size:11.5px;padding:4px 0;border-bottom:1px solid var(--navy-border);display:flex;justify-content:space-between;"><span>${o.name}</span><span><span class="status ${sclass(o.status)}">${o.status}</span> <strong style="color:var(--green);">${p(o.grandTotal)}</strong></span></div>`).join('')}`:'<div style="color:var(--muted);font-size:12px;padding:10px 0;">No orders on this date</div>'}
@@ -2962,7 +2979,7 @@ function renderAdminSheets(){
       adminMap[o.admin].total++;
       adminMap[o.admin].orders.push(o);
       if(o.status==='Delivered'){adminMap[o.admin].delivered++;adminMap[o.admin].revenue+=o.grandTotal;}
-      if(['Cancelled','For Return','Returned'].includes(o.status))adminMap[o.admin].cancelled++;
+      if(['Cancelled','Update'].includes(o.status))adminMap[o.admin].cancelled++;
       adminMap[o.admin].incentive=adminMap[o.admin].delivered*25;
     });
     const admList=Object.values(adminMap).sort((a,b)=>b.delivered-a.delivered);
@@ -2987,7 +3004,7 @@ function renderAdminSheets(){
   } else {
     // Single admin detail view
     const del=adminOrders.filter(o=>o.status==='Delivered');
-    const cancelled=adminOrders.filter(o=>['Cancelled','For Return','Returned'].includes(o.status));
+    const cancelled=adminOrders.filter(o=>['Cancelled','Update'].includes(o.status));
     const revenue=del.reduce((s,o)=>s+o.grandTotal,0);
     const incentive=del.length*25;
     el.innerHTML=`
@@ -3249,8 +3266,8 @@ function renderPnl(){
   const shippingIncome=deliveredOrders.reduce((s,o)=>s+o.shipping,0);
   const totalIncome=grossRevenue+shippingIncome;
 
-  // === COST OF GOODS (Cancelled/Return losses) ===
-  const returnedOrders=fO.filter(o=>['For Return','Returned'].includes(o.status));
+  // === COST OF GOODS (Cancelled/Update losses) ===
+  const returnedOrders=fO.filter(o=>['Cancelled','Update'].includes(o.status));
   const returnLoss=returnedOrders.reduce((s,o)=>s+o.itemsTotal,0);
 
   // === PAYROLL ===
@@ -3317,7 +3334,7 @@ function renderPnl(){
   document.getElementById('pnl-breakdown').innerHTML=`
     <div class="card">
       <div class="card-header"><span class="card-title">Orders Breakdown</span></div>
-      ${['In Transit','Delivering','Delivered','Cancelled','For Return','Returned'].map(s=>{
+      ${['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'].map(s=>{
         const cnt=fO.filter(o=>o.status===s).length;
         const val=fO.filter(o=>o.status===s).reduce((sum,o)=>sum+o.grandTotal,0);
         return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;">
@@ -3353,7 +3370,7 @@ function printPnl(){
   const del=fO.filter(o=>o.status==='Delivered');
   const grossRev=del.reduce((s,o)=>s+o.itemsTotal,0);
   const sfInc=del.reduce((s,o)=>s+o.shipping,0);
-  const retLoss=fO.filter(o=>['For Return','Returned'].includes(o.status)).reduce((s,o)=>s+o.itemsTotal,0);
+  const retLoss=fO.filter(o=>['Cancelled','Update'].includes(o.status)).reduce((s,o)=>s+o.itemsTotal,0);
   const catMap={};fE.forEach(e=>{catMap[e.category]=(catMap[e.category]||0)+parseFloat(e.amount||0);});
   const expTotal=Object.values(catMap).reduce((s,v)=>s+v,0);
   const payBase=fP.reduce((s,i)=>s+i.basePay,0);
@@ -3411,10 +3428,11 @@ function renderDash(){
     <div class="stat-card orange"><div class="stat-label">Today</div><div class="stat-value">${todayO}</div><div class="stat-sub">Orders encoded</div></div>
     <div class="stat-card red"><div class="stat-label">Pending Verify</div><div class="stat-value">${pending}</div><div class="stat-sub">Checker queue</div></div>
     <div class="stat-card purple"><div class="stat-label">Expenses</div><div class="stat-value">${p(expTotal)}</div><div class="stat-sub">Total recorded</div></div>`;
-  const statuses=['In Transit','Delivering','Delivered','Cancelled','For Return','Returned'];
+  const statuses=['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'];
   document.getElementById('dash-status').innerHTML=statuses.map(s=>{
     const cnt=S.orders.filter(o=>o.status===s).length,pct=total?Math.round(cnt/total*100):0;
-    return `<div style="margin-bottom:8px;"><div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px;"><span class="status ${sclass(s)}">${s}</span><span style="color:var(--muted);">${cnt} (${pct}%)</span></div><div style="background:var(--navy-border);border-radius:3px;height:4px;"><div style="background:var(--gold);width:${pct}%;height:4px;border-radius:3px;"></div></div></div>`;
+    const sc = {'Preparing':'orange','Ready':'blue','Out for Delivery':'gold','Delivered':'green','Cancelled':'red','Update':'return'}[s]||'transit';
+    return `<div style="margin-bottom:8px;"><div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px;"><span class="status ${sc}">${s}</span><span style="color:var(--muted);">${cnt} (${pct}%)</span></div><div style="background:var(--navy-border);border-radius:3px;height:4px;"><div style="background:var(--gold);width:${pct}%;height:4px;border-radius:3px;"></div></div></div>`;
   }).join('');
   const adminDel={};S.orders.filter(o=>o.status==='Delivered').forEach(o=>{if(o.admin)adminDel[o.admin]=(adminDel[o.admin]||0)+1;});
   const aList=Object.entries(adminDel).sort((a,b)=>b[1]-a[1]);
@@ -3903,6 +3921,7 @@ function riderUpdateStatus(orderIdx, newStatus) {
   S.orders[orderIdx].status = newStatus;
   save(); toast('Status updated → ' + newStatus);
   renderRiderParcels();
+  refreshUpdateBadge();
 }
 
 function riderSaveRemarks(orderIdx, remarks) {
@@ -3945,7 +3964,7 @@ function saveOrder() {
     date: document.getElementById('enc-date').value || today(),
     admin, assignedRider, paymentMethod,
     shipping: sf, items, itemsTotal: iT, grandTotal: iT + sf,
-    status: 'In Transit', checkerStatus: 'Pending',
+    status: 'Preparing', checkerStatus: 'Pending',
     riderRemarks: '', createdAt: new Date().toISOString()
   };
   if(editIdx !== '') {
@@ -4753,6 +4772,8 @@ async function initApp(){
           .forEach(k=>{ if(!Array.isArray(S[k])) S[k]=[]; });
         if(!S.govSettings) S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
         if(!S.bizInfo) S.bizInfo={};
+        if(!S.tabPasswords) S.tabPasswords={checker:'',tracking:'',riders:''};
+        if(!S.adminAccounts) S.adminAccounts=[];
         persist();
         if(syncEl){ syncEl.style.color='var(--green)'; syncEl.textContent='☁ Online'; }
         toast('☁ Loaded from Firebase!');
