@@ -593,7 +593,7 @@ window.loadFromFirebase = async function() {
     </div>
     <div class="nav-section">
       <div class="nav-label">Admin Sheets</div>
-      <div class="nav-item" onclick="gotoPage('adminsheets')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>Per-Admin Orders</div>
+      <div class="nav-item owner-only" onclick="gotoPage('adminsheets')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>All Admin Sheets</div>
     </div>
     <div class="nav-section">
       <div class="nav-label">System</div>
@@ -652,46 +652,15 @@ window.loadFromFirebase = async function() {
     </div>
   </div>
 
-  <!-- ADMIN ENCODE -->
+  <!-- ADMIN ENCODE (combined with Per-Admin Sheet) -->
   <div class="page" id="page-orders">
-    <div class="action-row no-print">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <div style="font-size:12px;color:var(--muted);">Encode new orders. Checker reviews before printing.</div>
-        <div class="section-tabs" style="margin:0;" id="orders-view-tabs">
-          <button class="tab-btn active" onclick="setOrdersTab('all')">📋 All Orders</button>
-          <button class="tab-btn" onclick="setOrdersTab('mine')" id="orders-tab-mine">👤 My Orders</button>
-        </div>
-      </div>
-      <button class="btn btn-gold" onclick="openEncodeModal()">+ New Order</button>
+    <div class="action-row no-print" id="orders-action-row">
+      <!-- Dynamic content injected by initOrdersPage() -->
     </div>
-    <!-- ALL ORDERS view -->
-    <div id="orders-view-all" class="card no-print">
-      <div class="card-header"><span class="card-title">All Orders</span>
-        <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
-          <input class="form-control" style="width:200px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / order # / CP#" id="order-search" oninput="renderOrders()">
-          <select class="form-control" style="width:130px;font-size:11px;padding:4px 8px;" id="order-method-filter" onchange="renderOrders()">
-            <option value="">All Methods</option><option>COD</option><option>LBC</option><option>INTERNATIONAL</option>
-          </select>
-        </div>
-      </div>
-      <div class="table-wrap"><table><thead><tr><th>Order #</th><th>Customer</th><th>Contact</th><th>Address</th><th>Landmark</th><th>Date</th><th>Admin</th><th>Method</th><th>Items</th><th>Grand Total</th><th>Status</th><th>Checker</th><th>Actions</th></tr></thead><tbody id="orders-tbody"></tbody></table></div>
-    </div>
-    <!-- MY ORDERS view -->
-    <div id="orders-view-mine" style="display:none;">
-      <div class="my-orders-stats"></div>
-      <div class="card no-print">
-        <div class="card-header">
-          <span class="card-title" id="my-orders-title">My Orders</span>
-          <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
-            <input class="form-control" style="width:200px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / CP#" id="my-order-search" oninput="renderMyOrders()">
-            <select class="form-control" style="width:130px;font-size:11px;padding:4px 8px;" id="my-order-method" onchange="renderMyOrders()">
-              <option value="">All Methods</option><option>COD</option><option>LBC</option><option>INTERNATIONAL</option>
-            </select>
-          </div>
-        </div>
-        <div class="table-wrap"><table><thead><tr><th>Order #</th><th>Customer</th><th>Contact</th><th>Address</th><th>Landmark</th><th>Date</th><th>Method</th><th>Items</th><th>Grand Total</th><th>Status</th><th>Checker</th><th>Actions</th></tr></thead><tbody id="my-orders-tbody"></tbody></table></div>
-      </div>
-    </div>
+    <!-- Stats row (admin personal stats) -->
+    <div id="orders-stats-row"></div>
+    <!-- Main orders table card -->
+    <div id="orders-main-view"></div>
   </div>
 
   <!-- CHECKER -->
@@ -1656,54 +1625,91 @@ function openEditOrder(i){
   o.items.forEach(it=>addItemRow('enc-items-tbody','calcEnc',it));
   calcEnc(); openModal('modal-encode');
 }
-function delOrder(i){if(!confirm('Delete order '+onum(i)+'?'))return;S.orders.splice(i,1);save();toast('🗑️ Deleted');renderOrders();renderDash();}
+// delOrder defined below in saveOrder block
 
-// ============ RENDER ORDERS ============
-let ordersViewTab = 'all';
-function setOrdersTab(tab) {
-  ordersViewTab = tab;
-  document.querySelectorAll('#orders-view-tabs .tab-btn').forEach((b,i)=>b.classList.toggle('active',['all','mine'][i]===tab));
-  document.getElementById('orders-view-all').style.display = tab==='all' ? '' : 'none';
-  document.getElementById('orders-view-mine').style.display = tab==='mine' ? '' : 'none';
-  if(tab==='mine') renderMyOrders();
-  else renderOrders();
-}
+// ============ UNIFIED ORDERS PAGE ============
+// Role-aware: admin sees ONLY their own sheet; owner sees all with admin tabs
+let ordersViewTab = 'all';   // for owner: 'all' | admin name
+let ordersAdminFilter = '';  // search filter within owner view
+
 function initOrdersPage() {
-  renderOrders();
-  // If logged in as admin, auto-show "My Orders" tab
   if(currentUser?.role === 'admin') {
-    setOrdersTab('mine');
+    _renderAdminPersonalSheet();
   } else {
-    setOrdersTab(ordersViewTab || 'all');
+    _renderOwnerOrdersView();
   }
 }
+
+// ── ADMIN VIEW: Personal sheet only ────────────────────────────
+function _renderAdminPersonalSheet() {
+  const adminName = currentUser?.name || '';
+  // Action row
+  document.getElementById('orders-action-row').innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-family:var(--fh);font-size:16px;color:var(--gold);">📋 ${adminName}'s Orders</span>
+      <span style="font-size:11px;color:var(--muted);">Only your own encoded orders appear here.</span>
+    </div>
+    <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
+      <input class="form-control" style="width:180px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / CP# / order#" id="my-order-search" oninput="renderMyOrders()">
+      <select class="form-control" style="width:130px;font-size:11px;padding:4px 8px;" id="my-order-method" onchange="renderMyOrders()">
+        <option value="">All Methods</option><option>COD</option><option>LBC</option><option>INTERNATIONAL</option>
+      </select>
+      <input type="date" class="form-control" style="width:140px;font-size:11px;padding:4px 8px;" id="my-order-date" oninput="renderMyOrders()" title="Filter by date">
+      <button class="btn btn-gold" onclick="openEncodeModal()">+ New Order</button>
+    </div>`;
+  // Stats
+  document.getElementById('orders-stats-row').innerHTML = '<div id="my-orders-stats-inner"></div>';
+  // Main view
+  document.getElementById('orders-main-view').innerHTML = `
+    <div class="card no-print">
+      <div class="card-header">
+        <span class="card-title" id="my-orders-title">${adminName}'s Orders</span>
+        <span id="my-orders-count" style="font-size:11px;color:var(--muted);"></span>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Order #</th><th>Customer</th><th>Contact</th><th>Address</th><th>Landmark</th>
+          <th>Date</th><th>Method</th><th>Items</th><th>Grand Total</th><th>Status</th><th>Checker</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="my-orders-tbody"></tbody>
+      </table></div>
+    </div>`;
+  renderMyOrders();
+}
+
 function renderMyOrders() {
   const loggedAdmin = currentUser?.name || '';
-  const el = document.getElementById('my-orders-title');
-  if(el) el.textContent = loggedAdmin ? `📋 ${loggedAdmin}'s Orders` : 'My Orders';
   const q = (document.getElementById('my-order-search')?.value||'').toLowerCase();
   const mf = document.getElementById('my-order-method')?.value||'';
+  const df = document.getElementById('my-order-date')?.value||'';
   const tbody = document.getElementById('my-orders-tbody'); if(!tbody) return;
   const pm2cls = m => m==='INTERNATIONAL'?'green':m==='LBC'?'blue':'delivering';
+
   const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
     if(loggedAdmin && o.admin.toUpperCase() !== loggedAdmin.toUpperCase()) return false;
     if(mf && (o.paymentMethod||'COD') !== mf) return false;
+    if(df && o.date !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !(o.contact||'').includes(q) && !onum(i).includes(q)) return false;
     return true;
   });
-  // Stats for this admin
+
+  // Stats
   const del = list.filter(({o})=>o.status==='Delivered');
-  const statsHtml = loggedAdmin ? `<div class="stats-grid" style="margin-bottom:13px;">
-    <div class="stat-card gold"><div class="stat-label">Total Orders</div><div class="stat-value">${list.length}</div></div>
-    <div class="stat-card blue"><div class="stat-label">In Transit</div><div class="stat-value">${list.filter(({o})=>o.status==='In Transit').length}</div></div>
-    <div class="stat-card green"><div class="stat-label">Delivered</div><div class="stat-value">${del.length}</div></div>
-    <div class="stat-card orange"><div class="stat-label">Incentive Earned</div><div class="stat-value">${p(del.length*25)}</div><div class="stat-sub">${del.length}×₱25</div></div>
-    <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${list.filter(({o})=>['Cancelled','For Return','Returned'].includes(o.status)).length}</div></div>
-    <div class="stat-card purple"><div class="stat-label">Pending Check</div><div class="stat-value">${list.filter(({o})=>o.checkerStatus==='Pending').length}</div></div>
-  </div>` : '';
-  const container = document.getElementById('orders-view-mine');
-  const statsEl = container?.querySelector('.my-orders-stats');
-  if(statsEl) statsEl.innerHTML = statsHtml;
+  const statsEl = document.getElementById('my-orders-stats-inner');
+  if(statsEl && loggedAdmin) {
+    statsEl.innerHTML = `<div class="stats-grid" style="margin-bottom:13px;">
+      <div class="stat-card gold"><div class="stat-label">My Total Orders</div><div class="stat-value">${list.length}</div></div>
+      <div class="stat-card blue"><div class="stat-label">In Transit</div><div class="stat-value">${list.filter(({o})=>o.status==='In Transit').length}</div></div>
+      <div class="stat-card green"><div class="stat-label">Delivered</div><div class="stat-value">${del.length}</div></div>
+      <div class="stat-card orange"><div class="stat-label">Incentive Earned</div><div class="stat-value">${p(del.length*25)}</div><div class="stat-sub">${del.length}×₱25</div></div>
+      <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${list.filter(({o})=>['Cancelled','For Return','Returned'].includes(o.status)).length}</div></div>
+      <div class="stat-card purple"><div class="stat-label">Pending Checker</div><div class="stat-value">${list.filter(({o})=>o.checkerStatus==='Pending').length}</div></div>
+    </div>`;
+  }
+
+  const countEl = document.getElementById('my-orders-count');
+  if(countEl) countEl.textContent = list.length + ' order(s)';
+
   tbody.innerHTML = list.length ? list.map(({o,i}) => `<tr>
     <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
     <td style="font-weight:500;">${o.name}</td>
@@ -1720,31 +1726,119 @@ function renderMyOrders() {
       <button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>
       <button class="btn btn-blue btn-sm" onclick="openInvoice(${i})">🖨️</button>
       <button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>
-    </td></tr>`).join('') : `<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:26px;">${loggedAdmin?'No orders encoded by '+loggedAdmin+' yet.':'Login as an admin to see your orders.'}</td></tr>`;
+    </td></tr>`).join('')
+  : `<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:26px;">${loggedAdmin?'No orders by '+loggedAdmin+' yet. Click + New Order to encode.':'No orders found.'}</td></tr>`;
 }
-function renderOrders(){
-  // Update "My Orders" tab label to show current admin's name
-  const mineTab = document.getElementById('orders-tab-mine');
-  if(mineTab && currentUser?.role === 'admin') {
-    mineTab.textContent = `👤 ${currentUser.name}'s Orders`;
-  }
-  const q=(document.getElementById('order-search')?.value||'').toLowerCase();
-  const mf=(document.getElementById('order-method-filter')?.value||'');
-  const tbody=document.getElementById('orders-tbody');
-  const list=S.orders.map((o,i)=>({o,i})).filter(({o,i})=>{
-    if(mf && (o.paymentMethod||'COD')!==mf) return false;
-    if(!q) return true;
-    return o.name.toLowerCase().includes(q)||onum(i).includes(q)||(o.contact||'').includes(q);
-  });
+
+// ── OWNER/ALL VIEW: All admins with filter tabs ─────────────────
+let _ownerAdminTab = 'ALL';
+function _renderOwnerOrdersView() {
+  // Build admin tabs from all admin names
+  const allAdmins = [...new Set([
+    ...(S.adminAccounts||[]).map(a=>a.name),
+    ...S.orders.map(o=>o.admin).filter(Boolean)
+  ])].sort();
+
+  // Action row
+  document.getElementById('orders-action-row').innerHTML = `
+    <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
+      <span style="font-size:12px;color:var(--muted);">All encoded orders. Filter by admin tab or search.</span>
+    </div>
+    <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
+      <input type="date" class="form-control" style="width:140px;font-size:11px;padding:4px 8px;" id="order-date-filter" oninput="renderOrders()" title="Filter by date">
+      <input class="form-control" style="width:180px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / order# / CP#" id="order-search" oninput="renderOrders()">
+      <select class="form-control" style="width:130px;font-size:11px;padding:4px 8px;" id="order-method-filter" onchange="renderOrders()">
+        <option value="">All Methods</option><option>COD</option><option>LBC</option><option>INTERNATIONAL</option>
+      </select>
+      <button class="btn btn-gold" onclick="openEncodeModal()">+ New Order</button>
+    </div>`;
+
+  // Stats row
+  document.getElementById('orders-stats-row').innerHTML = '<div id="owner-orders-stats"></div>';
+
+  // Admin tabs + table
+  document.getElementById('orders-main-view').innerHTML = `
+    <div class="loc-tabs no-print" id="owner-admin-tabs" style="margin-bottom:13px;"></div>
+    <div class="card no-print">
+      <div class="card-header">
+        <span class="card-title" id="owner-orders-title">All Orders</span>
+        <div style="display:flex;gap:7px;align-items:center;">
+          <span id="owner-orders-count" style="font-size:11px;color:var(--muted);"></span>
+          <button class="btn btn-print btn-sm" onclick="printOwnerAdminSheet()">🖨️ Print Sheet</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Order #</th><th>Customer</th><th>Contact</th><th>Address</th><th>Landmark</th>
+          <th>Date</th><th>Admin</th><th>Method</th><th>Items</th><th>Grand Total</th><th>Status</th><th>Checker</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="orders-tbody"></tbody>
+      </table></div>
+    </div>`;
+
+  _renderOwnerAdminTabs(allAdmins);
+  renderOrders();
+}
+
+function _renderOwnerAdminTabs(admins) {
+  const el = document.getElementById('owner-admin-tabs'); if(!el) return;
+  el.innerHTML = `<button class="loc-tab ${_ownerAdminTab==='ALL'?'active':''}" onclick="setOwnerAdminTab('ALL')">👥 All Admins</button>`
+    + admins.map(a => `<button class="loc-tab ${_ownerAdminTab===a?'active':''}" onclick="setOwnerAdminTab('${a.replace(/'/g,"\\'")}')">👤 ${a}</button>`).join('');
+}
+
+function setOwnerAdminTab(admin) {
+  _ownerAdminTab = admin;
+  const allAdmins = [...new Set([
+    ...(S.adminAccounts||[]).map(a=>a.name),
+    ...S.orders.map(o=>o.admin).filter(Boolean)
+  ])].sort();
+  _renderOwnerAdminTabs(allAdmins);
+  renderOrders();
+}
+
+function renderOrders() {
+  const q  = (document.getElementById('order-search')?.value||'').toLowerCase();
+  const mf = document.getElementById('order-method-filter')?.value||'';
+  const df = document.getElementById('order-date-filter')?.value||'';
+  const tbody = document.getElementById('orders-tbody'); if(!tbody) return;
   const pm2cls = m => m==='INTERNATIONAL'?'green':m==='LBC'?'blue':'delivering';
-  tbody.innerHTML=list.length?list.map(({o,i})=>`<tr>
+
+  const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
+    if(_ownerAdminTab !== 'ALL' && o.admin.toUpperCase() !== _ownerAdminTab.toUpperCase()) return false;
+    if(mf && (o.paymentMethod||'COD') !== mf) return false;
+    if(df && o.date !== df) return false;
+    if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q) && !(o.contact||'').includes(q)) return false;
+    return true;
+  });
+
+  // Update title and count
+  const titleEl = document.getElementById('owner-orders-title');
+  const countEl = document.getElementById('owner-orders-count');
+  if(titleEl) titleEl.textContent = _ownerAdminTab === 'ALL' ? 'All Orders' : `${_ownerAdminTab}'s Orders`;
+  if(countEl) countEl.textContent = list.length + ' order(s)';
+
+  // Stats for selected admin
+  const statsEl = document.getElementById('owner-orders-stats');
+  if(statsEl) {
+    const del = list.filter(({o})=>o.status==='Delivered');
+    statsEl.innerHTML = `<div class="stats-grid" style="margin-bottom:13px;">
+      <div class="stat-card gold"><div class="stat-label">Orders</div><div class="stat-value">${list.length}</div></div>
+      <div class="stat-card green"><div class="stat-label">Delivered</div><div class="stat-value">${del.length}</div></div>
+      <div class="stat-card blue"><div class="stat-label">In Transit</div><div class="stat-value">${list.filter(({o})=>o.status==='In Transit').length}</div></div>
+      <div class="stat-card orange"><div class="stat-label">Total Revenue</div><div class="stat-value">${p(del.reduce((s,{o})=>s+o.grandTotal,0))}</div></div>
+      <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${list.filter(({o})=>['Cancelled','For Return','Returned'].includes(o.status)).length}</div></div>
+      <div class="stat-card purple"><div class="stat-label">Pending Check</div><div class="stat-value">${list.filter(({o})=>o.checkerStatus==='Pending').length}</div></div>
+    </div>`;
+  }
+
+  tbody.innerHTML = list.length ? list.map(({o,i}) => `<tr>
     <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
     <td style="font-weight:500;">${o.name}</td>
     <td>${o.contact||'—'}</td>
-    <td style="font-size:10.5px;max-width:150px;">${o.address||'—'}</td>
+    <td style="font-size:10.5px;max-width:140px;">${o.address||'—'}</td>
     <td style="font-size:10.5px;">${o.landmark||'—'}</td>
     <td>${o.date}</td>
-    <td>${o.admin}</td>
+    <td style="font-weight:500;">${o.admin}</td>
     <td><span class="status ${pm2cls(o.paymentMethod||'COD')}" style="font-size:9px;">${o.paymentMethod||'COD'}</span></td>
     <td>${o.items.length}x</td>
     <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
@@ -1754,8 +1848,76 @@ function renderOrders(){
       <button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>
       <button class="btn btn-blue btn-sm" onclick="openInvoice(${i})">🖨️</button>
       <button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>
-    </td></tr>`).join(''):'<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:26px;">No orders</td></tr>';
+    </td></tr>`).join('')
+  : '<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:26px;">No orders found</td></tr>';
 }
+
+// Print from owner admin tab view
+function printOwnerAdminSheet() {
+  const q  = (document.getElementById('order-search')?.value||'').toLowerCase();
+  const mf = document.getElementById('order-method-filter')?.value||'';
+  const df = document.getElementById('order-date-filter')?.value||'';
+  const list = S.orders.map((o,i)=>({...o,idx:i})).filter(o => {
+    if(_ownerAdminTab!=='ALL' && o.admin.toUpperCase()!==_ownerAdminTab.toUpperCase()) return false;
+    if(mf && (o.paymentMethod||'COD')!==mf) return false;
+    if(df && o.date!==df) return false;
+    if(q && !o.name.toLowerCase().includes(q) && !(o.contact||'').includes(q)) return false;
+    return true;
+  });
+  const del = list.filter(o=>o.status==='Delivered');
+  const adminLabel = _ownerAdminTab === 'ALL' ? 'All Admins' : _ownerAdminTab;
+  const _win = window.open('','_blank','width=1000,height=700,menubar=yes,toolbar=yes');
+  if(!_win){ toast('⚠️ Popup blocked!'); return; }
+  _win.document.write(`<html><head><meta charset="UTF-8"><style>
+    *{box-sizing:border-box;margin:0;padding:0;}body{font-family:Arial,sans-serif;padding:16px;background:white;color:#111;}
+    h2{font-family:Georgia,serif;color:#9c7a2e;font-size:17px;}
+    .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #c9a84c;padding-bottom:9px;margin-bottom:12px;}
+    .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;}
+    .stat{border:1px solid #d4b870;border-radius:4px;padding:8px;text-align:center;}
+    .stat-l{font-size:9px;color:#777;text-transform:uppercase;margin-bottom:2px;}
+    .stat-v{font-size:16px;font-weight:700;color:#c9a84c;}
+    table{width:100%;border-collapse:collapse;font-size:10.5px;}
+    th{background:#f5edd8;color:#7a5c1e;padding:5px 6px;text-align:left;border:1px solid #d4b870;}
+    td{padding:5px 6px;border:1px solid #ddd;}
+    tr:nth-child(even){background:#fafafa;}
+    .sigs{margin-top:30px;display:flex;justify-content:space-around;}
+    .sig{text-align:center;}<br>.sig-line{border-bottom:1px solid #333;width:150px;height:28px;}
+    @media print{@page{margin:8mm;}}
+  </style></head><body>
+    <div class="hdr">
+      <div><h2>${S.bizInfo?.name||'Goldchelle Online Enterprises'}</h2><p style="font-size:10px;color:#555;">Admin Order Sheet</p></div>
+      <div style="text-align:right;"><div style="font-size:14px;font-weight:700;color:#9c7a2e;">Admin: ${adminLabel}</div><div style="font-size:10px;color:#555;">${df||'All dates'}</div></div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="stat-l">Total Orders</div><div class="stat-v">${list.length}</div></div>
+      <div class="stat"><div class="stat-l">Delivered</div><div class="stat-v" style="color:#27ae60;">${del.length}</div></div>
+      <div class="stat"><div class="stat-l">Revenue</div><div class="stat-v">${p(del.reduce((s,o)=>s+o.grandTotal,0))}</div></div>
+      <div class="stat"><div class="stat-l">Incentive</div><div class="stat-v">${p(del.length*25)}</div></div>
+    </div>
+    <table><thead><tr><th>Order #</th><th>Customer</th><th>CP#</th><th>Address</th><th>Date</th><th>Admin</th><th>Method</th><th>SF</th><th>Total</th><th>Status</th></tr></thead>
+    <tbody>${list.map(o=>`<tr>
+      <td style="font-weight:700;">${onum(o.idx)}</td><td>${o.name}</td><td>${o.contact||'—'}</td>
+      <td>${o.address||'—'}</td><td>${o.date}</td><td>${o.admin}</td><td>${o.paymentMethod||'COD'}</td>
+      <td>${p(o.shipping)}</td><td style="font-weight:700;">${p(o.grandTotal)}</td><td>${o.status}</td>
+    </tr>`).join('')}
+    <tr style="background:#fff8e8;font-weight:700;"><td colspan="8">TOTALS</td><td>${p(list.reduce((s,o)=>s+o.grandTotal,0))}</td><td></td></tr>
+    </tbody></table>
+    <div class="sigs">
+      <div class="sig"><div class="sig-line"></div><p style="font-size:10px;margin-top:4px;">${adminLabel} – Admin Signature</p></div>
+      <div class="sig"><div class="sig-line"></div><p style="font-size:10px;margin-top:4px;">Verified by</p></div>
+    </div>
+    <div style="text-align:right;margin-top:6px;"><button onclick="window.print()" style="background:#c9a84c;color:#111;border:none;padding:6px 16px;border-radius:5px;font-weight:700;cursor:pointer;">🖨️ Print</button>
+    <button onclick="window.close()" style="margin-left:6px;background:#555;color:white;border:none;padding:6px 14px;border-radius:5px;cursor:pointer;">Close</button></div>
+  </body></html>`);
+  _win.document.close();
+  setTimeout(()=>{ try{_win.print();}catch(e){} }, 400);
+}
+
+// Legacy alias — keep renderAdminSheets working for the locked page
+function setAdminTab(admin){ _ownerAdminTab=admin; renderOrders(); }
+
+// setOrdersTab kept as alias
+function setOrdersTab(tab){ ordersViewTab=tab; initOrdersPage(); }
 
 // ============ CHECKER ============
 let checkerTab = 'COD';
@@ -3605,9 +3767,14 @@ function saveOrder() {
     toast('✅ Order saved! Stock updated.');
   }
   save(); closeModal('modal-encode');
-  renderOrders();
-  if(ordersViewTab === 'mine') renderMyOrders();
+  initOrdersPage();
   renderDash();
+}
+function delOrder(i){
+  if(!confirm('Delete order '+onum(i)+'?'))return;
+  S.orders.splice(i,1);
+  save(); toast('🗑️ Deleted');
+  initOrdersPage(); renderDash();
 }
 
 // ============================================================
