@@ -846,11 +846,14 @@ window.loadFromFirebase = async function() {
     <div id="ret-tab-orders">
       <div class="card">
         <div class="card-header">
-          <span class="card-title">🚫 Cancelled Orders</span>
-          <span style="font-size:11px;color:var(--muted);">Whole orders na cancelled. Status ay mababago dito.</span>
+          <span class="card-title">🚫 Cancelled / For Update Orders</span>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="date" class="form-control" id="ret-orders-date" style="width:155px;font-size:11px;" oninput="renderReturnOrders()" title="Filter by date">
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('ret-orders-date').value='';renderReturnOrders()">All</button>
+          </div>
         </div>
         <div class="table-wrap"><table>
-          <thead><tr><th>Order #</th><th>Customer</th><th>Admin</th><th>Rider</th><th>Date</th><th>Amount</th><th>Status</th><th>Update Status</th></tr></thead>
+          <thead><tr><th>Order #</th><th>Customer</th><th>Contact</th><th>Address</th><th>Admin</th><th>Rider</th><th>Date</th><th>Items</th><th>SF</th><th>Amount</th><th>Status</th><th>Update Status</th></tr></thead>
           <tbody id="returns-tbody"></tbody>
         </table></div>
       </div>
@@ -1257,7 +1260,11 @@ window.loadFromFirebase = async function() {
     </div>
   </div>
   <div class="action-row no-print">
-    <div style="font-size:12px;color:var(--muted);">Record and track all rider remittances. Auto-computes earnings based on parcels.</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:12px;color:var(--muted);">Record and track all rider remittances.</span>
+      <input type="date" class="form-control" id="remit-page-date" style="width:155px;font-size:11px;" oninput="renderRemitPage()" title="Filter by date">
+      <button class="btn btn-outline btn-sm" onclick="document.getElementById('remit-page-date').value='';renderRemitPage()">All Dates</button>
+    </div>
     <button class="btn btn-gold" onclick="openRemitModal()">+ Add Remit Entry</button>
   </div>
   <div id="remit-page-content"></div>
@@ -1280,7 +1287,11 @@ window.loadFromFirebase = async function() {
     </div>
   </div>
   <div class="action-row no-print">
-    <div style="font-size:12px;color:var(--muted);">Track cashbond contributions for all riders and staff.</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:12px;color:var(--muted);">Track cashbond contributions.</span>
+      <input type="date" class="form-control" id="cashbond-page-date" style="width:155px;font-size:11px;" oninput="renderCashbondPage()" title="Filter by date">
+      <button class="btn btn-outline btn-sm" onclick="document.getElementById('cashbond-page-date').value='';renderCashbondPage()">All Dates</button>
+    </div>
     <button class="btn btn-gold" onclick="openCashbondModal()">+ Add Cashbond Entry</button>
   </div>
   <div id="cashbond-page-content"></div>
@@ -1305,7 +1316,7 @@ window.loadFromFirebase = async function() {
     <div class="modal-header"><span class="modal-title" id="encode-title">Encode New Order</span><button class="modal-close" onclick="closeModal('modal-encode')">✕</button></div>
     <div class="form-grid" id="enc-form-fields">
       <div class="form-group"><label>Customer Name *</label><input class="form-control enc-tab" id="enc-name" placeholder="Full name" onkeydown="encNextField(event,this)"></div>
-      <div class="form-group"><label>CP Number</label><input class="form-control enc-tab" id="enc-contact" placeholder="09xx-xxx-xxxx" onkeydown="encNextField(event,this)"></div>
+      <div class="form-group"><label>CP Number *</label><input class="form-control enc-tab" id="enc-contact" placeholder="09xx-xxx-xxxx" onkeydown="encNextField(event,this)"></div>
       <div class="form-group" style="grid-column:1/-1"><label>Complete Address *</label><input class="form-control enc-tab" id="enc-address" placeholder="House/Unit, Barangay, City, Province" onkeydown="encNextField(event,this)" oninput="autoAssignRider()"></div>
       <input type="hidden" id="enc-city" value="">
       <div class="form-group"><label>Landmark / Pakuha sa</label><input class="form-control enc-tab" id="enc-landmark" placeholder="Near church, beside sari-sari..." onkeydown="encNextField(event,this)"></div>
@@ -1333,12 +1344,7 @@ window.loadFromFirebase = async function() {
     </div>
     <hr class="divider">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;flex-wrap:wrap;gap:7px;">
-      <div style="display:flex;align-items:center;gap:9px;">
-        <span style="font-size:11px;font-weight:600;color:var(--gold);">ORDER ITEMS</span>
-        <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);cursor:pointer;">
-          <input type="checkbox" id="enc-fixprice-mode" onchange="toggleFixPriceMode()"> Fix Price Mode
-        </label>
-      </div>
+      <span style="font-size:11px;font-weight:600;color:var(--gold);">ORDER ITEMS</span>
       <div style="display:flex;gap:6px;">
         <select class="form-control" id="inv-quick-pick" style="width:230px;font-size:11px;padding:3px 7px;" onchange="addFromInventory()">
           <option value="">📦 Pick from Inventory...</option>
@@ -1351,16 +1357,20 @@ window.loadFromFirebase = async function() {
         <thead id="enc-items-thead"><tr style="background:rgba(201,168,76,0.08);">
           <th style="padding:6px 7px;color:var(--gold);font-size:9.5px;">Serial Code</th>
           <th style="padding:6px 7px;color:var(--gold);font-size:9.5px;">Description</th>
-          <th style="padding:6px 7px;color:var(--gold);font-size:9.5px;" id="enc-th-qg">Qty / Grams</th>
-          <th style="padding:6px 7px;color:var(--gold);font-size:9.5px;" id="enc-th-pergram">Per Gram (₱)</th>
-          <th style="padding:6px 7px;color:var(--gold);font-size:9.5px;">Total (₱) ✏️</th>
+          <th style="padding:6px 7px;color:var(--gold);font-size:9.5px;">Qty / Grams</th>
+          <th style="padding:6px 7px;color:var(--gold);font-size:9.5px;">Per Gram (₱)</th>
+          <th style="padding:6px 7px;color:var(--gold);font-size:9.5px;">Subtotal (₱)</th>
+          <th style="padding:6px 7px;color:var(--red);font-size:9.5px;">Discount (₱)</th>
+          <th style="padding:6px 7px;color:var(--gold);font-size:9.5px;">Total (₱)</th>
           <th></th>
         </tr></thead>
         <tbody id="enc-items-tbody"></tbody>
       </table>
     </div>
     <div style="text-align:right;margin-top:10px;font-size:12.5px;line-height:2;">
-      SF: <strong style="color:var(--gold);" id="enc-sf-disp">₱0.00</strong> &nbsp;|&nbsp; Items: <strong style="color:var(--gold);" id="enc-items-disp">₱0.00</strong> &nbsp;|&nbsp;
+      SF: <strong style="color:var(--gold);" id="enc-sf-disp">₱0.00</strong> &nbsp;|&nbsp;
+      Items: <strong style="color:var(--gold);" id="enc-items-disp">₱0.00</strong> &nbsp;|&nbsp;
+      Discount: <strong style="color:var(--red);" id="enc-discount-disp">₱0.00</strong> &nbsp;|&nbsp;
       <span style="font-size:14px;">Grand Total: <strong style="color:var(--green);" id="enc-grand-disp">₱0.00</strong></span>
     </div>
     <input type="hidden" id="enc-edit-idx" value="">
@@ -1549,16 +1559,25 @@ window.loadFromFirebase = async function() {
       <p style="color:var(--muted);font-size:11.5px;">Select a rider to see parcel summary.</p>
     </div>
     <div style="background:var(--navy);border-radius:8px;padding:12px;margin-top:8px;font-size:12.5px;" id="remit-calc">
-      <div class="info-row"><span style="color:var(--muted);">Subtotal (Delivered Orders COD)</span><span id="remit-subtotal" style="color:var(--blue);font-weight:600;">₱0.00</span></div>
+      <div class="info-row"><span style="color:var(--muted);">Delivered Parcels</span><span id="remit-delivered-count" style="color:var(--green);">0 parcels</span></div>
+      <div class="info-row"><span style="color:var(--muted);">Subtotal (Delivered COD)</span><span id="remit-subtotal" style="color:var(--blue);font-weight:600;">₱0.00</span></div>
       <div id="remit-cancelled-info" style="font-size:11px;padding:4px 0;min-height:16px;"></div>
-      <div class="info-row"><span style="color:var(--muted);">Gross SF (All Parcels)</span><span id="remit-gross-sf">₱0.00</span></div>
-      <div class="info-row"><span style="color:var(--muted);">Less: 10% of Gross SF → Company</span><span id="remit-sf-10" style="color:var(--red);">-₱0.00</span></div>
-      <div class="info-row"><span style="color:var(--muted);">Less: ₱10 × No. of Parcels</span><span id="remit-per-parcel" style="color:var(--red);">-₱0.00</span></div>
-      <div class="info-row"><span style="color:var(--muted);">Less: Cashbond (₱100)</span><span id="remit-cashbond-cut" style="color:var(--red);">-₱100.00</span></div>
-      <div class="info-row"><span style="color:var(--muted);">Less: Benefits (SSS+PH+PI)</span><span id="remit-benefits-cut" style="color:var(--red);">-₱0.00</span></div>
+      <div style="background:rgba(74,144,217,0.08);border-radius:6px;padding:8px;margin:6px 0;font-size:11.5px;">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">🏍️ Rider SF Earnings Breakdown</div>
+        <div class="info-row"><span style="color:var(--muted);">Gross SF (All Parcels)</span><span id="remit-gross-sf">₱0.00</span></div>
+        <div class="info-row"><span style="color:var(--red);">Less: 10% → Company</span><span id="remit-sf-10" style="color:var(--red);">-₱0.00</span></div>
+        <div class="info-row" style="border-bottom:none;"><span style="color:var(--blue);font-weight:600;">Rider SF Earnings (90%)</span><span id="remit-sf-rider-share" style="color:var(--blue);font-weight:700;">₱0.00</span></div>
+      </div>
+      <div class="info-row"><span style="color:var(--red);">Less: Cashbond (₱100)</span><span id="remit-cashbond-cut" style="color:var(--red);">-₱100.00</span></div>
+      <div class="info-row"><span style="color:var(--red);">Less: Benefits (SSS+PH+PI)</span><span id="remit-benefits-cut" style="color:var(--red);">-₱0.00</span></div>
       <div class="info-row" style="border-bottom:none;font-size:14px;background:rgba(46,204,138,0.07);padding:8px;border-radius:7px;margin-top:6px;"><strong>💰 Net Total to Remit</strong><strong id="remit-net-earn" style="color:var(--green);">₱0.00</strong></div>
     </div>
     <input type="hidden" id="remit-edit-idx" value="">
+    <div style="margin-top:8px;">
+      <button class="btn btn-outline btn-sm" onclick="openCashbondFromRemit()" title="I-record ang cashbond para sa rider na ito gamit ang net earnings">
+        🔗 Record Cashbond for this Rider
+      </button>
+    </div>
     <div class="form-actions"><button class="btn btn-gold" onclick="saveRemit()">💾 Save</button><button class="btn btn-outline" onclick="closeModal('modal-remit')">Cancel</button></div>
   </div>
 </div>
@@ -1568,7 +1587,7 @@ window.loadFromFirebase = async function() {
   <div class="modal" style="max-width:480px;">
     <div class="modal-header"><span class="modal-title">Add Cashbond Entry</span><button class="modal-close" onclick="closeModal('modal-cashbond')">✕</button></div>
     <div class="form-grid">
-      <div class="form-group"><label>Employee/Rider *</label><input class="form-control" id="cb-person" placeholder="Name"></div>
+      <div class="form-group"><label>Employee/Rider *</label><div id="cb-person-wrapper"><input class="form-control" id="cb-person" placeholder="Name"></div></div>
       <div class="form-group"><label>Type</label><select class="form-control" id="cb-type"><option value="rider">Rider</option><option value="staff">Staff</option></select></div>
       <div class="form-group"><label>Date *</label><input type="date" class="form-control" id="cb-date"></div>
       <div class="form-group"><label>Amount (₱)</label><input type="number" class="form-control" id="cb-amount" value="100" min="0"></div>
@@ -1623,16 +1642,16 @@ window.loadFromFirebase = async function() {
 
 <!-- Return Log Modal -->
 <div class="modal-overlay" id="modal-return-log">
-  <div class="modal" style="max-width:600px;">
+  <div class="modal" style="max-width:620px;">
     <div class="modal-header">
       <span class="modal-title" id="ret-log-modal-title">📋 Record Item Return</span>
       <button class="modal-close" onclick="closeModal('modal-return-log')">✕</button>
     </div>
-    <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">
-      Manual na pag-record ng item na pisikal na naibalik ng customer. Kailangan ng approval/signature ng staff bago i-record.
+    <p style="font-size:12px;color:var(--orange);margin-bottom:14px;">
+      ⚠️ Manual na pag-record ng item na pisikal na naibalik. Hindi automatic — para hindi madaya. CEO lang ang makapag-delete ng return log.
     </p>
     <div class="form-grid">
-      <div class="form-group"><label>Order # (e.g. GOE-00001)</label>
+      <div class="form-group"><label>Order # (e.g. GOE-00001) *</label>
         <input class="form-control" id="ret-order-num" placeholder="GOE-00001" oninput="previewReturnOrder()">
       </div>
       <div class="form-group"><label>Date Returned</label>
@@ -1640,6 +1659,15 @@ window.loadFromFirebase = async function() {
       </div>
       <div class="form-group" style="grid-column:1/-1"><label>Item Description *</label>
         <input class="form-control" id="ret-item-desc" placeholder="e.g. 18K Gold Pendant 10V89 — 2.5g">
+      </div>
+      <div class="form-group"><label>Qty / Grams Returned *</label>
+        <input type="number" class="form-control" id="ret-qty-grams" value="0" min="0" step="any" placeholder="e.g. 2.5 (grams) or 1 (qty)">
+      </div>
+      <div class="form-group"><label>Unit</label>
+        <select class="form-control" id="ret-unit">
+          <option value="grams">Grams (g)</option>
+          <option value="pcs">Pieces (pcs)</option>
+        </select>
       </div>
       <div class="form-group"><label>Reason for Return *</label>
         <select class="form-control" id="ret-reason">
@@ -1674,11 +1702,11 @@ window.loadFromFirebase = async function() {
         <input class="form-control" id="ret-notes" placeholder="Additional details...">
       </div>
     </div>
-    <!-- Preview of matched order -->
     <div id="ret-order-preview" style="background:var(--navy);border-radius:8px;padding:10px;margin-top:10px;font-size:12px;min-height:40px;color:var(--muted);">
       Enter an Order # to preview order details.
     </div>
     <input type="hidden" id="ret-log-edit-idx" value="">
+    <input type="hidden" id="ret-item-idx" value="">
     <div class="form-actions">
       <button class="btn btn-gold" onclick="saveReturnLog()">💾 Record Return</button>
       <button class="btn btn-outline" onclick="closeModal('modal-return-log')">Cancel</button>
@@ -1792,28 +1820,23 @@ function ceilPeso(n) {
   return ceil;
 }
 function addItemRow(tbodyId, calcFn, it={}) {
-  const fixMode = isFixPriceMode || it.fixPrice;
   const row = document.createElement('tr');
+  const qgVal = it.grams || it.qty || 0;
+  const discVal = it.discount || 0;
+  // subtotal before discount = pergram*grams, or stored total+discount
+  const pg = it.pergram || 0;
+  const subtotalVal = (qgVal > 0 && pg > 0) ? Math.ceil(qgVal * pg) : ((it.total||0) + discVal);
   const totalVal = it.total || 0;
-  // Combined qty/grams: for fixprice show qty, for grams show grams value
-  const qgVal = fixMode ? (it.qty||1) : (it.grams||0);
   row.innerHTML = `
     <td><input class="form-control" style="width:90px;font-size:11px;" value="${it.code||''}" placeholder="Code" onkeydown="rowTabNext(event,this)" onblur="autoFillFromCode(this)"></td>
     <td><input class="form-control" style="width:150px;font-size:11px;" value="${it.desc||''}" placeholder="Description" onkeydown="rowTabNext(event,this)"></td>
-    <td><input type="number" class="form-control row-qg-input" style="width:75px;font-size:11px;" value="${qgVal}" min="0" step="any" placeholder="${fixMode?'Qty':'Grams'}" title="${fixMode?'Quantity':'Grams'}" oninput="calcEnc()" onkeydown="rowTabNext(event,this)"></td>
-    <td style="${fixMode?'display:none':''}"><input type="number" class="form-control row-pg-input" style="width:85px;font-size:11px;" value="${it.pergram||0}" placeholder="Per gram" oninput="calcEnc()" onkeydown="rowTabNext(event,this)"></td>
-    <td><input type="number" class="form-control row-total-input" style="width:90px;font-size:11px;color:var(--gold);font-weight:600;background:rgba(201,168,76,0.08);" value="${totalVal}" step="0.01" oninput="onManualTotal(this,'${calcFn}')" onkeydown="rowTabNext(event,this)"></td>
+    <td><input type="number" class="form-control row-qg-input" style="width:70px;font-size:11px;" value="${qgVal}" min="0" step="any" placeholder="Qty/g" oninput="calcEnc()" onkeydown="rowTabNext(event,this)"></td>
+    <td><input type="number" class="form-control row-pg-input" style="width:80px;font-size:11px;" value="${pg}" placeholder="Per gram" oninput="calcEnc()" onkeydown="rowTabNext(event,this)"></td>
+    <td><input type="number" class="form-control row-subtotal-input" style="width:85px;font-size:11px;color:var(--muted);background:rgba(38,53,84,0.4);" value="${subtotalVal}" step="0.01" readonly tabindex="-1"></td>
+    <td><input type="number" class="form-control row-discount-input" style="width:75px;font-size:11px;color:var(--red);" value="${discVal}" step="0.01" min="0" placeholder="0" oninput="calcEnc()" onkeydown="rowTabNext(event,this)"></td>
+    <td><input type="number" class="form-control row-total-input" style="width:85px;font-size:11px;color:var(--gold);font-weight:600;background:rgba(201,168,76,0.08);" value="${totalVal}" step="0.01" readonly tabindex="-1"></td>
     <td><button class="btn btn-red btn-sm" onclick="this.closest('tr').remove();calcEnc()">✕</button></td>`;
   document.getElementById(tbodyId).appendChild(row);
-  if(fixMode) {
-    row.dataset.fixprice = '1';
-    // Store fix price value for auto-calc
-    if(it.fixPrice && typeof it.total === 'number' && it.qty) {
-      row.dataset.fixprice_val = String(it.total / (it.qty||1));
-    } else if(it.total && !it.qty) {
-      row.dataset.fixprice_val = String(it.total);
-    }
-  }
   window[calcFn]?.();
 }
 
@@ -1860,55 +1883,48 @@ function getItems(id) {
     const inp = r.querySelectorAll('input'); if(!inp.length) return;
     const code = inp[0]?.value||'';
     const desc = inp[1]?.value||'';
-    const qgVal = parseFloat(inp[2]?.value)||0;  // combined qty/grams
-    const pg = parseFloat(inp[3]?.value)||0;      // per gram
-    const manualTotalInput = r.querySelector('.row-total-input');
-    const manualVal = parseFloat(manualTotalInput?.value)||0;
-    const isFixed = r.dataset.fixprice === '1' || pg === 0;
-    // For fix price: qty=qgVal, grams=0. For grams: grams=qgVal, qty=1
-    let qty, grams, total;
-    if(isFixed) {
-      qty = qgVal || 1; grams = 0;
-      total = manualVal;
-    } else {
-      qty = 1; grams = qgVal;
-      const calcTotal = grams * pg;
-      total = (r.dataset.manualTotal === '1' || calcTotal === 0) ? manualVal : ceilPeso(calcTotal);
-    }
-    rows.push({code, desc, qty, grams, pergram:pg, total, fixPrice:isFixed});
+    if(!code && !desc) return; // skip empty rows
+    const qgVal = parseFloat(r.querySelector('.row-qg-input')?.value)||0;
+    const pg = parseFloat(r.querySelector('.row-pg-input')?.value)||0;
+    const discount = parseFloat(r.querySelector('.row-discount-input')?.value)||0;
+    const totalInput = r.querySelector('.row-total-input');
+    const totalVal = parseFloat(totalInput?.value)||0;
+    // qty vs grams: if pergram > 0 it's gram-based, else qty-based
+    const grams = pg > 0 ? qgVal : 0;
+    const qty = pg > 0 ? 1 : (qgVal||1);
+    rows.push({code, desc, qty, grams, pergram:pg, discount, total:totalVal, fixPrice: pg === 0});
   });
   return rows;
 }
 window.calcEnc = function() {
-  let iT = 0;
+  let iT = 0, totalDiscount = 0;
   document.querySelectorAll('#enc-items-tbody tr').forEach(r => {
-    const inp = r.querySelectorAll('input'); if(!inp.length) return;
-    const qg = parseFloat(r.querySelector('.row-qg-input')?.value)||0;   // qty OR grams
-    const pg = parseFloat(r.querySelector('.row-pg-input')?.value)||0;   // per gram
+    const qg = parseFloat(r.querySelector('.row-qg-input')?.value)||0;
+    const pg = parseFloat(r.querySelector('.row-pg-input')?.value)||0;
+    const discount = parseFloat(r.querySelector('.row-discount-input')?.value)||0;
+    const subtotalInput = r.querySelector('.row-subtotal-input');
     const totalInput = r.querySelector('.row-total-input');
-    const isFixed = r.dataset.fixprice === '1';
-    if(totalInput) {
-      // Auto-calculate unless user manually edited total
-      if(r.dataset.manualTotal !== '1') {
-        if(isFixed) {
-          // Fix price: total = fixPrice × qty (fixPrice stored in dataset, qty = qg)
-          const fixPrice = parseFloat(r.dataset.fixprice_val)||0;
-          if(fixPrice > 0 && qg > 0) {
-            totalInput.value = (fixPrice * qg).toFixed(2);
-          }
-          // If no fixPrice in dataset but total already set, keep it (manual)
-        } else if(qg > 0 && pg > 0) {
-          // Gram-based: total = grams × per gram
-          totalInput.value = ceilPeso(qg * pg);
-        }
-      }
-      iT += parseFloat(totalInput.value)||0;
+    // Compute subtotal (before discount)
+    let subtotal = 0;
+    if(qg > 0 && pg > 0) {
+      subtotal = ceilPeso(qg * pg);
+    } else if(totalInput) {
+      subtotal = parseFloat(totalInput.value)||0 + discount;
     }
+    if(subtotalInput) subtotalInput.value = subtotal.toFixed(2);
+    // Total = subtotal - discount (min 0)
+    const lineTotal = Math.max(0, subtotal - discount);
+    if(totalInput) totalInput.value = lineTotal.toFixed(2);
+    iT += lineTotal;
+    totalDiscount += discount;
   });
   const sf = parseFloat(document.getElementById('enc-shipping').value)||0;
+  const grandTotal = iT + sf;
+  const discEl = document.getElementById('enc-discount-disp');
+  if(discEl) discEl.textContent = p(totalDiscount);
   document.getElementById('enc-sf-disp').textContent = p(sf);
-  document.getElementById('enc-items-disp').textContent = p(iT);
-  document.getElementById('enc-grand-disp').textContent = p(iT + sf);
+  document.getElementById('enc-items-disp').textContent = p(iT + totalDiscount); // items before discount
+  document.getElementById('enc-grand-disp').textContent = p(grandTotal);
 };
 
 // Enter key → next field in encode modal
@@ -2476,24 +2492,28 @@ function renderReturns() {
 function renderReturnOrders() {
   const TRACK_STATUSES=['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'];
   const st=['Cancelled','Update'];
-  document.getElementById('returns-tbody').innerHTML = S.orders.map((o,i)=>{
-    if(!st.includes(o.status)) return '';
-    return `<tr>
-      <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
-      <td style="font-weight:500;">${o.name}</td>
-      <td>${o.admin}</td>
-      <td style="color:var(--blue);">🏍️ ${o.assignedRider||'—'}</td>
-      <td>${o.date}</td>
-      <td style="color:var(--red);">${p(o.grandTotal)}</td>
-      <td><span class="status ${sclass(o.status)}">${o.status}</span></td>
-      <td>
-        <select class="form-control" style="width:145px;font-size:10.5px;padding:3px 6px;"
-          onchange="updateStatus(${i},this.value)">
-          ${TRACK_STATUSES.map(s=>`<option${o.status===s?' selected':''}>${s}</option>`).join('')}
-        </select>
-      </td>
-    </tr>`;
-  }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:26px;">No cancelled or for-update orders</td></tr>';
+  const df = document.getElementById('ret-orders-date')?.value||'';
+  const rows = S.orders.map((o,i)=>({...o,idx:i})).filter(o=>st.includes(o.status) && (!df||o.date===df));
+  document.getElementById('returns-tbody').innerHTML = rows.length ? rows.map(o=>`<tr>
+    <td style="color:var(--gold);font-weight:600;">${onum(o.idx)}</td>
+    <td style="font-weight:500;">${o.name}</td>
+    <td>${o.contact||'—'}</td>
+    <td style="font-size:10.5px;">${o.address||'—'}</td>
+    <td>${o.admin||'—'}</td>
+    <td style="color:var(--blue);">🏍️ ${o.assignedRider||'—'}</td>
+    <td>${o.date}</td>
+    <td style="font-size:10.5px;">${o.items.map(it=>`${it.code||'?'} (${p(it.total)})`).join(', ')}</td>
+    <td>${p(o.shipping)}</td>
+    <td style="color:var(--red);font-weight:700;">${p(o.grandTotal)}</td>
+    <td><span class="status ${sclass(o.status)}">${o.status}</span></td>
+    <td>
+      <select class="form-control" style="width:145px;font-size:10.5px;padding:3px 6px;"
+        onchange="updateStatus(${o.idx},this.value)">
+        ${TRACK_STATUSES.map(s=>`<option${o.status===s?' selected':''}>${s}</option>`).join('')}
+      </select>
+    </td>
+  </tr>`).join('')
+  : `<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:26px;">Walang cancelled/update orders${df?' para sa petsang ito':''}.</td></tr>`;
 }
 
 function renderCancelledItems() {
@@ -2504,33 +2524,31 @@ function renderCancelledItems() {
     if(!o.itemStatuses) return;
     o.items.forEach((it,ii)=>{
       if((o.itemStatuses[ii]||'Pending') !== 'Cancelled') return;
-      const isGrams = it.grams > 0 && !it.fixPrice;
+      const isGrams = it.grams > 0;
       const qtyGrams = isGrams ? `${it.grams}g` : `×${it.qty||1}`;
-      // Check if this cancelled item has a matching return log entry
+      // Hide if already has a return log entry — it's in the Return Log now
       const hasReturnLog = (S.returnLog||[]).some(r =>
         r.orderNum === onum(oi) && r.itemIdx === ii);
-      rows.push({ o, oi, it, ii, isGrams, qtyGrams, hasReturnLog });
+      if(!hasReturnLog) rows.push({ o, oi, it, ii, isGrams, qtyGrams });
     });
   });
-
-  tbody.innerHTML = rows.length ? rows.map(({o, oi, it, ii, qtyGrams, hasReturnLog})=>`<tr>
+  tbody.innerHTML = rows.length ? rows.map(({o, oi, it, ii, qtyGrams})=>`<tr>
     <td style="color:var(--gold);font-weight:600;">${onum(oi)}</td>
     <td style="font-weight:500;">${o.name}</td>
+    <td>${o.contact||'—'}</td>
     <td style="color:var(--blue);">🏍️ ${o.assignedRider||'—'}</td>
     <td>${o.date}</td>
     <td style="font-family:monospace;font-size:11px;color:var(--gold);">${it.code||'—'}</td>
     <td>${it.desc||'—'}</td>
     <td style="font-weight:600;">${qtyGrams}</td>
     <td style="color:var(--red);font-weight:700;">${p(it.total)}</td>
-    <td><span class="status cancelled" style="font-size:9px;">Cancelled</span><br>
-      <span style="font-size:9px;color:var(--green);">✅ Stock restored</span></td>
     <td>
-      ${hasReturnLog
-        ? `<span style="color:var(--green);font-size:11px;">✅ Return recorded</span>`
-        : `<button class="btn btn-blue btn-sm" onclick="openReturnLogModal('${onum(oi)}',${ii})">📋 Record Return</button>`}
+      <span class="status cancelled" style="font-size:9px;">Cancelled</span><br>
+      <span style="font-size:9px;color:var(--green);">✅ Stock restored</span>
     </td>
+    <td><button class="btn btn-blue btn-sm" onclick="openReturnLogModal('${onum(oi)}',${ii})">📋 Record Return</button></td>
   </tr>`).join('')
-  : '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">Walang cancelled items sa lahat ng orders.</td></tr>';
+  : '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">Walang pending cancelled items. Lahat ay naka-log na sa Return Log.</td></tr>';
 }
 
 // ── RETURN LOG (Manual) ───────────────────────────────────────────
@@ -2538,6 +2556,8 @@ function openReturnLogModal(orderNum='', itemIdx=null) {
   document.getElementById('ret-order-num').value = orderNum;
   document.getElementById('ret-date').value = today();
   document.getElementById('ret-item-desc').value = '';
+  document.getElementById('ret-qty-grams').value = '0';
+  document.getElementById('ret-unit').value = 'grams';
   document.getElementById('ret-reason').value = 'Customer changed mind';
   document.getElementById('ret-condition').value = 'Good — can re-sell';
   document.getElementById('ret-value').value = '0';
@@ -2545,26 +2565,22 @@ function openReturnLogModal(orderNum='', itemIdx=null) {
   document.getElementById('ret-received-by').value = '';
   document.getElementById('ret-notes').value = '';
   document.getElementById('ret-log-edit-idx').value = '';
-  document.getElementById('ret-log-modal-title').textContent = '📋 Record Item Return';
+  document.getElementById('ret-item-idx').value = itemIdx !== null ? itemIdx : '';
 
-  // If launched from a specific item, pre-fill details
   if(orderNum && itemIdx !== null) {
-    // Find the order
     const orderIdx = S.orders.findIndex((_,i) => onum(i) === orderNum);
     if(orderIdx >= 0) {
       const o = S.orders[orderIdx];
       const it = o.items[itemIdx];
       if(it) {
-        const isGrams = it.grams > 0 && !it.fixPrice;
-        document.getElementById('ret-item-desc').value =
-          `${it.code||''} — ${it.desc||''} ${isGrams ? it.grams+'g' : '×'+(it.qty||1)}`;
+        const isGrams = it.grams > 0;
+        document.getElementById('ret-item-desc').value = `${it.code||''} — ${it.desc||''}`;
+        document.getElementById('ret-qty-grams').value = isGrams ? it.grams : (it.qty||1);
+        document.getElementById('ret-unit').value = isGrams ? 'grams' : 'pcs';
         document.getElementById('ret-value').value = it.total||0;
       }
     }
-    // Store itemIdx in notes for reference
-    document.getElementById('ret-notes').value = `Item index: ${itemIdx}`;
   }
-
   previewReturnOrder();
   openModal('modal-return-log');
 }
@@ -2573,86 +2589,80 @@ function previewReturnOrder() {
   const numInput = document.getElementById('ret-order-num').value.trim().toUpperCase();
   const prev = document.getElementById('ret-order-preview');
   if(!numInput) { prev.innerHTML='<span style="color:var(--muted);">Enter an Order # to preview.</span>'; return; }
-  // Find order by number
   const orderIdx = S.orders.findIndex((_,i) => onum(i) === numInput);
-  if(orderIdx < 0) {
-    prev.innerHTML=`<span style="color:var(--red);">❌ Order "${numInput}" not found.</span>`;
-    return;
-  }
+  if(orderIdx < 0) { prev.innerHTML=`<span style="color:var(--red);">❌ Order "${numInput}" not found.</span>`; return; }
   const o = S.orders[orderIdx];
   const itemStatuses = o.itemStatuses || {};
   const cancelledItems = o.items.filter((_,ii) => itemStatuses[ii]==='Cancelled');
   prev.innerHTML=`
-    <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-bottom:6px;">
-      <span><strong style="color:var(--gold);">${numInput}</strong></span>
-      <span>👤 ${o.name}</span>
-      <span>📅 ${o.date}</span>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;margin-bottom:6px;">
+      <strong style="color:var(--gold);">${numInput}</strong>
+      <span>👤 ${o.name}</span><span>📞 ${o.contact||'—'}</span>
+      <span>📍 ${o.city||o.address||'—'}</span><span>📅 ${o.date}</span>
       <span>🏍️ ${o.assignedRider||'—'}</span>
       <span class="status ${sclass(o.status)}">${o.status}</span>
     </div>
-    ${cancelledItems.length
-      ? `<div style="font-size:11px;color:var(--orange);">
-          ⚠️ Cancelled items (${cancelledItems.length}):
-          ${cancelledItems.map(it=>`<span style="background:rgba(224,85,85,0.1);padding:1px 6px;border-radius:4px;margin:2px;">${it.code||'?'} — ${it.desc} (${p(it.total)})</span>`).join(' ')}
-        </div>`
-      : `<div style="font-size:11px;color:var(--muted);">No cancelled items in this order.</div>`}`;
+    <div style="font-size:11px;">
+      ${o.items.map((it,ii)=>{
+        const st = itemStatuses[ii]||'Pending';
+        const stColor = st==='Cancelled'?'var(--red)':st==='Delivered'?'var(--green)':'var(--muted)';
+        return `<span style="margin:2px;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,0.05);display:inline-block;">
+          ${it.code||'?'} — ${it.desc} (${p(it.total)}) <span style="color:${stColor};">[${st}]</span></span>`;
+      }).join('')}
+    </div>`;
 }
 
 function saveReturnLog() {
   const orderNum = document.getElementById('ret-order-num').value.trim().toUpperCase();
   const desc = document.getElementById('ret-item-desc').value.trim();
   const receivedBy = document.getElementById('ret-received-by').value.trim();
-  if(!desc || !receivedBy) { toast('⚠️ Item description and Received By are required'); return; }
+  const qtyGrams = parseFloat(document.getElementById('ret-qty-grams').value)||0;
+  if(!orderNum) { toast('⚠️ Order # required'); return; }
+  if(!desc) { toast('⚠️ Item description required'); return; }
+  if(!receivedBy) { toast('⚠️ Received By required'); return; }
+  if(qtyGrams <= 0) { toast('⚠️ Qty/Grams returned required'); return; }
 
+  const itemIdx = document.getElementById('ret-item-idx').value;
+  const parsedItemIdx = itemIdx !== '' ? parseInt(itemIdx) : null;
   const restoreInv = document.getElementById('ret-restore-inv').value === 'yes';
+  const unit = document.getElementById('ret-unit').value;
 
-  // If restoring to inventory, try to find the item and add stock
   if(restoreInv && orderNum) {
     const orderIdx = S.orders.findIndex((_,i) => onum(i) === orderNum);
-    if(orderIdx >= 0) {
+    if(orderIdx >= 0 && parsedItemIdx !== null) {
       const o = S.orders[orderIdx];
-      // Try to match item by description
-      o.items.forEach((it,ii) => {
-        const itDesc = `${it.code||''} — ${it.desc||''}`;
-        if((o.itemStatuses||{})[ii] === 'Cancelled' && desc.includes(it.code||'NOMATCH')) {
-          const inv = S.inventory.find(inv => inv.code.toUpperCase() === (it.code||'').toUpperCase());
-          if(inv) {
-            if(inv.itemType === 'fixprice') {
-              const before = inv.qty;
-              inv.qty = before + (it.qty||1);
-              S.stockLog.push({ productCode:inv.code, type:'return', qty:it.qty||1,
-                date:today(), notes:`Manual return – ${orderNum} – ${receivedBy}`, before, after:inv.qty });
-            } else {
-              const before = inv.grams;
-              inv.grams = before + (it.grams||0);
-              S.stockLog.push({ productCode:inv.code, type:'return', qty:it.grams||0,
-                date:today(), notes:`Manual return – ${orderNum} – ${receivedBy}`, before, after:inv.grams });
-            }
+      const it = o.items[parsedItemIdx];
+      if(it && it.code) {
+        const inv = S.inventory.find(inv => inv.code.toUpperCase() === it.code.toUpperCase());
+        if(inv) {
+          if(inv.itemType === 'fixprice') {
+            const before = inv.qty; inv.qty = before + qtyGrams;
+            S.stockLog.push({ productCode:inv.code, type:'return', qty:qtyGrams,
+              date:today(), notes:`Manual return – ${orderNum} – by ${receivedBy}`, before, after:inv.qty });
+          } else {
+            const before = inv.grams; inv.grams = before + qtyGrams;
+            S.stockLog.push({ productCode:inv.code, type:'return', qty:qtyGrams,
+              date:today(), notes:`Manual return – ${orderNum} – by ${receivedBy}`, before, after:inv.grams });
           }
         }
-      });
+      }
     }
   }
-
-  // Extract itemIdx from notes if present
-  const notesVal = document.getElementById('ret-notes').value;
-  const itemIdxMatch = notesVal.match(/Item index: (\d+)/);
-  const itemIdx = itemIdxMatch ? parseInt(itemIdxMatch[1]) : null;
 
   const entry = {
     orderNum,
     date: document.getElementById('ret-date').value || today(),
     itemDesc: desc,
+    qtyGrams, unit,
     reason: document.getElementById('ret-reason').value,
     condition: document.getElementById('ret-condition').value,
     value: parseFloat(document.getElementById('ret-value').value)||0,
     restoredToInv: restoreInv,
     receivedBy,
-    notes: notesVal.replace(/Item index: \d+/, '').trim(),
-    itemIdx,
+    notes: document.getElementById('ret-notes').value.trim(),
+    itemIdx: parsedItemIdx,
     createdAt: new Date().toISOString()
   };
-
   const editIdx = document.getElementById('ret-log-edit-idx').value;
   if(editIdx!=='') S.returnLog[+editIdx]=entry; else S.returnLog.push(entry);
   save();
@@ -2660,47 +2670,67 @@ function saveReturnLog() {
   toast('✅ Return recorded!');
   renderReturnLog();
   renderCancelledItems();
+  renderReturns();
 }
 
 function renderReturnLog() {
   const el = document.getElementById('return-log-content');
   if(!el) return;
-  if(!(S.returnLog||[]).length) {
-    el.innerHTML = '<div class="card"><p style="color:var(--muted);padding:20px;text-align:center;">Walang return log entries pa. I-click ang "+ Record Return" para mag-add.</p></div>';
+  // Date filter
+  const dateFilter = document.getElementById('ret-log-date')?.value || '';
+  let log = S.returnLog||[];
+  if(dateFilter) log = log.filter(e=>e.date===dateFilter);
+
+  if(!log.length) {
+    el.innerHTML = `<div class="action-row no-print" style="margin-bottom:10px;">
+      <input type="date" class="form-control" id="ret-log-date" style="width:160px;" value="${dateFilter}" oninput="renderReturnLog()" placeholder="Filter by date">
+      <button class="btn btn-outline btn-sm" onclick="document.getElementById('ret-log-date').value='';renderReturnLog()">Clear</button>
+    </div>
+    <div class="card"><p style="color:var(--muted);padding:20px;text-align:center;">Walang return log entries${dateFilter?' para sa petsang ito':''}.</p></div>`;
     return;
   }
-  const totalValue = S.returnLog.reduce((s,e)=>s+(e.value||0),0);
+  const totalValue = log.reduce((s,e)=>s+(e.value||0),0);
+  const isCEO = currentRole === 'owner';
   el.innerHTML = `
+    <div class="action-row no-print" style="margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+      <input type="date" class="form-control" id="ret-log-date" style="width:160px;" value="${dateFilter}" oninput="renderReturnLog()" title="Filter by date">
+      <button class="btn btn-outline btn-sm" onclick="document.getElementById('ret-log-date').value='';renderReturnLog()">Show All</button>
+      ${isCEO?'<span style="font-size:11px;color:var(--muted);">👑 CEO mode: delete enabled</span>':'<span style="font-size:11px;color:var(--orange);">🔒 Admin: hindi pwedeng mag-delete ng return log</span>'}
+    </div>
     <div class="stats-grid" style="margin-bottom:13px;">
-      <div class="stat-card red"><div class="stat-label">Total Returns</div><div class="stat-value">${S.returnLog.length}</div></div>
-      <div class="stat-card orange"><div class="stat-label">Total Return Value</div><div class="stat-value">${p(totalValue)}</div></div>
-      <div class="stat-card green"><div class="stat-label">Restored to Stock</div><div class="stat-value">${S.returnLog.filter(e=>e.restoredToInv).length}</div></div>
+      <div class="stat-card red"><div class="stat-label">Returns</div><div class="stat-value">${log.length}</div></div>
+      <div class="stat-card orange"><div class="stat-label">Total Value</div><div class="stat-value">${p(totalValue)}</div></div>
+      <div class="stat-card green"><div class="stat-label">Restored to Stock</div><div class="stat-value">${log.filter(e=>e.restoredToInv).length}</div></div>
     </div>
     <div class="card">
       <div class="card-header"><span class="card-title">📋 Return Log (Manual Records)</span></div>
-      <div class="table-wrap"><table style="font-size:11.5px;">
+      <div class="table-wrap"><table style="font-size:11px;">
         <thead><tr style="background:rgba(201,168,76,0.08);">
-          <th>Date</th><th>Order #</th><th>Item</th><th>Reason</th><th>Condition</th>
-          <th>Value</th><th>Stock Restored?</th><th>Received By</th><th>Notes</th><th>Del</th>
+          <th>Date</th><th>Order #</th><th>Customer</th><th>Item</th><th>Qty/Grams</th>
+          <th>Reason</th><th>Condition</th><th>Value</th><th>Inv Restored?</th><th>Received By</th><th>Notes</th>
+          ${isCEO?'<th>Del</th>':''}
         </tr></thead>
         <tbody>
-          ${[...S.returnLog].reverse().map((e,ri)=>{
-            const actualIdx = S.returnLog.length - 1 - ri;
-            const condColor = e.condition==='Good — can re-sell' ? 'var(--green)'
-              : e.condition==='Damaged — cannot re-sell' ? 'var(--red)' : 'var(--orange)';
+          ${log.map((e,ri)=>{
+            // Find actual index in full array
+            const actualIdx = S.returnLog.indexOf(e);
+            const condColor = e.condition==='Good — can re-sell'?'var(--green)':e.condition==='Damaged — cannot re-sell'?'var(--red)':'var(--orange)';
+            // Lookup customer name from order
+            const orderIdx = S.orders.findIndex((_,i)=>onum(i)===e.orderNum);
+            const customerName = orderIdx>=0 ? S.orders[orderIdx].name : '—';
             return `<tr>
               <td>${e.date}</td>
               <td style="color:var(--gold);font-weight:600;">${e.orderNum||'—'}</td>
-              <td style="font-size:10.5px;max-width:160px;">${e.itemDesc}</td>
-              <td style="font-size:10.5px;">${e.reason}</td>
+              <td style="font-size:10.5px;">${customerName}</td>
+              <td style="font-size:10.5px;max-width:140px;">${e.itemDesc}</td>
+              <td style="font-weight:600;">${e.qtyGrams||'—'} ${e.unit||''}</td>
+              <td style="font-size:10px;">${e.reason}</td>
               <td style="font-size:10px;color:${condColor};">${e.condition}</td>
               <td style="color:var(--red);font-weight:600;">${p(e.value)}</td>
-              <td>${e.restoredToInv
-                ? '<span style="color:var(--green);">✅ Yes</span>'
-                : '<span style="color:var(--muted);">No</span>'}</td>
+              <td>${e.restoredToInv?'<span style="color:var(--green);">✅ Yes</span>':'<span style="color:var(--muted);">No</span>'}</td>
               <td style="font-size:10.5px;font-weight:600;">${e.receivedBy}</td>
               <td style="font-size:10px;">${e.notes||'—'}</td>
-              <td><button class="btn btn-red btn-sm" onclick="delReturnLog(${actualIdx})">🗑️</button></td>
+              ${isCEO?`<td><button class="btn btn-red btn-sm" onclick="delReturnLog(${actualIdx})">🗑️</button></td>`:''}
             </tr>`;
           }).join('')}
         </tbody>
@@ -2709,8 +2739,9 @@ function renderReturnLog() {
 }
 
 function delReturnLog(i) {
+  if(currentRole !== 'owner') { toast('🔒 CEO lang ang puwedeng mag-delete ng return log'); return; }
   _confirmDel(`Delete return log entry for "${S.returnLog[i]?.itemDesc}"?`, ()=>{
-    S.returnLog.splice(i,1); save(); renderReturnLog(); renderReturns(); toast('🗑️ Deleted');
+    S.returnLog.splice(i,1); save(); renderReturnLog(); renderCancelledItems(); toast('🗑️ Deleted');
   });
 }
 
@@ -4258,25 +4289,52 @@ function renderRiderParcels() {
     const itemRowsHtml = o.items.map((it,ii) => {
       const itemSt = itemStatuses[ii] || 'Pending';
       const isCancelledItem = itemSt === 'Cancelled';
+      const isGramsItem = it.grams > 0;
       const stColor = itemSt==='Delivered'?'var(--green)':isCancelledItem?'var(--red)':'var(--orange)';
+      // Show qty or grams clearly
+      const qtyLabel = isGramsItem
+        ? `${it.grams}g @ ${p(it.pergram||0)}/g`
+        : `${it.qty||1} pc${(it.qty||1)>1?'s':''}`;
+      // Cancelled qty tracking
+      const cancelledQty = (o.itemCancelQty||{})[ii] || 0;
+      const totalQty = isGramsItem ? it.grams : (it.qty||1);
+      const remainQty = totalQty - cancelledQty;
+
       const valDisplay = isCancelledItem
-        ? `<span style="text-decoration:line-through;color:var(--muted);font-size:10px;">${p(it.total)}</span> <span style="color:var(--red);font-size:9.5px;font-weight:700;">-₱${(it.total||0).toLocaleString('en-PH',{minimumFractionDigits:2})} DEDUCTED</span>`
+        ? `<span style="text-decoration:line-through;color:var(--muted);font-size:10px;">${p(it.total)}</span><br><span style="color:var(--red);font-size:9.5px;font-weight:700;">FULLY CANCELLED</span>`
+        : cancelledQty > 0
+        ? `<span style="color:var(--orange);font-weight:600;">${p(it.total)}</span><br><span style="font-size:9.5px;color:var(--orange);">${cancelledQty}${isGramsItem?'g':' pc'} cancelled</span>`
         : `<span style="color:var(--gold);font-weight:600;">${p(it.total)}</span>`;
+
       return `<tr style="background:rgba(15,27,45,0.7);${isCancelledItem?'opacity:0.65;':''}">
-        <td colspan="2" style="padding:4px 10px 4px 28px;font-size:10.5px;color:var(--muted);">
+        <td colspan="2" style="padding:4px 10px 4px 28px;font-size:10.5px;">
           ${isCancelledItem?'❌':'🔹'} <strong style="color:${isCancelledItem?'var(--red)':'var(--white)'};">${it.code||'—'}</strong>
-          <span style="${isCancelledItem?'text-decoration:line-through;':''}">${it.desc||''}</span>
-          ${isGrams ? `<span style="color:var(--muted);font-size:9.5px;"> · ${it.grams}g @ ${p(it.pergram||0)}/g</span>` : `<span style="color:var(--muted);font-size:9.5px;"> · ×${it.qty||1}</span>`}
+          <span style="color:var(--muted);${isCancelledItem?'text-decoration:line-through;':''}">${it.desc||''}</span>
+          <span style="color:var(--blue);font-size:9.5px;margin-left:6px;">📦 ${qtyLabel}</span>
         </td>
         <td style="font-size:10.5px;">${valDisplay}</td>
-        <td colspan="2" style="font-size:10.5px;">
-          <select class="form-control" style="width:130px;font-size:10px;padding:2px 5px;background:var(--navy);${isCancelledItem?'border-color:var(--red);':''}" onchange="riderItemStatus(${o.idx},${ii},this.value)">
-            <option${itemSt==='Pending'?' selected':''}>Pending</option>
-            <option${itemSt==='Delivered'?' selected':''}>Delivered</option>
-            <option${itemSt==='Cancelled'?' selected':''}>Cancelled</option>
-          </select>
+        <td colspan="2" style="font-size:10px;">
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <select class="form-control" style="width:130px;font-size:10px;padding:2px 5px;background:var(--navy);${isCancelledItem?'border-color:var(--red);':''}"
+              onchange="riderItemStatus(${o.idx},${ii},this.value)">
+              <option${itemSt==='Pending'?' selected':''}>Pending</option>
+              <option${itemSt==='Delivered'?' selected':''}>Delivered</option>
+              <option${itemSt==='Cancelled'?' selected':''}>Cancelled (All)</option>
+            </select>
+            ${!isCancelledItem && totalQty > 1 ? `
+            <div style="display:flex;align-items:center;gap:3px;margin-top:2px;">
+              <span style="font-size:9px;color:var(--muted);">Cancel qty:</span>
+              <input type="number" min="0" max="${remainQty}" step="${isGramsItem?0.01:1}"
+                value="${cancelledQty}" style="width:55px;font-size:10px;padding:1px 4px;border-radius:4px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);"
+                onchange="riderItemPartialCancel(${o.idx},${ii},this.value,${totalQty},${isGramsItem?1:0})">
+              <span style="font-size:9px;color:var(--muted);">/ ${totalQty}${isGramsItem?'g':''}</span>
+            </div>` : ''}
+          </div>
         </td>
-        <td colspan="4" style="font-size:9.5px;color:${stColor};font-weight:700;">${itemSt}${isCancelledItem?' (stock restored)':''}</td>
+        <td colspan="4" style="font-size:9.5px;color:${stColor};font-weight:700;">
+          ${isCancelledItem?'❌ All Cancelled':cancelledQty>0?`⚠️ ${cancelledQty}${isGramsItem?'g':' pc'} cancelled`:itemSt}
+          ${isCancelledItem?'<br><span style="font-size:9px;">(stock restored)</span>':''}
+        </td>
       </tr>`;
     }).join('');
 
@@ -4360,80 +4418,122 @@ function riderItemStatus(orderIdx, itemIdx, newStatus) {
   if(!order) return;
   if(!order.itemStatuses) order.itemStatuses = {};
 
+  // Normalize status value ("Cancelled (All)" → "Cancelled")
+  const normalizedStatus = newStatus.startsWith('Cancelled') ? 'Cancelled' : newStatus;
   const prevStatus = order.itemStatuses[itemIdx] || 'Pending';
-  if(prevStatus === newStatus) return; // no change
+  if(prevStatus === normalizedStatus) return;
 
-  order.itemStatuses[itemIdx] = newStatus;
+  order.itemStatuses[itemIdx] = normalizedStatus;
 
-  // ── AUTO VALUE ADJUSTMENT on item cancel/restore ──────────────
   const item = order.items[itemIdx];
   if(item) {
     const itemVal = item.total || 0;
-
-    if(newStatus === 'Cancelled' && prevStatus !== 'Cancelled') {
-      // Item cancelled → deduct its value from order totals
+    if(normalizedStatus === 'Cancelled' && prevStatus !== 'Cancelled') {
       order.itemsTotal = Math.max(0, (order.itemsTotal||0) - itemVal);
       order.grandTotal = Math.max(0, (order.grandTotal||0) - itemVal);
-      // Also restore inventory stock
       if(item.code) {
         const invIdx = S.inventory.findIndex(it => it.code.toUpperCase() === (item.code||'').toUpperCase());
         if(invIdx >= 0) {
           const inv = S.inventory[invIdx];
           if(inv.itemType === 'fixprice') {
-            const restoreQty = item.qty || 1;
-            const before = inv.qty;
-            inv.qty = before + restoreQty;
-            S.stockLog.push({ productCode: inv.code, type: 'return', qty: restoreQty,
-              date: today(), notes: `Item cancelled – ${order.name} ${onum(orderIdx)}`,
-              before, after: inv.qty });
+            const q = item.qty || 1; const before = inv.qty;
+            inv.qty = before + q;
+            S.stockLog.push({ productCode:inv.code, type:'return', qty:q, date:today(), notes:`All cancelled – ${order.name} ${onum(orderIdx)}`, before, after:inv.qty });
           } else {
-            const restoreGrams = item.grams || 0;
-            if(restoreGrams > 0) {
-              const before = inv.grams;
-              inv.grams = before + restoreGrams;
-              S.stockLog.push({ productCode: inv.code, type: 'return', qty: restoreGrams,
-                date: today(), notes: `Item cancelled – ${order.name} ${onum(orderIdx)}`,
-                before, after: inv.grams });
-            }
+            const g = item.grams || 0;
+            if(g > 0) { const before = inv.grams; inv.grams = before + g;
+              S.stockLog.push({ productCode:inv.code, type:'return', qty:g, date:today(), notes:`All cancelled – ${order.name} ${onum(orderIdx)}`, before, after:inv.grams }); }
           }
         }
       }
-      toast(`❌ Item cancelled — ₱${itemVal.toLocaleString('en-PH',{minimumFractionDigits:2})} deducted & stock restored`);
-
-    } else if(prevStatus === 'Cancelled' && newStatus !== 'Cancelled') {
-      // Item un-cancelled → restore its value to order totals
+      toast(`❌ Item fully cancelled — ${p(itemVal)} deducted & stock restored`);
+    } else if(prevStatus === 'Cancelled' && normalizedStatus !== 'Cancelled') {
       order.itemsTotal = (order.itemsTotal||0) + itemVal;
       order.grandTotal = (order.grandTotal||0) + itemVal;
-      // Re-deduct from inventory
       if(item.code) {
         const invIdx = S.inventory.findIndex(it => it.code.toUpperCase() === (item.code||'').toUpperCase());
         if(invIdx >= 0) {
           const inv = S.inventory[invIdx];
           if(inv.itemType === 'fixprice') {
-            const deductQty = item.qty || 1;
-            const before = inv.qty;
-            inv.qty = Math.max(0, before - deductQty);
-            S.stockLog.push({ productCode: inv.code, type: 'out', qty: deductQty,
-              date: today(), notes: `Item restored – ${order.name} ${onum(orderIdx)}`,
-              before, after: inv.qty });
+            const q = item.qty || 1; const before = inv.qty;
+            inv.qty = Math.max(0, before - q);
+            S.stockLog.push({ productCode:inv.code, type:'out', qty:q, date:today(), notes:`Item restored – ${order.name} ${onum(orderIdx)}`, before, after:inv.qty });
           } else {
-            const deductGrams = item.grams || 0;
-            if(deductGrams > 0) {
-              const before = inv.grams;
-              inv.grams = Math.max(0, before - deductGrams);
-              S.stockLog.push({ productCode: inv.code, type: 'out', qty: deductGrams,
-                date: today(), notes: `Item restored – ${order.name} ${onum(orderIdx)}`,
-                before, after: inv.grams });
-            }
+            const g = item.grams || 0;
+            if(g > 0) { const before = inv.grams; inv.grams = Math.max(0, before - g);
+              S.stockLog.push({ productCode:inv.code, type:'out', qty:g, date:today(), notes:`Item restored – ${order.name} ${onum(orderIdx)}`, before, after:inv.grams }); }
           }
         }
       }
-      toast(`✅ Item restored — ₱${itemVal.toLocaleString('en-PH',{minimumFractionDigits:2})} added back`);
+      toast(`✅ Item restored — ${p(itemVal)} added back`);
     } else {
-      toast('Item status → ' + newStatus);
+      toast('Item status → ' + normalizedStatus);
+    }
+  }
+  save();
+  renderRiderParcels();
+}
+
+// Partial cancel: cancel specific qty from a multi-qty item
+function riderItemPartialCancel(orderIdx, itemIdx, cancelQtyStr, totalQty, isGrams) {
+  const order = S.orders[orderIdx];
+  if(!order) return;
+  const cancelQty = parseFloat(cancelQtyStr) || 0;
+  if(!order.itemCancelQty) order.itemCancelQty = {};
+  const prevCancelQty = order.itemCancelQty[itemIdx] || 0;
+  const item = order.items[itemIdx];
+  if(!item) return;
+
+  // Clamp: can't cancel more than total
+  const clampedQty = Math.min(Math.max(0, cancelQty), totalQty);
+  order.itemCancelQty[itemIdx] = clampedQty;
+
+  // Compute value deduction: (cancelQty / totalQty) × item.total
+  const pricePerUnit = item.total / totalQty;
+  const prevDeducted = (prevCancelQty / totalQty) * item.total;
+  const newDeducted = (clampedQty / totalQty) * item.total;
+  const diff = newDeducted - prevDeducted;
+
+  // Adjust grandTotal
+  order.grandTotal = Math.max(0, (order.grandTotal||0) - diff);
+  order.itemsTotal = Math.max(0, (order.itemsTotal||0) - diff);
+
+  // Inventory adjustment
+  if(item.code) {
+    const invIdx = S.inventory.findIndex(it => it.code.toUpperCase() === (item.code||'').toUpperCase());
+    if(invIdx >= 0) {
+      const inv = S.inventory[invIdx];
+      const qtyDiff = clampedQty - prevCancelQty;
+      if(Math.abs(qtyDiff) > 0.001) {
+        if(isGrams) {
+          const before = inv.grams;
+          inv.grams = Math.max(0, before - qtyDiff); // negative diff = restore
+          S.stockLog.push({ productCode:inv.code, type:qtyDiff>0?'return':'out',
+            qty:Math.abs(qtyDiff), date:today(),
+            notes:`Partial cancel ${clampedQty}/${totalQty}g – ${order.name} ${onum(orderIdx)}`,
+            before, after:inv.grams });
+        } else {
+          const before = inv.qty;
+          inv.qty = Math.max(0, before - qtyDiff);
+          S.stockLog.push({ productCode:inv.code, type:qtyDiff>0?'return':'out',
+            qty:Math.abs(qtyDiff), date:today(),
+            notes:`Partial cancel ${clampedQty}/${totalQty}pcs – ${order.name} ${onum(orderIdx)}`,
+            before, after:inv.qty });
+        }
+      }
     }
   }
 
+  if(clampedQty === totalQty) {
+    // Full cancel via qty — mark status as Cancelled
+    if(!order.itemStatuses) order.itemStatuses = {};
+    order.itemStatuses[itemIdx] = 'Cancelled';
+    toast(`❌ All ${totalQty} cancelled — ${p(newDeducted)} deducted`);
+  } else if(clampedQty > 0) {
+    toast(`⚠️ ${clampedQty}${isGrams?'g':' pc'} cancelled — ${p(newDeducted)} deducted`);
+  } else {
+    toast(`✅ Cancel reversed — full amount restored`);
+  }
   save();
   renderRiderParcels();
 }
@@ -4443,8 +4543,25 @@ function riderItemStatus(orderIdx, itemIdx, newStatus) {
 // ============================================================
 function saveOrder() {
   const name = document.getElementById('enc-name').value.trim();
+  const contact = document.getElementById('enc-contact').value.trim();
+  const address = document.getElementById('enc-address').value.trim();
   const admin = document.getElementById('enc-admin').value.trim();
-  if(!name || !admin) { toast('⚠️ Name & Admin required'); return; }
+  const date = document.getElementById('enc-date').value;
+  const shipping = document.getElementById('enc-shipping').value;
+  const paymentMethod = document.getElementById('enc-payment-method')?.value || 'COD';
+
+  // All fields required
+  if(!name) { toast('⚠️ Customer Name required'); document.getElementById('enc-name').focus(); return; }
+  if(!contact) { toast('⚠️ CP Number required'); document.getElementById('enc-contact').focus(); return; }
+  if(!address) { toast('⚠️ Complete Address required'); document.getElementById('enc-address').focus(); return; }
+  if(!admin) { toast('⚠️ Admin Name required'); return; }
+  if(!date) { toast('⚠️ Date of Purchase required'); document.getElementById('enc-date').focus(); return; }
+  if(shipping === '' || shipping === null) { toast('⚠️ Shipping Fee required (0 kung libre)'); document.getElementById('enc-shipping').focus(); return; }
+
+  const items = getItems('enc-items-tbody');
+  if(!items.length) { toast('⚠️ Magdagdag ng kahit isang item'); return; }
+  const emptyItems = items.filter(it => !it.code || !it.desc);
+  if(emptyItems.length) { toast('⚠️ Lahat ng item ay kailangan ng Serial Code at Description'); return; }
 
   // enc-rider stores the rider NAME directly (set by autoAssignRider or openEditOrder)
   const riderRaw = (document.getElementById('enc-rider').value || '').trim();
@@ -4459,20 +4576,18 @@ function saveOrder() {
     }
   }
 
-  const items = getItems('enc-items-tbody');
-  const sf = parseFloat(document.getElementById('enc-shipping').value)||0;
-  const iT = items.reduce((s,it) => s+it.total, 0);
-  const paymentMethod = document.getElementById('enc-payment-method')?.value || 'COD';
+  const items2 = getItems('enc-items-tbody');
+  const sf2 = parseFloat(document.getElementById('enc-shipping').value)||0;
+  const iT = items2.reduce((s,it) => s+it.total, 0);
+  const totalDiscount = items2.reduce((s,it) => s+(it.discount||0), 0);
   const editIdx = document.getElementById('enc-edit-idx').value;
   const o = {
-    name,
-    contact: document.getElementById('enc-contact').value,
-    address: document.getElementById('enc-address').value,
+    name, contact, address,
     city: document.getElementById('enc-city').value,
     landmark: document.getElementById('enc-landmark').value,
-    date: document.getElementById('enc-date').value || today(),
+    date: date || today(),
     admin, assignedRider, paymentMethod,
-    shipping: sf, items, itemsTotal: iT, grandTotal: iT + sf,
+    shipping: sf2, items: items2, itemsTotal: iT, totalDiscount, grandTotal: iT + sf2,
     status: 'Preparing', checkerStatus: 'Pending',
     riderRemarks: '', createdAt: new Date().toISOString()
   };
@@ -4489,7 +4604,7 @@ function saveOrder() {
   } else {
     S.orders.push(o);
     // ── AUTO-DEDUCT INVENTORY ON NEW ORDER ───────────────────────
-    items.forEach(item => {
+    items2.forEach(item => {
       if(!item.code) return;
       const invIdx = S.inventory.findIndex(it => it.code.toUpperCase() === item.code.toUpperCase());
       if(invIdx < 0) return;
@@ -5002,29 +5117,32 @@ function calcRemit() {
   const delivered = myOrders.filter(o=>o.status==='Delivered');
   const cancelled = myOrders.filter(o=>o.status==='Cancelled');
   const totalSF = myOrders.reduce((s,o)=>s+(o.shipping||0), 0);
-  const parcelCount = myOrders.length;
-  const sf10 = totalSF * 0.10;          // 10% of total SF → company
-  const perParcel = parcelCount * 10;   // ₱10 per parcel deduction
+  const sf10 = totalSF * 0.10;           // 10% → company
+  const sfRiderShare = totalSF * 0.90;   // 90% → rider
   const cashbondDeduct = 100;
   const totalBenefits = (S.benefitsLog||[]).filter(b=>b.person.toUpperCase()===rider.name.toUpperCase())
     .reduce((s,b)=>s+(b.sss||0)+(b.philhealth||0)+(b.pagibig||0)+(b.other||0), 0);
-  // Subtotal = COD to collect from delivered orders only (cancelled = ₱0)
   const subtotal = delivered.reduce((s,o)=>s+o.grandTotal, 0);
   const cancelledTotal = cancelled.reduce((s,o)=>s+o.grandTotal, 0);
-  // Net Total = subtotal minus all deductions
-  const netEarn = Math.max(0, subtotal - sf10 - perParcel - cashbondDeduct - totalBenefits);
+  const netEarn = Math.max(0, subtotal - sf10 - cashbondDeduct - totalBenefits);
+  // Update UI
+  const delCountEl = document.getElementById('remit-delivered-count');
+  if(delCountEl) delCountEl.textContent = delivered.length+' parcel(s) delivered';
+  const stEl = document.getElementById('remit-subtotal');
+  if(stEl) stEl.textContent = p(subtotal);
   document.getElementById('remit-gross-sf').textContent = p(totalSF);
   document.getElementById('remit-sf-10').textContent = '-'+p(sf10);
-  document.getElementById('remit-per-parcel').textContent = '-'+p(perParcel);
+  const sfRiderEl = document.getElementById('remit-sf-rider-share');
+  if(sfRiderEl) sfRiderEl.textContent = p(sfRiderShare);
   document.getElementById('remit-cashbond-cut').textContent = '-'+p(cashbondDeduct);
   document.getElementById('remit-benefits-cut').textContent = '-'+p(totalBenefits);
   document.getElementById('remit-net-earn').textContent = p(netEarn);
-  // Update subtotal display
-  const stEl = document.getElementById('remit-subtotal');
-  if(stEl) stEl.textContent = p(subtotal);
+  // Store computed net for cashbond auto-fill
+  document.getElementById('remit-net-earn').dataset.netEarn = netEarn;
+  document.getElementById('remit-net-earn').dataset.riderName = rider.name;
   const cancelEl = document.getElementById('remit-cancelled-info');
   if(cancelEl) cancelEl.innerHTML = cancelled.length
-    ? `<span style="color:var(--red);">⚠️ ${cancelled.length} cancelled order(s) — ₱${cancelledTotal.toLocaleString('en-PH',{minimumFractionDigits:2})} auto-excluded (₱0.00 remit)</span>` : '';
+    ? `<span style="color:var(--red);">⚠️ ${cancelled.length} cancelled order(s) — ${p(cancelledTotal)} auto-excluded (₱0.00 remit)</span>` : '';
 }
 
 function saveRemit() {
@@ -5035,21 +5153,19 @@ function saveRemit() {
   const delivered = myOrders.filter(o=>o.status==='Delivered');
   const cancelled = myOrders.filter(o=>o.status==='Cancelled');
   const totalSF = myOrders.reduce((s,o)=>s+(o.shipping||0), 0);
-  const parcelCount = myOrders.length;
   const sf10 = totalSF * 0.10;
-  const perParcel = parcelCount * 10;
   const cashbondDeduct = 100;
   const totalBenefits = (S.benefitsLog||[]).filter(b=>b.person.toUpperCase()===rider.name.toUpperCase())
     .reduce((s,b)=>s+(b.sss||0)+(b.philhealth||0)+(b.pagibig||0)+(b.other||0), 0);
   const subtotal = delivered.reduce((s,o)=>s+o.grandTotal, 0);
   const cancelledTotal = cancelled.reduce((s,o)=>s+o.grandTotal, 0);
-  const netEarn = Math.max(0, subtotal - sf10 - perParcel - cashbondDeduct - totalBenefits);
+  const netEarn = Math.max(0, subtotal - sf10 - cashbondDeduct - totalBenefits);
   const entry = {
     riderName: rider.name,
     date: document.getElementById('remit-date').value || today(),
     cashRemitted: parseFloat(document.getElementById('remit-cash').value)||0,
     notes: document.getElementById('remit-notes').value,
-    parcelCount, totalSF, sf10, perParcel, cashbondDeduct, totalBenefits,
+    parcelCount: myOrders.length, totalSF, sf10, cashbondDeduct, totalBenefits,
     subtotal, cancelledTotal, netEarn,
     deliveredCount: delivered.length, cancelledCount: cancelled.length
   };
@@ -5059,16 +5175,54 @@ function saveRemit() {
   renderRemitPage();
 }
 
+// Open cashbond modal pre-filled with rider info and net amount from current remit calc
+function openCashbondFromRemit() {
+  const netEl = document.getElementById('remit-net-earn');
+  const riderName = netEl?.dataset.riderName || '';
+  const netAmt = parseFloat(netEl?.dataset.netEarn) || 100;
+  const remitDate = document.getElementById('remit-date').value || today();
+  if(!riderName) { toast('⚠️ Select a rider first'); return; }
+  closeModal('modal-remit');
+  // Open cashbond modal with pre-filled values
+  openCashbondModal();
+  // After modal opens, pre-fill from rider remit data
+  setTimeout(()=>{
+    const wrapper = document.getElementById('cb-person-wrapper');
+    if(wrapper) {
+      const sel = document.getElementById('cb-person');
+      if(sel) {
+        // Try to find rider in dropdown
+        const opt = [...sel.options].find(o=>o.value.toUpperCase()===riderName.toUpperCase());
+        if(opt) sel.value = opt.value;
+        else {
+          // Fallback to manual
+          sel.value = '__custom__';
+          const manual = document.getElementById('cb-person-manual');
+          if(manual) { manual.value = riderName; manual.style.display=''; }
+        }
+      }
+    }
+    document.getElementById('cb-type').value = 'rider';
+    document.getElementById('cb-date').value = remitDate;
+    document.getElementById('cb-amount').value = 100; // standard cashbond deduction
+    document.getElementById('cb-notes').value = `Cashbond – based on remit computation. Net: ${p(netAmt)}`;
+  }, 100);
+}
+
 function renderRemitPage() {
   const el = document.getElementById('remit-page-content'); if(!el) return;
+  const df = document.getElementById('remit-page-date')?.value||'';
+  let filteredLog = S.remitLog;
+  if(df) filteredLog = S.remitLog.filter(e=>e.date===df);
   // Group by rider
   const byRider = {};
-  S.remitLog.forEach((e,i)=>{
+  filteredLog.forEach((e,_i)=>{
+    const i = S.remitLog.indexOf(e); // keep real index for delete
     if(!byRider[e.riderName]) byRider[e.riderName] = [];
     byRider[e.riderName].push({...e, idx:i});
   });
-  if(!S.remitLog.length) {
-    el.innerHTML = '<div class="card"><p style="color:var(--muted);padding:20px;text-align:center;">No remit entries yet. Click + Add Remit Entry to start.</p></div>';
+  if(!filteredLog.length) {
+    el.innerHTML = `<div class="card"><p style="color:var(--muted);padding:20px;text-align:center;">Walang remit entries${df?' para sa petsang ito':''}.</p></div>`;
     return;
   }
   el.innerHTML = Object.entries(byRider).map(([riderName, entries])=>{
@@ -5088,18 +5242,17 @@ function renderRemitPage() {
       </div>
       <div class="table-wrap"><table style="font-size:11px;">
         <thead><tr style="background:rgba(201,168,76,0.08);">
-          <th>Date</th><th>Parcels</th><th>Del.</th><th>Cancel</th><th>Gross SF</th><th>−10% SF</th><th>−₱10/parcel</th><th>−Cashbond</th><th>−Benefits</th>
+          <th>Date</th><th>Parcels</th><th>Delivered</th><th>Cancelled</th><th>Gross SF</th><th>−10% SF</th><th>−Cashbond</th><th>−Benefits</th>
           <th style="color:var(--blue);">Subtotal</th><th style="color:var(--gold);">Net Total</th><th style="color:var(--green);">Cash Remit</th><th>Notes</th><th>Del</th>
         </tr></thead>
         <tbody>
           ${entries.map(e=>`<tr>
             <td>${e.date}</td>
             <td style="text-align:center;font-weight:600;">${e.parcelCount}</td>
-            <td style="color:var(--green);">${e.deliveredCount||'—'}</td>
+            <td style="color:var(--green);font-weight:600;">${e.deliveredCount||'—'}</td>
             <td style="color:var(--red);">${e.cancelledCount||0} <span style="font-size:9px;">(₱0)</span></td>
             <td>${p(e.totalSF)}</td>
             <td style="color:var(--red);">-${p(e.sf10)}</td>
-            <td style="color:var(--red);">-${p(e.perParcel)}</td>
             <td style="color:var(--red);">-${p(e.cashbondDeduct)}</td>
             <td style="color:var(--red);">-${p(e.totalBenefits)}</td>
             <td style="color:var(--blue);font-weight:600;">${p(e.subtotal||0)}</td>
@@ -5109,7 +5262,7 @@ function renderRemitPage() {
             <td><button class="btn btn-red btn-sm" onclick="delRemit(${e.idx})">🗑️</button></td>
           </tr>`).join('')}
           <tr style="background:rgba(201,168,76,0.08);font-weight:700;font-size:12px;">
-            <td colspan="9" style="color:var(--gold);">TOTALS</td>
+            <td colspan="8" style="color:var(--gold);">TOTALS</td>
             <td style="color:var(--blue);">${p(grandSubtotal)}</td>
             <td style="color:var(--gold);">${p(grandNet)}</td>
             <td style="color:var(--green);">${p(totalRemitted)}</td>
@@ -5131,15 +5284,47 @@ function delRemit(i) {
 // CASHBOND — Functions
 // ============================================================
 function openCashbondModal(editIdx=null) {
-  document.getElementById('cb-person').value = '';
-  document.getElementById('cb-type').value = 'rider';
+  // Auto-populate person dropdown from riders and payroll
+  const riderNames = (S.riders||[]).map(r=>({name:r.name,type:'rider'}));
+  const staffNames = [...new Set([
+    ...(S.payroll||[]).map(p=>p.name),
+    ...(S.adminAccounts||[]).map(a=>a.name)
+  ])].map(n=>({name:n,type:'staff'}));
+  const allPeople = [...riderNames, ...staffNames];
+  
+  const wrapper = document.getElementById('cb-person-wrapper');
+  if(wrapper) {
+    wrapper.innerHTML = `<select class="form-control" id="cb-person">
+      <option value="">-- Select Person --</option>
+      <optgroup label="🏍️ Riders">${riderNames.map(r=>`<option value="${r.name}" data-type="rider">${r.name}</option>`).join('')}</optgroup>
+      <optgroup label="👤 Staff/Admin">${staffNames.map(s=>`<option value="${s.name}" data-type="staff">${s.name}</option>`).join('')}</optgroup>
+      <option value="__custom__">✏️ Type manually...</option>
+    </select>
+    <input class="form-control" id="cb-person-manual" placeholder="Type name manually" style="display:none;margin-top:6px;">`;
+    document.getElementById('cb-person').addEventListener('change', function() {
+      const manual = document.getElementById('cb-person-manual');
+      if(this.value === '__custom__') {
+        if(manual) manual.style.display='';
+      } else {
+        if(manual) manual.style.display='none';
+        // Auto-set type
+        const opt = this.options[this.selectedIndex];
+        const typeEl = document.getElementById('cb-type');
+        if(typeEl && opt) typeEl.value = opt.getAttribute('data-type')||'rider';
+      }
+    });
+  }
+  
   document.getElementById('cb-date').value = today();
   document.getElementById('cb-amount').value = '100';
   document.getElementById('cb-notes').value = '';
   document.getElementById('cb-edit-idx').value = editIdx !== null ? editIdx : '';
   if(editIdx !== null) {
     const e = S.cashbondLog[editIdx];
-    document.getElementById('cb-person').value = e.person;
+    const sel = document.getElementById('cb-person');
+    if(sel) { sel.value = e.person; if(!sel.value) sel.value = '__custom__'; }
+    const manual = document.getElementById('cb-person-manual');
+    if(manual) { manual.value = e.person; if(sel&&sel.value==='__custom__') manual.style.display=''; }
     document.getElementById('cb-type').value = e.type;
     document.getElementById('cb-date').value = e.date;
     document.getElementById('cb-amount').value = e.amount;
@@ -5149,8 +5334,11 @@ function openCashbondModal(editIdx=null) {
 }
 
 function saveCashbond() {
-  const person = document.getElementById('cb-person').value.trim();
-  if(!person) { toast('⚠️ Enter a name'); return; }
+  const selEl = document.getElementById('cb-person');
+  const manualEl = document.getElementById('cb-person-manual');
+  let person = selEl ? selEl.value : '';
+  if(person === '__custom__') person = manualEl ? manualEl.value.trim() : '';
+  if(!person) { toast('⚠️ Select or enter a name'); return; }
   const entry = {
     person, type: document.getElementById('cb-type').value,
     date: document.getElementById('cb-date').value || today(),
@@ -5165,17 +5353,20 @@ function saveCashbond() {
 
 function renderCashbondPage() {
   const el = document.getElementById('cashbond-page-content'); if(!el) return;
-  if(!S.cashbondLog.length) {
-    el.innerHTML = '<div class="card"><p style="color:var(--muted);padding:20px;text-align:center;">No cashbond entries yet.</p></div>';
+  const df = document.getElementById('cashbond-page-date')?.value||'';
+  let log = S.cashbondLog;
+  if(df) log = log.filter(e=>e.date===df);
+  if(!log.length) {
+    el.innerHTML = `<div class="card"><p style="color:var(--muted);padding:20px;text-align:center;">Walang cashbond entries${df?' para sa petsang ito':''}.</p></div>`;
     return;
   }
   // Group by person
   const byPerson = {};
-  S.cashbondLog.forEach((e,i)=>{ if(!byPerson[e.person]) byPerson[e.person]=[]; byPerson[e.person].push({...e,idx:i}); });
+  log.forEach(e=>{ if(!byPerson[e.person]) byPerson[e.person]=[]; byPerson[e.person].push({...e, idx:S.cashbondLog.indexOf(e)}); });
   el.innerHTML = `<div class="stats-grid" style="margin-bottom:13px;">
-    <div class="stat-card gold"><div class="stat-label">Total Contributors</div><div class="stat-value">${Object.keys(byPerson).length}</div></div>
-    <div class="stat-card green"><div class="stat-label">Total Cashbond Collected</div><div class="stat-value">${p(S.cashbondLog.reduce((s,e)=>s+e.amount,0))}</div></div>
-    <div class="stat-card blue"><div class="stat-label">Total Entries</div><div class="stat-value">${S.cashbondLog.length}</div></div>
+    <div class="stat-card gold"><div class="stat-label">Contributors</div><div class="stat-value">${Object.keys(byPerson).length}</div></div>
+    <div class="stat-card green"><div class="stat-label">Total Collected</div><div class="stat-value">${p(log.reduce((s,e)=>s+e.amount,0))}</div></div>
+    <div class="stat-card blue"><div class="stat-label">Entries</div><div class="stat-value">${log.length}</div></div>
   </div>`
   + Object.entries(byPerson).map(([person, entries])=>{
     const total = entries.reduce((s,e)=>s+e.amount,0);
@@ -5195,7 +5386,7 @@ function renderCashbondPage() {
             <td style="font-size:10.5px;">${e.notes||'—'}</td>
             <td><button class="btn btn-red btn-sm" onclick="delCashbond(${e.idx})">🗑️</button></td>
           </tr>`).join('')}
-          <tr style="background:rgba(201,168,76,0.06);font-weight:700;"><td colspan="1">Total Cashbond</td><td style="color:var(--green);" colspan="3">${p(total)}</td></tr>
+          <tr style="background:rgba(201,168,76,0.06);font-weight:700;"><td>Total</td><td style="color:var(--green);" colspan="3">${p(total)}</td></tr>
         </tbody>
       </table></div>
     </div>`;
