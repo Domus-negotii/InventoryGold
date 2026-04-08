@@ -171,6 +171,26 @@ select.form-control{cursor:pointer;}
 ::-webkit-scrollbar-track{background:var(--navy);}
 ::-webkit-scrollbar-thumb{background:var(--navy-border);border-radius:3px;}
 
+/* ── PARCEL SORTING BOARD ── */
+.sort-col{min-width:260px;max-width:280px;background:var(--navy-card);border:1px solid var(--navy-border);border-radius:10px;flex-shrink:0;}
+.sort-col-header{padding:10px 12px;border-bottom:1px solid var(--navy-border);background:rgba(201,168,76,0.07);border-radius:10px 10px 0 0;}
+.sort-col-title{font-weight:700;font-size:13px;color:var(--gold);}
+.sort-col-stats{font-size:10.5px;color:var(--muted);margin-top:2px;}
+.sort-col-body{padding:8px;min-height:200px;display:flex;flex-direction:column;gap:6px;}
+.sort-col-body.drag-over{background:rgba(201,168,76,0.08);border-radius:0 0 10px 10px;outline:2px dashed var(--gold);}
+.sort-card{background:var(--navy);border:1px solid var(--navy-border);border-radius:7px;padding:8px 10px;cursor:grab;transition:box-shadow 0.15s,transform 0.15s;user-select:none;}
+.sort-card:active{cursor:grabbing;}
+.sort-card.dragging{opacity:0.5;transform:scale(0.97);box-shadow:0 4px 20px rgba(0,0,0,0.5);}
+.sort-card.drag-placeholder{background:rgba(201,168,76,0.05);border:1.5px dashed var(--gold);opacity:0.5;}
+.sort-card-order{font-size:9.5px;color:var(--gold);font-weight:700;margin-bottom:2px;}
+.sort-card-name{font-size:11.5px;font-weight:600;color:var(--white);}
+.sort-card-city{font-size:10px;color:var(--muted);}
+.sort-card-total{font-size:11px;color:var(--green);font-weight:700;text-align:right;margin-top:3px;}
+.sort-card-status{display:inline-block;font-size:9px;margin-top:3px;}
+.sort-unassigned{border-color:rgba(255,255,255,0.15);}
+.sort-col-unassigned .sort-col-header{background:rgba(255,255,255,0.03);}
+.sort-col-unassigned .sort-col-title{color:var(--muted);}
+
 /* ========== PRINT ========== */
 @media print{
   *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
@@ -599,6 +619,7 @@ window.loadFromFirebase = async function() {
       <div class="nav-item" onclick="gotoPage('riders')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>Riders by Location</div>
       <div class="nav-item" onclick="gotoPage('riderdash')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>Rider Dashboard</div>
       <div class="nav-item" onclick="gotoPage('dailyparcels')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7H4a2 2 0 00-2 2v10a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>Daily Parcels</div>
+      <div class="nav-item" onclick="gotoPage('sorting')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6"/></svg>Parcel Sorting</div>
       <div class="nav-item" onclick="gotoPage('returns')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>Return / Cancel</div>
       <div class="nav-item" onclick="gotoPage('ridersremit')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Riders Remit</div>
       <div class="nav-item" onclick="gotoPage('cashbond')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>Cashbond</div>
@@ -828,6 +849,32 @@ window.loadFromFirebase = async function() {
     <div class="card">
       <div class="table-wrap"><table><thead><tr><th>Order #</th><th>Customer</th><th>CP #</th><th>City</th><th>Admin</th><th>Date</th><th>Parcel Amt</th><th>SF</th><th>Grand Total</th><th>Status</th></tr></thead><tbody id="daily-tbody"></tbody></table></div>
     </div>
+  </div>
+
+  <!-- PARCEL SORTING -->
+  <div class="page" id="page-sorting">
+    <div class="action-row no-print" style="flex-wrap:wrap;gap:10px;">
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
+        <span style="font-size:12px;color:var(--muted);">🔀 Drag parcels between riders to reassign.</span>
+        <input type="date" class="form-control" id="sort-date" style="width:148px;font-size:11px;" oninput="renderSorting()" title="Filter by date">
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('sort-date').value='';renderSorting()">All Dates</button>
+        <select class="form-control" id="sort-status-filter" style="width:160px;font-size:11px;" onchange="renderSorting()">
+          <option value="">All Statuses</option>
+          <option value="Preparing">Preparing</option>
+          <option value="Ready">Ready</option>
+          <option value="Out for Delivery">Out for Delivery</option>
+          <option value="Delivered">Delivered</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:7px;">
+        <button class="btn btn-outline btn-sm" onclick="addUnassignedRiderSlot()">+ Add Rider Slot</button>
+        <button class="btn btn-gold btn-sm" onclick="renderSorting()">🔄 Refresh</button>
+      </div>
+    </div>
+    <!-- Stats bar -->
+    <div id="sort-stats" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:12px;"></div>
+    <!-- Rider columns -->
+    <div id="sort-board" style="display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;align-items:flex-start;min-height:300px;"></div>
   </div>
 
   <!-- RETURNS -->
@@ -1298,7 +1345,21 @@ window.loadFromFirebase = async function() {
 </div>
 
 <!-- BENEFITS PAGE -->
-<div class="page" id="page-benefits">
+<div class="page page-lockable" id="page-benefits">
+  <!-- Finance Lock Overlay -->
+  <div class="finance-lock unlocked" id="lock-benefits">
+    <div class="lock-box">
+      <div class="lock-icon">🔐</div>
+      <div class="lock-title">Owner Access Only</div>
+      <div class="lock-sub">This section is restricted to the CEO/Owner.</div>
+      <input type="password" class="form-control" id="lock-pw-benefits" placeholder="Owner password" style="text-align:center;letter-spacing:3px;margin-bottom:8px;" onkeydown="if(event.key==='Enter')unlockPage('benefits')">
+      <div class="lock-err" id="lock-err-benefits"></div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:10px;">
+        <button class="btn btn-gold" onclick="unlockPage('benefits')">Unlock</button>
+        <button class="btn btn-outline" onclick="gotoPage('orders')">Go Back</button>
+      </div>
+    </div>
+  </div>
   <div class="action-row no-print">
     <div style="font-size:12px;color:var(--muted);">Track SSS, PhilHealth, Pag-IBIG contributions for riders and staff.</div>
     <button class="btn btn-gold" onclick="openBenefitsModal()">+ Add Benefits Entry</button>
@@ -1369,8 +1430,8 @@ window.loadFromFirebase = async function() {
     </div>
     <div style="text-align:right;margin-top:10px;font-size:12.5px;line-height:2;">
       SF: <strong style="color:var(--gold);" id="enc-sf-disp">₱0.00</strong> &nbsp;|&nbsp;
-      Items: <strong style="color:var(--gold);" id="enc-items-disp">₱0.00</strong> &nbsp;|&nbsp;
-      Discount: <strong style="color:var(--red);" id="enc-discount-disp">₱0.00</strong> &nbsp;|&nbsp;
+      Items (net): <strong style="color:var(--gold);" id="enc-items-disp">₱0.00</strong> &nbsp;|&nbsp;
+      Discount: <strong style="color:var(--red);" id="enc-discount-disp">-₱0.00</strong> &nbsp;|&nbsp;
       <span style="font-size:14px;">Grand Total: <strong style="color:var(--green);" id="enc-grand-disp">₱0.00</strong></span>
     </div>
     <input type="hidden" id="enc-edit-idx" value="">
@@ -1766,7 +1827,7 @@ function closeModal(id){document.getElementById(id).classList.remove('open');}
 document.getElementById('topbar-date').textContent=new Date().toLocaleDateString('en-PH',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 
 // ============ NAVIGATION ============
-const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales Calendar',orders:'Admin Encode',checker:'Checker Verify',tracking:'Parcel Tracking',riders:'Riders by Location',dailyparcels:'Daily Parcels',returns:'Return / Cancel',dailysales:'Daily Sales Record',payroll:'Payroll',expenses:'Expenses',pnl:'P&L Report',inventory:'Inventory',adminsheets:'Per-Admin Order Sheets',settings:'Settings',ridersremit:'Riders Remit',cashbond:'Cashbond Tracker',benefits:'Benefits (SSS / PhilHealth / Pag-IBIG)'};
+const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales Calendar',orders:'Admin Encode',checker:'Checker Verify',tracking:'Parcel Tracking',riders:'Riders by Location',dailyparcels:'Daily Parcels',sorting:'Parcel Sorting',returns:'Return / Cancel',dailysales:'Daily Sales Record',payroll:'Payroll',expenses:'Expenses',pnl:'P&L Report',inventory:'Inventory',adminsheets:'Per-Admin Order Sheets',settings:'Settings',ridersremit:'Riders Remit',cashbond:'Cashbond Tracker',benefits:'Benefits (SSS / PhilHealth / Pag-IBIG)'};
 function gotoPage(name){
   // CEO-only pages
   if(['dashboard','calendar'].includes(name) && currentRole !== 'owner') {
@@ -1790,7 +1851,7 @@ function renderPage(n){
   ({dashboard:()=>{applyDashCeoLock();if(currentRole==='owner')renderDash();},
     riderdash:()=>{},calendar:()=>{if(currentRole==='owner')renderCalendar();else{const p2=document.getElementById('page-calendar');if(p2)p2.innerHTML='<div style="text-align:center;padding:60px;"><div style="font-size:48px;">🔐</div><div style="font-family:var(--fh);font-size:20px;color:var(--gold);margin:10px 0;">CEO Only</div><p style="color:var(--muted);">Sales Calendar is restricted to CEO access.</p></div>';}},
     orders:initOrdersPage,checker:renderChecker,tracking:()=>{renderTracking();refreshUpdateBadge();},
-    riders:renderRiders,dailyparcels:renderDailyParcels,returns:renderReturns,
+    riders:renderRiders,dailyparcels:renderDailyParcels,sorting:renderSorting,returns:renderReturns,
     dailysales:renderDailySales,payroll:()=>renderPayroll(payTab),expenses:renderExpenses,
     pnl:renderPnl,inventory:()=>renderInv(invTab),adminsheets:renderAdminSheets,settings:renderSettings,
     ridersremit:renderRemitPage,cashbond:renderCashbondPage,benefits:renderBenefitsPage
@@ -1798,22 +1859,7 @@ function renderPage(n){
 }
 
 // ============ ORDER FORM ============
-// Fix-price mode toggle
-let isFixPriceMode = false;
-function toggleFixPriceMode() {
-  isFixPriceMode = document.getElementById('enc-fixprice-mode')?.checked || false;
-  const qgHdr = document.getElementById('enc-th-qg');
-  const pergramHdr = document.getElementById('enc-th-pergram');
-  if(qgHdr) qgHdr.textContent = isFixPriceMode ? 'Qty' : 'Qty / Grams';
-  if(pergramHdr) pergramHdr.style.display = isFixPriceMode ? 'none' : '';
-  // Rebuild rows
-  const rows = document.querySelectorAll('#enc-items-tbody tr');
-  rows.forEach(row => {
-    const pergramCell = row.cells[3];
-    if(pergramCell) pergramCell.style.display = isFixPriceMode ? 'none' : '';
-    if(isFixPriceMode) row.dataset.fixprice = '1'; else delete row.dataset.fixprice;
-  });
-}
+// Fix Price Mode removed — all items use Qty/Grams × Per Gram or manual total
 function ceilPeso(n) {
   // Any decimal → round up to next whole peso
   const ceil = Math.ceil(n);
@@ -1847,36 +1893,32 @@ function autoFillFromCode(codeInput) {
   if(!inv) return;
   const row = codeInput.closest('tr');
   if(!row) return;
-  const allInputs = row.querySelectorAll('input');
-  // fill description if empty
-  if(allInputs[1] && !allInputs[1].value) allInputs[1].value = inv.desc;
+  // Use class selectors for reliability across column layouts
+  const descInput = row.querySelectorAll('input')[1];
+  const qgInput = row.querySelector('.row-qg-input');
+  const pgInput = row.querySelector('.row-pg-input');
+  const subtotalInput = row.querySelector('.row-subtotal-input');
+  const totalInput = row.querySelector('.row-total-input');
+  const discountInput = row.querySelector('.row-discount-input');
+
+  if(descInput && !descInput.value) descInput.value = inv.desc;
+
   if(inv.itemType === 'fixprice') {
-    row.dataset.fixprice = '1';
-    row.dataset.fixprice_val = String(inv.fixPrice || 0);
-    if(allInputs[2]) { allInputs[2].value = 1; allInputs[2].placeholder = 'Qty'; }
-    // hide per gram cell
-    const pgCell = row.cells[3]; if(pgCell) pgCell.style.display = 'none';
-    // set total = fixPrice × qty
-    const totalInput = row.querySelector('.row-total-input');
-    if(totalInput) totalInput.value = inv.fixPrice || 0;
+    // Fix price item: qty=1, no per gram, total = fixPrice
+    if(qgInput) { qgInput.value = 1; qgInput.placeholder = 'Qty'; }
+    if(pgInput) { pgInput.value = 0; }
+    const fixVal = inv.fixPrice || 0;
+    const discVal = parseFloat(discountInput?.value)||0;
+    if(subtotalInput) subtotalInput.value = fixVal.toFixed(2);
+    if(totalInput) totalInput.value = Math.max(0, fixVal - discVal).toFixed(2);
   } else {
-    // gram-based: store per gram price
-    if(allInputs[3]) allInputs[3].value = inv.pergram || 0;
-    const pgCell = row.cells[3]; if(pgCell) pgCell.style.display = '';
-    // reset fixprice flag
-    delete row.dataset.fixprice;
-    delete row.dataset.fixprice_val;
+    // Gram-based: set per gram, let calcEnc compute total
+    if(pgInput) pgInput.value = inv.pergram || 0;
+    if(qgInput && !parseFloat(qgInput.value)) qgInput.value = 0;
   }
-  // reset manual flag so auto-calc kicks in
-  delete row.dataset.manualTotal;
   window.calcEnc?.();
 }
-function onManualTotal(input, calcFn) {
-  // When user manually edits total, clear the auto-calc grams/pergram
-  const row = input.closest('tr');
-  if(row) row.dataset.manualTotal = '1';
-  window[calcFn]?.();
-}
+// onManualTotal removed — total field is now readonly, auto-computed from subtotal − discount
 function getItems(id) {
   const rows = [];
   document.querySelectorAll('#'+id+' tr').forEach(r => {
@@ -1897,24 +1939,29 @@ function getItems(id) {
   return rows;
 }
 window.calcEnc = function() {
-  let iT = 0, totalDiscount = 0;
+  let itemsSubtotal = 0; // before discount
+  let iT = 0;            // after discount (net items total)
+  let totalDiscount = 0;
   document.querySelectorAll('#enc-items-tbody tr').forEach(r => {
     const qg = parseFloat(r.querySelector('.row-qg-input')?.value)||0;
     const pg = parseFloat(r.querySelector('.row-pg-input')?.value)||0;
     const discount = parseFloat(r.querySelector('.row-discount-input')?.value)||0;
     const subtotalInput = r.querySelector('.row-subtotal-input');
     const totalInput = r.querySelector('.row-total-input');
-    // Compute subtotal (before discount)
+    // Compute subtotal (before discount): qty×pergram or manual
     let subtotal = 0;
     if(qg > 0 && pg > 0) {
       subtotal = ceilPeso(qg * pg);
     } else if(totalInput) {
-      subtotal = parseFloat(totalInput.value)||0 + discount;
+      // Fix: proper parenthesis — get current total then add back discount to get subtotal
+      const curTotal = parseFloat(totalInput.value)||0;
+      subtotal = curTotal + discount;
     }
     if(subtotalInput) subtotalInput.value = subtotal.toFixed(2);
-    // Total = subtotal - discount (min 0)
+    // Net line total = subtotal - discount (minimum 0)
     const lineTotal = Math.max(0, subtotal - discount);
     if(totalInput) totalInput.value = lineTotal.toFixed(2);
+    itemsSubtotal += subtotal;
     iT += lineTotal;
     totalDiscount += discount;
   });
@@ -1922,8 +1969,9 @@ window.calcEnc = function() {
   const grandTotal = iT + sf;
   const discEl = document.getElementById('enc-discount-disp');
   if(discEl) discEl.textContent = p(totalDiscount);
+  // Items shows the net after discount; SF separate; Grand Total = net items + SF
   document.getElementById('enc-sf-disp').textContent = p(sf);
-  document.getElementById('enc-items-disp').textContent = p(iT + totalDiscount); // items before discount
+  document.getElementById('enc-items-disp').textContent = p(iT);  // net after discount
   document.getElementById('enc-grand-disp').textContent = p(grandTotal);
 };
 
@@ -1964,9 +2012,6 @@ function openEditOrder(i){
   document.getElementById('enc-edit-idx').value=i;
   const pm=document.getElementById('enc-payment-method'); if(pm) pm.value=o.paymentMethod||'COD';
   document.getElementById('enc-rider').value=o.assignedRider||'';
-  const hasFixPrice = o.items.some(it=>it.fixPrice);
-  isFixPriceMode = hasFixPrice;
-  const fpc = document.getElementById('enc-fixprice-mode'); if(fpc) fpc.checked = hasFixPrice;
   populateInvQuickPick();
   document.getElementById('enc-items-tbody').innerHTML='';
   o.items.forEach(it=>addItemRow('enc-items-tbody','calcEnc',it));
@@ -2319,10 +2364,12 @@ function openInvoice(i){
   const o=S.orders[i];
   const hasGrams = o.items.some(it => it.grams > 0 && !it.fixPrice);
   const rows=o.items.map(it=>{
+    const discount = it.discount || 0;
+    const discStr = discount > 0 ? ` <span style="color:#e05555;font-size:9px;">(-${p(discount)})</span>` : '';
     if(it.fixPrice || (!it.grams && !it.pergram)){
-      return `<tr><td>${it.code}</td><td style="text-align:left;">${it.desc}</td><td>${it.qty}</td><td>—</td><td>—</td><td style="font-weight:600;">${p(it.total)}</td></tr>`;
+      return `<tr><td>${it.code}</td><td style="text-align:left;">${it.desc}${discStr}</td><td>${it.qty}</td><td>—</td><td>—</td><td style="font-weight:600;">${p(it.total)}</td></tr>`;
     }
-    return `<tr><td>${it.code}</td><td style="text-align:left;">${it.desc}</td><td>${it.qty}</td><td>${it.grams?it.grams+'g':'—'}</td><td>${it.pergram?p(it.pergram):'—'}</td><td style="font-weight:600;">${p(it.total)}</td></tr>`;
+    return `<tr><td>${it.code}</td><td style="text-align:left;">${it.desc}${discStr}</td><td>${it.qty}</td><td>${it.grams?it.grams+'g':'—'}</td><td>${it.pergram?p(it.pergram):'—'}</td><td style="font-weight:600;">${p(it.total)}</td></tr>`;
   }).join('');
   const blanks=Math.max(0,6-o.items.length);
   const methodLabel = o.paymentMethod==='COD'?'Cash on Delivery':o.paymentMethod==='LBC'?'LBC Courier':o.paymentMethod==='INTERNATIONAL'?'International Shipping':'—';
@@ -2344,7 +2391,11 @@ function openInvoice(i){
     </table></div>
     <div class="inv-footer-row">
       <div class="inv-note"><strong>Paalala sa aming mga buyer</strong><br>Kukunan po kayo ni rider ng video upon opening the parcel, katibayan po ito kung may kulang/mali/damage ang item. Kaya maigi na paki check po ng mabuti ang items bago ito bayaran. Once po na pumirma o inaprobahan niyo na po ang resibo ay wala ng pananagutan ang Goldchelle Online Enterprises sa anumang maging problema ng item/s.</div>
-      <div class="inv-totals"><div class="inv-total-row"><span>Shipping Fee</span><span>${p(o.shipping)}</span></div><div class="inv-total-row grand"><span>Total Amount</span><span>${p(o.grandTotal)}</span></div></div>
+      <div class="inv-totals">
+        ${o.totalDiscount > 0 ? `<div class="inv-total-row"><span>Items Subtotal</span><span>${p(o.itemsTotal + (o.totalDiscount||0))}</span></div><div class="inv-total-row" style="color:#e05555;"><span>Discount</span><span>-${p(o.totalDiscount)}</span></div>` : ''}
+        <div class="inv-total-row"><span>Shipping Fee</span><span>${p(o.shipping)}</span></div>
+        <div class="inv-total-row grand"><span>Total Amount</span><span>${p(o.grandTotal)}</span></div>
+      </div>
     </div>
     <p style="padding:2px 17px;font-size:9.5px;color:#555;">Received the above item/s in good condition.</p>
     <div class="inv-sigs">
@@ -2743,6 +2794,209 @@ function delReturnLog(i) {
   _confirmDel(`Delete return log entry for "${S.returnLog[i]?.itemDesc}"?`, ()=>{
     S.returnLog.splice(i,1); save(); renderReturnLog(); renderCancelledItems(); toast('🗑️ Deleted');
   });
+}
+
+// ============ PARCEL SORTING ============
+// Tito Alex's tool — drag/click to reassign parcels between riders
+
+let _sortDragIdx = null;  // order index being dragged
+let _extraRiderSlots = []; // manually added empty rider slots
+
+function renderSorting() {
+  const board = document.getElementById('sort-board');
+  const statsEl = document.getElementById('sort-stats');
+  if(!board) return;
+
+  // Auto-set today's date if filter is empty and this is the first render
+  const dateEl = document.getElementById('sort-date');
+  if(dateEl && !dateEl.value) { dateEl.value = today(); }
+
+  const df = dateEl?.value || '';
+  const sf = document.getElementById('sort-status-filter')?.value || '';
+
+  // Filter orders
+  let orders = S.orders.map((o,i)=>({...o,idx:i}));
+  if(df) orders = orders.filter(o=>o.date===df);
+  if(sf) orders = orders.filter(o=>o.status===sf);
+  // Only show active parcels by default (unless status filtered)
+  const activeStatuses = ['Preparing','Ready','Out for Delivery'];
+  if(!sf) orders = orders.filter(o=>activeStatuses.includes(o.status));
+
+  // Group by rider
+  const byRider = {};
+  orders.forEach(o=>{
+    const key = o.assignedRider || '__unassigned__';
+    if(!byRider[key]) byRider[key] = [];
+    byRider[key].push(o);
+  });
+
+  // Include all system riders (even without parcels today)
+  S.riders.forEach(r=>{ if(!byRider[r.name]) byRider[r.name] = []; });
+  // Extra slots Tito Alex added
+  _extraRiderSlots.forEach(name=>{ if(!byRider[name]) byRider[name] = []; });
+
+  // Stats
+  const totalParcels = orders.length;
+  const assignedParcels = orders.filter(o=>o.assignedRider).length;
+  const unassignedParcels = orders.filter(o=>!o.assignedRider).length;
+  statsEl.innerHTML = `
+    <div style="background:var(--navy-card);border:1px solid var(--navy-border);border-radius:7px;padding:6px 13px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
+      <span>📦 <strong style="color:var(--gold);">${totalParcels}</strong> active parcel${totalParcels!==1?'s':''}</span>
+      <span>✅ <strong style="color:var(--green);">${assignedParcels}</strong> assigned</span>
+      ${unassignedParcels>0?`<span>⚠️ <strong style="color:var(--red);">${unassignedParcels}</strong> unassigned</span>`:''}
+      <span style="color:var(--muted);">🏍️ ${Object.keys(byRider).filter(k=>k!=='__unassigned__').length} rider slots</span>
+      ${df?`<span style="color:var(--blue);">📅 ${df}</span>`:'<span style="color:var(--muted);font-size:10.5px;">All dates</span>'}
+    </div>`;
+
+  const riderOrder = Object.keys(byRider).sort((a,b)=>{
+    if(a==='__unassigned__') return 1;
+    if(b==='__unassigned__') return -1;
+    return (byRider[b].length - byRider[a].length); // riders with more parcels first
+  });
+
+  board.innerHTML = riderOrder.map(riderName=>{
+    const parcels = byRider[riderName];
+    const isUnassigned = riderName === '__unassigned__';
+    const riderInfo = S.riders.find(r=>r.name===riderName);
+    const totalGT = parcels.reduce((s,o)=>s+o.grandTotal,0);
+    const totalSF = parcels.reduce((s,o)=>s+(o.shipping||0),0);
+    // Encode riderName safely for data attribute (handles apostrophes, spaces)
+    const safeRider = encodeURIComponent(riderName);
+
+    const cards = parcels.length ? parcels.map(o=>`
+      <div class="sort-card${isUnassigned?' sort-unassigned':''}"
+        draggable="true"
+        data-order-idx="${o.idx}"
+        ondragstart="sortDragStart(event,${o.idx})"
+        ondragend="sortDragEnd(event)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div>
+            <div class="sort-card-order">${onum(o.idx)}</div>
+            <div class="sort-card-name">${o.name}</div>
+            <div class="sort-card-city">📍 ${o.city||o.address||'—'} &nbsp;📞 ${o.contact||'—'}</div>
+          </div>
+          <span class="status ${sclass(o.status)} sort-card-status">${o.status}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;border-top:1px solid var(--navy-border);padding-top:5px;">
+          <span style="font-size:10px;color:var(--muted);">SF: ${p(o.shipping)}</span>
+          <span class="sort-card-total">${p(o.grandTotal)}</span>
+        </div>
+        <div style="margin-top:5px;">
+          <select style="width:100%;font-size:10px;padding:2px 5px;border-radius:5px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);"
+            onchange="sortReassign(${o.idx},this.value)" onclick="event.stopPropagation()">
+            <option value="">🔀 Move to rider...</option>
+            ${S.riders.map(r=>`<option value="${encodeURIComponent(r.name)}"${r.name===o.assignedRider?' selected':''}>${r.name} (📍${r.location||'?'})</option>`).join('')}
+            <option value="__unassigned__"${!o.assignedRider?' selected':''}>— Unassigned —</option>
+          </select>
+        </div>
+      </div>`).join('')
+    : `<div style="padding:20px;text-align:center;color:var(--muted);font-size:11.5px;">
+        Drop parcels here<br><span style="font-size:10px;">or use the dropdown</span>
+      </div>`;
+
+    return `<div class="sort-col${isUnassigned?' sort-col-unassigned':''}"
+      ondragover="sortDragOver(event,this)"
+      ondrop="sortDrop(event,this)"
+      ondragleave="sortDragLeave(event,this)"
+      data-rider="${safeRider}">
+      <div class="sort-col-header">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div>
+            <div class="sort-col-title">${isUnassigned?'⚠️ Unassigned':'🏍️ '+riderName}</div>
+            <div class="sort-col-stats">
+              ${isUnassigned
+                ? `${parcels.length} parcel${parcels.length!==1?'s':''} pending assignment`
+                : `${parcels.length} parcel${parcels.length!==1?'s':''} &nbsp;·&nbsp; ${p(totalGT)} COD &nbsp;·&nbsp; SF: ${p(totalSF)}`}
+              ${riderInfo?.location?`<br>📍 ${riderInfo.location}`:''}
+            </div>
+          </div>
+          ${isUnassigned?'':`<span style="font-size:10px;background:rgba(201,168,76,0.1);padding:2px 7px;border-radius:20px;color:var(--gold);">${parcels.length}</span>`}
+        </div>
+      </div>
+      <div class="sort-col-body" data-rider="${safeRider}">${cards}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Drag & Drop handlers ──
+function sortDragStart(e, orderIdx) {
+  _sortDragIdx = orderIdx;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', orderIdx);
+  setTimeout(()=>e.target.classList.add('dragging'), 0);
+}
+function sortDragEnd(e) {
+  e.target.classList.remove('dragging');
+  document.querySelectorAll('.sort-col-body').forEach(col=>col.classList.remove('drag-over'));
+  _sortDragIdx = null;
+}
+function sortDragOver(e, col) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  col.querySelector('.sort-col-body')?.classList.add('drag-over');
+}
+function sortDragLeave(e, col) {
+  col.querySelector('.sort-col-body')?.classList.remove('drag-over');
+}
+function sortDrop(e, colEl) {
+  e.preventDefault();
+  document.querySelectorAll('.sort-col-body').forEach(col=>col.classList.remove('drag-over'));
+  // Read riderName safely from data attribute (avoids apostrophe bug in onclick)
+  const encodedRider = colEl.dataset.rider || '';
+  const riderName = decodeURIComponent(encodedRider);
+  const idx = _sortDragIdx !== null ? _sortDragIdx : parseInt(e.dataTransfer.getData('text/plain'));
+  if(isNaN(idx) || !S.orders[idx]) return;
+  const newRider = riderName === '__unassigned__' ? '' : riderName;
+  const prevRider = S.orders[idx].assignedRider || '—';
+  if(S.orders[idx].assignedRider === newRider) return; // no change
+  S.orders[idx].assignedRider = newRider;
+  save();
+  renderSorting();
+  toast(`✅ ${onum(idx)} → ${newRider||'Unassigned'} (was: ${prevRider})`);
+}
+
+// ── Dropdown reassign ──
+function sortReassign(orderIdx, encodedRider) {
+  if(!S.orders[orderIdx]) return;
+  const newRider = encodedRider === '__unassigned__' ? '' : decodeURIComponent(encodedRider);
+  const prev = S.orders[orderIdx].assignedRider || '—';
+  if(S.orders[orderIdx].assignedRider === newRider) return; // no change
+  S.orders[orderIdx].assignedRider = newRider;
+  save();
+  renderSorting();
+  toast(`✅ ${onum(orderIdx)} reassigned → ${newRider||'Unassigned'} (was: ${prev})`);
+}
+
+// ── Add empty rider slot (for a rider with no parcels yet) ──
+function addUnassignedRiderSlot() {
+  const names = S.riders.map(r=>r.name);
+  if(!names.length) { toast('⚠️ Walang riders pa. Mag-add muna ng rider sa Riders page.'); return; }
+  // Open a quick pick — just use a prompt-like toast approach with a select
+  const board = document.getElementById('sort-board');
+  if(!board) return;
+  const existing = new Set(Object.keys({}));
+  // Build a quick modal-like selection at top of board
+  const tempDiv = document.createElement('div');
+  tempDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--navy-card);border:1px solid var(--gold);border-radius:10px;padding:20px;z-index:9999;min-width:280px;box-shadow:0 8px 32px rgba(0,0,0,0.5);';
+  tempDiv.innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:var(--gold);margin-bottom:12px;">🏍️ Add Rider Slot</div>
+    <select id="_sortRiderPick" class="form-control" style="margin-bottom:12px;">
+      <option value="">-- Piliin ang Rider --</option>
+      ${names.map(n=>`<option value="${n}">${n}</option>`).join('')}
+    </select>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn btn-gold btn-sm" onclick="
+        const v=document.getElementById('_sortRiderPick').value;
+        if(v){_extraRiderSlots.push(v);renderSorting();}
+        document.body.removeChild(this.closest('div').parentElement);
+      ">Add</button>
+      <button class="btn btn-outline btn-sm" onclick="document.body.removeChild(this.closest('div').parentElement)">Cancel</button>
+    </div>`;
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9998;';
+  overlay.onclick = ()=>document.body.removeChild(overlay);
+  document.body.appendChild(overlay);
+  overlay.appendChild(tempDiv);
 }
 
 // ============ DAILY SALES RECORD ============
@@ -3843,7 +4097,7 @@ function renderDash(){
 // Default hashed password storage — uses simple hash for demo
 // In production Firebase, store hash server-side
 const DEFAULT_OWNER_PW = 'goldchelle2024';
-const FIN_PAGES = ['dailysales','payroll','expenses','pnl','adminsheets','settings','checker','tracking','riders','inventory','ridersremit','cashbond'];
+const FIN_PAGES = ['dailysales','payroll','expenses','pnl','adminsheets','settings','checker','tracking','riders','inventory','ridersremit','cashbond','benefits'];
 
 // selectedRole and unlockedPages for auth flow
 let selectedRole = null;
@@ -4082,17 +4336,18 @@ function addFromInventory() {
   const it = S.inventory[parseInt(idx)];
   if(!it) return;
   if(it.itemType === 'fixprice') {
+    // Fix price: qty=1, pergram=0, total=fixPrice
     addItemRow('enc-items-tbody', 'calcEnc', {
       code: it.code, desc: it.desc,
       qty: 1, grams: 0, pergram: 0,
-      total: it.fixPrice || 0, fixPrice: true
+      total: it.fixPrice || 0, discount: 0
     });
   } else {
-    // For grams type: qty field holds grams value (qg = 0 means user enters grams)
+    // Gram-based: set per gram, user enters grams
     addItemRow('enc-items-tbody', 'calcEnc', {
       code: it.code, desc: it.desc,
-      qty: 1, grams: 0, pergram: it.pergram,
-      total: 0, fixPrice: false
+      qty: 1, grams: 0, pergram: it.pergram || 0,
+      total: 0, discount: 0
     });
   }
   sel.value = '';
@@ -4507,14 +4762,16 @@ function riderItemPartialCancel(orderIdx, itemIdx, cancelQtyStr, totalQty, isGra
       if(Math.abs(qtyDiff) > 0.001) {
         if(isGrams) {
           const before = inv.grams;
-          inv.grams = Math.max(0, before - qtyDiff); // negative diff = restore
+          // qtyDiff > 0 = cancelling more → RESTORE to inventory (rider bringing back)
+          // qtyDiff < 0 = un-cancelling → DEDUCT from inventory (rider taking out again)
+          inv.grams = Math.max(0, before + qtyDiff);
           S.stockLog.push({ productCode:inv.code, type:qtyDiff>0?'return':'out',
             qty:Math.abs(qtyDiff), date:today(),
             notes:`Partial cancel ${clampedQty}/${totalQty}g – ${order.name} ${onum(orderIdx)}`,
             before, after:inv.grams });
         } else {
           const before = inv.qty;
-          inv.qty = Math.max(0, before - qtyDiff);
+          inv.qty = Math.max(0, before + qtyDiff);
           S.stockLog.push({ productCode:inv.code, type:qtyDiff>0?'return':'out',
             qty:Math.abs(qtyDiff), date:today(),
             notes:`Partial cancel ${clampedQty}/${totalQty}pcs – ${order.name} ${onum(orderIdx)}`,
@@ -4565,21 +4822,19 @@ function saveOrder() {
 
   // enc-rider stores the rider NAME directly (set by autoAssignRider or openEditOrder)
   const riderRaw = (document.getElementById('enc-rider').value || '').trim();
-  // Could be a name string ("POLLY") or a numeric index from old assign flow
   let assignedRider = '';
   if(riderRaw !== '') {
     const asNum = parseInt(riderRaw);
     if(!isNaN(asNum) && S.riders[asNum]) {
-      assignedRider = S.riders[asNum].name; // numeric index → name
+      assignedRider = S.riders[asNum].name;
     } else {
-      assignedRider = riderRaw; // already a name string
+      assignedRider = riderRaw;
     }
   }
 
-  const items2 = getItems('enc-items-tbody');
   const sf2 = parseFloat(document.getElementById('enc-shipping').value)||0;
-  const iT = items2.reduce((s,it) => s+it.total, 0);
-  const totalDiscount = items2.reduce((s,it) => s+(it.discount||0), 0);
+  const iT = items.reduce((s,it) => s+it.total, 0);
+  const totalDiscount = items.reduce((s,it) => s+(it.discount||0), 0);
   const editIdx = document.getElementById('enc-edit-idx').value;
   const o = {
     name, contact, address,
@@ -4587,7 +4842,7 @@ function saveOrder() {
     landmark: document.getElementById('enc-landmark').value,
     date: date || today(),
     admin, assignedRider, paymentMethod,
-    shipping: sf2, items: items2, itemsTotal: iT, totalDiscount, grandTotal: iT + sf2,
+    shipping: sf2, items, itemsTotal: iT, totalDiscount, grandTotal: iT + sf2,
     status: 'Preparing', checkerStatus: 'Pending',
     riderRemarks: '', createdAt: new Date().toISOString()
   };
@@ -4604,7 +4859,7 @@ function saveOrder() {
   } else {
     S.orders.push(o);
     // ── AUTO-DEDUCT INVENTORY ON NEW ORDER ───────────────────────
-    items2.forEach(item => {
+    items.forEach(item => {
       if(!item.code) return;
       const invIdx = S.inventory.findIndex(it => it.code.toUpperCase() === item.code.toUpperCase());
       if(invIdx < 0) return;
@@ -4660,10 +4915,6 @@ function openEncodeModal() {
   document.getElementById('enc-edit-idx').value = '';
   document.getElementById('enc-rider').value = '';
   const pm = document.getElementById('enc-payment-method'); if(pm) pm.value = 'COD';
-  isFixPriceMode = false;
-  const fpc = document.getElementById('enc-fixprice-mode'); if(fpc) fpc.checked = false;
-  const th3 = document.getElementById('enc-th-grams'); if(th3) th3.style.display = '';
-  const th4 = document.getElementById('enc-th-pergram'); if(th4) th4.style.display = '';
   populateAdminDropdown();
   populateInvQuickPick();
   addItemRow('enc-items-tbody','calcEnc'); calcEnc();
@@ -4912,18 +5163,15 @@ function renderRiders() {
     const delivered = myOrders.filter(o => o.status==='Delivered');
     const cancelled = myOrders.filter(o => o.status==='Cancelled');
     const totalSF = myOrders.reduce((s,o)=>s+(o.shipping||0),0);
-    const deliveredSF = delivered.reduce((s,o)=>s+(o.shipping||0),0);
-    const parcelCount = myOrders.length;
-    const sf10 = totalSF*0.10;           // 10% of total SF → company
-    const perParcel = parcelCount*10;    // ₱10 per parcel
+    const sf10 = totalSF * 0.10;           // 10% of total SF → company
+    const sfRiderShare = totalSF * 0.90;   // 90% rider keeps
     const cbDeduct = 100;               // cashbond
     const benDeduct = (S.benefitsLog||[]).filter(b=>b.person.toUpperCase()===r.name.toUpperCase()).reduce((s,b)=>s+(b.sss||0)+(b.philhealth||0)+(b.pagibig||0)+(b.other||0),0);
-    // Subtotal = total COD collected from delivered (before deductions)
+    // Subtotal = total COD collected from delivered orders
     const subtotal = delivered.reduce((s,o)=>s+o.grandTotal,0);
-    // Cancelled orders = auto 0 remit
-    const cancelledTotal = cancelled.reduce((s,o)=>s+o.grandTotal,0);
-    const totalDeductions = sf10 + perParcel + cbDeduct + benDeduct;
-    // Net Total = subtotal minus deductions from SF
+    // Deductions from the rider's SF share (not from COD subtotal)
+    const totalDeductions = sf10 + cbDeduct + benDeduct;
+    // Net Total: COD subtotal + SF rider share - deductions
     const netTotal = Math.max(0, subtotal - totalDeductions);
     html += `<tr style="background:rgba(201,168,76,0.04);cursor:pointer;" onclick="toggleRiderParcels(${ri})">
       <td style="font-weight:700;color:var(--gold);">▶ ${r.name}</td>
@@ -4936,7 +5184,7 @@ function renderRiders() {
       <td style="color:var(--red);">${cancelled.length}</td>
       <td style="color:var(--gold);font-weight:600;">${p(totalSF)}</td>
       <td style="color:var(--green);font-weight:700;">${p(subtotal)}</td>
-      <td style="color:var(--red);font-size:11px;">-${p(totalDeductions)}<br><span style="font-size:9px;color:var(--muted);">SF10%+₱10×${parcelCount}+CB+Ben</span></td>
+      <td style="color:var(--red);font-size:11px;">-${p(totalDeductions)}<br><span style="font-size:9px;color:var(--muted);">SF10%+CB₱100+Ben</span></td>
       <td style="color:var(--gold);font-weight:700;font-size:13px;">${p(netTotal)}</td>
       <td><button class="btn btn-red btn-sm" onclick="event.stopPropagation();delRider(${ri})">🗑️</button></td></tr>`;
     // Parcel detail rows (collapsed by default)
