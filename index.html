@@ -721,8 +721,8 @@ window.loadFromFirebase = async function() {
   <div class="finance-lock unlocked" id="lock-checker">
     <div class="lock-box">
       <div class="lock-icon">🔐</div>
-      <div class="lock-title">CEO Access Required</div>
-      <div class="lock-sub">Enter the Checker Verify password to continue.</div>
+      <div class="lock-title">Checker Verify Access</div>
+      <div class="lock-sub">Enter the COD Checker password to continue.</div>
       <input type="password" class="form-control" id="lock-pw-checker" placeholder="Enter password" style="text-align:center;letter-spacing:3px;margin-bottom:8px;" onkeydown="if(event.key==='Enter')unlockPage('checker')">
       <div class="lock-err" id="lock-err-checker"></div>
       <div style="display:flex;gap:8px;justify-content:center;margin-top:10px;">
@@ -749,9 +749,32 @@ window.loadFromFirebase = async function() {
           <select class="form-control" style="width:130px;font-size:11px;padding:4px 8px;" id="checker-filter" onchange="renderChecker()">
             <option value="">All Status</option><option value="Pending">Pending</option><option value="Verified">Verified</option>
           </select>
+          <input type="date" class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" id="checker-date" oninput="renderChecker()" title="Filter by date">
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('checker-date').value='';renderChecker()">All Dates</button>
         </div>
       </div>
-      <div class="table-wrap"><table><thead><tr><th>Order #</th><th>Customer</th><th>CP #</th><th>Admin</th><th>Date</th><th>Items Total</th><th>SF</th><th>Grand Total</th><th>Assign Rider</th><th>Status</th><th>Actions</th></tr></thead><tbody id="checker-tbody"></tbody></table></div>
+      <!-- LBC/INTL lock overlay inside checker card -->
+      <div id="lbc-checker-lock" style="display:none;padding:30px;text-align:center;background:rgba(15,27,45,0.97);border-radius:8px;">
+        <div style="font-size:24px;margin-bottom:10px;">🔐</div>
+        <div style="font-weight:700;color:var(--gold);margin-bottom:6px;">LBC / INTERNATIONAL Checker</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Separate password required. Checker ng LBC at Admin lang ang may access.</div>
+        <input type="password" class="form-control" id="lbc-checker-pw-input" placeholder="Enter LBC Checker password" style="max-width:280px;margin:0 auto 10px;text-align:center;letter-spacing:3px;" onkeydown="if(event.key==='Enter')unlockLbcChecker()">
+        <div id="lbc-checker-err" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px;"></div>
+        <button class="btn btn-gold" onclick="unlockLbcChecker()">Unlock LBC Checker</button>
+      </div>
+      <div id="checker-table-area">
+        <div class="table-wrap" id="checker-cod-table"><table><thead><tr>
+          <th>Order #</th><th>Customer</th><th>CP #</th><th>Admin</th><th>Date</th>
+          <th>Items Total</th><th>SF</th><th>Grand Total</th><th>Assign Rider</th>
+          <th>Checker Status</th><th>Actions</th>
+        </tr></thead><tbody id="checker-tbody"></tbody></table></div>
+        <div id="checker-lbc-table" style="display:none;"><table><thead><tr>
+          <th>Order #</th><th>Customer</th><th>CP #</th><th>Admin</th><th>Date</th>
+          <th>Items Total</th><th>SF</th><th>Grand Total</th>
+          <th>💳 Payment Status</th><th>Payment Notes</th>
+          <th>✅ Verification Status</th><th>Checker Actions</th>
+        </tr></thead><tbody id="checker-lbc-tbody"></tbody></table></div>
+      </div>
     </div>
   </div>
 
@@ -761,7 +784,7 @@ window.loadFromFirebase = async function() {
   <div class="finance-lock unlocked" id="lock-tracking">
     <div class="lock-box">
       <div class="lock-icon">🔐</div>
-      <div class="lock-title">CEO Access Required</div>
+      <div class="lock-title">Parcel Tracking Access</div>
       <div class="lock-sub">Enter the Parcel Tracking password to continue.</div>
       <input type="password" class="form-control" id="lock-pw-tracking" placeholder="Enter password" style="text-align:center;letter-spacing:3px;margin-bottom:8px;" onkeydown="if(event.key==='Enter')unlockPage('tracking')">
       <div class="lock-err" id="lock-err-tracking"></div>
@@ -774,24 +797,74 @@ window.loadFromFirebase = async function() {
     <div class="stats-grid" id="tracking-stats"></div>
     <!-- Tracking sub-tabs -->
     <div class="section-tabs no-print" style="margin-bottom:13px;" id="tracking-tabs">
-      <button class="tab-btn active" onclick="setTrackingTab('all')">📦 All Parcels</button>
+      <button class="tab-btn active" onclick="setTrackingTab('cod')">🏍️ COD</button>
+      <button class="tab-btn" onclick="setTrackingTab('lbc')">📦 LBC</button>
+      <button class="tab-btn" onclick="setTrackingTab('intl')">✈️ INTERNATIONAL</button>
       <button class="tab-btn" onclick="setTrackingTab('update')" id="tracking-tab-update-btn">🔔 For Update</button>
     </div>
-    <!-- All Parcels tab -->
-    <div id="tracking-tab-all">
-    <div class="card">
-      <div class="card-header"><span class="card-title">Parcel Tracker</span>
-        <div style="display:flex;gap:7px;" class="no-print">
-          <input class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" placeholder="Search..." id="track-search" oninput="renderTracking()">
-          <select class="form-control" style="width:140px;font-size:11px;padding:4px 8px;" id="track-filter" onchange="renderTracking()">
-            <option value="">All Status</option>
-            <option>Preparing</option><option>Ready</option><option>Out for Delivery</option><option>Delivered</option><option>Cancelled</option><option>Update</option>
-          </select>
+
+    <!-- COD Tab -->
+    <div id="tracking-tab-cod">
+      <div class="card">
+        <div class="card-header"><span class="card-title">🏍️ COD Parcels</span>
+          <div style="display:flex;gap:7px;" class="no-print">
+            <input class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" placeholder="Search..." id="track-search" oninput="renderTracking()">
+            <select class="form-control" style="width:140px;font-size:11px;padding:4px 8px;" id="track-filter" onchange="renderTracking()">
+              <option value="">All Status</option>
+              <option>Preparing</option><option>Ready</option><option>Out for Delivery</option><option>Delivered</option><option>Cancelled</option><option>Update</option>
+            </select>
+            <input type="date" class="form-control" style="width:150px;font-size:11px;" id="track-date" oninput="renderTracking()" title="Filter by date">
+          </div>
         </div>
+        <div class="table-wrap"><table><thead><tr>
+          <th>Order #</th><th>Customer</th><th>Address</th><th>Admin</th><th>Rider</th>
+          <th>Date</th><th>Total</th><th>Status</th><th>Update Status</th><th>Rider Remarks</th>
+        </tr></thead><tbody id="tracking-tbody"></tbody></table></div>
       </div>
-      <div class="table-wrap"><table><thead><tr><th>Order #</th><th>Customer</th><th>Address</th><th>Admin</th><th>Rider</th><th>Date</th><th>Total</th><th>Status</th><th>Update Status</th><th>Rider Remarks</th></tr></thead><tbody id="tracking-tbody"></tbody></table></div>
     </div>
+
+    <!-- LBC Tab -->
+    <div id="tracking-tab-lbc" style="display:none;">
+      <div class="card">
+        <div class="card-header"><span class="card-title">📦 LBC Parcels</span>
+          <div style="display:flex;gap:7px;" class="no-print">
+            <input class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" placeholder="Search..." id="track-lbc-search" oninput="renderTrackingLbc()">
+            <select class="form-control" style="width:175px;font-size:11px;padding:4px 8px;" id="track-lbc-filter" onchange="renderTrackingLbc()">
+              <option value="">All Parcel Status</option>
+              <option>Preparing</option><option>Ready to Pick-up</option><option>Drop off at LBC</option><option>Delivered</option>
+            </select>
+            <input type="date" class="form-control" style="width:150px;font-size:11px;" id="track-lbc-date" oninput="renderTrackingLbc()" title="Filter by date">
+          </div>
+        </div>
+        <div class="table-wrap"><table><thead><tr>
+          <th>Order #</th><th>Customer</th><th>CP #</th><th>Admin</th><th>Date</th>
+          <th>Total</th><th>💳 Payment Status</th><th>✅ Verif. Status</th>
+          <th>📦 Parcel Status</th><th>Update Parcel Status</th>
+        </tr></thead><tbody id="tracking-lbc-tbody"></tbody></table></div>
+      </div>
     </div>
+
+    <!-- INTERNATIONAL Tab -->
+    <div id="tracking-tab-intl" style="display:none;">
+      <div class="card">
+        <div class="card-header"><span class="card-title">✈️ INTERNATIONAL Parcels</span>
+          <div style="display:flex;gap:7px;" class="no-print">
+            <input class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" placeholder="Search..." id="track-intl-search" oninput="renderTrackingIntl()">
+            <select class="form-control" style="width:175px;font-size:11px;padding:4px 8px;" id="track-intl-filter" onchange="renderTrackingIntl()">
+              <option value="">All Parcel Status</option>
+              <option>Preparing</option><option>Ready to Pick-up</option><option>Drop off at LBC</option><option>Delivered</option>
+            </select>
+            <input type="date" class="form-control" style="width:150px;font-size:11px;" id="track-intl-date" oninput="renderTrackingIntl()" title="Filter by date">
+          </div>
+        </div>
+        <div class="table-wrap"><table><thead><tr>
+          <th>Order #</th><th>Customer</th><th>CP #</th><th>Admin</th><th>Date</th>
+          <th>Total</th><th>💳 Payment Status</th><th>✅ Verif. Status</th>
+          <th>✈️ Parcel Status</th><th>Update Parcel Status</th>
+        </tr></thead><tbody id="tracking-intl-tbody"></tbody></table></div>
+      </div>
+    </div>
+
     <!-- For Update tab -->
     <div id="tracking-tab-update" style="display:none;">
       <div class="card">
@@ -1692,6 +1765,7 @@ window.loadFromFirebase = async function() {
       <div class="form-group"><label>Riders by Location Password</label><input type="password" class="form-control" id="tab-pw-riders" placeholder="Leave blank = use owner password"></div>
       <div class="form-group"><label>Riders Remit Password</label><input type="password" class="form-control" id="tab-pw-ridersremit" placeholder="Leave blank = use owner password"></div>
       <div class="form-group"><label>Cashbond Password</label><input type="password" class="form-control" id="tab-pw-cashbond" placeholder="Leave blank = use owner password"></div>
+      <div class="form-group"><label>📦 LBC/INTL Checker Password</label><input type="password" class="form-control" id="tab-pw-lbcchecker" placeholder="Separate password for LBC checker"></div>
     </div>
     <div id="tab-pw-status" style="font-size:12px;margin-top:8px;min-height:16px;"></div>
     <div class="form-actions">
@@ -1794,11 +1868,18 @@ if(!S.govSettings)S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:
 if(!S.adminNames)S.adminNames=['PAM','CHE','JP','TIN','ANGIE','GLENDA','SALLY'];
 if(!S.bizInfo)S.bizInfo={name:'Goldchelle Online Enterprises',address:'Las Pinas City, Metro Manila, PH',contact:'0917-130-7239',social:'fb.com/goldchelleonlineenterprise'};
 // Tab-specific passwords (CEO can set independently)
-if(!S.tabPasswords)S.tabPasswords={checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''};
+if(!S.tabPasswords)S.tabPasswords={checker:'',tracking:'',riders:'',ridersremit:'',cashbond:'',lbcchecker:''};
+if(!S.tabPasswords.lbcchecker) S.tabPasswords.lbcchecker='';
 // Migrate existing inventory items that are missing itemType
 if(S.inventory) S.inventory.forEach(it=>{ if(!it.itemType) it.itemType='grams'; });
-// Migrate existing orders missing paymentMethod
-if(S.orders) S.orders.forEach(o=>{ if(!o.paymentMethod) o.paymentMethod='COD'; });
+// Migrate existing orders — add new fields if missing
+if(S.orders) S.orders.forEach(o=>{
+  if(!o.paymentMethod) o.paymentMethod='COD';
+  if(!o.paymentStatus) o.paymentStatus=(o.paymentMethod==='COD')?'COD':'No Payment';
+  if(!o.paymentNotes) o.paymentNotes='';
+  if(!o.verificationStatus) o.verificationStatus='Not Verified';
+  if(!o.lbcStatus) o.lbcStatus=(o.paymentMethod==='LBC'||o.paymentMethod==='INTERNATIONAL')?'Preparing':'';
+});
 // Migrate old statuses to new statuses
 const STATUS_MAP={'In Transit':'Preparing','Delivering':'Out for Delivery','For Return':'Update','Returned':'Cancelled'};
 if(S.orders) S.orders.forEach(o=>{ if(STATUS_MAP[o.status]) o.status=STATUS_MAP[o.status]; });
@@ -1829,6 +1910,10 @@ document.getElementById('topbar-date').textContent=new Date().toLocaleDateString
 // ============ NAVIGATION ============
 const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales Calendar',orders:'Admin Encode',checker:'Checker Verify',tracking:'Parcel Tracking',riders:'Riders by Location',dailyparcels:'Daily Parcels',sorting:'Parcel Sorting',returns:'Return / Cancel',dailysales:'Daily Sales Record',payroll:'Payroll',expenses:'Expenses',pnl:'P&L Report',inventory:'Inventory',adminsheets:'Per-Admin Order Sheets',settings:'Settings',ridersremit:'Riders Remit',cashbond:'Cashbond Tracker',benefits:'Benefits (SSS / PhilHealth / Pag-IBIG)'};
 function gotoPage(name){
+  // Reset LBC checker lock when navigating away from checker
+  if(typeof _lbcCheckerUnlocked !== 'undefined' && name !== 'checker') {
+    _lbcCheckerUnlocked = false;
+  }
   // CEO-only pages
   if(['dashboard','calendar'].includes(name) && currentRole !== 'owner') {
     toast('🔐 Dashboard & Calendar are CEO-only'); return;
@@ -2298,66 +2383,186 @@ function setOrdersTab(tab){ ordersViewTab=tab; initOrdersPage(); }
 
 // ============ CHECKER ============
 let checkerTab = 'COD';
+let _lbcCheckerUnlocked = false;
+
+function unlockLbcChecker() {
+  const input = document.getElementById('lbc-checker-pw-input');
+  const err = document.getElementById('lbc-checker-err');
+  const pw = input?.value || '';
+  const tabPw = S.tabPasswords?.lbcchecker || '';
+  const ownerPw = S.ownerPassword || 'goldchelle2024';
+  if(pw === tabPw || pw === ownerPw || (!tabPw && pw === ownerPw)) {
+    _lbcCheckerUnlocked = true;
+    document.getElementById('lbc-checker-lock').style.display = 'none';
+    document.getElementById('checker-table-area').style.display = '';
+    renderChecker();
+    if(input) input.value = '';
+  } else {
+    if(err) err.textContent = '❌ Wrong password';
+    setTimeout(()=>{ if(err) err.textContent=''; }, 2000);
+  }
+}
+
 function setCheckerTab(tab) {
   checkerTab = tab;
   document.querySelectorAll('#checker-tabs .tab-btn').forEach((b,i) =>
     b.classList.toggle('active', ['COD','LBC','INTERNATIONAL'][i] === tab));
   const labels = {COD:'🏍️ COD – Checker Queue', LBC:'📦 LBC – Checker Queue', INTERNATIONAL:'✈️ INTERNATIONAL – Checker Queue'};
   const el = document.getElementById('checker-tab-label'); if(el) el.textContent = labels[tab]||tab;
-  renderChecker();
+  // Show LBC lock if not yet unlocked
+  const isLbc = tab === 'LBC' || tab === 'INTERNATIONAL';
+  if(isLbc && !_lbcCheckerUnlocked) {
+    document.getElementById('lbc-checker-lock').style.display = '';
+    document.getElementById('checker-table-area').style.display = 'none';
+  } else {
+    document.getElementById('lbc-checker-lock').style.display = 'none';
+    document.getElementById('checker-table-area').style.display = '';
+    // Show correct table
+    document.getElementById('checker-cod-table').style.display = isLbc ? 'none' : '';
+    document.getElementById('checker-lbc-table').style.display = isLbc ? '' : 'none';
+    renderChecker();
+  }
 }
+
 function renderChecker(){
   const filt = document.getElementById('checker-filter')?.value||'';
   const q = (document.getElementById('checker-search')?.value||'').toLowerCase();
+  const df = document.getElementById('checker-date')?.value||'';
   const pending = S.orders.filter(o=>o.checkerStatus==='Pending').length;
   document.getElementById('checker-pending-count').textContent = pending ? `⚠️ ${pending} pending` : '✅ All verified';
   const isCOD = checkerTab === 'COD';
+  const isLbc = checkerTab === 'LBC' || checkerTab === 'INTERNATIONAL';
+
   const list = S.orders.map((o,i)=>({o,i})).filter(({o}) => {
     const method = o.paymentMethod || 'COD';
     if(method !== checkerTab) return false;
     if(filt && o.checkerStatus !== filt) return false;
+    if(df && o.date !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !(o.contact||'').includes(q) && !onum(S.orders.indexOf(o)).includes(q)) return false;
     return true;
   });
-  // Build rider options for COD dropdown
-  const riderOpts = isCOD
-    ? '<option value="">-- Assign Rider --</option>' + S.riders.map(r=>`<option value="${r.name}">${r.name} (${r.location||'—'})</option>`).join('')
-    : '';
-  document.getElementById('checker-tbody').innerHTML = list.length ? list.map(({o,i}) => `<tr>
-    <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
-    <td style="font-weight:500;">${o.name}</td>
-    <td style="font-size:11px;">${o.contact||'—'}</td>
-    <td>${o.admin}</td><td>${o.date}</td>
-    <td>${p(o.itemsTotal)}</td><td>${p(o.shipping)}</td>
-    <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
-    <td>${isCOD
-      ? `<select class="form-control" style="width:145px;font-size:10.5px;padding:3px 6px;" onchange="assignRiderFromChecker(${i},this.value)">
+
+  if(isCOD) {
+    const riderOpts = '<option value="">-- Assign Rider --</option>' + S.riders.map(r=>`<option value="${r.name}">${r.name} (${r.location||'—'})</option>`).join('');
+    document.getElementById('checker-tbody').innerHTML = list.length ? list.map(({o,i}) => `<tr>
+      <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
+      <td style="font-weight:500;">${o.name}</td>
+      <td style="font-size:11px;">${o.contact||'—'}</td>
+      <td>${o.admin}</td><td>${o.date}</td>
+      <td>${p(o.itemsTotal)}</td><td>${p(o.shipping)}</td>
+      <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
+      <td>
+        <select class="form-control" style="width:145px;font-size:10.5px;padding:3px 6px;" onchange="assignRiderFromChecker(${i},this.value)">
           ${riderOpts.replace(`value="${o.assignedRider||''}"`,`value="${o.assignedRider||''}" selected`)}
-         </select>
-         ${o.assignedRider?`<div style="font-size:9.5px;color:var(--blue);margin-top:2px;">🏍️ ${o.assignedRider}</div>`:''}`
-      : `<span style="font-size:10.5px;color:var(--muted);">${checkerTab==='LBC'?'📦 LBC Courier':'✈️ FedEx/DHL/EMS'}</span>`}
-    </td>
-    <td>
-      <span class="checker-tag ${o.checkerStatus==='Verified'?'verified':'pending'}" style="margin-bottom:4px;display:block;">${o.checkerStatus}</span>
-    </td>
-    <td style="display:flex;gap:3px;flex-wrap:wrap;">
-      <button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>
-      ${o.checkerStatus!=='Verified'
-        ? `<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`
-        : `<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`}
-      <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
-      <button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>
-    </td></tr>`).join('') :
-    `<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">No ${checkerTab} orders found</td></tr>`;
+        </select>
+        ${o.assignedRider?`<div style="font-size:9.5px;color:var(--blue);margin-top:2px;">🏍️ ${o.assignedRider}</div>`:''}
+      </td>
+      <td>
+        <span class="checker-tag ${o.checkerStatus==='Verified'?'verified':'pending'}" style="margin-bottom:4px;display:block;">${o.checkerStatus}</span>
+      </td>
+      <td style="display:flex;gap:3px;flex-wrap:wrap;">
+        <button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>
+        ${o.checkerStatus!=='Verified'
+          ? `<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`
+          : `<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`}
+        <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
+        <button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>
+      </td>
+    </tr>`).join('') :
+    `<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">No COD orders found</td></tr>`;
+  } else {
+    // LBC / INTERNATIONAL — payment status + verification flow
+    const PAYMENT_STATUSES = ['No Payment','Partial','Fully Paid'];
+    const VERIF_STATUSES = ['Not Verified','Verified'];
+    const payColor = s => s==='Fully Paid'?'var(--green)':s==='Partial'?'var(--orange)':'var(--red)';
+    document.getElementById('checker-lbc-tbody').innerHTML = list.length ? list.map(({o,i}) => {
+      const pymSt = o.paymentStatus||'No Payment';
+      const verifSt = o.verificationStatus||'Not Verified';
+      const canVerify = pymSt === 'Fully Paid'; // can only verify once fully paid
+      return `<tr>
+        <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
+        <td style="font-weight:500;">${o.name}</td>
+        <td style="font-size:11px;">${o.contact||'—'}</td>
+        <td>${o.admin}</td><td>${o.date}</td>
+        <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
+        <td>
+          <select class="form-control" style="width:130px;font-size:10.5px;padding:3px 5px;border-color:${payColor(pymSt)};"
+            onchange="updatePaymentStatus(${i},this.value)">
+            ${PAYMENT_STATUSES.map(s=>`<option${pymSt===s?' selected':''}>${s}</option>`).join('')}
+          </select>
+          ${pymSt==='Partial'?`<div style="margin-top:4px;">
+            <input class="form-control" style="font-size:10px;padding:2px 5px;" placeholder="Payment notes..."
+              value="${o.paymentNotes||''}" onblur="updatePaymentNotes(${i},this.value)">
+          </div>`:''}
+          ${pymSt==='Fully Paid'?'<div style="font-size:9.5px;color:var(--green);margin-top:2px;">✅ Bayad na</div>':''}
+        </td>
+        <td>
+          <select class="form-control" style="width:130px;font-size:10.5px;padding:3px 5px;${!canVerify?'opacity:0.5;cursor:not-allowed;':''}"
+            ${!canVerify?'disabled title="Need Fully Paid first"':''}
+            onchange="updateVerifStatus(${i},this.value)">
+            ${VERIF_STATUSES.map(s=>`<option${verifSt===s?' selected':''}>${s}</option>`).join('')}
+          </select>
+          ${!canVerify?'<div style="font-size:9px;color:var(--orange);margin-top:2px;">⚠️ Fully Paid muna</div>':''}
+        </td>
+        <td style="display:flex;gap:3px;flex-wrap:wrap;">
+          <button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>
+          ${canVerify && verifSt==='Verified'
+            ? `<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verified</button>`
+            : canVerify
+            ? `<button class="btn btn-blue btn-sm" onclick="verifyOrder(${i})">✔ Mark Verified</button>`
+            : ''}
+          <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
+          <button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>
+        </td>
+      </tr>`;
+    }).join('') :
+    `<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:26px;">No ${checkerTab} orders found</td></tr>`;
+  }
 }
+
+function updatePaymentStatus(orderIdx, status) {
+  S.orders[orderIdx].paymentStatus = status;
+  if(status !== 'Partial') S.orders[orderIdx].paymentNotes = '';
+  // If downgraded from Fully Paid, reset verification
+  if(status !== 'Fully Paid') {
+    S.orders[orderIdx].verificationStatus = 'Not Verified';
+    S.orders[orderIdx].checkerStatus = 'Pending';
+  }
+  save(); renderChecker();
+  toast(`💳 Payment: ${status}`);
+}
+function updatePaymentNotes(orderIdx, notes) {
+  S.orders[orderIdx].paymentNotes = notes;
+  save();
+}
+function updateVerifStatus(orderIdx, status) {
+  if((S.orders[orderIdx].paymentStatus||'No Payment') !== 'Fully Paid') {
+    toast('⚠️ Kailangan Fully Paid muna bago i-verify');
+    return;
+  }
+  S.orders[orderIdx].verificationStatus = status;
+  if(status === 'Verified') S.orders[orderIdx].checkerStatus = 'Verified';
+  else S.orders[orderIdx].checkerStatus = 'Pending';
+  save(); renderChecker();
+  toast(`✅ Verification: ${status}`);
+}
+
 function assignRiderFromChecker(orderIdx, riderName) {
   S.orders[orderIdx].assignedRider = riderName;
   save();
   toast('🏍️ Rider assigned: ' + (riderName || '(removed)'));
   renderChecker();
 }
-function verifyOrder(i){ S.orders[i].checkerStatus='Verified'; save(); toast('✅ Verified!'); renderChecker(); }
-function unverifyOrder(i){ S.orders[i].checkerStatus='Pending'; save(); toast('↩ Set back to Pending'); renderChecker(); }
+function verifyOrder(i){
+  S.orders[i].checkerStatus='Verified';
+  S.orders[i].verificationStatus='Verified';
+  save(); toast('✅ Verified!'); renderChecker();
+}
+function unverifyOrder(i){
+  S.orders[i].checkerStatus='Pending';
+  S.orders[i].verificationStatus='Not Verified';
+  save(); toast('↩ Set back to Pending'); renderChecker();
+}
 
 // ============ INVOICE ============
 function openInvoice(i){
@@ -2415,6 +2620,36 @@ function updateStatus(i,v){
   toast('Status → '+v);
   renderTracking();
   refreshUpdateBadge();
+  if(currentRole==='owner') renderDash();
+}
+
+function renderForUpdateTab() {
+  const list = S.orders.map((o,i)=>({...o,idx:i})).filter(o=>o.status==='Update');
+  const el = document.getElementById('for-update-list');
+  if(!el) return;
+  el.innerHTML = list.length ? `<div class="table-wrap"><table><thead><tr>
+    <th>Order #</th><th>Customer</th><th>Contact</th><th>Method</th><th>Rider</th><th>Address</th><th>Date</th><th>Total</th><th>Rider Remarks</th><th>Admin Action</th>
+  </tr></thead><tbody>${list.map(o=>`<tr>
+    <td style="color:var(--gold);font-weight:600;">${onum(o.idx)}</td>
+    <td style="font-weight:500;">${o.name}</td>
+    <td>${o.contact||'—'}</td>
+    <td><span class="status ${(o.paymentMethod||'COD')==='COD'?'delivering':(o.paymentMethod==='LBC'?'blue':'green')}" style="font-size:9px;">${o.paymentMethod||'COD'}</span></td>
+    <td style="color:var(--blue);">🏍️ ${o.assignedRider||'—'}</td>
+    <td style="font-size:10.5px;">${o.address||'—'}</td>
+    <td>${o.date}</td>
+    <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
+    <td style="font-size:10.5px;color:var(--orange);">${o.riderRemarks||'No remarks'}</td>
+    <td style="display:flex;gap:4px;flex-wrap:wrap;">
+      <button class="btn btn-green btn-sm" onclick="resolveUpdate(${o.idx},'Out for Delivery')">🔁 Re-Deliver</button>
+      <button class="btn btn-red btn-sm" onclick="resolveUpdate(${o.idx},'Cancelled')">✕ Cancel</button>
+    </td>
+  </tr>`).join('')}</tbody></table></div>`
+  : '<p style="color:var(--muted);padding:20px;text-align:center;">No parcels for update.</p>';
+}
+
+function resolveUpdate(orderIdx, newStatus) {
+  S.orders[orderIdx].status = newStatus;
+  save(); toast('✅ Status → '+newStatus); renderForUpdateTab(); refreshUpdateBadge();
   if(currentRole==='owner') renderDash();
 }
 
@@ -4097,7 +4332,7 @@ function renderDash(){
 // Default hashed password storage — uses simple hash for demo
 // In production Firebase, store hash server-side
 const DEFAULT_OWNER_PW = 'goldchelle2024';
-const FIN_PAGES = ['dailysales','payroll','expenses','pnl','adminsheets','settings','checker','tracking','riders','inventory','ridersremit','cashbond','benefits'];
+const FIN_PAGES = ['dailysales','payroll','expenses','pnl','adminsheets','settings','checker','tracking','riders','inventory','ridersremit','cashbond','benefits','lbcchecker'];
 
 // selectedRole and unlockedPages for auth flow
 let selectedRole = null;
@@ -4836,6 +5071,7 @@ function saveOrder() {
   const iT = items.reduce((s,it) => s+it.total, 0);
   const totalDiscount = items.reduce((s,it) => s+(it.discount||0), 0);
   const editIdx = document.getElementById('enc-edit-idx').value;
+  const isLbcMethod = paymentMethod === 'LBC' || paymentMethod === 'INTERNATIONAL';
   const o = {
     name, contact, address,
     city: document.getElementById('enc-city').value,
@@ -4844,6 +5080,10 @@ function saveOrder() {
     admin, assignedRider, paymentMethod,
     shipping: sf2, items, itemsTotal: iT, totalDiscount, grandTotal: iT + sf2,
     status: 'Preparing', checkerStatus: 'Pending',
+    paymentStatus: isLbcMethod ? 'No Payment' : 'COD',
+    paymentNotes: '',
+    verificationStatus: 'Not Verified',
+    lbcStatus: isLbcMethod ? 'Preparing' : '',
     riderRemarks: '', createdAt: new Date().toISOString()
   };
   if(editIdx !== '') {
@@ -4852,6 +5092,11 @@ function saveOrder() {
     o.checkerStatus = orig.checkerStatus;
     o.riderRemarks = orig.riderRemarks;
     o.createdAt = orig.createdAt;
+    // Preserve payment/verification fields on edit
+    o.paymentStatus = orig.paymentStatus || o.paymentStatus;
+    o.paymentNotes = orig.paymentNotes || '';
+    o.verificationStatus = orig.verificationStatus || 'Not Verified';
+    o.lbcStatus = orig.lbcStatus || o.lbcStatus;
     // preserve checker-assigned rider if admin hasn't changed it
     if(!assignedRider && orig.assignedRider) o.assignedRider = orig.assignedRider;
     S.orders[+editIdx] = o;
@@ -5070,19 +5315,35 @@ function pf(n) {
 // ============================================================
 // UPDATE TRACKING TABLE — show assigned rider
 // ============================================================
+function setTrackingTab(tab) {
+  document.querySelectorAll('#tracking-tabs .tab-btn').forEach((b,i)=>
+    b.classList.toggle('active',['cod','lbc','intl','update'][i]===tab));
+  document.getElementById('tracking-tab-cod').style.display  = tab==='cod'    ? '' : 'none';
+  document.getElementById('tracking-tab-lbc').style.display  = tab==='lbc'    ? '' : 'none';
+  document.getElementById('tracking-tab-intl').style.display = tab==='intl'   ? '' : 'none';
+  document.getElementById('tracking-tab-update').style.display = tab==='update'? '' : 'none';
+  if(tab==='cod')    renderTracking();
+  else if(tab==='lbc')  renderTrackingLbc();
+  else if(tab==='intl') renderTrackingIntl();
+  else renderForUpdateTab();
+}
+
 function renderTracking() {
   const TRACK_STATUSES = ['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'];
   const colors = {'Preparing':'orange','Ready':'blue','Out for Delivery':'gold','Delivered':'green','Cancelled':'red','Update':'purple'};
-  // Stats
+  // Stats — all methods combined
   document.getElementById('tracking-stats').innerHTML = TRACK_STATUSES.map(s =>
     `<div class="stat-card ${colors[s]||'gold'}"><div class="stat-label">${s}</div><div class="stat-value">${S.orders.filter(o=>o.status===s).length}</div></div>`
   ).join('');
   const q = (document.getElementById('track-search')?.value||'').toLowerCase();
   const filt = document.getElementById('track-filter')?.value||'';
-  // Main tracking table
+  const df = document.getElementById('track-date')?.value||'';
+  // COD only
   document.getElementById('tracking-tbody').innerHTML = S.orders.map((o,i) => {
-    if((q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q)) || (filt && o.status!==filt)) return '';
-    const sc = s=>({'Preparing':'orange','Ready':'blue','Out for Delivery':'gold','Delivered':'green','Cancelled':'red','Update':'purple'}[s]||'transit');
+    if((o.paymentMethod||'COD') !== 'COD') return '';
+    if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q) && !(o.contact||'').includes(q)) return '';
+    if(filt && o.status!==filt) return '';
+    if(df && o.date!==df) return '';
     return `<tr>
       <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
       <td style="font-weight:500;">${o.name}</td>
@@ -5091,50 +5352,97 @@ function renderTracking() {
       <td style="font-size:11px;color:var(--blue);">🏍️ ${o.assignedRider||'—'}</td>
       <td>${o.date}</td>
       <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
-      <td><span class="status ${sc(o.status)}">${o.status||'—'}</span></td>
+      <td><span class="status ${sclass(o.status)}">${o.status||'—'}</span></td>
       <td><select class="form-control" style="width:140px;font-size:10.5px;padding:3px 6px;" onchange="updateStatus(${i},this.value)">
         ${TRACK_STATUSES.map(s=>`<option${o.status===s?' selected':''}>${s}</option>`).join('')}
       </select></td>
       <td style="font-size:10.5px;color:var(--muted);max-width:130px;">${o.riderRemarks||'—'}</td>
     </tr>`;
-  }).join('') || '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No parcels</td></tr>';
+  }).join('') || '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No COD parcels</td></tr>';
+  refreshUpdateBadge();
 }
 
-function renderForUpdateTab() {
-  // Show only orders with status 'Update'
-  const list = S.orders.map((o,i)=>({...o,idx:i})).filter(o=>o.status==='Update');
-  const el = document.getElementById('for-update-list');
-  if(!el) return;
-  el.innerHTML = list.length ? `<div class="table-wrap"><table><thead><tr>
-    <th>Order #</th><th>Customer</th><th>Contact</th><th>Rider</th><th>Address</th><th>Date</th><th>Total</th><th>Rider Remarks</th><th>Admin Action</th>
-  </tr></thead><tbody>${list.map(o=>`<tr>
-    <td style="color:var(--gold);font-weight:600;">${onum(o.idx)}</td>
-    <td style="font-weight:500;">${o.name}</td>
-    <td>${o.contact||'—'}</td>
-    <td style="color:var(--blue);">🏍️ ${o.assignedRider||'—'}</td>
-    <td style="font-size:10.5px;">${o.address||'—'}</td>
-    <td>${o.date}</td>
-    <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
-    <td style="font-size:10.5px;color:var(--orange);">${o.riderRemarks||'No remarks'}</td>
-    <td style="display:flex;gap:4px;flex-wrap:wrap;">
-      <button class="btn btn-green btn-sm" onclick="resolveUpdate(${o.idx},'Out for Delivery')">🔁 Re-Deliver</button>
-      <button class="btn btn-red btn-sm" onclick="resolveUpdate(${o.idx},'Cancelled')">✕ Cancel</button>
-    </td>
-  </tr>`).join('')}</tbody></table></div>`
-  : '<p style="color:var(--muted);padding:20px;text-align:center;">No parcels for update.</p>';
+const LBC_PARCEL_STATUSES = ['Preparing','Ready to Pick-up','Drop off at LBC','Delivered'];
+
+function renderTrackingLbc() {
+  const q = (document.getElementById('track-lbc-search')?.value||'').toLowerCase();
+  const filt = document.getElementById('track-lbc-filter')?.value||'';
+  const df = document.getElementById('track-lbc-date')?.value||'';
+  const payColor = s => s==='Fully Paid'?'var(--green)':s==='Partial'?'var(--orange)':'var(--red)';
+  const lbcStatusColor = s => s==='Delivered'?'var(--green)':s==='Drop off at LBC'?'var(--blue)':s==='Ready to Pick-up'?'var(--gold)':'var(--muted)';
+  document.getElementById('tracking-lbc-tbody').innerHTML = S.orders.map((o,i) => {
+    if((o.paymentMethod||'COD') !== 'LBC') return '';
+    const lbcSt = o.lbcStatus || 'Preparing';
+    if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q) && !(o.contact||'').includes(q)) return '';
+    if(filt && lbcSt !== filt) return '';
+    if(df && o.date !== df) return '';
+    return `<tr>
+      <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
+      <td style="font-weight:500;">${o.name}</td>
+      <td style="font-size:11px;">${o.contact||'—'}</td>
+      <td>${o.admin}</td><td>${o.date}</td>
+      <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
+      <td style="font-size:11px;font-weight:600;color:${payColor(o.paymentStatus||'No Payment')};">
+        ${o.paymentStatus||'No Payment'}
+        ${o.paymentNotes?`<div style="font-size:9.5px;color:var(--muted);">${o.paymentNotes}</div>`:''}
+      </td>
+      <td>
+        <span class="checker-tag ${o.verificationStatus==='Verified'?'verified':'pending'}">${o.verificationStatus||'Not Verified'}</span>
+      </td>
+      <td style="font-size:11px;font-weight:600;color:${lbcStatusColor(lbcSt)};">📦 ${lbcSt}</td>
+      <td>
+        <select class="form-control" style="width:165px;font-size:10.5px;padding:3px 6px;" onchange="updateLbcStatus(${i},this.value)">
+          ${LBC_PARCEL_STATUSES.map(s=>`<option${lbcSt===s?' selected':''}>${s}</option>`).join('')}
+        </select>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No LBC parcels</td></tr>';
 }
 
-function resolveUpdate(orderIdx, newStatus) {
-  S.orders[orderIdx].status = newStatus;
-  save(); toast('✅ Status set to '+newStatus); renderForUpdateTab(); renderTracking();
+function renderTrackingIntl() {
+  const q = (document.getElementById('track-intl-search')?.value||'').toLowerCase();
+  const filt = document.getElementById('track-intl-filter')?.value||'';
+  const df = document.getElementById('track-intl-date')?.value||'';
+  const payColor = s => s==='Fully Paid'?'var(--green)':s==='Partial'?'var(--orange)':'var(--red)';
+  const stColor = s => s==='Delivered'?'var(--green)':s==='Drop off at LBC'?'var(--blue)':s==='Ready to Pick-up'?'var(--gold)':'var(--muted)';
+  document.getElementById('tracking-intl-tbody').innerHTML = S.orders.map((o,i) => {
+    if((o.paymentMethod||'COD') !== 'INTERNATIONAL') return '';
+    const lbcSt = o.lbcStatus || 'Preparing';
+    if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q) && !(o.contact||'').includes(q)) return '';
+    if(filt && lbcSt !== filt) return '';
+    if(df && o.date !== df) return '';
+    return `<tr>
+      <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
+      <td style="font-weight:500;">${o.name}</td>
+      <td style="font-size:11px;">${o.contact||'—'}</td>
+      <td>${o.admin}</td><td>${o.date}</td>
+      <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
+      <td style="font-size:11px;font-weight:600;color:${payColor(o.paymentStatus||'No Payment')};">
+        ${o.paymentStatus||'No Payment'}
+        ${o.paymentNotes?`<div style="font-size:9.5px;color:var(--muted);">${o.paymentNotes}</div>`:''}
+      </td>
+      <td>
+        <span class="checker-tag ${o.verificationStatus==='Verified'?'verified':'pending'}">${o.verificationStatus||'Not Verified'}</span>
+      </td>
+      <td style="font-size:11px;font-weight:600;color:${stColor(lbcSt)};">✈️ ${lbcSt}</td>
+      <td>
+        <select class="form-control" style="width:165px;font-size:10.5px;padding:3px 6px;" onchange="updateLbcStatus(${i},this.value)">
+          ${LBC_PARCEL_STATUSES.map(s=>`<option${lbcSt===s?' selected':''}>${s}</option>`).join('')}
+        </select>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No INTERNATIONAL parcels</td></tr>';
 }
 
-function setTrackingTab(tab) {
-  document.querySelectorAll('#tracking-tabs .tab-btn').forEach((b,i)=>b.classList.toggle('active',['all','update'][i]===tab));
-  document.getElementById('tracking-tab-all').style.display = tab==='all' ? '' : 'none';
-  document.getElementById('tracking-tab-update').style.display = tab==='update' ? '' : 'none';
-  if(tab==='update') renderForUpdateTab();
-  else renderTracking();
+function updateLbcStatus(orderIdx, newStatus) {
+  S.orders[orderIdx].lbcStatus = newStatus;
+  save();
+  toast(`📦 Parcel Status → ${newStatus}`);
+  // Re-render whichever tab is active
+  const lbc = document.getElementById('tracking-tab-lbc');
+  const intl = document.getElementById('tracking-tab-intl');
+  if(lbc && lbc.style.display !== 'none') renderTrackingLbc();
+  else if(intl && intl.style.display !== 'none') renderTrackingIntl();
 }
 
 // Highlight for-update count badge on tab btn
@@ -5248,12 +5556,13 @@ function updateRidersTableHeader() {
 // TAB PASSWORDS — CEO can set per-tab passwords
 // ============================================================
 function openTabPasswordsModal() {
-  if(!S.tabPasswords) S.tabPasswords = {checker:'', tracking:'', riders:'', ridersremit:'', cashbond:''};
+  if(!S.tabPasswords) S.tabPasswords = {checker:'', tracking:'', riders:'', ridersremit:'', cashbond:'', lbcchecker:''};
   document.getElementById('tab-pw-checker').value = S.tabPasswords.checker || '';
   document.getElementById('tab-pw-tracking').value = S.tabPasswords.tracking || '';
   document.getElementById('tab-pw-riders').value = S.tabPasswords.riders || '';
   document.getElementById('tab-pw-ridersremit').value = S.tabPasswords.ridersremit || '';
   document.getElementById('tab-pw-cashbond').value = S.tabPasswords.cashbond || '';
+  document.getElementById('tab-pw-lbcchecker').value = S.tabPasswords.lbcchecker || '';
   document.getElementById('tab-pw-status').textContent = '';
   openModal('modal-tab-passwords');
 }
@@ -5264,6 +5573,7 @@ function saveTabPasswords() {
   S.tabPasswords.riders = document.getElementById('tab-pw-riders').value;
   S.tabPasswords.ridersremit = document.getElementById('tab-pw-ridersremit').value;
   S.tabPasswords.cashbond = document.getElementById('tab-pw-cashbond').value;
+  S.tabPasswords.lbcchecker = document.getElementById('tab-pw-lbcchecker').value;
   save();
   document.getElementById('tab-pw-status').style.color = 'var(--green)';
   document.getElementById('tab-pw-status').textContent = '✅ Tab passwords saved!';
