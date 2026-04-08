@@ -1450,7 +1450,17 @@ window.loadFromFirebase = async function() {
     <div class="modal-header"><span class="modal-title" id="encode-title">Encode New Order</span><button class="modal-close" onclick="closeModal('modal-encode')">✕</button></div>
     <div class="form-grid" id="enc-form-fields">
       <div class="form-group"><label>Customer Name *</label><input class="form-control enc-tab" id="enc-name" placeholder="Full name" onkeydown="encNextField(event,this)"></div>
-      <div class="form-group"><label>CP Number *</label><input class="form-control enc-tab" id="enc-contact" placeholder="09xx-xxx-xxxx" onkeydown="encNextField(event,this)"></div>
+      <div class="form-group"><label>CP Number * <span style="font-size:10px;color:var(--muted);">(exactly 11 digits)</span></label>
+        <input class="form-control enc-tab" id="enc-contact" placeholder="09xxxxxxxxx" maxlength="11"
+          oninput="this.value=this.value.replace(/\D/g,'');validateCpField(this)"
+          onkeydown="encNextField(event,this)">
+        <div id="enc-contact-err" style="font-size:10.5px;min-height:14px;margin-top:2px;"></div>
+      </div>
+      <div class="form-group"><label>Back-Up Number <span style="font-size:10px;color:var(--muted);">(optional)</span></label>
+        <input class="form-control enc-tab" id="enc-backup-contact" placeholder="09xxxxxxxxx" maxlength="11"
+          oninput="this.value=this.value.replace(/\D/g,'')"
+          onkeydown="encNextField(event,this)">
+      </div>
       <div class="form-group" style="grid-column:1/-1"><label>Complete Address *</label><input class="form-control enc-tab" id="enc-address" placeholder="House/Unit, Barangay, City, Province" onkeydown="encNextField(event,this)" oninput="autoAssignRider()"></div>
       <input type="hidden" id="enc-city" value="">
       <div class="form-group"><label>Landmark / Pakuha sa</label><input class="form-control enc-tab" id="enc-landmark" placeholder="Near church, beside sari-sari..." onkeydown="encNextField(event,this)"></div>
@@ -1634,13 +1644,13 @@ window.loadFromFirebase = async function() {
       </select>
     </div>
     <div class="form-grid">
-      <div class="form-group"><label>Serial Code *</label><input class="form-control" id="inv-code" placeholder="e.g. 18KP10V89"></div>
-      <div class="form-group"><label>Description *</label><input class="form-control" id="inv-desc"></div>
-      <div class="form-group inv-grams-row"><label>Grams (total in stock)</label><input type="number" class="form-control" id="inv-grams" value="0" oninput="calcInv()"></div>
-      <div class="form-group inv-grams-row"><label>Per Gram (₱)</label><input type="number" class="form-control" id="inv-pergram" value="0" oninput="calcInv()"></div>
+      <div class="form-group"><label>Serial Code *</label><input class="form-control" id="inv-code" placeholder="e.g. 18KP10V89" onkeydown="invNextField(event,this)"></div>
+      <div class="form-group"><label>Description *</label><input class="form-control" id="inv-desc" onkeydown="invNextField(event,this)"></div>
+      <div class="form-group inv-grams-row"><label>Grams (total in stock)</label><input type="number" class="form-control" id="inv-grams" value="0" oninput="calcInv()" onkeydown="invNextField(event,this)"></div>
+      <div class="form-group inv-grams-row"><label>Per Gram (₱)</label><input type="number" class="form-control" id="inv-pergram" value="0" oninput="calcInv()" onkeydown="invNextField(event,this)"></div>
       <div class="form-group inv-grams-row"><label>Unit Value (auto)</label><input class="form-control" id="inv-unitval" readonly style="background:rgba(201,168,76,0.08);color:var(--gold);"></div>
-      <div class="form-group inv-fixprice-row" style="display:none;"><label>Fix Price (₱) per unit</label><input type="number" class="form-control" id="inv-fixprice" value="0"></div>
-      <div class="form-group inv-fixprice-row" style="display:none;"><label>Quantity *</label><input type="number" class="form-control" id="inv-qty" value="0" min="0"></div>
+      <div class="form-group inv-fixprice-row" style="display:none;"><label>Fix Price (₱) per unit</label><input type="number" class="form-control" id="inv-fixprice" value="0" onkeydown="invNextField(event,this)"></div>
+      <div class="form-group inv-fixprice-row" style="display:none;"><label>Quantity *</label><input type="number" class="form-control" id="inv-qty" value="0" min="0" onkeydown="invNextField(event,this)"></div>
     </div>
     <input type="hidden" id="inv-edit-idx" value="">
     <div class="form-actions"><button class="btn btn-gold" onclick="saveInv()">💾 Save</button><button class="btn btn-outline" onclick="closeModal('modal-inventory')">Cancel</button></div>
@@ -1677,42 +1687,62 @@ window.loadFromFirebase = async function() {
 
 <!-- Riders Remit Modal -->
 <div class="modal-overlay" id="modal-remit">
-  <div class="modal" style="max-width:620px;">
-    <div class="modal-header"><span class="modal-title" id="remit-modal-title">Add Remit Entry</span><button class="modal-close" onclick="closeModal('modal-remit')">✕</button></div>
-    <div class="form-grid">
-      <div class="form-group"><label>Rider *</label>
+  <div class="modal" style="max-width:720px;">
+    <div class="modal-header"><span class="modal-title" id="remit-modal-title">Rider Remittance</span><button class="modal-close" onclick="closeModal('modal-remit')">✕</button></div>
+    <!-- Rider + Date picker -->
+    <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+      <div class="form-group" style="margin:0;"><label>Rider *</label>
         <select class="form-control" id="remit-rider" onchange="populateRemitParcels()">
           <option value="">-- Select Rider --</option>
         </select>
       </div>
-      <div class="form-group"><label>Date *</label><input type="date" class="form-control" id="remit-date"></div>
-      <div class="form-group"><label>Cash Remitted (₱)</label><input type="number" class="form-control" id="remit-cash" value="0" oninput="calcRemit()"></div>
-      <div class="form-group"><label>Notes</label><input class="form-control" id="remit-notes" placeholder="e.g. Remit for Mar 1-7"></div>
-    </div>
-    <div style="background:var(--navy);border-radius:8px;padding:12px;margin-top:11px;" id="remit-parcel-summary">
-      <p style="color:var(--muted);font-size:11.5px;">Select a rider to see parcel summary.</p>
-    </div>
-    <div style="background:var(--navy);border-radius:8px;padding:12px;margin-top:8px;font-size:12.5px;" id="remit-calc">
-      <div class="info-row"><span style="color:var(--muted);">Delivered Parcels</span><span id="remit-delivered-count" style="color:var(--green);">0 parcels</span></div>
-      <div class="info-row"><span style="color:var(--muted);">Subtotal (Delivered COD)</span><span id="remit-subtotal" style="color:var(--blue);font-weight:600;">₱0.00</span></div>
-      <div id="remit-cancelled-info" style="font-size:11px;padding:4px 0;min-height:16px;"></div>
-      <div style="background:rgba(74,144,217,0.08);border-radius:6px;padding:8px;margin:6px 0;font-size:11.5px;">
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">🏍️ Rider SF Earnings Breakdown</div>
-        <div class="info-row"><span style="color:var(--muted);">Gross SF (All Parcels)</span><span id="remit-gross-sf">₱0.00</span></div>
-        <div class="info-row"><span style="color:var(--red);">Less: 10% → Company</span><span id="remit-sf-10" style="color:var(--red);">-₱0.00</span></div>
-        <div class="info-row" style="border-bottom:none;"><span style="color:var(--blue);font-weight:600;">Rider SF Earnings (90%)</span><span id="remit-sf-rider-share" style="color:var(--blue);font-weight:700;">₱0.00</span></div>
+      <div class="form-group" style="margin:0;"><label>Date *</label>
+        <input type="date" class="form-control" id="remit-date" onchange="populateRemitParcels()">
       </div>
-      <div class="info-row"><span style="color:var(--red);">Less: Cashbond (₱100)</span><span id="remit-cashbond-cut" style="color:var(--red);">-₱100.00</span></div>
-      <div class="info-row"><span style="color:var(--red);">Less: Benefits (SSS+PH+PI)</span><span id="remit-benefits-cut" style="color:var(--red);">-₱0.00</span></div>
-      <div class="info-row" style="border-bottom:none;font-size:14px;background:rgba(46,204,138,0.07);padding:8px;border-radius:7px;margin-top:6px;"><strong>💰 Net Total to Remit</strong><strong id="remit-net-earn" style="color:var(--green);">₱0.00</strong></div>
+    </div>
+    <!-- Parcel list per rider -->
+    <div style="background:var(--navy);border-radius:8px;padding:12px;margin-bottom:10px;" id="remit-parcel-summary">
+      <p style="color:var(--muted);font-size:11.5px;margin:0;">Select a rider to see parcel summary.</p>
+    </div>
+    <!-- Summary computation -->
+    <div style="background:var(--navy);border-radius:8px;padding:12px;font-size:12.5px;" id="remit-calc">
+      <div class="info-row"><span style="color:var(--muted);">📦 Total SF (All Parcels)</span><span id="remit-gross-sf" style="color:var(--gold);font-weight:600;">₱0.00</span></div>
+      <div class="info-row"><span style="color:var(--muted);">💰 Subtotal (Delivered + SF)</span><span id="remit-subtotal" style="color:var(--blue);font-weight:600;">₱0.00</span></div>
+      <div class="info-row"><span style="color:var(--red);">Less: SF 10% (Company)</span><span id="remit-sf-10" style="color:var(--red);">-₱0.00</span></div>
+      <div class="info-row"><span style="color:var(--red);">Less: Benefits (SSS/PhilHealth/Pag-IBIG)</span><span id="remit-benefits-cut" style="color:var(--red);">-₱0.00</span></div>
+      <div class="info-row" style="border-bottom:1px solid var(--navy-border);padding-bottom:8px;"><span style="color:var(--muted);">= Net SF (Rider Share after deductions)</span><span id="remit-sf-rider-share" style="color:var(--blue);font-weight:700;">₱0.00</span></div>
+      <div class="info-row" style="border-bottom:none;font-size:14px;background:rgba(46,204,138,0.07);padding:8px;border-radius:7px;margin-top:6px;">
+        <strong>🏦 Net Total to Remit</strong>
+        <strong id="remit-net-earn" style="color:var(--green);font-size:16px;">₱0.00</strong>
+      </div>
+      <div style="font-size:10px;color:var(--muted);text-align:right;margin-top:4px;" id="remit-formula-hint">Net Total = Subtotal − Net SF</div>
+    </div>
+    <!-- Remit Status -->
+    <div style="margin-top:12px;">
+      <label style="font-size:12px;font-weight:600;color:var(--gold);margin-bottom:6px;display:block;">📋 Remit Status</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:7px 14px;border-radius:7px;border:1px solid var(--navy-border);font-size:12px;" id="remit-status-btn-forremittance">
+          <input type="radio" name="remit-status-radio" value="For Remittance" checked onchange="onRemitStatusChange(this.value)"> For Remittance
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:7px 14px;border-radius:7px;border:1px solid var(--navy-border);font-size:12px;" id="remit-status-btn-remitting">
+          <input type="radio" name="remit-status-radio" value="Remitting" onchange="onRemitStatusChange(this.value)"> 🏃 Remitting
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:7px 14px;border-radius:7px;border:1px solid var(--green);font-size:12px;" id="remit-status-btn-remitted">
+          <input type="radio" name="remit-status-radio" value="Remitted" onchange="onRemitStatusChange(this.value)"> ✅ Remitted
+        </label>
+      </div>
+      <div id="remit-remitted-note" style="display:none;margin-top:8px;background:rgba(46,204,138,0.08);border:1px solid var(--green);border-radius:7px;padding:10px;font-size:11.5px;color:var(--green);">
+        ✅ Once saved as <strong>Remitted</strong>, ang cashbond, benefits, at iba pang deductions ay awtomatikong irere-record sa kanilang respective logs.
+      </div>
     </div>
     <input type="hidden" id="remit-edit-idx" value="">
-    <div style="margin-top:8px;">
-      <button class="btn btn-outline btn-sm" onclick="openCashbondFromRemit()" title="I-record ang cashbond para sa rider na ito gamit ang net earnings">
-        🔗 Record Cashbond for this Rider
-      </button>
+    <input type="hidden" id="remit-delivered-count" value="0">
+    <input type="hidden" id="remit-cashbond-cut" value="100">
+    <input type="hidden" id="remit-cancelled-info" value="">
+    <div class="form-actions" style="margin-top:14px;">
+      <button class="btn btn-gold" onclick="saveRemit()">💾 Save Remit</button>
+      <button class="btn btn-outline" onclick="closeModal('modal-remit')">Cancel</button>
     </div>
-    <div class="form-actions"><button class="btn btn-gold" onclick="saveRemit()">💾 Save</button><button class="btn btn-outline" onclick="closeModal('modal-remit')">Cancel</button></div>
   </div>
 </div>
 
@@ -1954,10 +1984,14 @@ function addItemRow(tbodyId, calcFn, it={}) {
   const row = document.createElement('tr');
   const qgVal = it.grams || it.qty || 0;
   const discVal = it.discount || 0;
-  // subtotal before discount = pergram*grams, or stored total+discount
   const pg = it.pergram || 0;
   const subtotalVal = (qgVal > 0 && pg > 0) ? Math.ceil(qgVal * pg) : ((it.total||0) + discVal);
   const totalVal = it.total || 0;
+  // Restore fix-price unit price: if pergram=0 and total>0, derive unit price from total/qty
+  if(pg === 0 && (it.unitPrice || (it.total > 0 && qgVal > 0))) {
+    const unitPrice = it.unitPrice || (it.total / Math.max(1, qgVal));
+    row.dataset.unitPrice = unitPrice;
+  }
   row.innerHTML = `
     <td><input class="form-control" style="width:90px;font-size:11px;" value="${it.code||''}" placeholder="Code" onkeydown="rowTabNext(event,this)" onblur="autoFillFromCode(this)"></td>
     <td><input class="form-control" style="width:150px;font-size:11px;" value="${it.desc||''}" placeholder="Description" onkeydown="rowTabNext(event,this)"></td>
@@ -1978,7 +2012,6 @@ function autoFillFromCode(codeInput) {
   if(!inv) return;
   const row = codeInput.closest('tr');
   if(!row) return;
-  // Use class selectors for reliability across column layouts
   const descInput = row.querySelectorAll('input')[1];
   const qgInput = row.querySelector('.row-qg-input');
   const pgInput = row.querySelector('.row-pg-input');
@@ -1989,15 +2022,17 @@ function autoFillFromCode(codeInput) {
   if(descInput && !descInput.value) descInput.value = inv.desc;
 
   if(inv.itemType === 'fixprice') {
-    // Fix price item: qty=1, no per gram, total = fixPrice
     if(qgInput) { qgInput.value = 1; qgInput.placeholder = 'Qty'; }
     if(pgInput) { pgInput.value = 0; }
     const fixVal = inv.fixPrice || 0;
+    // Store unit price on row so calcEnc can multiply by qty
+    row.dataset.unitPrice = fixVal;
     const discVal = parseFloat(discountInput?.value)||0;
-    if(subtotalInput) subtotalInput.value = fixVal.toFixed(2);
-    if(totalInput) totalInput.value = Math.max(0, fixVal - discVal).toFixed(2);
+    const subtotal = fixVal * 1; // qty=1
+    if(subtotalInput) subtotalInput.value = subtotal.toFixed(2);
+    if(totalInput) totalInput.value = Math.max(0, subtotal - discVal).toFixed(2);
   } else {
-    // Gram-based: set per gram, let calcEnc compute total
+    delete row.dataset.unitPrice;
     if(pgInput) pgInput.value = inv.pergram || 0;
     if(qgInput && !parseFloat(qgInput.value)) qgInput.value = 0;
   }
@@ -2024,8 +2059,8 @@ function getItems(id) {
   return rows;
 }
 window.calcEnc = function() {
-  let itemsSubtotal = 0; // before discount
-  let iT = 0;            // after discount (net items total)
+  let itemsSubtotal = 0;
+  let iT = 0;
   let totalDiscount = 0;
   document.querySelectorAll('#enc-items-tbody tr').forEach(r => {
     const qg = parseFloat(r.querySelector('.row-qg-input')?.value)||0;
@@ -2033,17 +2068,22 @@ window.calcEnc = function() {
     const discount = parseFloat(r.querySelector('.row-discount-input')?.value)||0;
     const subtotalInput = r.querySelector('.row-subtotal-input');
     const totalInput = r.querySelector('.row-total-input');
-    // Compute subtotal (before discount): qty×pergram or manual
+
     let subtotal = 0;
     if(qg > 0 && pg > 0) {
+      // Gram-based: qty/grams × per gram
       subtotal = ceilPeso(qg * pg);
+    } else if(r.dataset.unitPrice) {
+      // Fix-price item: unit price × qty (supports 2, 3, 4... qty)
+      const unitPrice = parseFloat(r.dataset.unitPrice) || 0;
+      subtotal = unitPrice * Math.max(1, qg);
     } else if(totalInput) {
-      // Fix: proper parenthesis — get current total then add back discount to get subtotal
+      // Manual total (no unit price stored) — derive subtotal from total+discount
       const curTotal = parseFloat(totalInput.value)||0;
       subtotal = curTotal + discount;
     }
+
     if(subtotalInput) subtotalInput.value = subtotal.toFixed(2);
-    // Net line total = subtotal - discount (minimum 0)
     const lineTotal = Math.max(0, subtotal - discount);
     if(totalInput) totalInput.value = lineTotal.toFixed(2);
     itemsSubtotal += subtotal;
@@ -2054,9 +2094,8 @@ window.calcEnc = function() {
   const grandTotal = iT + sf;
   const discEl = document.getElementById('enc-discount-disp');
   if(discEl) discEl.textContent = p(totalDiscount);
-  // Items shows the net after discount; SF separate; Grand Total = net items + SF
   document.getElementById('enc-sf-disp').textContent = p(sf);
-  document.getElementById('enc-items-disp').textContent = p(iT);  // net after discount
+  document.getElementById('enc-items-disp').textContent = p(iT);
   document.getElementById('enc-grand-disp').textContent = p(grandTotal);
 };
 
@@ -2067,6 +2106,34 @@ function encNextField(e, el) {
   const fields = [...document.querySelectorAll('#modal-encode .enc-tab')];
   const idx = fields.indexOf(el);
   if(idx >= 0 && idx < fields.length - 1) fields[idx+1].focus();
+}
+// Inventory modal — Enter jumps to next visible field, last field triggers save
+function invNextField(e, el) {
+  if(e.key !== 'Enter') return;
+  e.preventDefault();
+  const allFields = [...document.querySelectorAll('#modal-inventory input')]
+    .filter(f => f.closest('.form-group')?.style.display !== 'none' && f.offsetParent !== null);
+  const idx = allFields.indexOf(el);
+  if(idx >= 0 && idx < allFields.length - 1) {
+    allFields[idx + 1].focus();
+    if(allFields[idx + 1].type === 'number') allFields[idx + 1].select();
+  } else {
+    saveInv(); // last field → auto-save
+  }
+}
+// CP Number real-time validation
+function validateCpField(input) {
+  const err = document.getElementById('enc-contact-err');
+  if(!err) return;
+  const len = input.value.length;
+  if(len === 0) { err.textContent = ''; return; }
+  if(len < 11) {
+    err.style.color = 'var(--orange)';
+    err.textContent = `⚠️ ${len}/11 digits — kulang ng ${11 - len}`;
+  } else {
+    err.style.color = 'var(--green)';
+    err.textContent = '✅ OK';
+  }
 }
 // Tab to next row input on Enter
 function rowTabNext(e, el) {
@@ -2082,6 +2149,9 @@ function openEditOrder(i){
   document.getElementById('encode-title').textContent='Edit Order '+onum(i);
   document.getElementById('enc-name').value=o.name;
   document.getElementById('enc-contact').value=o.contact;
+  const bcEl=document.getElementById('enc-backup-contact'); if(bcEl) bcEl.value=o.backupContact||'';
+  // Clear CP validation error display
+  const cpErr=document.getElementById('enc-contact-err'); if(cpErr) cpErr.textContent='';
   document.getElementById('enc-address').value=o.address;
   document.getElementById('enc-city').value=o.city||'';
   document.getElementById('enc-landmark').value=o.landmark||'';
@@ -2200,9 +2270,13 @@ function renderMyOrders() {
     <td><span class="status ${sclass(o.status)}">${o.status}</span></td>
     <td><span class="checker-tag ${o.checkerStatus==='Verified'?'verified':'pending'}">${o.checkerStatus}</span></td>
     <td style="display:flex;gap:3px;flex-wrap:wrap;">
-      <button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>
+      ${o.checkerStatus!=='Verified'
+        ? `<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>`
+        : `<span style="font-size:9.5px;color:var(--muted);padding:2px 6px;">🔒 Verified</span>`}
       <button class="btn btn-blue btn-sm" onclick="openInvoice(${i})">🖨️</button>
-      <button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>
+      ${o.checkerStatus!=='Verified'
+        ? `<button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>`
+        : ''}
     </td></tr>`).join('')
   : `<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:26px;">${loggedAdmin?'No orders by '+loggedAdmin+' yet. Click + New Order to encode.':'No orders found.'}</td></tr>`;
 }
@@ -2307,9 +2381,13 @@ function renderOrders() {
     <td><span class="status ${sclass(o.status)}">${o.status}</span></td>
     <td><span class="checker-tag ${o.checkerStatus==='Verified'?'verified':'pending'}">${o.checkerStatus}</span></td>
     <td style="display:flex;gap:3px;flex-wrap:wrap;">
-      <button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>
+      ${o.checkerStatus!=='Verified'
+        ? `<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>`
+        : `<span style="font-size:9.5px;color:var(--muted);padding:2px 6px;">🔒 Verified</span>`}
       <button class="btn btn-blue btn-sm" onclick="openInvoice(${i})">🖨️</button>
-      <button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>
+      ${o.checkerStatus!=='Verified'
+        ? `<button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>`
+        : ''}
     </td></tr>`).join('')
   : '<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:26px;">No orders found</td></tr>';
 }
@@ -4571,14 +4649,17 @@ function addFromInventory() {
   const it = S.inventory[parseInt(idx)];
   if(!it) return;
   if(it.itemType === 'fixprice') {
-    // Fix price: qty=1, pergram=0, total=fixPrice
     addItemRow('enc-items-tbody', 'calcEnc', {
       code: it.code, desc: it.desc,
       qty: 1, grams: 0, pergram: 0,
-      total: it.fixPrice || 0, discount: 0
+      total: it.fixPrice || 0, discount: 0,
+      unitPrice: it.fixPrice || 0   // carry unit price for qty recalc
     });
+    // Set data-unit-price on the newly added row
+    const tbody = document.getElementById('enc-items-tbody');
+    const lastRow = tbody.lastElementChild;
+    if(lastRow) lastRow.dataset.unitPrice = it.fixPrice || 0;
   } else {
-    // Gram-based: set per gram, user enters grams
     addItemRow('enc-items-tbody', 'calcEnc', {
       code: it.code, desc: it.desc,
       qty: 1, grams: 0, pergram: it.pergram || 0,
@@ -5035,7 +5116,8 @@ function riderItemPartialCancel(orderIdx, itemIdx, cancelQtyStr, totalQty, isGra
 // ============================================================
 function saveOrder() {
   const name = document.getElementById('enc-name').value.trim();
-  const contact = document.getElementById('enc-contact').value.trim();
+  const contact = document.getElementById('enc-contact').value.replace(/\D/g,'');
+  const backupContact = (document.getElementById('enc-backup-contact')?.value||'').replace(/\D/g,'');
   const address = document.getElementById('enc-address').value.trim();
   const admin = document.getElementById('enc-admin').value.trim();
   const date = document.getElementById('enc-date').value;
@@ -5045,6 +5127,14 @@ function saveOrder() {
   // All fields required
   if(!name) { toast('⚠️ Customer Name required'); document.getElementById('enc-name').focus(); return; }
   if(!contact) { toast('⚠️ CP Number required'); document.getElementById('enc-contact').focus(); return; }
+  if(contact.length !== 11) {
+    toast(`⚠️ CP Number dapat exactly 11 digits! Nilagay mo: ${contact.length} digit${contact.length!==1?'s':''}`);
+    document.getElementById('enc-contact').focus(); return;
+  }
+  if(backupContact && backupContact.length !== 11) {
+    toast(`⚠️ Back-Up Number dapat 11 digits din! (${backupContact.length} digits)`);
+    document.getElementById('enc-backup-contact').focus(); return;
+  }
   if(!address) { toast('⚠️ Complete Address required'); document.getElementById('enc-address').focus(); return; }
   if(!admin) { toast('⚠️ Admin Name required'); return; }
   if(!date) { toast('⚠️ Date of Purchase required'); document.getElementById('enc-date').focus(); return; }
@@ -5073,7 +5163,7 @@ function saveOrder() {
   const editIdx = document.getElementById('enc-edit-idx').value;
   const isLbcMethod = paymentMethod === 'LBC' || paymentMethod === 'INTERNATIONAL';
   const o = {
-    name, contact, address,
+    name, contact, backupContact, address,
     city: document.getElementById('enc-city').value,
     landmark: document.getElementById('enc-landmark').value,
     date: date || today(),
@@ -5152,7 +5242,8 @@ function delOrder(i){
 // ============================================================
 function openEncodeModal() {
   document.getElementById('encode-title').textContent = 'Encode New Order';
-  ['enc-name','enc-contact','enc-address','enc-landmark'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['enc-name','enc-contact','enc-backup-contact','enc-address','enc-landmark'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  const cpErr=document.getElementById('enc-contact-err'); if(cpErr) cpErr.textContent='';
   document.getElementById('enc-city').value = '';
   document.getElementById('enc-date').value = today();
   document.getElementById('enc-shipping').value = '0';
@@ -5595,175 +5686,214 @@ function applyDashCeoLock() {
 // ============================================================
 // RIDERS REMIT — Functions
 // ============================================================
+function onRemitStatusChange(val) {
+  const note = document.getElementById('remit-remitted-note');
+  if(note) note.style.display = val === 'Remitted' ? '' : 'none';
+}
+
 function openRemitModal(editIdx=null) {
-  // Populate rider dropdown
   const sel = document.getElementById('remit-rider');
   sel.innerHTML = '<option value="">-- Select Rider --</option>' +
     S.riders.map((r,i)=>`<option value="${i}">${r.name} — ${r.location||'—'}</option>`).join('');
   document.getElementById('remit-date').value = today();
-  document.getElementById('remit-cash').value = '0';
-  document.getElementById('remit-notes').value = '';
   document.getElementById('remit-edit-idx').value = editIdx !== null ? editIdx : '';
-  document.getElementById('remit-modal-title').textContent = editIdx !== null ? 'Edit Remit Entry' : 'Add Remit Entry';
+  document.getElementById('remit-modal-title').textContent = editIdx !== null ? 'Edit Remit Entry' : 'Rider Remittance';
+  // Reset status to default
+  document.querySelectorAll('input[name="remit-status-radio"]').forEach(r=>{ r.checked = r.value === 'For Remittance'; });
+  onRemitStatusChange('For Remittance');
+  document.getElementById('remit-parcel-summary').innerHTML = '<p style="color:var(--muted);font-size:11.5px;margin:0;">Select a rider to see parcel summary.</p>';
+  // Reset calc display
+  ['remit-gross-sf','remit-subtotal','remit-sf-10','remit-benefits-cut','remit-sf-rider-share','remit-net-earn']
+    .forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent='₱0.00'; });
   if(editIdx !== null) {
     const e = S.remitLog[editIdx];
     sel.value = S.riders.findIndex(r=>r.name===e.riderName);
     document.getElementById('remit-date').value = e.date;
-    document.getElementById('remit-cash').value = e.cashRemitted||0;
-    document.getElementById('remit-notes').value = e.notes||'';
+    // Restore status
+    document.querySelectorAll('input[name="remit-status-radio"]').forEach(r=>{ r.checked = r.value === (e.remitStatus||'For Remittance'); });
+    onRemitStatusChange(e.remitStatus||'For Remittance');
     populateRemitParcels();
-  } else {
-    document.getElementById('remit-parcel-summary').innerHTML = '<p style="color:var(--muted);font-size:11.5px;">Select a rider to see parcel summary.</p>';
   }
-  calcRemit();
   openModal('modal-remit');
 }
 
 function populateRemitParcels() {
   const idx = document.getElementById('remit-rider').value;
   if(idx === '') {
-    document.getElementById('remit-parcel-summary').innerHTML = '<p style="color:var(--muted);font-size:11.5px;">Select a rider to see parcel summary.</p>';
-    calcRemit(); return;
+    document.getElementById('remit-parcel-summary').innerHTML = '<p style="color:var(--muted);font-size:11.5px;margin:0;">Select a rider to see parcel summary.</p>';
+    return;
   }
   const rider = S.riders[+idx];
   if(!rider) return;
-  const myOrders = S.orders.map((o,i)=>({...o,idx:i})).filter(o=>o.assignedRider===rider.name);
+  const df = document.getElementById('remit-date')?.value || '';
+  // All orders for this rider (optionally filtered by date)
+  const myOrders = S.orders.map((o,i)=>({...o,idx:i}))
+    .filter(o=>o.assignedRider===rider.name && (!df || o.date===df));
   const delivered = myOrders.filter(o=>o.status==='Delivered');
-  const cancelled = myOrders.filter(o=>o.status==='Cancelled');
-  const totalSF = myOrders.reduce((s,o)=>s+(o.shipping||0), 0);
-  const subtotal = delivered.reduce((s,o)=>s+(o.grandTotal||0), 0);  // only delivered count
-  const cancelledTotal = cancelled.reduce((s,o)=>s+(o.grandTotal||0), 0);
+  const cancelled = myOrders.filter(o=>['Cancelled','Update'].includes(o.status));
+  const totalSF = myOrders.reduce((s,o)=>s+(o.shipping||0),0);
+  const sf10 = totalSF * 0.10;
+  const sfNetRider = totalSF * 0.90;
+  const totalBenefits = (S.benefitsLog||[])
+    .filter(b=>b.person.toUpperCase()===rider.name.toUpperCase())
+    .reduce((s,b)=>s+(b.sss||0)+(b.philhealth||0)+(b.pagibig||0)+(b.other||0),0);
+  // Subtotal = all delivered grandTotal (includes SF)
+  const codSubtotal = delivered.reduce((s,o)=>s+o.grandTotal,0);
+  // Net SF = SF rider share - benefits
+  const netSF = Math.max(0, sfNetRider - totalBenefits);
+  // Net Total = COD subtotal - netSF (rider's SF was already included in grandTotal, now we deduct)
+  const netTotal = Math.max(0, codSubtotal - netSF);
 
-  let rowsHTML = myOrders.map((o,pi)=>{
-    const isCancelled = o.status === 'Cancelled';
-    const isGrams = o.items.some(it=>it.grams>0 && !it.fixPrice);
-    const remitAmt = isCancelled ? '<span style="color:var(--red);font-weight:700;">₱0.00</span>' : `<span style="color:var(--green);font-weight:700;">${p(o.grandTotal)}</span>`;
-    const itemCols = isGrams
-      ? `<td style="font-size:10px;">${o.items.map(it=>`${it.desc} ${it.grams}g @ ${p(it.pergram)}/g`).join('<br>')}</td><td>${p(o.shipping)}</td><td>${remitAmt}${isCancelled?'<br><span style="font-size:9px;color:var(--red);">Cancelled – auto ₱0</span>':''}</td>`
-      : `<td style="font-size:10px;">${o.items.map(it=>`${it.desc} ×${it.qty} = ${p(it.total)}`).join('<br>')}</td><td>${p(o.shipping)}</td><td>${remitAmt}${isCancelled?'<br><span style="font-size:9px;color:var(--red);">Cancelled – auto ₱0</span>':''}</td>`;
-    return `<tr style="${isCancelled?'opacity:0.6;background:rgba(224,85,85,0.05);':''}">
-      <td style="color:var(--gold);font-size:10.5px;">Parcel ${pi+1} – ${onum(o.idx)}</td>
-      <td style="font-size:10.5px;">${o.name}</td>${itemCols}
+  // Build parcel rows
+  const rows = myOrders.map((o,pi)=>{
+    const isCancelled = o.status!=='Delivered';
+    const itemList = o.items.map(it=>{
+      if(it.pergram>0) return `${it.code}: ${it.desc} (${it.grams||it.qty}g × ${p(it.pergram)}/g = ${p(it.total)})`;
+      return `${it.code}: ${it.desc} ×${it.qty} = ${p(it.total)}`;
+    }).join('<br>');
+    return `<tr style="${isCancelled?'opacity:0.55;background:rgba(224,85,85,0.04);':''}">
+      <td style="color:var(--gold);font-size:10px;white-space:nowrap;">${onum(o.idx)}</td>
+      <td style="font-size:10.5px;font-weight:500;">${o.name}</td>
+      <td style="font-size:10px;">${itemList}</td>
+      <td style="font-size:10.5px;color:var(--blue);">${p(o.shipping)}</td>
+      <td style="font-size:10.5px;font-weight:700;color:${isCancelled?'var(--red)':'var(--green)'};">${isCancelled?'₱0.00':p(o.grandTotal)}</td>
       <td><span class="status ${sclass(o.status)}" style="font-size:9px;">${o.status}</span></td>
     </tr>`;
   }).join('');
 
   document.getElementById('remit-parcel-summary').innerHTML = `
-    <div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:6px;text-transform:uppercase;">📦 ${rider.name}'s Parcels</div>
-    <div class="table-wrap"><table style="font-size:11px;">
-      <thead><tr style="background:rgba(201,168,76,0.08);">
-        <th>Parcel</th><th>Customer</th><th>Items</th><th>SF</th><th>Remit</th><th>Status</th>
-      </tr></thead>
-      <tbody>${rowsHTML||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:12px;">No parcels</td></tr>'}</tbody>
-    </table></div>
-    <div style="display:flex;gap:16px;padding:8px 0;font-size:12px;border-top:1px solid var(--navy-border);margin-top:6px;flex-wrap:wrap;">
-      <span>Total Parcels: <strong>${myOrders.length}</strong></span>
-      <span>Delivered: <strong style="color:var(--green);">${delivered.length}</strong></span>
-      ${cancelled.length ? `<span>Cancelled: <strong style="color:var(--red);">${cancelled.length} (₱0 remit)</strong></span>` : ''}
-      <span>Total SF: <strong>${p(totalSF)}</strong></span>
-      <span>Subtotal (Delivered Only): <strong style="color:var(--blue);">${p(subtotal)}</strong></span>
+    <div style="font-size:10.5px;font-weight:700;color:var(--gold);margin-bottom:7px;">
+      📦 ${rider.name} — ${df||'All Dates'} &nbsp;|&nbsp;
+      <span style="color:var(--green);">${delivered.length} Delivered</span>
+      ${cancelled.length?`<span style="color:var(--red);"> · ${cancelled.length} Cancelled/Update</span>`:''}
+    </div>
+    <div class="table-wrap" style="max-height:280px;overflow-y:auto;">
+      <table style="font-size:11px;">
+        <thead><tr style="background:rgba(201,168,76,0.08);">
+          <th>Order#</th><th>Customer</th><th>Items</th><th>SF</th><th>Total Remit</th><th>Status</th>
+        </tr></thead>
+        <tbody>${rows||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:12px;">No parcels</td></tr>'}</tbody>
+      </table>
     </div>`;
-  calcRemit();
+
+  // Update calc display
+  document.getElementById('remit-gross-sf').textContent = p(totalSF);
+  document.getElementById('remit-subtotal').textContent = p(codSubtotal);
+  document.getElementById('remit-sf-10').textContent = '-'+p(sf10);
+  document.getElementById('remit-benefits-cut').textContent = totalBenefits>0?'-'+p(totalBenefits):'₱0.00';
+  document.getElementById('remit-sf-rider-share').textContent = p(sfNetRider - totalBenefits < 0 ? 0 : sfNetRider - totalBenefits);
+  const netEl = document.getElementById('remit-net-earn');
+  netEl.textContent = p(netTotal);
+  netEl.dataset.netEarn = netTotal;
+  netEl.dataset.riderName = rider.name;
+  // Store hidden field values for saveRemit
+  const dcEl = document.getElementById('remit-delivered-count'); if(dcEl) dcEl.value = delivered.length;
+  const cbEl = document.getElementById('remit-cashbond-cut'); if(cbEl) cbEl.value = 100;
+  // Hint
+  const hint = document.getElementById('remit-formula-hint');
+  if(hint) hint.textContent = `Net Total = ${p(codSubtotal)} − ${p(netSF)} (Net SF) = ${p(netTotal)}`;
+  // Store for saveRemit access
+  document.getElementById('remit-rider').dataset.totalSF = totalSF;
+  document.getElementById('remit-rider').dataset.sf10 = sf10;
+  document.getElementById('remit-rider').dataset.sfNetRider = sfNetRider;
+  document.getElementById('remit-rider').dataset.totalBenefits = totalBenefits;
+  document.getElementById('remit-rider').dataset.codSubtotal = codSubtotal;
+  document.getElementById('remit-rider').dataset.netSF = netSF;
+  document.getElementById('remit-rider').dataset.netTotal = netTotal;
+  document.getElementById('remit-rider').dataset.deliveredCount = delivered.length;
+  document.getElementById('remit-rider').dataset.cancelledCount = cancelled.length;
+  document.getElementById('remit-rider').dataset.parcelCount = myOrders.length;
 }
 
-function calcRemit() {
-  const idx = document.getElementById('remit-rider').value;
-  if(idx === '') return;
-  const rider = S.riders[+idx];
-  if(!rider) return;
-  const myOrders = S.orders.map((o,i)=>({...o,idx:i})).filter(o=>o.assignedRider===rider.name);
-  const delivered = myOrders.filter(o=>o.status==='Delivered');
-  const cancelled = myOrders.filter(o=>o.status==='Cancelled');
-  const totalSF = myOrders.reduce((s,o)=>s+(o.shipping||0), 0);
-  const sf10 = totalSF * 0.10;           // 10% → company
-  const sfRiderShare = totalSF * 0.90;   // 90% → rider
-  const cashbondDeduct = 100;
-  const totalBenefits = (S.benefitsLog||[]).filter(b=>b.person.toUpperCase()===rider.name.toUpperCase())
-    .reduce((s,b)=>s+(b.sss||0)+(b.philhealth||0)+(b.pagibig||0)+(b.other||0), 0);
-  const subtotal = delivered.reduce((s,o)=>s+o.grandTotal, 0);
-  const cancelledTotal = cancelled.reduce((s,o)=>s+o.grandTotal, 0);
-  const netEarn = Math.max(0, subtotal - sf10 - cashbondDeduct - totalBenefits);
-  // Update UI
-  const delCountEl = document.getElementById('remit-delivered-count');
-  if(delCountEl) delCountEl.textContent = delivered.length+' parcel(s) delivered';
-  const stEl = document.getElementById('remit-subtotal');
-  if(stEl) stEl.textContent = p(subtotal);
-  document.getElementById('remit-gross-sf').textContent = p(totalSF);
-  document.getElementById('remit-sf-10').textContent = '-'+p(sf10);
-  const sfRiderEl = document.getElementById('remit-sf-rider-share');
-  if(sfRiderEl) sfRiderEl.textContent = p(sfRiderShare);
-  document.getElementById('remit-cashbond-cut').textContent = '-'+p(cashbondDeduct);
-  document.getElementById('remit-benefits-cut').textContent = '-'+p(totalBenefits);
-  document.getElementById('remit-net-earn').textContent = p(netEarn);
-  // Store computed net for cashbond auto-fill
-  document.getElementById('remit-net-earn').dataset.netEarn = netEarn;
-  document.getElementById('remit-net-earn').dataset.riderName = rider.name;
-  const cancelEl = document.getElementById('remit-cancelled-info');
-  if(cancelEl) cancelEl.innerHTML = cancelled.length
-    ? `<span style="color:var(--red);">⚠️ ${cancelled.length} cancelled order(s) — ${p(cancelledTotal)} auto-excluded (₱0.00 remit)</span>` : '';
-}
+function calcRemit() { populateRemitParcels(); } // alias for backwards compat
 
 function saveRemit() {
   const rIdx = document.getElementById('remit-rider').value;
-  if(rIdx==='') { toast('⚠️ Select a rider'); return; }
+  if(rIdx==='') { toast('⚠️ Pumili ng rider'); return; }
   const rider = S.riders[+rIdx];
-  const myOrders = S.orders.map((o,i)=>({...o,idx:i})).filter(o=>o.assignedRider===rider.name);
-  const delivered = myOrders.filter(o=>o.status==='Delivered');
-  const cancelled = myOrders.filter(o=>o.status==='Cancelled');
-  const totalSF = myOrders.reduce((s,o)=>s+(o.shipping||0), 0);
-  const sf10 = totalSF * 0.10;
-  const cashbondDeduct = 100;
-  const totalBenefits = (S.benefitsLog||[]).filter(b=>b.person.toUpperCase()===rider.name.toUpperCase())
-    .reduce((s,b)=>s+(b.sss||0)+(b.philhealth||0)+(b.pagibig||0)+(b.other||0), 0);
-  const subtotal = delivered.reduce((s,o)=>s+o.grandTotal, 0);
-  const cancelledTotal = cancelled.reduce((s,o)=>s+o.grandTotal, 0);
-  const netEarn = Math.max(0, subtotal - sf10 - cashbondDeduct - totalBenefits);
+  if(!rider) return;
+  const date = document.getElementById('remit-date').value || today();
+  const remitStatus = [...document.querySelectorAll('input[name="remit-status-radio"]')]
+    .find(r=>r.checked)?.value || 'For Remittance';
+  const riderEl = document.getElementById('remit-rider');
+  const totalSF = parseFloat(riderEl.dataset.totalSF)||0;
+  const sf10 = parseFloat(riderEl.dataset.sf10)||0;
+  const sfNetRider = parseFloat(riderEl.dataset.sfNetRider)||0;
+  const totalBenefits = parseFloat(riderEl.dataset.totalBenefits)||0;
+  const codSubtotal = parseFloat(riderEl.dataset.codSubtotal)||0;
+  const netSF = parseFloat(riderEl.dataset.netSF)||0;
+  const netTotal = parseFloat(riderEl.dataset.netTotal)||0;
+  const deliveredCount = parseInt(riderEl.dataset.deliveredCount)||0;
+  const cancelledCount = parseInt(riderEl.dataset.cancelledCount)||0;
+  const parcelCount = parseInt(riderEl.dataset.parcelCount)||0;
+
   const entry = {
     riderName: rider.name,
-    date: document.getElementById('remit-date').value || today(),
-    cashRemitted: parseFloat(document.getElementById('remit-cash').value)||0,
-    notes: document.getElementById('remit-notes').value,
-    parcelCount: myOrders.length, totalSF, sf10, cashbondDeduct, totalBenefits,
-    subtotal, cancelledTotal, netEarn,
-    deliveredCount: delivered.length, cancelledCount: cancelled.length
+    date,
+    remitStatus,
+    parcelCount, totalSF, sf10, sfNetRider, totalBenefits,
+    codSubtotal, netSF, netTotal,
+    deliveredCount, cancelledCount,
+    // Legacy compat fields
+    cashbondDeduct: 100,
+    subtotal: codSubtotal,
+    netEarn: netTotal,
+    cashRemitted: netTotal,
+    notes: ''
   };
+
   const editIdx = document.getElementById('remit-edit-idx').value;
-  if(editIdx!=='') S.remitLog[+editIdx]=entry; else S.remitLog.push(entry);
-  save(); closeModal('modal-remit'); toast('✅ Remit entry saved!');
+  if(editIdx!=='') {
+    S.remitLog[+editIdx] = entry;
+  } else {
+    S.remitLog.push(entry);
+  }
+
+  // If Remitted → auto-record cashbond + benefits into logs
+  if(remitStatus === 'Remitted') {
+    // Record cashbond deduction
+    S.cashbondLog = S.cashbondLog||[];
+    S.cashbondLog.push({
+      person: rider.name, type:'rider', date,
+      amount: 100,
+      notes: `Auto-recorded on Remitted — ${rider.name} (${date})`
+    });
+    // Record benefits if any
+    if(totalBenefits > 0) {
+      S.benefitsLog = S.benefitsLog||[];
+      S.benefitsLog.push({
+        person: rider.name, type:'rider', date,
+        sss: 0, philhealth: 0, pagibig: 0, other: totalBenefits,
+        notes: `Auto-recorded on Remitted — ${rider.name} (${date})`
+      });
+    }
+    toast(`✅ Remitted! Cashbond + Benefits auto-recorded sa logs.`);
+  } else {
+    toast(`✅ Saved — Status: ${remitStatus}`);
+  }
+
+  save();
+  closeModal('modal-remit');
   renderRemitPage();
 }
 
-// Open cashbond modal pre-filled with rider info and net amount from current remit calc
 function openCashbondFromRemit() {
   const netEl = document.getElementById('remit-net-earn');
   const riderName = netEl?.dataset.riderName || '';
-  const netAmt = parseFloat(netEl?.dataset.netEarn) || 100;
   const remitDate = document.getElementById('remit-date').value || today();
-  if(!riderName) { toast('⚠️ Select a rider first'); return; }
+  if(!riderName) { toast('⚠️ Pumili ng rider muna'); return; }
   closeModal('modal-remit');
-  // Open cashbond modal with pre-filled values
   openCashbondModal();
-  // After modal opens, pre-fill from rider remit data
   setTimeout(()=>{
-    const wrapper = document.getElementById('cb-person-wrapper');
-    if(wrapper) {
-      const sel = document.getElementById('cb-person');
-      if(sel) {
-        // Try to find rider in dropdown
-        const opt = [...sel.options].find(o=>o.value.toUpperCase()===riderName.toUpperCase());
-        if(opt) sel.value = opt.value;
-        else {
-          // Fallback to manual
-          sel.value = '__custom__';
-          const manual = document.getElementById('cb-person-manual');
-          if(manual) { manual.value = riderName; manual.style.display=''; }
-        }
-      }
+    const sel = document.getElementById('cb-person');
+    if(sel) {
+      const opt = [...sel.options].find(o=>o.value.toUpperCase()===riderName.toUpperCase());
+      if(opt) sel.value = opt.value;
     }
     document.getElementById('cb-type').value = 'rider';
     document.getElementById('cb-date').value = remitDate;
-    document.getElementById('cb-amount').value = 100; // standard cashbond deduction
-    document.getElementById('cb-notes').value = `Cashbond – based on remit computation. Net: ${p(netAmt)}`;
+    document.getElementById('cb-amount').value = 100;
+    document.getElementById('cb-notes').value = `Cashbond — ${riderName} (${remitDate})`;
   }, 100);
 }
 
@@ -5772,10 +5902,9 @@ function renderRemitPage() {
   const df = document.getElementById('remit-page-date')?.value||'';
   let filteredLog = S.remitLog;
   if(df) filteredLog = S.remitLog.filter(e=>e.date===df);
-  // Group by rider
   const byRider = {};
   filteredLog.forEach((e,_i)=>{
-    const i = S.remitLog.indexOf(e); // keep real index for delete
+    const i = S.remitLog.indexOf(e);
     if(!byRider[e.riderName]) byRider[e.riderName] = [];
     byRider[e.riderName].push({...e, idx:i});
   });
@@ -5783,47 +5912,54 @@ function renderRemitPage() {
     el.innerHTML = `<div class="card"><p style="color:var(--muted);padding:20px;text-align:center;">Walang remit entries${df?' para sa petsang ito':''}.</p></div>`;
     return;
   }
+  const statusColor = s => s==='Remitted'?'var(--green)':s==='Remitting'?'var(--orange)':'var(--muted)';
+  const statusIcon  = s => s==='Remitted'?'✅':s==='Remitting'?'🏃':'⏳';
   el.innerHTML = Object.entries(byRider).map(([riderName, entries])=>{
-    const totalRemitted = entries.reduce((s,e)=>s+e.cashRemitted, 0);
-    const grandSubtotal = entries.reduce((s,e)=>s+(e.subtotal||0), 0);
-    const grandNet = entries.reduce((s,e)=>s+(e.netEarn||0), 0);
+    const grandSubtotal = entries.reduce((s,e)=>s+(e.codSubtotal||e.subtotal||0),0);
+    const grandNet      = entries.reduce((s,e)=>s+(e.netTotal||e.netEarn||0),0);
+    const remittedCount = entries.filter(e=>e.remitStatus==='Remitted').length;
     return `<div class="card" style="margin-bottom:13px;">
       <div class="card-header">
         <span class="card-title">🏍️ ${riderName}</span>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <span style="font-size:11px;color:var(--muted);">${entries.length} entry/entries</span>
+          <span style="font-size:11px;color:var(--muted);">${entries.length} entry/entries · ${remittedCount} Remitted</span>
           <span style="font-size:11.5px;color:var(--blue);font-weight:600;">Subtotal: ${p(grandSubtotal)}</span>
           <span style="font-size:11.5px;color:var(--gold);font-weight:700;">Net Total: ${p(grandNet)}</span>
-          <span style="font-size:11.5px;color:var(--green);font-weight:700;">Remitted: ${p(totalRemitted)}</span>
           <button class="btn btn-gold btn-sm" onclick="openRemitModal()">+ Add</button>
         </div>
       </div>
       <div class="table-wrap"><table style="font-size:11px;">
         <thead><tr style="background:rgba(201,168,76,0.08);">
-          <th>Date</th><th>Parcels</th><th>Delivered</th><th>Cancelled</th><th>Gross SF</th><th>−10% SF</th><th>−Cashbond</th><th>−Benefits</th>
-          <th style="color:var(--blue);">Subtotal</th><th style="color:var(--gold);">Net Total</th><th style="color:var(--green);">Cash Remit</th><th>Notes</th><th>Del</th>
+          <th>Date</th><th>Parcels</th><th>Delivered</th><th>Cancelled</th>
+          <th>Total SF</th><th>−SF 10%</th><th>−Benefits</th>
+          <th style="color:var(--blue);">Subtotal</th>
+          <th style="color:var(--muted);">Net SF</th>
+          <th style="color:var(--gold);">Net Total Remit</th>
+          <th>Status</th><th>Del</th>
         </tr></thead>
         <tbody>
-          ${entries.map(e=>`<tr>
-            <td>${e.date}</td>
-            <td style="text-align:center;font-weight:600;">${e.parcelCount}</td>
-            <td style="color:var(--green);font-weight:600;">${e.deliveredCount||'—'}</td>
-            <td style="color:var(--red);">${e.cancelledCount||0} <span style="font-size:9px;">(₱0)</span></td>
-            <td>${p(e.totalSF)}</td>
-            <td style="color:var(--red);">-${p(e.sf10)}</td>
-            <td style="color:var(--red);">-${p(e.cashbondDeduct)}</td>
-            <td style="color:var(--red);">-${p(e.totalBenefits)}</td>
-            <td style="color:var(--blue);font-weight:600;">${p(e.subtotal||0)}</td>
-            <td style="color:var(--gold);font-weight:700;">${p(e.netEarn)}</td>
-            <td style="color:var(--green);font-weight:700;">${p(e.cashRemitted)}</td>
-            <td style="font-size:10px;">${e.notes||'—'}</td>
-            <td><button class="btn btn-red btn-sm" onclick="delRemit(${e.idx})">🗑️</button></td>
-          </tr>`).join('')}
+          ${entries.map(e=>{
+            const st = e.remitStatus||'For Remittance';
+            return `<tr>
+              <td>${e.date}</td>
+              <td style="text-align:center;font-weight:600;">${e.parcelCount||0}</td>
+              <td style="color:var(--green);font-weight:600;">${e.deliveredCount||'—'}</td>
+              <td style="color:var(--red);">${e.cancelledCount||0}</td>
+              <td>${p(e.totalSF||0)}</td>
+              <td style="color:var(--red);">-${p(e.sf10||0)}</td>
+              <td style="color:var(--red);">-${p(e.totalBenefits||0)}</td>
+              <td style="color:var(--blue);font-weight:600;">${p(e.codSubtotal||e.subtotal||0)}</td>
+              <td style="color:var(--muted);">${p(e.netSF||0)}</td>
+              <td style="color:var(--gold);font-weight:700;">${p(e.netTotal||e.netEarn||0)}</td>
+              <td style="font-weight:600;color:${statusColor(st)};">${statusIcon(st)} ${st}</td>
+              <td><button class="btn btn-red btn-sm" onclick="delRemit(${e.idx})">🗑️</button></td>
+            </tr>`;
+          }).join('')}
           <tr style="background:rgba(201,168,76,0.08);font-weight:700;font-size:12px;">
-            <td colspan="8" style="color:var(--gold);">TOTALS</td>
+            <td colspan="7" style="color:var(--gold);">TOTALS</td>
             <td style="color:var(--blue);">${p(grandSubtotal)}</td>
+            <td></td>
             <td style="color:var(--gold);">${p(grandNet)}</td>
-            <td style="color:var(--green);">${p(totalRemitted)}</td>
             <td colspan="2"></td>
           </tr>
         </tbody>
