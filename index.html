@@ -1473,7 +1473,7 @@ window.loadFromFirebase = async function() {
           </select>
         </div>
       </div>
-      <div class="form-group"><label>Shipping Fee (₱)</label><input type="number" class="form-control enc-tab" id="enc-shipping" value="0" min="0" oninput="calcEnc()" onkeydown="encNextField(event,this)"></div>
+      <div class="form-group"><label>Shipping Fee (₱)</label><input type="number" class="form-control enc-tab" id="enc-shipping" value="0" min="0" oninput="calcEnc()" onfocus="this.select()" onkeydown="encNextField(event,this)"></div>
       <div class="form-group"><label>Shipping Method *</label>
         <select class="form-control enc-tab" id="enc-payment-method" onkeydown="encNextField(event,this)">
           <option value="COD">🏍️ COD – Own Rider, Cash on Delivery</option>
@@ -3654,7 +3654,7 @@ function switchInvTab(t){
   invTab=t;
   document.querySelectorAll('#inv-tabs .tab-btn').forEach((b,i)=>b.classList.toggle('active',['list','stockin','stockout','ledger'][i]===t));
   const btn=document.getElementById('inv-action-btn');
-  if(t==='list')btn.innerHTML=`<button class="btn btn-gold" onclick="openModal('modal-inventory')">+ Add Product</button>`;
+  if(t==='list')btn.innerHTML=`<button class="btn btn-gold" onclick="openAddInvModal()">+ Add Product</button>`;
   else if(t==='stockin')btn.innerHTML=`<button class="btn btn-green" onclick="openStockModal('in')">+ Stock In</button>`;
   else if(t==='stockout')btn.innerHTML=`<button class="btn btn-orange" onclick="openStockModal('out')">+ Stock Out</button>`;
   else btn.innerHTML='';
@@ -3745,6 +3745,28 @@ function renderInv(tab){
     }).join(''):'<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:26px;">No transactions</td></tr>'}
     </tbody></table></div></div>`;
   }
+}
+function openAddInvModal() {
+  // Reset ALL fields to blank before opening for a new product
+  document.getElementById('inv-code').value = '';
+  document.getElementById('inv-desc').value = '';
+  document.getElementById('inv-grams').value = '0';
+  document.getElementById('inv-pergram').value = '0';
+  const fpi = document.getElementById('inv-fixprice'); if(fpi) fpi.value = '0';
+  document.getElementById('inv-qty').value = '0';
+  document.getElementById('inv-modal-title').textContent = 'Add Product';
+  document.getElementById('inv-edit-idx').value = '';
+  // Reset item type to grams (default)
+  const typeGrams = document.getElementById('inv-type-grams');
+  const typeFixed = document.getElementById('inv-type-fixprice');
+  if(typeGrams) typeGrams.checked = true;
+  if(typeFixed) typeFixed.checked = false;
+  // Show grams rows, hide fixprice rows
+  document.querySelectorAll('.inv-grams-row').forEach(el=>el.style.display='');
+  document.querySelectorAll('.inv-fixprice-row').forEach(el=>el.style.display='none');
+  calcInv();
+  openModal('modal-inventory');
+  setTimeout(()=>document.getElementById('inv-code')?.focus(), 120);
 }
 function calcInv(){
   const g=+document.getElementById('inv-grams').value||0,pg=+document.getElementById('inv-pergram').value||0;
@@ -4841,7 +4863,7 @@ function renderRiderParcels() {
     <div class="stat-card orange"><div class="stat-label">Out for Delivery</div><div class="stat-value">${myOrders.filter(o=>o.status==='Out for Delivery').length}</div></div>
     <div class="stat-card purple"><div class="stat-label">For Update</div><div class="stat-value">${myOrders.filter(o=>o.status==='Update').length}</div></div>`;
 
-  const RIDER_STATUSES = ['Delivered','Cancelled','For Update'];
+  const RIDER_STATUSES = ['Ready for Pick-up','Out for Delivery','Delivered','Cancelled','For Update'];
   const tbody = document.getElementById('rider-parcels-tbody');
 
   // Compute what rider will remit per order (cancelled = auto 0, delivered = grandTotal)
@@ -4925,7 +4947,7 @@ function renderRiderParcels() {
       <td><span class="status ${sclass(o.status)}">${o.status}</span></td>
       <td>
         <select class="form-control" style="width:145px;font-size:10.5px;padding:3px 6px;" onchange="riderUpdateStatus(${o.idx}, this.value)">
-          ${RIDER_STATUSES.map(s=>{const stored=s==='For Update'?'Update':s;return `<option value="${s}"${o.status===stored?' selected':''}>${s}</option>`;}).join('')}
+          ${RIDER_STATUSES.map(s=>{const stored=s==='For Update'?'Update':s==='Ready for Pick-up'?'Ready':s;return `<option value="${s}"${o.status===stored?' selected':''}>${s}</option>`;}).join('')}
         </select>
       </td>
       <td>
@@ -4974,7 +4996,10 @@ function renderRiderParcels() {
 
 function riderUpdateStatus(orderIdx, newStatus) {
   // Map display label to stored value
-  const statusMap = { 'For Update': 'Update' };
+  const statusMap = {
+    'For Update': 'Update',
+    'Ready for Pick-up': 'Ready'
+  };
   const storedStatus = statusMap[newStatus] || newStatus;
   S.orders[orderIdx].status = storedStatus;
   save(); toast('Status updated → ' + newStatus);
@@ -5424,7 +5449,7 @@ function setTrackingTab(tab) {
 
 function renderTracking() {
   const TRACK_STATUSES = ['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'];
-  const COD_UPDATE_STATUSES = ['Preparing','Ready','Out for Delivery','For Update'];
+  const COD_UPDATE_STATUSES = ['Preparing','Ready'];
   const colors = {'Preparing':'orange','Ready':'blue','Out for Delivery':'gold','Delivered':'green','Cancelled':'red','Update':'purple'};
   // Stats — all methods combined
   document.getElementById('tracking-stats').innerHTML = TRACK_STATUSES.map(s =>
@@ -5439,8 +5464,8 @@ function renderTracking() {
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q) && !(o.contact||'').includes(q)) return '';
     if(filt && o.status!==filt) return '';
     if(df && o.date!==df) return '';
-    // Already delivered/cancelled — show status badge only, no dropdown action
-    const isLocked = o.status==='Delivered' || o.status==='Cancelled';
+    // Only Preparing and Ready can be updated — all others are locked
+    const isLocked = !['Preparing','Ready'].includes(o.status);
     return `<tr>
       <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
       <td style="font-weight:500;">${o.name}</td>
@@ -6314,7 +6339,7 @@ async function initApp(){
   setVal('as-date-from', mStart);
   setVal('as-date-to', today());
   const invBtn = document.getElementById('inv-action-btn');
-  if(invBtn) invBtn.innerHTML=`<button class="btn btn-gold" onclick="openModal('modal-inventory')">+ Add Product</button>`;
+  if(invBtn) invBtn.innerHTML=`<button class="btn btn-gold" onclick="openAddInvModal()">+ Add Product</button>`;
 
   renderDash();
 }
