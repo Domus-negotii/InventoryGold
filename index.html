@@ -1464,7 +1464,7 @@ window.loadFromFirebase = async function() {
       <div class="form-group" style="grid-column:1/-1"><label>Complete Address *</label><input class="form-control enc-tab" id="enc-address" placeholder="House/Unit, Barangay, City, Province" onkeydown="encNextField(event,this)" oninput="autoAssignRider()"></div>
       <input type="hidden" id="enc-city" value="">
       <div class="form-group"><label>Landmark / Pakuha sa</label><input class="form-control enc-tab" id="enc-landmark" placeholder="Near church, beside sari-sari..." onkeydown="encNextField(event,this)"></div>
-      <div class="form-group"><label>Date of Purchase</label><input type="date" class="form-control enc-tab" id="enc-date" onkeydown="encNextField(event,this)"></div>
+      <div class="form-group"><label>Date of Purchase <span style="font-size:10px;color:var(--muted);">(default: tomorrow — delivery date)</span></label><input type="date" class="form-control enc-tab" id="enc-date" onkeydown="encNextField(event,this)"></div>
       <div class="form-group"><label>Admin Name *</label>
         <div id="enc-admin-wrapper">
           <!-- Populated by populateAdminDropdown() based on role -->
@@ -1709,7 +1709,18 @@ window.loadFromFirebase = async function() {
       <div class="info-row"><span style="color:var(--muted);">📦 Total SF (All Parcels)</span><span id="remit-gross-sf" style="color:var(--gold);font-weight:600;">₱0.00</span></div>
       <div class="info-row"><span style="color:var(--muted);">💰 Subtotal (Delivered + SF)</span><span id="remit-subtotal" style="color:var(--blue);font-weight:600;">₱0.00</span></div>
       <div class="info-row"><span style="color:var(--red);">Less: SF 10% (Company)</span><span id="remit-sf-10" style="color:var(--red);">-₱0.00</span></div>
-      <div class="info-row"><span style="color:var(--red);">Less: Benefits (SSS/PhilHealth/Pag-IBIG)</span><span id="remit-benefits-cut" style="color:var(--red);">-₱0.00</span></div>
+      <div class="info-row"><span style="color:var(--red);">Less: Cashbond (₱100)</span><span id="remit-cashbond-display" style="color:var(--red);">-₱100.00</span></div>
+      <div class="info-row" style="align-items:center;">
+        <span style="color:var(--red);">Less: Benefits</span>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="color:var(--muted);font-size:10.5px;">₱</span>
+          <input type="number" id="remit-benefits-input" value="0" min="0" step="0.01"
+            style="width:90px;font-size:11.5px;padding:2px 6px;border-radius:5px;border:1px solid var(--navy-border);background:var(--navy);color:var(--red);text-align:right;"
+            onfocus="this.select()"
+            oninput="recalcRemitNet()">
+          <span id="remit-benefits-cut" style="display:none;">-₱0.00</span>
+        </div>
+      </div>
       <div class="info-row" style="border-bottom:1px solid var(--navy-border);padding-bottom:8px;"><span style="color:var(--muted);">= Net SF (Rider Share after deductions)</span><span id="remit-sf-rider-share" style="color:var(--blue);font-weight:700;">₱0.00</span></div>
       <div class="info-row" style="border-bottom:none;font-size:14px;background:rgba(46,204,138,0.07);padding:8px;border-radius:7px;margin-top:6px;">
         <strong>🏦 Net Total to Remit</strong>
@@ -1923,7 +1934,8 @@ let currentRole = null;
 
 // ============ UTILS ============
 const p=n=>'₱'+parseFloat(n||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
-const today=()=>new Date().toISOString().split('T')[0];
+const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+const tomorrow=()=>{const d=new Date();d.setDate(d.getDate()+1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 const onum=i=>'GOE-'+String(i+1).padStart(5,'0');
 const sclass=s=>({'In Transit':'transit','Delivering':'delivering','Delivered':'delivered','Cancelled':'cancelled','For Return':'return','Returned':'returned','Preparing':'delivering','Ready':'blue','Out for Delivery':'gold','Update':'return'}[s]||'transit');
 function toast(msg,t=2500){
@@ -2682,7 +2694,7 @@ function openInvoice(i){
     </div>
     <p style="padding:2px 17px;font-size:9.5px;color:#555;">Received the above item/s in good condition.</p>
     <div class="inv-sigs">
-      <div class="inv-sig"><p style="font-weight:700;font-size:11px;margin-bottom:4px;">${o.admin}</p><div class="inv-sig-line"></div><p>Encoded by / Admin</p></div>
+      <div class="inv-sig"><p style="font-weight:700;font-size:11px;margin-bottom:4px;">&nbsp;</p><div class="inv-sig-line"></div><p>Encoded by / Admin</p></div>
       <div class="inv-sig"><p style="font-weight:700;font-size:11px;margin-bottom:4px;">&nbsp;</p><div class="inv-sig-line"></div><p>Rider's Signature</p></div>
       <div class="inv-sig"><p style="font-weight:700;font-size:11px;margin-bottom:4px;">&nbsp;</p><div class="inv-sig-line"></div><p>Customer's Signature</p></div>
     </div></div>`;
@@ -2693,7 +2705,10 @@ function openInvoice(i){
 // renderTracking() — replaced above with rider column
 
 function updateStatus(i,v){
-  S.orders[i].status=v;
+  // Map display label to stored value
+  const map = {'Ready for Pick-up':'Ready','For Update':'Update'};
+  const stored = map[v] || v;
+  S.orders[i].status=stored;
   save();
   toast('Status → '+v);
   renderTracking();
@@ -2830,8 +2845,11 @@ function renderReturns() {
   // Count cancelled items across all orders
   let cancelledItemCount = 0;
   S.orders.forEach(o=>{
-    if(!o.itemStatuses) return;
-    Object.values(o.itemStatuses).forEach(st=>{ if(st==='Cancelled') cancelledItemCount++; });
+    const itemStatuses = o.itemStatuses || {};
+    const itemCancelQty = o.itemCancelQty || {};
+    o.items.forEach((_,ii)=>{
+      if(itemStatuses[ii]==='Cancelled' || (itemCancelQty[ii]||0)>0) cancelledItemCount++;
+    });
   });
   const returnLogCount = (S.returnLog||[]).length;
 
@@ -2885,18 +2903,26 @@ function renderCancelledItems() {
   if(!tbody) return;
   const rows = [];
   S.orders.forEach((o,oi)=>{
-    if(!o.itemStatuses) return;
+    const itemStatuses = o.itemStatuses || {};
+    const itemCancelQty = o.itemCancelQty || {};
     o.items.forEach((it,ii)=>{
-      if((o.itemStatuses[ii]||'Pending') !== 'Cancelled') return;
+      const isCancelled = itemStatuses[ii] === 'Cancelled';
+      const partialQty = itemCancelQty[ii] || 0;
+      // Include fully cancelled items OR items with partial cancel qty
+      if(!isCancelled && partialQty === 0) return;
       const isGrams = it.grams > 0;
-      const qtyGrams = isGrams ? `${it.grams}g` : `×${it.qty||1}`;
-      // Hide if already has a return log entry — it's in the Return Log now
+      const totalQty = isGrams ? it.grams : (it.qty||1);
+      // Actual cancelled qty: full cancel = totalQty, partial = partialQty
+      const cancelledQty = isCancelled ? totalQty : partialQty;
+      const unit = isGrams ? 'g' : (cancelledQty>1?'pcs':'pc');
+      const qtyGrams = `${cancelledQty}${unit}`;
+      // Hide if already has a return log entry
       const hasReturnLog = (S.returnLog||[]).some(r =>
         r.orderNum === onum(oi) && r.itemIdx === ii);
-      if(!hasReturnLog) rows.push({ o, oi, it, ii, isGrams, qtyGrams });
+      if(!hasReturnLog) rows.push({ o, oi, it, ii, isGrams, qtyGrams, cancelledQty, isCancelled, partialQty, totalQty });
     });
   });
-  tbody.innerHTML = rows.length ? rows.map(({o, oi, it, ii, qtyGrams})=>`<tr>
+  tbody.innerHTML = rows.length ? rows.map(({o, oi, it, ii, qtyGrams, isCancelled, partialQty, totalQty})=>`<tr>
     <td style="color:var(--gold);font-weight:600;">${onum(oi)}</td>
     <td style="font-weight:500;">${o.name}</td>
     <td>${o.contact||'—'}</td>
@@ -2904,10 +2930,12 @@ function renderCancelledItems() {
     <td>${o.date}</td>
     <td style="font-family:monospace;font-size:11px;color:var(--gold);">${it.code||'—'}</td>
     <td>${it.desc||'—'}</td>
-    <td style="font-weight:600;">${qtyGrams}</td>
+    <td style="font-weight:600;color:${isCancelled?'var(--red)':'var(--orange)'};">${qtyGrams}
+      ${!isCancelled?`<div style="font-size:9px;color:var(--muted);">of ${totalQty}${it.grams>0?'g':' pcs'} total</div>`:''}
+    </td>
     <td style="color:var(--red);font-weight:700;">${p(it.total)}</td>
     <td>
-      <span class="status cancelled" style="font-size:9px;">Cancelled</span><br>
+      <span class="status ${isCancelled?'cancelled':'orange'}" style="font-size:9px;">${isCancelled?'Cancelled':'Partial Cancel'}</span><br>
       <span style="font-size:9px;color:var(--green);">✅ Stock restored</span>
     </td>
     <td><button class="btn btn-blue btn-sm" onclick="openReturnLogModal('${onum(oi)}',${ii})">📋 Record Return</button></td>
@@ -4899,11 +4927,15 @@ function renderRiderParcels() {
         ? `<span style="color:var(--orange);font-weight:600;">${p(it.total)}</span><br><span style="font-size:9.5px;color:var(--orange);">${cancelledQty}${isGramsItem?'g':' pc'} cancelled</span>`
         : `<span style="color:var(--gold);font-weight:600;">${p(it.total)}</span>`;
 
+      const itemRemarks = o.itemRemarks || {};
+      const itemRemark = itemRemarks[ii] || '';
+
       return `<tr style="background:rgba(15,27,45,0.7);${isCancelledItem?'opacity:0.65;':''}">
         <td colspan="2" style="padding:4px 10px 4px 28px;font-size:10.5px;">
           ${isCancelledItem?'❌':'🔹'} <strong style="color:${isCancelledItem?'var(--red)':'var(--white)'};">${it.code||'—'}</strong>
           <span style="color:var(--muted);${isCancelledItem?'text-decoration:line-through;':''}">${it.desc||''}</span>
           <span style="color:var(--blue);font-size:9.5px;margin-left:6px;">📦 ${qtyLabel}</span>
+          ${itemRemark ? `<div style="font-size:9.5px;color:var(--orange);margin-top:2px;">💬 ${itemRemark}</div>` : ''}
         </td>
         <td style="font-size:10.5px;">${valDisplay}</td>
         <td colspan="2" style="font-size:10px;">
@@ -4922,6 +4954,10 @@ function renderRiderParcels() {
                 onchange="riderItemPartialCancel(${o.idx},${ii},this.value,${totalQty},${isGramsItem?1:0})">
               <span style="font-size:9px;color:var(--muted);">/ ${totalQty}${isGramsItem?'g':''}</span>
             </div>` : ''}
+            ${isCancelledItem || cancelledQty > 0 ? `
+            <input class="form-control" style="width:130px;font-size:9.5px;padding:2px 5px;margin-top:2px;border-color:var(--orange);"
+              placeholder="Cancel reason..." value="${itemRemark}"
+              onblur="riderSaveItemRemark(${o.idx},${ii},this.value)">` : ''}
           </div>
         </td>
         <td colspan="4" style="font-size:9.5px;color:${stColor};font-weight:700;">
@@ -5009,6 +5045,12 @@ function riderUpdateStatus(orderIdx, newStatus) {
 
 function riderSaveRemarks(orderIdx, remarks) {
   S.orders[orderIdx].riderRemarks = remarks;
+  save();
+}
+function riderSaveItemRemark(orderIdx, itemIdx, remark) {
+  if(!S.orders[orderIdx]) return;
+  if(!S.orders[orderIdx].itemRemarks) S.orders[orderIdx].itemRemarks = {};
+  S.orders[orderIdx].itemRemarks[itemIdx] = remark;
   save();
 }
 
@@ -5273,7 +5315,7 @@ function openEncodeModal() {
   ['enc-name','enc-contact','enc-backup-contact','enc-address','enc-landmark'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const cpErr=document.getElementById('enc-contact-err'); if(cpErr) cpErr.textContent='';
   document.getElementById('enc-city').value = '';
-  document.getElementById('enc-date').value = today();
+  document.getElementById('enc-date').value = tomorrow();
   document.getElementById('enc-shipping').value = '0';
   document.getElementById('enc-items-tbody').innerHTML = '';
   document.getElementById('enc-edit-idx').value = '';
@@ -5449,7 +5491,7 @@ function setTrackingTab(tab) {
 
 function renderTracking() {
   const TRACK_STATUSES = ['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'];
-  const COD_UPDATE_STATUSES = ['Preparing','Ready'];
+  const COD_UPDATE_STATUSES = ['Preparing','Ready for Pick-up'];
   const colors = {'Preparing':'orange','Ready':'blue','Out for Delivery':'gold','Delivered':'green','Cancelled':'red','Update':'purple'};
   // Stats — all methods combined
   document.getElementById('tracking-stats').innerHTML = TRACK_STATUSES.map(s =>
@@ -5477,11 +5519,15 @@ function renderTracking() {
       <td><span class="status ${sclass(o.status)}">${o.status||'—'}</span></td>
       <td>${isLocked
         ? `<span style="font-size:10px;color:var(--muted);padding:3px 8px;border:1px solid var(--navy-border);border-radius:5px;">🔒 ${o.status}</span>`
-        : `<select class="form-control" style="width:155px;font-size:10.5px;padding:3px 6px;" onchange="updateStatus(${i},this.value)">
-            ${COD_UPDATE_STATUSES.map(s=>`<option value="${s==='For Update'?'Update':s}"${o.status===s||(s==='For Update'&&o.status==='Update')?' selected':''}>${s}</option>`).join('')}
+        : `<select class="form-control" style="width:160px;font-size:10.5px;padding:3px 6px;" onchange="updateStatus(${i},this.value)">
+            ${COD_UPDATE_STATUSES.map(s=>{const stored=s==='Ready for Pick-up'?'Ready':s==='For Update'?'Update':s;return `<option value="${s}"${o.status===stored?' selected':''}>${s}</option>`;}).join('')}
           </select>`
       }</td>
-      <td style="font-size:10.5px;color:var(--muted);max-width:130px;">${o.riderRemarks||'—'}</td>
+      <td style="font-size:10.5px;color:var(--muted);max-width:150px;">
+        ${o.riderRemarks ? `<div>${o.riderRemarks}</div>` : ''}
+        ${o.itemRemarks && Object.keys(o.itemRemarks).length ? Object.entries(o.itemRemarks).map(([ii,r])=>r?`<div style="color:var(--orange);font-size:9.5px;">💬 ${o.items[+ii]?.code||'Item '+(+ii+1)}: ${r}</div>`:'').join('') : ''}
+        ${!o.riderRemarks && !(o.itemRemarks && Object.values(o.itemRemarks).some(r=>r)) ? '—' : ''}
+      </td>
     </tr>`;
   }).join('') || '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No COD parcels</td></tr>';
   refreshUpdateBadge();
@@ -5735,17 +5781,22 @@ function openRemitModal(editIdx=null) {
   document.getElementById('remit-date').value = today();
   document.getElementById('remit-edit-idx').value = editIdx !== null ? editIdx : '';
   document.getElementById('remit-modal-title').textContent = editIdx !== null ? 'Edit Remit Entry' : 'Rider Remittance';
+  // Reset benefits to 0
+  const benInput = document.getElementById('remit-benefits-input');
+  if(benInput) benInput.value = '0';
   // Reset status to default
   document.querySelectorAll('input[name="remit-status-radio"]').forEach(r=>{ r.checked = r.value === 'For Remittance'; });
   onRemitStatusChange('For Remittance');
   document.getElementById('remit-parcel-summary').innerHTML = '<p style="color:var(--muted);font-size:11.5px;margin:0;">Select a rider to see parcel summary.</p>';
   // Reset calc display
-  ['remit-gross-sf','remit-subtotal','remit-sf-10','remit-benefits-cut','remit-sf-rider-share','remit-net-earn']
+  ['remit-gross-sf','remit-subtotal','remit-sf-10','remit-sf-rider-share','remit-net-earn']
     .forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent='₱0.00'; });
   if(editIdx !== null) {
     const e = S.remitLog[editIdx];
     sel.value = S.riders.findIndex(r=>r.name===e.riderName);
     document.getElementById('remit-date').value = e.date;
+    // Restore manual benefits if saved
+    if(benInput) benInput.value = e.manualBenefits || 0;
     // Restore status
     document.querySelectorAll('input[name="remit-status-radio"]').forEach(r=>{ r.checked = r.value === (e.remitStatus||'For Remittance'); });
     onRemitStatusChange(e.remitStatus||'For Remittance');
@@ -5763,7 +5814,6 @@ function populateRemitParcels() {
   const rider = S.riders[+idx];
   if(!rider) return;
   const df = document.getElementById('remit-date')?.value || '';
-  // All orders for this rider (optionally filtered by date)
   const myOrders = S.orders.map((o,i)=>({...o,idx:i}))
     .filter(o=>o.assignedRider===rider.name && (!df || o.date===df));
   const delivered = myOrders.filter(o=>o.status==='Delivered');
@@ -5771,14 +5821,13 @@ function populateRemitParcels() {
   const totalSF = myOrders.reduce((s,o)=>s+(o.shipping||0),0);
   const sf10 = totalSF * 0.10;
   const sfNetRider = totalSF * 0.90;
-  const totalBenefits = (S.benefitsLog||[])
-    .filter(b=>b.person.toUpperCase()===rider.name.toUpperCase())
-    .reduce((s,b)=>s+(b.sss||0)+(b.philhealth||0)+(b.pagibig||0)+(b.other||0),0);
-  // Subtotal = all delivered grandTotal (includes SF)
+  const cashbond = 100;
+  // Benefits: read from manual input (default 0)
+  const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
+  // Subtotal = all delivered grandTotal
   const codSubtotal = delivered.reduce((s,o)=>s+o.grandTotal,0);
-  // Net SF = SF rider share - benefits
-  const netSF = Math.max(0, sfNetRider - totalBenefits);
-  // Net Total = COD subtotal - netSF (rider's SF was already included in grandTotal, now we deduct)
+  // Net SF = SF rider share - cashbond - manual benefits
+  const netSF = Math.max(0, sfNetRider - cashbond - manualBenefits);
   const netTotal = Math.max(0, codSubtotal - netSF);
 
   // Build parcel rows — shows whole-order cancels AND per-item partial cancels
@@ -5878,32 +5927,51 @@ function populateRemitParcels() {
   document.getElementById('remit-gross-sf').textContent = p(totalSF);
   document.getElementById('remit-subtotal').textContent = p(codSubtotal);
   document.getElementById('remit-sf-10').textContent = '-'+p(sf10);
-  document.getElementById('remit-benefits-cut').textContent = totalBenefits>0?'-'+p(totalBenefits):'₱0.00';
-  document.getElementById('remit-sf-rider-share').textContent = p(sfNetRider - totalBenefits < 0 ? 0 : sfNetRider - totalBenefits);
+  document.getElementById('remit-sf-rider-share').textContent = p(netSF);
   const netEl = document.getElementById('remit-net-earn');
   netEl.textContent = p(netTotal);
   netEl.dataset.netEarn = netTotal;
   netEl.dataset.riderName = rider.name;
-  // Store hidden field values for saveRemit
   const dcEl = document.getElementById('remit-delivered-count'); if(dcEl) dcEl.value = delivered.length;
   const cbEl = document.getElementById('remit-cashbond-cut'); if(cbEl) cbEl.value = 100;
-  // Hint
   const hint = document.getElementById('remit-formula-hint');
   if(hint) hint.textContent = `Net Total = ${p(codSubtotal)} − ${p(netSF)} (Net SF) = ${p(netTotal)}`;
-  // Store for saveRemit access
-  document.getElementById('remit-rider').dataset.totalSF = totalSF;
-  document.getElementById('remit-rider').dataset.sf10 = sf10;
-  document.getElementById('remit-rider').dataset.sfNetRider = sfNetRider;
-  document.getElementById('remit-rider').dataset.totalBenefits = totalBenefits;
-  document.getElementById('remit-rider').dataset.codSubtotal = codSubtotal;
-  document.getElementById('remit-rider').dataset.netSF = netSF;
-  document.getElementById('remit-rider').dataset.netTotal = netTotal;
-  document.getElementById('remit-rider').dataset.deliveredCount = delivered.length;
-  document.getElementById('remit-rider').dataset.cancelledCount = cancelled.length;
-  document.getElementById('remit-rider').dataset.parcelCount = myOrders.length;
+  // Store for saveRemit and recalc access
+  const riderEl = document.getElementById('remit-rider');
+  riderEl.dataset.totalSF = totalSF;
+  riderEl.dataset.sf10 = sf10;
+  riderEl.dataset.sfNetRider = sfNetRider;
+  riderEl.dataset.cashbond = cashbond;
+  riderEl.dataset.codSubtotal = codSubtotal;
+  riderEl.dataset.netSF = netSF;
+  riderEl.dataset.netTotal = netTotal;
+  riderEl.dataset.deliveredCount = delivered.length;
+  riderEl.dataset.cancelledCount = cancelled.length;
+  riderEl.dataset.parcelCount = myOrders.length;
 }
 
-function calcRemit() { populateRemitParcels(); } // alias for backwards compat
+// Recalc net when manual benefits input changes
+function recalcRemitNet() {
+  const riderEl = document.getElementById('remit-rider');
+  if(!riderEl || !riderEl.dataset.sfNetRider) return;
+  const sfNetRider = parseFloat(riderEl.dataset.sfNetRider)||0;
+  const cashbond = parseFloat(riderEl.dataset.cashbond)||100;
+  const codSubtotal = parseFloat(riderEl.dataset.codSubtotal)||0;
+  const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
+  const sf10 = parseFloat(riderEl.dataset.sf10)||0;
+  const netSF = Math.max(0, sfNetRider - cashbond - manualBenefits);
+  const netTotal = Math.max(0, codSubtotal - netSF);
+  riderEl.dataset.netSF = netSF;
+  riderEl.dataset.netTotal = netTotal;
+  document.getElementById('remit-sf-rider-share').textContent = p(netSF);
+  const netEl = document.getElementById('remit-net-earn');
+  netEl.textContent = p(netTotal);
+  netEl.dataset.netEarn = netTotal;
+  const hint = document.getElementById('remit-formula-hint');
+  if(hint) hint.textContent = `Net Total = ${p(codSubtotal)} − ${p(netSF)} (Net SF) = ${p(netTotal)}`;
+}
+
+function calcRemit() { populateRemitParcels(); }
 
 function saveRemit() {
   const rIdx = document.getElementById('remit-rider').value;
@@ -5917,7 +5985,8 @@ function saveRemit() {
   const totalSF = parseFloat(riderEl.dataset.totalSF)||0;
   const sf10 = parseFloat(riderEl.dataset.sf10)||0;
   const sfNetRider = parseFloat(riderEl.dataset.sfNetRider)||0;
-  const totalBenefits = parseFloat(riderEl.dataset.totalBenefits)||0;
+  const cashbond = parseFloat(riderEl.dataset.cashbond)||100;
+  const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
   const codSubtotal = parseFloat(riderEl.dataset.codSubtotal)||0;
   const netSF = parseFloat(riderEl.dataset.netSF)||0;
   const netTotal = parseFloat(riderEl.dataset.netTotal)||0;
@@ -5929,11 +5998,12 @@ function saveRemit() {
     riderName: rider.name,
     date,
     remitStatus,
-    parcelCount, totalSF, sf10, sfNetRider, totalBenefits,
+    parcelCount, totalSF, sf10, sfNetRider,
+    cashbondDeduct: cashbond,
+    manualBenefits,
+    totalBenefits: manualBenefits, // for backwards compat display
     codSubtotal, netSF, netTotal,
     deliveredCount, cancelledCount,
-    // Legacy compat fields
-    cashbondDeduct: 100,
     subtotal: codSubtotal,
     netEarn: netTotal,
     cashRemitted: netTotal,
@@ -5949,23 +6019,21 @@ function saveRemit() {
 
   // If Remitted → auto-record cashbond + benefits into logs
   if(remitStatus === 'Remitted') {
-    // Record cashbond deduction
     S.cashbondLog = S.cashbondLog||[];
     S.cashbondLog.push({
       person: rider.name, type:'rider', date,
-      amount: 100,
+      amount: cashbond,
       notes: `Auto-recorded on Remitted — ${rider.name} (${date})`
     });
-    // Record benefits if any
-    if(totalBenefits > 0) {
+    if(manualBenefits > 0) {
       S.benefitsLog = S.benefitsLog||[];
       S.benefitsLog.push({
         person: rider.name, type:'rider', date,
-        sss: 0, philhealth: 0, pagibig: 0, other: totalBenefits,
+        sss: 0, philhealth: 0, pagibig: 0, other: manualBenefits,
         notes: `Auto-recorded on Remitted — ${rider.name} (${date})`
       });
     }
-    toast(`✅ Remitted! Cashbond + Benefits auto-recorded sa logs.`);
+    toast(`✅ Remitted! Cashbond ₱${cashbond}${manualBenefits>0?' + Benefits ₱'+manualBenefits:''} auto-recorded sa logs.`);
   } else {
     toast(`✅ Saved — Status: ${remitStatus}`);
   }
