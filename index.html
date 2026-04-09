@@ -852,7 +852,7 @@ window.loadFromFirebase = async function() {
             <input class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" placeholder="Search..." id="track-intl-search" oninput="renderTrackingIntl()">
             <select class="form-control" style="width:175px;font-size:11px;padding:4px 8px;" id="track-intl-filter" onchange="renderTrackingIntl()">
               <option value="">All Parcel Status</option>
-              <option>Preparing</option><option>Ready to Pick-up</option><option>Drop off at LBC</option><option>Delivered</option>
+              <option>Preparing</option><option>Ready to Pick-up</option><option>Drop off at Courier</option><option>Delivered</option>
             </select>
             <input type="date" class="form-control" style="width:150px;font-size:11px;" id="track-intl-date" oninput="renderTrackingIntl()" title="Filter by date">
           </div>
@@ -4841,7 +4841,7 @@ function renderRiderParcels() {
     <div class="stat-card orange"><div class="stat-label">Out for Delivery</div><div class="stat-value">${myOrders.filter(o=>o.status==='Out for Delivery').length}</div></div>
     <div class="stat-card purple"><div class="stat-label">For Update</div><div class="stat-value">${myOrders.filter(o=>o.status==='Update').length}</div></div>`;
 
-  const RIDER_STATUSES = ['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'];
+  const RIDER_STATUSES = ['Delivered','Cancelled','For Update'];
   const tbody = document.getElementById('rider-parcels-tbody');
 
   // Compute what rider will remit per order (cancelled = auto 0, delivered = grandTotal)
@@ -4925,7 +4925,7 @@ function renderRiderParcels() {
       <td><span class="status ${sclass(o.status)}">${o.status}</span></td>
       <td>
         <select class="form-control" style="width:145px;font-size:10.5px;padding:3px 6px;" onchange="riderUpdateStatus(${o.idx}, this.value)">
-          ${RIDER_STATUSES.map(s=>`<option${o.status===s?' selected':''}>${s}</option>`).join('')}
+          ${RIDER_STATUSES.map(s=>{const stored=s==='For Update'?'Update':s;return `<option value="${s}"${o.status===stored?' selected':''}>${s}</option>`;}).join('')}
         </select>
       </td>
       <td>
@@ -4973,7 +4973,10 @@ function renderRiderParcels() {
 }
 
 function riderUpdateStatus(orderIdx, newStatus) {
-  S.orders[orderIdx].status = newStatus;
+  // Map display label to stored value
+  const statusMap = { 'For Update': 'Update' };
+  const storedStatus = statusMap[newStatus] || newStatus;
+  S.orders[orderIdx].status = storedStatus;
   save(); toast('Status updated → ' + newStatus);
   renderRiderParcels();
   refreshUpdateBadge();
@@ -5421,6 +5424,7 @@ function setTrackingTab(tab) {
 
 function renderTracking() {
   const TRACK_STATUSES = ['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'];
+  const COD_UPDATE_STATUSES = ['Preparing','Ready','Out for Delivery','For Update'];
   const colors = {'Preparing':'orange','Ready':'blue','Out for Delivery':'gold','Delivered':'green','Cancelled':'red','Update':'purple'};
   // Stats — all methods combined
   document.getElementById('tracking-stats').innerHTML = TRACK_STATUSES.map(s =>
@@ -5435,6 +5439,8 @@ function renderTracking() {
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q) && !(o.contact||'').includes(q)) return '';
     if(filt && o.status!==filt) return '';
     if(df && o.date!==df) return '';
+    // Already delivered/cancelled — show status badge only, no dropdown action
+    const isLocked = o.status==='Delivered' || o.status==='Cancelled';
     return `<tr>
       <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
       <td style="font-weight:500;">${o.name}</td>
@@ -5444,9 +5450,12 @@ function renderTracking() {
       <td>${o.date}</td>
       <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
       <td><span class="status ${sclass(o.status)}">${o.status||'—'}</span></td>
-      <td><select class="form-control" style="width:140px;font-size:10.5px;padding:3px 6px;" onchange="updateStatus(${i},this.value)">
-        ${TRACK_STATUSES.map(s=>`<option${o.status===s?' selected':''}>${s}</option>`).join('')}
-      </select></td>
+      <td>${isLocked
+        ? `<span style="font-size:10px;color:var(--muted);padding:3px 8px;border:1px solid var(--navy-border);border-radius:5px;">🔒 ${o.status}</span>`
+        : `<select class="form-control" style="width:155px;font-size:10.5px;padding:3px 6px;" onchange="updateStatus(${i},this.value)">
+            ${COD_UPDATE_STATUSES.map(s=>`<option value="${s==='For Update'?'Update':s}"${o.status===s||(s==='For Update'&&o.status==='Update')?' selected':''}>${s}</option>`).join('')}
+          </select>`
+      }</td>
       <td style="font-size:10.5px;color:var(--muted);max-width:130px;">${o.riderRemarks||'—'}</td>
     </tr>`;
   }).join('') || '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No COD parcels</td></tr>';
@@ -5454,6 +5463,7 @@ function renderTracking() {
 }
 
 const LBC_PARCEL_STATUSES = ['Preparing','Ready to Pick-up','Drop off at LBC','Delivered'];
+const INTL_PARCEL_STATUSES = ['Preparing','Ready to Pick-up','Drop off at Courier','Delivered'];
 
 function renderTrackingLbc() {
   const q = (document.getElementById('track-lbc-search')?.value||'').toLowerCase();
@@ -5495,9 +5505,11 @@ function renderTrackingIntl() {
   const filt = document.getElementById('track-intl-filter')?.value||'';
   const df = document.getElementById('track-intl-date')?.value||'';
   const payColor = s => s==='Fully Paid'?'var(--green)':s==='Partial'?'var(--orange)':'var(--red)';
-  const stColor = s => s==='Delivered'?'var(--green)':s==='Drop off at LBC'?'var(--blue)':s==='Ready to Pick-up'?'var(--gold)':'var(--muted)';
+  const stColor = s => s==='Delivered'?'var(--green)':s==='Drop off at Courier'?'var(--blue)':s==='Ready to Pick-up'?'var(--gold)':'var(--muted)';
   document.getElementById('tracking-intl-tbody').innerHTML = S.orders.map((o,i) => {
     if((o.paymentMethod||'COD') !== 'INTERNATIONAL') return '';
+    // Migrate old "Drop off at LBC" to "Drop off at Courier" for intl orders
+    if(o.lbcStatus === 'Drop off at LBC') o.lbcStatus = 'Drop off at Courier';
     const lbcSt = o.lbcStatus || 'Preparing';
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q) && !(o.contact||'').includes(q)) return '';
     if(filt && lbcSt !== filt) return '';
@@ -5517,8 +5529,8 @@ function renderTrackingIntl() {
       </td>
       <td style="font-size:11px;font-weight:600;color:${stColor(lbcSt)};">✈️ ${lbcSt}</td>
       <td>
-        <select class="form-control" style="width:165px;font-size:10.5px;padding:3px 6px;" onchange="updateLbcStatus(${i},this.value)">
-          ${LBC_PARCEL_STATUSES.map(s=>`<option${lbcSt===s?' selected':''}>${s}</option>`).join('')}
+        <select class="form-control" style="width:175px;font-size:10.5px;padding:3px 6px;" onchange="updateLbcStatus(${i},this.value)">
+          ${INTL_PARCEL_STATUSES.map(s=>`<option${lbcSt===s?' selected':''}>${s}</option>`).join('')}
         </select>
       </td>
     </tr>`;
@@ -5744,28 +5756,80 @@ function populateRemitParcels() {
   // Net Total = COD subtotal - netSF (rider's SF was already included in grandTotal, now we deduct)
   const netTotal = Math.max(0, codSubtotal - netSF);
 
-  // Build parcel rows
+  // Build parcel rows — shows whole-order cancels AND per-item partial cancels
   const rows = myOrders.map((o,pi)=>{
-    const isCancelled = o.status!=='Delivered';
-    const itemList = o.items.map(it=>{
-      if(it.pergram>0) return `${it.code}: ${it.desc} (${it.grams||it.qty}g × ${p(it.pergram)}/g = ${p(it.total)})`;
-      return `${it.code}: ${it.desc} ×${it.qty} = ${p(it.total)}`;
+    const isWholeOrderCancelled = o.status!=='Delivered';
+    const itemStatuses = o.itemStatuses || {};
+    const itemCancelQty = o.itemCancelQty || {};
+
+    // Build per-item list with cancel indicators
+    const itemList = o.items.map((it,ii)=>{
+      const isItemCancelled = itemStatuses[ii] === 'Cancelled';
+      const cancelledQty = itemCancelQty[ii] || 0;
+      const totalQty = it.grams || it.qty || 1;
+      const hasPartialCancel = cancelledQty > 0 && !isItemCancelled;
+      const pricePerUnit = it.total / Math.max(1, totalQty);
+      const cancelledAmt = cancelledQty * pricePerUnit;
+      const remainAmt = it.total - cancelledAmt;
+      const remainQty = totalQty - cancelledQty;
+      const unit = it.pergram > 0 ? 'g' : 'pcs';
+      const baseStr = it.pergram > 0
+        ? `${it.code}: ${it.desc} (${it.grams}g × ${p(it.pergram)}/g = ${p(it.total)})`
+        : `${it.code}: ${it.desc} ×${it.qty} = ${p(it.total)}`;
+
+      if(isWholeOrderCancelled || isItemCancelled) {
+        return `<span style="text-decoration:line-through;color:var(--muted);opacity:0.7;">${baseStr}</span>
+                <span style="color:var(--red);font-size:9px;"> ❌ Cancelled (₱0.00)</span>`;
+      } else if(hasPartialCancel) {
+        return `<span style="color:var(--orange);">${it.code}: ${it.desc}</span>
+                <br><span style="font-size:9.5px;">
+                  &nbsp;❌ Cancelled: <strong>${cancelledQty}${unit}</strong> = <span style="color:var(--red);">-${p(cancelledAmt)}</span>
+                  &nbsp;✅ Remaining: <strong>${remainQty}${unit}</strong> = <span style="color:var(--green);">${p(remainAmt)}</span>
+                </span>`;
+      }
+      return baseStr;
     }).join('<br>');
-    return `<tr style="${isCancelled?'opacity:0.55;background:rgba(224,85,85,0.04);':''}">
+
+    // Check for any partial/full item cancels in this delivered order
+    const hasAnyCancelledItems = !isWholeOrderCancelled && o.items.some((_,ii)=>
+      itemStatuses[ii]==='Cancelled' || (itemCancelQty[ii]||0) > 0
+    );
+
+    const remitAmtDisplay = isWholeOrderCancelled
+      ? `<span style="color:var(--red);font-weight:700;">₱0.00</span>
+         <div style="font-size:9px;color:var(--muted);text-decoration:line-through;">${p(o.grandTotal)} (orig)</div>`
+      : `<span style="color:var(--green);font-weight:700;">${p(o.grandTotal)}</span>
+         ${hasAnyCancelledItems ? `<div style="font-size:9px;color:var(--orange);">⚠️ May cancelled items</div>` : ''}`;
+
+    const rowBg = isWholeOrderCancelled
+      ? 'background:rgba(224,85,85,0.06);'
+      : hasAnyCancelledItems ? 'background:rgba(255,165,0,0.04);' : '';
+
+    return `<tr style="${rowBg}">
       <td style="color:var(--gold);font-size:10px;white-space:nowrap;">${onum(o.idx)}</td>
-      <td style="font-size:10.5px;font-weight:500;">${o.name}</td>
+      <td style="font-size:10.5px;font-weight:500;${isWholeOrderCancelled?'color:var(--muted);':''}">${o.name}</td>
       <td style="font-size:10px;">${itemList}</td>
       <td style="font-size:10.5px;color:var(--blue);">${p(o.shipping)}</td>
-      <td style="font-size:10.5px;font-weight:700;color:${isCancelled?'var(--red)':'var(--green)'};">${isCancelled?'₱0.00':p(o.grandTotal)}</td>
+      <td style="font-size:10.5px;">${remitAmtDisplay}</td>
       <td><span class="status ${sclass(o.status)}" style="font-size:9px;">${o.status}</span></td>
     </tr>`;
   }).join('');
+
+  // Count orders with ANY cancelled items (whole order or partial)
+  const ordersWithCancelledItems = myOrders.filter(o=>
+    o.status!=='Delivered' ||
+    o.items.some((_,ii)=>(o.itemStatuses||{})[ii]==='Cancelled'||(o.itemCancelQty||{})[ii]>0)
+  );
+  const partialCancelOrders = delivered.filter(o=>
+    o.items.some((_,ii)=>(o.itemStatuses||{})[ii]==='Cancelled'||(o.itemCancelQty||{})[ii]>0)
+  );
 
   document.getElementById('remit-parcel-summary').innerHTML = `
     <div style="font-size:10.5px;font-weight:700;color:var(--gold);margin-bottom:7px;">
       📦 ${rider.name} — ${df||'All Dates'} &nbsp;|&nbsp;
       <span style="color:var(--green);">${delivered.length} Delivered</span>
       ${cancelled.length?`<span style="color:var(--red);"> · ${cancelled.length} Cancelled/Update</span>`:''}
+      ${partialCancelOrders.length?`<span style="color:var(--orange);"> · ${partialCancelOrders.length} w/ Cancelled Items</span>`:''}
     </div>
     <div class="table-wrap" style="max-height:280px;overflow-y:auto;">
       <table style="font-size:11px;">
@@ -5774,7 +5838,16 @@ function populateRemitParcels() {
         </tr></thead>
         <tbody>${rows||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:12px;">No parcels</td></tr>'}</tbody>
       </table>
-    </div>`;
+    </div>
+    ${cancelled.length ? `<div style="margin-top:7px;padding:7px 10px;background:rgba(224,85,85,0.08);border:1px solid rgba(224,85,85,0.25);border-radius:6px;font-size:11px;">
+      ⚠️ <strong style="color:var(--red);">${cancelled.length} Cancelled/Update order(s)</strong> —
+      Original amount: <span style="text-decoration:line-through;color:var(--muted);">${p(cancelled.reduce((s,o)=>s+o.grandTotal,0))}</span>
+      → Excluded (₱0.00 remit). Delivery SF still counted.
+    </div>` : ''}
+    ${partialCancelOrders.length ? `<div style="margin-top:7px;padding:7px 10px;background:rgba(255,165,0,0.08);border:1px solid rgba(255,165,0,0.25);border-radius:6px;font-size:11px;">
+      ⚠️ <strong style="color:var(--orange);">${partialCancelOrders.length} order(s) with partially cancelled items</strong> —
+      Grand Total already adjusted. Amount shown reflects actual remit after item deductions.
+    </div>` : ''}`;
 
   // Update calc display
   document.getElementById('remit-gross-sf').textContent = p(totalSF);
@@ -5935,7 +6008,7 @@ function renderRemitPage() {
           <th style="color:var(--blue);">Subtotal</th>
           <th style="color:var(--muted);">Net SF</th>
           <th style="color:var(--gold);">Net Total Remit</th>
-          <th>Status</th><th>Del</th>
+          <th>Status</th><th>Actions</th>
         </tr></thead>
         <tbody>
           ${entries.map(e=>{
@@ -5952,7 +6025,10 @@ function renderRemitPage() {
               <td style="color:var(--muted);">${p(e.netSF||0)}</td>
               <td style="color:var(--gold);font-weight:700;">${p(e.netTotal||e.netEarn||0)}</td>
               <td style="font-weight:600;color:${statusColor(st)};">${statusIcon(st)} ${st}</td>
-              <td><button class="btn btn-red btn-sm" onclick="delRemit(${e.idx})">🗑️</button></td>
+              <td style="display:flex;gap:4px;">
+                <button class="btn btn-outline btn-sm" onclick="openRemitModal(${e.idx})">✏️</button>
+                <button class="btn btn-red btn-sm" onclick="delRemit(${e.idx})">🗑️</button>
+              </td>
             </tr>`;
           }).join('')}
           <tr style="background:rgba(201,168,76,0.08);font-weight:700;font-size:12px;">
