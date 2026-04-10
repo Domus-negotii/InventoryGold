@@ -5,19 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Goldchelle Logistics - Login</title>
     <style>
-        body { font-family: Arial; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f4f4f4; }
-        .login-card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 300px; }
-        input { width: 100%; padding: 10px; margin: 10px 0; box-sizing: border-box; }
-        button { width: 100%; padding: 10px; background: #007bff; color: white; border: none; cursor: pointer; }
-        button:hover { background: #0056b3; }
-        #message { color: red; font-size: 0.8rem; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f2f5; margin: 0; }
+        .login-card { background: white; padding: 2.5rem; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); width: 100%; max-width: 350px; text-align: center; }
+        h2 { color: #1a73e8; margin-bottom: 1.5rem; }
+        input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 1rem; }
+        button { width: 100%; padding: 12px; background: #1a73e8; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; font-weight: bold; margin-top: 1rem; transition: background 0.3s; }
+        button:hover { background: #1557b0; }
+        #message { color: #d93025; font-size: 0.85rem; margin-top: 1rem; min-height: 1.2rem; }
     </style>
 </head>
 <body>
 
 <div class="login-card">
-    <h2>Login Portal</h2>
-    <input type="email" id="email" placeholder="Email">
+    <h2>Logistics Portal</h2>
+    <p style="color: #666; font-size: 0.9rem;">Sign in to access dashboard</p>
+    <input type="email" id="email" placeholder="Email Address">
     <input type="password" id="password" placeholder="Password">
     <button id="loginBtn">Login</button>
     <p id="message"></p>
@@ -28,14 +30,14 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
-    // 2. I-paste dito ang iyong Firebase Config
+    // 2. Updated Firebase Config (Base sa project details mo)
     const firebaseConfig = {
         apiKey: "AIzaSyARb-3fZ9qaiqGslaO0d56QLPlFUgirFhY",
         authDomain: "goldchelle-logistics.firebaseapp.com",
         projectId: "goldchelle-logistics",
         storageBucket: "goldchelle-logistics.appspot.com",
-        messagingSenderId: "...",
-        appId: "..."
+        messagingSenderId: "736631888684",
+        appId: "1:736631888684:web:8664683057863777bc163c" // Idinagdag ko ito para sa config
     };
 
     // 3. Initialize Firebase
@@ -47,14 +49,37 @@
         const email = document.getElementById('email').value;
         const password = document.getElementById('password').value;
         const message = document.getElementById('message');
+        
+        message.innerText = "Checking credentials...";
+        message.style.color = "#666";
+
+        if (!email || !password) {
+            message.innerText = "Please fill in all fields.";
+            message.style.color = "red";
+            return;
+        }
 
         try {
             await signInWithEmailAndPassword(auth, email, password);
-            alert("Success! Naka-login ka na.");
-            // Dito mo ilalagay kung saan pupunta pagkatapos mag-login
-            // window.location.href = "dashboard.html"; 
+            message.innerText = "Login Successful!";
+            message.style.color = "green";
+            
+            // Redirect sa original logistics file mo
+            setTimeout(() => {
+                window.location.href = "dashboard.html";
+            }, 1000);
+            
         } catch (error) {
-            message.innerText = "Error: " + error.message;
+            console.error("Login Error:", error.code);
+            // Simple error handling
+            if (error.code === 'auth/configuration-not-found') {
+                message.innerText = "Error: Check Firebase Console if Email/Password is ENABLED.";
+            } else if (error.code === 'auth/invalid-credential') {
+                message.innerText = "Maling email o password.";
+            } else {
+                message.innerText = "Error: " + error.message;
+            }
+            message.style.color = "red";
         }
     });
 </script>
