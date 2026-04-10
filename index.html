@@ -207,7 +207,7 @@ select.form-control{cursor:pointer;}
   .modal-overlay.open .modal{max-height:none!important;overflow:visible!important;border:none!important;box-shadow:none!important;background:white!important;padding:0!important;max-width:100%!important;width:80mm!important;}
   .modal-overlay.open .no-print{display:none!important;}
   /* Invoice print styles — 80mm, B&W, no outer border */
-  #inv-print-wrap{max-width:74mm!important;padding:0mm 0mm!important;border:none!important;font-size:8.5px!important;}
+  #inv-print-wrap{max-width:74mm!important;padding:2mm 3mm!important;border:none!important;font-size:8.5px!important;}
   #inv-print-wrap div[style*="font-size:26px"]{font-size:15px!important;}
   #inv-print-wrap div[style*="letter-spacing:2.5px"]{font-size:7px!important;}
   #inv-print-wrap div[style*="font-size:11.5px"]{font-size:9px!important;}
@@ -661,7 +661,7 @@ window.loadFromFirebase = async function() {
 <nav class="sidebar">
   <div class="sidebar-logo">
     <h1>Goldchelle Online<br>Enterprises</h1>
-    <p>Logistics System v3</p>
+    <p>Logistics System v4</p>
   </div>
   <div style="padding-bottom:20px;">
     <div class="nav-section">
@@ -727,7 +727,7 @@ window.loadFromFirebase = async function() {
   <!-- DASHBOARD -->
   <div class="page active" id="page-dashboard">
     <!-- CEO-only overlay for non-CEO users -->
-    <div id="dash-ceo-lock" style="display:none;position:absolute;inset:0;background:rgba(15,27,45,0.97);z-index:10;display:none;align-items:center;justify-content:center;border-radius:10px;">
+    <div id="dash-ceo-lock" style="display:none;position:absolute;inset:0;background:rgba(15,27,45,0.97);z-index:10;align-items:center;justify-content:center;border-radius:10px;">
       <div style="text-align:center;"><div style="font-size:48px;">🔐</div><div style="font-family:var(--fh);font-size:20px;color:var(--gold);margin:8px 0;">CEO Only</div><p style="color:var(--muted);font-size:12px;">Dashboard is restricted to CEO/Owner access.</p></div>
     </div>
     <div id="dash-ceo-content">
@@ -1591,7 +1591,7 @@ window.loadFromFirebase = async function() {
 <div class="modal-overlay" id="modal-invoice">
   <div class="modal" style="max-width:760px;background:#f2ede0;">
     <div class="modal-header no-print"><span style="font-family:var(--fh);font-size:16px;color:#7a5c1e;">Preview Invoice</span>
-      <div style="display:flex;gap:7px;"><button class="btn btn-gold" onclick="window.print()">🖨️ Print</button><button class="modal-close" style="color:#888;" onclick="closeModal('modal-invoice')">✕</button></div>
+      <div style="display:flex;gap:7px;"><button class="btn btn-gold" onclick="printInvoiceThermal()">🖨️ Print</button><button class="modal-close" style="color:#888;" onclick="closeModal('modal-invoice')">✕</button></div>
     </div>
     <div id="invoice-area"></div>
   </div>
@@ -2339,9 +2339,7 @@ function renderMyOrders() {
   if(statsEl && loggedAdmin) {
     statsEl.innerHTML = `<div class="stats-grid" style="margin-bottom:13px;">
       <div class="stat-card gold"><div class="stat-label">My Total Orders</div><div class="stat-value">${list.length}</div></div>
-      <div class="stat-card blue"><div class="stat-label">In Transit</div><div class="stat-value">${list.filter(({o})=>o.status==='In Transit').length}</div></div>
-      <div class="stat-card green"><div class="stat-label">Delivered</div><div class="stat-value">${del.length}</div></div>
-      <div class="stat-card orange"><div class="stat-label">Incentive Earned</div><div class="stat-value">${p(del.length*25)}</div><div class="stat-sub">${del.length}×₱25</div></div>
+      <div class="stat-card blue"><div class="stat-label">In Transit</div><div class="stat-value">${list.filter(({o})=>['Preparing','Ready','Out for Delivery'].includes(o.status)).length}</div></div><div class="stat-value">${p(del.length*25)}</div><div class="stat-sub">${del.length}×₱25</div></div>
       <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${list.filter(({o})=>['Cancelled','Update'].includes(o.status)).length}</div></div>
       <div class="stat-card purple"><div class="stat-label">Pending Checker</div><div class="stat-value">${list.filter(({o})=>o.checkerStatus==='Pending').length}</div></div>
     </div>`;
@@ -2453,7 +2451,7 @@ function renderOrders() {
     statsEl.innerHTML = `<div class="stats-grid" style="margin-bottom:13px;">
       <div class="stat-card gold"><div class="stat-label">Orders</div><div class="stat-value">${list.length}</div></div>
       <div class="stat-card green"><div class="stat-label">Delivered</div><div class="stat-value">${del.length}</div></div>
-      <div class="stat-card blue"><div class="stat-label">In Transit</div><div class="stat-value">${list.filter(({o})=>o.status==='In Transit').length}</div></div>
+      <div class="stat-card blue"><div class="stat-label">In Transit</div><div class="stat-value">${list.filter(({o})=>['Preparing','Ready','Out for Delivery'].includes(o.status)).length}</div></div>
       <div class="stat-card orange"><div class="stat-label">Total Revenue</div><div class="stat-value">${p(del.reduce((s,{o})=>s+o.grandTotal,0))}</div></div>
       <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${list.filter(({o})=>['Cancelled','Update'].includes(o.status)).length}</div></div>
       <div class="stat-card purple"><div class="stat-label">Pending Check</div><div class="stat-value">${list.filter(({o})=>o.checkerStatus==='Pending').length}</div></div>
@@ -2514,7 +2512,7 @@ function printOwnerAdminSheet() {
     td{padding:5px 6px;border:1px solid #ddd;}
     tr:nth-child(even){background:#fafafa;}
     .sigs{margin-top:30px;display:flex;justify-content:space-around;}
-    .sig{text-align:center;}<br>.sig-line{border-bottom:1px solid #333;width:150px;height:28px;}
+    .sig{text-align:center;}.sig-line{border-bottom:1px solid #333;width:150px;height:28px;}
     @media print{@page{margin:8mm;}}
   </style></head><body>
     <div class="hdr">
@@ -2740,8 +2738,8 @@ function openInvoice(i){
   const o=S.orders[i];
   const biz=S.bizInfo||{};
   const bizAddress=biz.address||'Las Pinas City, Metro Manila, PH';
-  const bizPhone=biz.phone||'0917-130-7239';
-  const bizFb=biz.fb||'FB: Goldchelle Online Enterprise';
+  const bizPhone=biz.contact||'0917-130-7239';
+  const bizFb=biz.social||'FB: Goldchelle Online Enterprise';
   // Admin name = logged-in user
   const adminName = (currentUser&&currentUser.name&&currentUser.name!=='Owner') ? currentUser.name : (o.admin||'');
 
@@ -2833,6 +2831,53 @@ function openInvoice(i){
   </div>
 </div>`;
   openModal('modal-invoice');
+}
+
+// ============ THERMAL PRINT — isolated window ============
+function printInvoiceThermal() {
+  const el = document.getElementById('inv-print-wrap');
+  if(!el) { window.print(); return; }
+  const html = el.outerHTML;
+  const win = window.open('','_blank','width=320,height=600');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+@page { size: 80mm auto; margin: 1mm 2mm; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: white; color: #000; font-family: Arial, Helvetica, sans-serif; width: 76mm; }
+#inv-print-wrap { width: 76mm; padding: 3mm 2mm; background: white; color: #000; }
+/* Force all text black */
+#inv-print-wrap * { color: #000 !important; background: white !important; border-color: #555 !important; }
+/* Header */
+#inv-print-wrap div[style*="font-size:26px"] { font-size: 16px !important; font-weight: 900; }
+#inv-print-wrap div[style*="letter-spacing:2.5px"] { font-size: 7px !important; letter-spacing: 1.5px; }
+/* Address block */
+#inv-print-wrap div[style*="font-size:10.5px"] { font-size: 8px !important; }
+/* Field labels */
+#inv-print-wrap span[style*="min-width:115px"] { font-size: 9px !important; font-weight: 700; min-width: 80px !important; }
+#inv-print-wrap span[style*="flex:1"] { font-size: 9px !important; }
+/* Table */
+#inv-print-wrap table { width: 100%; border-collapse: collapse; }
+#inv-print-wrap th { font-size: 8px !important; padding: 2px 2px !important; font-weight: 700; border-top: 1.5px solid #000 !important; border-bottom: 1.5px solid #000 !important; text-align: center; }
+#inv-print-wrap td { font-size: 8.5px !important; padding: 3px 2px !important; }
+/* SF and TOTAL rows */
+#inv-print-wrap td[style*="font-size:11px"] { font-size: 9px !important; }
+#inv-print-wrap td[style*="font-size:13px"] { font-size: 11px !important; font-weight: 900; }
+/* PAALALA */
+#inv-print-wrap div[style*="font-size:10.5px;color:#111"] { font-size: 7.5px !important; line-height: 1.4; }
+#inv-print-wrap div[style*="font-size:11.5px;margin-bottom:2px"] { font-size: 8.5px !important; font-weight: 900; }
+/* Received line */
+#inv-print-wrap div[style*="font-size:11px;color:#333"] { font-size: 8.5px !important; }
+/* Signature lines */
+#inv-print-wrap div[style*="height:36px"] { height: 20px !important; }
+#inv-print-wrap div[style*="font-size:11.5px;font-weight:700"] { font-size: 8.5px !important; font-weight: 700; }
+/* Divider line */
+#inv-print-wrap div[style*="border-bottom:2px solid #111"] { border-bottom: 1.5px solid #000 !important; padding-bottom: 3px !important; margin-bottom: 4px !important; }
+@media print { body { margin: 0; } }
+</style>
+</head><body>${html}
+<script>window.onload=function(){window.print();setTimeout(()=>window.close(),800);}<\/script>
+</body></html>`);
+  win.document.close();
 }
 
 // ============ TRACKING ============
@@ -3473,9 +3518,9 @@ function addUnassignedRiderSlot() {
       <button class="btn btn-gold btn-sm" onclick="
         const v=document.getElementById('_sortRiderPick').value;
         if(v){_extraRiderSlots.push(v);renderSorting();}
-        document.body.removeChild(this.closest('div').parentElement);
+        document.body.removeChild(this.closest('div').parentElement.parentElement);
       ">Add</button>
-      <button class="btn btn-outline btn-sm" onclick="document.body.removeChild(this.closest('div').parentElement)">Cancel</button>
+      <button class="btn btn-outline btn-sm" onclick="document.body.removeChild(this.closest('div').parentElement.parentElement)">Cancel</button>
     </div>`;
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9998;';
@@ -3567,8 +3612,8 @@ function renderPayroll(tab){
   const el=document.getElementById('payroll-content');
   const list=S.payroll.filter(i=>i.period===tab);
   el.innerHTML=`<div class="stats-grid">
-    <div class="stat-card gold"><div class="stat-label">Total Salaries</div><div class="stat-value">${p(list.reduce((s,i)=>s+i.totalSalary,0))}</div></div>
-    <div class="stat-card green"><div class="stat-label">Parcel Incentives</div><div class="stat-value">${p(list.reduce((s,i)=>s+i.parcelInc,0))}</div></div>
+    <div class="stat-card gold"><div class="stat-label">Total Salaries</div><div class="stat-value">${p(list.reduce((s,i)=>s+(i.totalSalary||0),0))}</div></div>
+    <div class="stat-card green"><div class="stat-label">Parcel Incentives</div><div class="stat-value">${p(list.reduce((s,i)=>s+(i.parcelInc||0),0))}</div></div>
     <div class="stat-card red"><div class="stat-label">Gov't Deductions</div><div class="stat-value">${p(list.reduce((s,i)=>s+(i.totalDeduct||0),0))}</div></div>
     <div class="stat-card blue"><div class="stat-label">Employees</div><div class="stat-value">${list.length}</div></div>
   </div>
@@ -4214,12 +4259,12 @@ function printAdminSheet(){
   let orders=S.orders.map((o,i)=>({...o,idx:i}));
   if(df)orders=orders.filter(o=>o.date>=df);
   if(dt)orders=orders.filter(o=>o.date<=dt);
-  const adminOrders=curAdmin==='ALL'?orders:orders.filter(o=>o.admin===curAdmin);
+  const adminOrders=orders;
   const del=adminOrders.filter(o=>o.status==='Delivered');
   const pw=document.getElementById('adminsheet-print');  const _printHTML = `<div style="background:white;color:#1a1a1a;font-family:Arial,sans-serif;max-width:840px;margin:0 auto;padding:16px;">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #c9a84c;padding-bottom:9px;margin-bottom:12px;">
       <div><h2 style="font-family:Georgia,serif;color:#9c7a2e;font-size:17px;margin:0;">${S.bizInfo?.name||'Goldchelle Online Enterprises'}</h2><p style="font-size:10px;color:#555;">Admin Order Sheet</p></div>
-      <div style="text-align:right;"><div style="font-size:14px;font-weight:700;color:#9c7a2e;">Admin: ${curAdmin}</div><div style="font-size:10.5px;color:#555;">${df?df:'All dates'} ${dt&&df?' – '+dt:''}</div></div>
+      <div style="text-align:right;"><div style="font-size:14px;font-weight:700;color:#9c7a2e;">Admin: All Admins</div><div style="font-size:10.5px;color:#555;">${df?df:'All dates'} ${dt&&df?' – '+dt:''}</div></div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;">
       <div style="border:1px solid #d4b870;border-radius:4px;padding:8px;text-align:center;"><div style="font-size:9px;color:#777;text-transform:uppercase;">Total Orders</div><div style="font-size:18px;font-weight:700;color:#c9a84c;">${adminOrders.length}</div></div>
@@ -4234,7 +4279,7 @@ function printAdminSheet(){
       </tbody>
     </table>
     <div style="margin-top:30px;display:flex;justify-content:space-around;">
-      <div style="text-align:center;"><div style="border-bottom:1px solid #333;width:150px;height:30px;"></div><p style="font-size:10px;">${curAdmin} – Admin Signature</p></div>
+      <div style="text-align:center;"><div style="border-bottom:1px solid #333;width:150px;height:30px;"></div><p style="font-size:10px;">All Admins – Signature</p></div>
       <div style="text-align:center;"><div style="border-bottom:1px solid #333;width:150px;height:30px;"></div><p style="font-size:10px;">Verified by</p></div>
     </div>
   </div>`;
@@ -4278,7 +4323,7 @@ function applyGovToAll(){
   const g=S.govSettings;
   S.payroll=S.payroll.map(item=>{
     const totalDeduct=(g.sss||0)+(g.philhealth||0)+(g.pagibig||0)+(g.tax||0)+(g.other||0);
-    const totalSalary=item.basePay+item.parcelInc+(item.otherInc||0)-totalDeduct;
+    const totalSalary=(item.basePay||0)+(item.parcelInc||0)+(item.otherInc||0)-totalDeduct;
     return {...item,sss:g.sss||0,philhealth:g.philhealth||0,pagibig:g.pagibig||0,withholdingTax:g.tax||0,otherDeduct:g.other||0,totalDeduct,totalSalary};
   });
   save();toast('✅ Applied to all '+S.payroll.length+' payroll records!');
@@ -4404,7 +4449,11 @@ function clearAllData(){
   if(!confirm('⚠️ This will delete ALL orders, payroll, expenses, inventory, and riders. This cannot be undone. Type YES to confirm.'))return;
   const ans=prompt('Type YES to confirm data deletion:');
   if(ans!=='YES'){toast('Cancelled.');return;}
-  S={orders:[],riders:[],locations:[],payroll:[],expenses:[],inventory:[],stockLog:[],govSettings:S.govSettings,adminNames:S.adminNames,bizInfo:S.bizInfo};
+  S={orders:[],riders:[],locations:[],payroll:[],expenses:[],inventory:[],stockLog:[],
+     remitLog:[],cashbondLog:[],benefitsLog:[],returnLog:[],
+     govSettings:S.govSettings,adminNames:S.adminNames,bizInfo:S.bizInfo,
+     adminAccounts:S.adminAccounts||[],tabPasswords:S.tabPasswords||{},
+     specialPasswords:S.specialPasswords||{remitter:'remit2026',sorter:'sort2026',checker:'check2026'}};
   save();toast('All data cleared.');renderDash();
 }
 
@@ -4627,7 +4676,7 @@ function renderDash(){
 // Default hashed password storage — uses simple hash for demo
 // In production Firebase, store hash server-side
 const DEFAULT_OWNER_PW = 'goldchelle2024';
-const FIN_PAGES = ['dailysales','payroll','expenses','pnl','adminsheets','settings','checker','tracking','riders','inventory','ridersremit','cashbond','benefits','lbcchecker'];
+const FIN_PAGES = ['dailysales','payroll','expenses','pnl','adminsheets','settings','checker','tracking','riders','inventory','ridersremit','cashbond','benefits'];
 
 // selectedRole and unlockedPages for auth flow
 let selectedRole = null;
@@ -4767,7 +4816,7 @@ function applyRoleUI(){
   // Nav visibility per role
   const rolePages = {
     rider:    ['riderdash'],
-    remitter: ['ridersremit','cashbond','benefits','sorting'],
+    remitter: ['ridersremit','cashbond','benefits','sorting','returns'],
     sorter:   ['sorting','tracking'],
     checker:  ['checker'],
   };
@@ -4790,7 +4839,7 @@ function applyRoleUI(){
     const lockEl=document.getElementById('lock-'+page);
     if(currentRole==='owner'){
       if(lockEl) lockEl.classList.add('unlocked');
-    } else if(currentRole==='remitter' && ['ridersremit','cashbond','benefits'].includes(page)){
+    } else if(currentRole==='remitter' && ['ridersremit','cashbond','benefits','returns'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
     } else if(currentRole==='checker' && page==='checker'){
       if(lockEl) lockEl.classList.add('unlocked');
@@ -5281,42 +5330,15 @@ function riderItemStatus(orderIdx, itemIdx, newStatus) {
   if(item) {
     const itemVal = item.total || 0;
     if(normalizedStatus === 'Cancelled' && prevStatus !== 'Cancelled') {
+      // Deduct from order total BUT do NOT restore inventory yet
+      // Inventory is only restored when Remitter records it in Return Log
       order.itemsTotal = Math.max(0, (order.itemsTotal||0) - itemVal);
       order.grandTotal = Math.max(0, (order.grandTotal||0) - itemVal);
-      if(item.code) {
-        const invIdx = S.inventory.findIndex(it => it.code.toUpperCase() === (item.code||'').toUpperCase());
-        if(invIdx >= 0) {
-          const inv = S.inventory[invIdx];
-          if(inv.itemType === 'fixprice') {
-            const q = item.qty || 1; const before = inv.qty;
-            inv.qty = before + q;
-            S.stockLog.push({ productCode:inv.code, type:'return', qty:q, date:today(), notes:`All cancelled – ${order.name} ${onum(orderIdx)}`, before, after:inv.qty });
-          } else {
-            const g = item.grams || 0;
-            if(g > 0) { const before = inv.grams; inv.grams = before + g;
-              S.stockLog.push({ productCode:inv.code, type:'return', qty:g, date:today(), notes:`All cancelled – ${order.name} ${onum(orderIdx)}`, before, after:inv.grams }); }
-          }
-        }
-      }
-      toast(`❌ Item fully cancelled — ${p(itemVal)} deducted & stock restored`);
+      toast(`❌ Item fully cancelled — ${p(itemVal)} deducted. Stock will be restored only upon Return Log.`);
     } else if(prevStatus === 'Cancelled' && normalizedStatus !== 'Cancelled') {
+      // Un-cancel — add back to order total but do NOT touch inventory
       order.itemsTotal = (order.itemsTotal||0) + itemVal;
       order.grandTotal = (order.grandTotal||0) + itemVal;
-      if(item.code) {
-        const invIdx = S.inventory.findIndex(it => it.code.toUpperCase() === (item.code||'').toUpperCase());
-        if(invIdx >= 0) {
-          const inv = S.inventory[invIdx];
-          if(inv.itemType === 'fixprice') {
-            const q = item.qty || 1; const before = inv.qty;
-            inv.qty = Math.max(0, before - q);
-            S.stockLog.push({ productCode:inv.code, type:'out', qty:q, date:today(), notes:`Item restored – ${order.name} ${onum(orderIdx)}`, before, after:inv.qty });
-          } else {
-            const g = item.grams || 0;
-            if(g > 0) { const before = inv.grams; inv.grams = Math.max(0, before - g);
-              S.stockLog.push({ productCode:inv.code, type:'out', qty:g, date:today(), notes:`Item restored – ${order.name} ${onum(orderIdx)}`, before, after:inv.grams }); }
-          }
-        }
-      }
       toast(`✅ Item restored — ${p(itemVal)} added back`);
     } else {
       toast('Item status → ' + normalizedStatus);
@@ -5346,43 +5368,15 @@ function riderItemPartialCancel(orderIdx, itemIdx, cancelQtyStr, totalQty, isGra
   const newDeducted = (clampedQty / totalQty) * item.total;
   const diff = newDeducted - prevDeducted;
 
-  // Adjust grandTotal
+  // Adjust order totals only — NO inventory change here
+  // Inventory is restored only when Remitter records it in Return Log
   order.grandTotal = Math.max(0, (order.grandTotal||0) - diff);
   order.itemsTotal = Math.max(0, (order.itemsTotal||0) - diff);
 
-  // Inventory adjustment
-  if(item.code) {
-    const invIdx = S.inventory.findIndex(it => it.code.toUpperCase() === (item.code||'').toUpperCase());
-    if(invIdx >= 0) {
-      const inv = S.inventory[invIdx];
-      const qtyDiff = clampedQty - prevCancelQty;
-      if(Math.abs(qtyDiff) > 0.001) {
-        if(isGrams) {
-          const before = inv.grams;
-          // qtyDiff > 0 = cancelling more → RESTORE to inventory (rider bringing back)
-          // qtyDiff < 0 = un-cancelling → DEDUCT from inventory (rider taking out again)
-          inv.grams = Math.max(0, before + qtyDiff);
-          S.stockLog.push({ productCode:inv.code, type:qtyDiff>0?'return':'out',
-            qty:Math.abs(qtyDiff), date:today(),
-            notes:`Partial cancel ${clampedQty}/${totalQty}g – ${order.name} ${onum(orderIdx)}`,
-            before, after:inv.grams });
-        } else {
-          const before = inv.qty;
-          inv.qty = Math.max(0, before + qtyDiff);
-          S.stockLog.push({ productCode:inv.code, type:qtyDiff>0?'return':'out',
-            qty:Math.abs(qtyDiff), date:today(),
-            notes:`Partial cancel ${clampedQty}/${totalQty}pcs – ${order.name} ${onum(orderIdx)}`,
-            before, after:inv.qty });
-        }
-      }
-    }
-  }
-
   if(clampedQty === totalQty) {
-    // Full cancel via qty — mark status as Cancelled
     if(!order.itemStatuses) order.itemStatuses = {};
     order.itemStatuses[itemIdx] = 'Cancelled';
-    toast(`❌ All ${totalQty} cancelled — ${p(newDeducted)} deducted`);
+    toast(`❌ All ${totalQty} cancelled — ${p(newDeducted)} deducted. Stock via Return Log lang.`);
   } else if(clampedQty > 0) {
     toast(`⚠️ ${clampedQty}${isGrams?'g':' pc'} cancelled — ${p(newDeducted)} deducted`);
   } else {
