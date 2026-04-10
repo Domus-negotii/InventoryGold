@@ -219,7 +219,7 @@ select.form-control{cursor:pointer;}
   #inv-print-wrap div[style*="font-size:11.5px;font-weight:700"]{font-size:8.5px!important;}
 }
 /* Invoice */
-.inv-wrap{background:white;color:#1a1a1a;font-family:Arial,sans-serif;max-width:720px;border:2px dashed #bbb;margin:0 auto;}
+.inv-wrap{background:white;color:#1a1a1a;font-family:Arial,sans-serif;max-width:720px;margin:0 auto;}
 .inv-header{display:flex;align-items:flex-start;justify-content:space-between;padding:13px 17px;border-bottom:2px solid #c9a84c;gap:10px;}
 .inv-brand h2{font-family:Georgia,serif;color:#9c7a2e;font-size:19px;margin:0;}
 .inv-brand p{font-size:10px;color:#555;margin:1px 0;}
@@ -2743,139 +2743,183 @@ function openInvoice(i){
   // Admin name = logged-in user
   const adminName = (currentUser&&currentUser.name&&currentUser.name!=='Owner') ? currentUser.name : (o.admin||'');
 
-  // Item rows — exact count, no blank rows
-  const rows=o.items.map(it=>{
-    const discount=it.discount||0;
-    const discNote=discount>0?` (disc: -\u20b1${discount.toFixed(2)})`:
-      '';
-    const isGrams=it.grams>0&&!it.fixPrice;
-    const grams=isGrams?it.grams+'g':'\u2014';
-    const perG=isGrams?'\u20b1'+Number(it.pergram||0).toFixed(2):'\u2014';
-    const qty=it.qty||1;
-    const td='padding:4px 4px;text-align:center;font-size:10.5px;border-bottom:1px solid #ddd;';
+  // ── Build thermal-optimised receipt HTML (74 mm, B&W) ──────────────
+  const W  = 'width:100%;';
+  const BK = 'color:#000;';
+  const DASH_LINE = `<div style="${W}border-top:1px dashed #000;margin:5px 0;"></div>`;
+  const SOLID_LINE= `<div style="${W}border-top:1.5px solid #000;margin:4px 0;"></div>`;
+
+  // Item rows — compact 4-col: Code+Desc | Qty/g | @Price | Total
+  const rows = o.items.map(it=>{
+    const isGrams  = it.pergram > 0;
+    const qtyStr   = isGrams ? `${it.grams}g` : `×${it.qty||1}`;
+    const rateStr  = isGrams ? `@\u20b1${Number(it.pergram).toFixed(2)}/g` : '';
+    const disc     = it.discount||0;
+    const discStr  = disc>0 ? `<br><span style="font-size:7.5px;color:#000;">&nbsp;Disc:-\u20b1${disc.toFixed(2)}${it.discountRemark?' ('+it.discountRemark+')':''}</span>` : '';
+    const T='padding:2px 1px;vertical-align:top;font-size:8.5px;color:#000;';
     return `<tr>
-      <td style="${td}">${it.code||'\u2014'}</td>
-      <td style="${td}text-align:left;">${it.desc||''}${discNote}</td>
-      <td style="${td}">${qty}</td>
-      <td style="${td}">${grams}</td>
-      <td style="${td}">${perG}</td>
-      <td style="${td}font-weight:700;">\u20b1${Number(it.total||0).toFixed(2)}</td>
+      <td style="${T}font-weight:700;">[${it.code||'—'}]<br><span style="font-weight:400;">${it.desc||''}</span>${discStr}</td>
+      <td style="${T}text-align:center;white-space:nowrap;">${qtyStr}<br><span style="font-size:7.5px;">${rateStr}</span></td>
+      <td style="${T}text-align:right;font-weight:700;">\u20b1${Number(it.total||0).toFixed(2)}</td>
     </tr>`;
   }).join('');
 
-  const discRow=o.totalDiscount>0?`<tr>
-    <td colspan="5" style="padding:4px 6px;text-align:right;font-size:10px;border-bottom:1px solid #ddd;">Total Discount:</td>
-    <td style="padding:4px 4px;text-align:center;border-bottom:1px solid #ddd;font-size:10px;">-\u20b1${Number(o.totalDiscount).toFixed(2)}</td>
-  </tr>`:'';
+  const totalDisc = o.totalDiscount||0;
+  const discRow = totalDisc>0
+    ? `<tr><td colspan="2" style="font-size:8px;text-align:right;padding:2px 1px;color:#000;">Total Discount:</td>
+       <td style="font-size:8px;text-align:right;padding:2px 1px;color:#000;font-weight:700;">-\u20b1${totalDisc.toFixed(2)}</td></tr>`:'';
 
-  const thStyle='padding:5px 4px;text-align:center;font-size:10.5px;font-weight:700;border-top:1.5px solid #111;border-bottom:1.5px solid #111;';
-  const field=(label,val)=>`<div style="display:flex;gap:6px;margin-bottom:3px;font-size:11.5px;">
-    <span style="font-weight:700;min-width:115px;">${label}</span>
-    <span style="flex:1;">${val||''}</span>
-  </div>`;
+  const fld=(lbl,val)=>val?`<tr>
+    <td style="font-size:8.5px;font-weight:700;color:#000;padding:1px 0;white-space:nowrap;width:52px;">${lbl}</td>
+    <td style="font-size:8.5px;color:#000;padding:1px 0;">${val}</td></tr>`:'';
 
-  document.getElementById('invoice-area').innerHTML=`<div id="inv-print-wrap" style="background:white;color:#111;font-family:Arial,Helvetica,sans-serif;width:100%;max-width:680px;margin:0 auto;padding:14px 16px;">
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid #111;">
-    <div>
-      <div style="font-family:Georgia,serif;font-size:26px;font-weight:900;letter-spacing:-1px;color:#111;line-height:1;">Goldchelle</div>
-      <div style="font-size:9px;font-weight:700;letter-spacing:2.5px;color:#444;margin-top:1px;">\u25c6 ONLINE ENTERPRISES</div>
-    </div>
-    <div style="text-align:right;font-size:10.5px;color:#111;line-height:1.7;">
-      <div>${bizAddress}</div>
-      <div>${bizPhone}</div>
-      <div>${bizFb}</div>
-    </div>
+  const receipt=`
+<div id="inv-print-wrap" style="background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;width:72mm;max-width:72mm;margin:0 auto;padding:3mm 2mm;box-sizing:border-box;">
+
+  <!-- ── HEADER ── -->
+  <div style="text-align:center;padding-bottom:4px;border-bottom:2px solid #000;margin-bottom:5px;">
+    <div style="font-family:Georgia,serif;font-size:20px;font-weight:900;letter-spacing:-0.5px;color:#000;line-height:1.1;">Goldchelle</div>
+    <div style="font-size:7.5px;font-weight:700;letter-spacing:2px;color:#000;margin-top:1px;">◆ ONLINE ENTERPRISES</div>
+    <div style="font-size:7.5px;color:#000;margin-top:3px;line-height:1.5;">${bizAddress}<br>${bizPhone} | ${bizFb}</div>
   </div>
-  <div style="margin-bottom:10px;">
-    ${field('Name:',o.name)}
-    ${field('Address:',o.address+(o.landmark?' \u2014 '+o.landmark:''))}
-    ${field('Contact #:',o.contact+(o.backupContact?' / '+o.backupContact:''))}
-    ${field("Admin's Name:",adminName)}
-    ${field('Date:',o.date)}
-  </div>
-  <table style="width:100%;border-collapse:collapse;margin-bottom:4px;">
-    <thead><tr>
-      <th style="${thStyle}min-width:58px;">Serial</th>
-      <th style="${thStyle}text-align:left;min-width:120px;">Description</th>
-      <th style="${thStyle}">Qty</th>
-      <th style="${thStyle}">G</th>
-      <th style="${thStyle}">Per G</th>
-      <th style="${thStyle}min-width:65px;">Total</th>
-    </tr></thead>
+
+  <!-- ── CUSTOMER INFO ── -->
+  <table style="width:100%;border-collapse:collapse;">
+    ${fld('Name:',o.name)}
+    ${fld('Address:',o.address+(o.landmark?' — '+o.landmark:''))}
+    ${fld('Contact:',o.contact+(o.backupContact?' / '+o.backupContact:''))}
+    ${fld('Admin:',adminName)}
+    ${fld('Date:',o.date)}
+    ${fld('Method:',o.paymentMethod||'COD')}
+  </table>
+
+  ${DASH_LINE}
+
+  <!-- ── ITEMS ── -->
+  <table style="width:100%;border-collapse:collapse;border-top:1.5px solid #000;border-bottom:1.5px solid #000;">
+    <thead>
+      <tr style="border-bottom:1px solid #000;">
+        <th style="font-size:8px;font-weight:700;padding:2px 1px;color:#000;text-align:left;">Item / Description</th>
+        <th style="font-size:8px;font-weight:700;padding:2px 1px;color:#000;text-align:center;">Qty/g</th>
+        <th style="font-size:8px;font-weight:700;padding:2px 1px;color:#000;text-align:right;">Total</th>
+      </tr>
+    </thead>
     <tbody>
-      ${rows}${discRow}
-      <tr>
-        <td colspan="5" style="padding:5px 6px;text-align:right;font-size:11px;font-weight:700;border-top:1px solid #999;">SF:</td>
-        <td style="padding:5px 4px;text-align:center;font-size:11px;font-weight:700;border-top:1px solid #999;">\u20b1${Number(o.shipping||0).toFixed(2)}</td>
-      </tr>
-      <tr>
-        <td colspan="5" style="border-top:2px solid #111;border-bottom:2px solid #111;padding:6px 6px;text-align:right;font-size:13px;font-weight:900;">TOTAL:</td>
-        <td style="border-top:2px solid #111;border-bottom:2px solid #111;padding:6px 4px;text-align:center;font-size:13px;font-weight:900;">\u20b1${Number(o.grandTotal||0).toFixed(2)}</td>
-      </tr>
+      ${rows}
+      ${discRow}
     </tbody>
   </table>
-  <div style="font-size:11px;color:#333;margin:7px 0 5px;">Received the above item/s in good condition</div>
-  <div style="font-size:10.5px;color:#111;line-height:1.6;margin-bottom:16px;">
-    <div style="font-weight:900;font-size:11.5px;margin-bottom:2px;text-decoration:underline;">PAALALA SA AMING MGA BUYER:</div>
-    Kukunan po kayo ni rider ng video upon opening the parcel, katibayan po ito kung may kulang/mali/damage ang item. Kaya maigi na paki check po ng Mabuti ang items bago ito bayaran. Once po na pumirma o inaprobahan nyo na po ang resibo, wala ng pananagutan ang Goldchelle Online Enterprises sa anumang maging problema ng item/s.
+
+  <!-- ── TOTALS ── -->
+  <table style="width:100%;border-collapse:collapse;margin-top:3px;">
+    <tr>
+      <td style="font-size:8.5px;color:#000;padding:2px 1px;">Shipping Fee (SF):</td>
+      <td style="font-size:8.5px;color:#000;padding:2px 1px;text-align:right;font-weight:700;">\u20b1${Number(o.shipping||0).toFixed(2)}</td>
+    </tr>
+  </table>
+  ${SOLID_LINE}
+  <table style="width:100%;border-collapse:collapse;">
+    <tr>
+      <td style="font-size:13px;font-weight:900;color:#000;padding:3px 1px;">TOTAL:</td>
+      <td style="font-size:13px;font-weight:900;color:#000;padding:3px 1px;text-align:right;">\u20b1${Number(o.grandTotal||0).toFixed(2)}</td>
+    </tr>
+  </table>
+  ${SOLID_LINE}
+
+  <!-- ── RECEIVED LINE ── -->
+  <div style="font-size:8px;color:#000;margin:5px 0 3px;">Received the above item/s in good condition.</div>
+
+  ${DASH_LINE}
+
+  <!-- ── PAALALA ── -->
+  <div style="font-size:7.5px;color:#000;line-height:1.5;">
+    <div style="font-weight:900;font-size:8px;text-decoration:underline;margin-bottom:2px;">PAALALA SA AMING MGA BUYER:</div>
+    Kukunan po kayo ni rider ng video upon opening the parcel, katibayan po ito kung may kulang/mali/damage ang item. Paki-check po ng mabuti ang items bago bayaran. Once po pumirma o inaprobahan ang resibo, wala ng pananagutan ang Goldchelle Online Enterprises sa anumang problema ng item/s.
   </div>
-  <div style="display:flex;justify-content:space-around;gap:30px;margin-top:16px;">
-    <div style="text-align:center;flex:1;">
-      <div style="border-bottom:1.5px solid #111;height:36px;margin-bottom:5px;"></div>
-      <div style="font-size:11.5px;font-weight:700;">Rider\u2019s Name</div>
+
+  ${DASH_LINE}
+
+  <!-- ── SIGNATURES ── -->
+  <div style="display:flex;gap:8mm;margin-top:10px;">
+    <div style="flex:1;text-align:center;">
+      <div style="border-bottom:1px solid #000;height:20px;margin-bottom:3px;"></div>
+      <div style="font-size:7.5px;font-weight:700;color:#000;">Rider's Name &amp; Signature</div>
     </div>
-    <div style="text-align:center;flex:1;">
-      <div style="border-bottom:1.5px solid #111;height:36px;margin-bottom:5px;"></div>
-      <div style="font-size:11.5px;font-weight:700;">Customer\u2019s Signature</div>
+    <div style="flex:1;text-align:center;">
+      <div style="border-bottom:1px solid #000;height:20px;margin-bottom:3px;"></div>
+      <div style="font-size:7.5px;font-weight:700;color:#000;">Customer's Signature</div>
     </div>
   </div>
+
+  <!-- ── FOOTER ── -->
+  ${DASH_LINE}
+  <div style="text-align:center;font-size:7px;color:#000;margin-top:2px;">Order # ${onum(i)} &nbsp;|&nbsp; Thank you for shopping!</div>
+
 </div>`;
+
+  document.getElementById('invoice-area').innerHTML = receipt;
   openModal('modal-invoice');
 }
 
-// ============ THERMAL PRINT — isolated window ============
+// ============ THERMAL PRINT — 74mm Xprinter KP200L ============
 function printInvoiceThermal() {
   const el = document.getElementById('inv-print-wrap');
-  if(!el) { window.print(); return; }
+  if(!el) { toast('⚠️ Open an invoice first'); return; }
   const html = el.outerHTML;
-  const win = window.open('','_blank','width=320,height=600');
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+  const win = window.open('','_blank','width=340,height=700,menubar=no,toolbar=no');
+  if(!win){ toast('⚠️ Popup blocked — allow popups then retry'); return; }
+  win.document.write(`<!DOCTYPE html><html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-@page { size: 80mm auto; margin: 1mm 2mm; }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: white; color: #000; font-family: Arial, Helvetica, sans-serif; width: 76mm; }
-#inv-print-wrap { width: 76mm; padding: 3mm 2mm; background: white; color: #000; }
-/* Force all text black */
-#inv-print-wrap * { color: #000 !important; background: white !important; border-color: #555 !important; }
-/* Header */
-#inv-print-wrap div[style*="font-size:26px"] { font-size: 16px !important; font-weight: 900; }
-#inv-print-wrap div[style*="letter-spacing:2.5px"] { font-size: 7px !important; letter-spacing: 1.5px; }
-/* Address block */
-#inv-print-wrap div[style*="font-size:10.5px"] { font-size: 8px !important; }
-/* Field labels */
-#inv-print-wrap span[style*="min-width:115px"] { font-size: 9px !important; font-weight: 700; min-width: 80px !important; }
-#inv-print-wrap span[style*="flex:1"] { font-size: 9px !important; }
-/* Table */
-#inv-print-wrap table { width: 100%; border-collapse: collapse; }
-#inv-print-wrap th { font-size: 8px !important; padding: 2px 2px !important; font-weight: 700; border-top: 1.5px solid #000 !important; border-bottom: 1.5px solid #000 !important; text-align: center; }
-#inv-print-wrap td { font-size: 8.5px !important; padding: 3px 2px !important; }
-/* SF and TOTAL rows */
-#inv-print-wrap td[style*="font-size:11px"] { font-size: 9px !important; }
-#inv-print-wrap td[style*="font-size:13px"] { font-size: 11px !important; font-weight: 900; }
-/* PAALALA */
-#inv-print-wrap div[style*="font-size:10.5px;color:#111"] { font-size: 7.5px !important; line-height: 1.4; }
-#inv-print-wrap div[style*="font-size:11.5px;margin-bottom:2px"] { font-size: 8.5px !important; font-weight: 900; }
-/* Received line */
-#inv-print-wrap div[style*="font-size:11px;color:#333"] { font-size: 8.5px !important; }
-/* Signature lines */
-#inv-print-wrap div[style*="height:36px"] { height: 20px !important; }
-#inv-print-wrap div[style*="font-size:11.5px;font-weight:700"] { font-size: 8.5px !important; font-weight: 700; }
-/* Divider line */
-#inv-print-wrap div[style*="border-bottom:2px solid #111"] { border-bottom: 1.5px solid #000 !important; padding-bottom: 3px !important; margin-bottom: 4px !important; }
-@media print { body { margin: 0; } }
+/* ── 74mm Thermal Page ── */
+@page {
+  size: 74mm auto;
+  margin: 0mm 1mm;
+}
+* { box-sizing:border-box; margin:0; padding:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+html, body {
+  background: #fff;
+  width: 72mm;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #000;
+}
+/* Force everything black — no grays in thermal */
+#inv-print-wrap { width:72mm; max-width:72mm; padding:2mm 1.5mm; background:#fff; }
+#inv-print-wrap * { color:#000 !important; background:#fff !important; border-color:#000 !important; }
+/* Typography scaling */
+#inv-print-wrap div[style*="font-size:20px"] { font-size:17px !important; }
+#inv-print-wrap div[style*="font-size:7.5px"] { font-size:7px !important; }
+#inv-print-wrap div[style*="font-size:8px"]   { font-size:7.5px !important; }
+#inv-print-wrap div[style*="font-size:8.5px"] { font-size:8px !important; }
+#inv-print-wrap div[style*="font-size:13px"]  { font-size:12px !important; }
+#inv-print-wrap th, #inv-print-wrap td { font-size:8px !important; padding:2px 1px !important; }
+/* Lines */
+#inv-print-wrap div[style*="border-top:1px dashed"] { border-top:1px dashed #000 !important; margin:3px 0 !important; }
+#inv-print-wrap div[style*="border-top:1.5px solid"] { border-top:1.5px solid #000 !important; margin:2px 0 !important; }
+/* Signature boxes */
+#inv-print-wrap div[style*="height:20px"] { height:16px !important; }
+/* No shadows, no backgrounds */
+@media print {
+  body { margin:0; }
+  button { display:none !important; }
+}
 </style>
-</head><body>${html}
-<script>window.onload=function(){window.print();setTimeout(()=>window.close(),800);}<\/script>
+</head>
+<body>
+${html}
+<div style="text-align:center;margin-top:6px;">
+  <button onclick="window.print();setTimeout(()=>window.close(),1000);"
+    style="background:#000;color:#fff;border:none;padding:6px 18px;border-radius:4px;font-size:12px;cursor:pointer;font-weight:700;">
+    🖨️ Print Now
+  </button>
+</div>
+<script>
+  // Auto-print after render
+  window.addEventListener('load', function(){
+    setTimeout(function(){ window.print(); }, 500);
+  });
+<\/script>
 </body></html>`);
   win.document.close();
 }
@@ -5457,15 +5501,47 @@ function saveOrder() {
     o.checkerStatus = orig.checkerStatus;
     o.riderRemarks = orig.riderRemarks;
     o.createdAt = orig.createdAt;
-    // Preserve payment/verification fields on edit
     o.paymentStatus = orig.paymentStatus || o.paymentStatus;
     o.paymentNotes = orig.paymentNotes || '';
     o.verificationStatus = orig.verificationStatus || 'Not Verified';
     o.lbcStatus = orig.lbcStatus || o.lbcStatus;
-    // preserve checker-assigned rider if admin hasn't changed it
     if(!assignedRider && orig.assignedRider) o.assignedRider = orig.assignedRider;
+
+    // ── RESTORE old inventory, then deduct new items ──────────────
+    // Step 1: reverse original items' stock deductions
+    (orig.items||[]).forEach(item => {
+      if(!item.code) return;
+      const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
+      if(!inv) return;
+      if(inv.itemType === 'fixprice') {
+        inv.qty += (item.qty||1);
+      } else if((item.grams||0) > 0) {
+        inv.grams += item.grams;
+      }
+    });
+    // Step 2: apply new items' stock deductions
+    items.forEach(item => {
+      if(!item.code) return;
+      const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
+      if(!inv) return;
+      if(inv.itemType === 'fixprice') {
+        const deductQty = item.qty||1;
+        const before = inv.qty;
+        inv.qty = before - deductQty;
+        S.stockLog.push({ productCode:inv.code, type:'out', qty:deductQty,
+          date:o.date, notes:'Auto: Edit order – '+name+' ('+admin+')',
+          before, after:inv.qty });
+      } else if((item.grams||0) > 0) {
+        const before = inv.grams;
+        inv.grams = before - item.grams;
+        S.stockLog.push({ productCode:inv.code, type:'out', qty:item.grams,
+          date:o.date, notes:'Auto: Edit order – '+name+' ('+admin+')',
+          before, after:inv.grams });
+      }
+    });
+
     S.orders[+editIdx] = o;
-    toast('✅ Order updated!');
+    toast('✅ Order updated! Inventory adjusted.');
   } else {
     S.orders.push(o);
     // ── AUTO-DEDUCT INVENTORY ON NEW ORDER ───────────────────────
@@ -6288,7 +6364,7 @@ function renderRemitPage() {
   let filteredLog = S.remitLog;
   if(df) filteredLog = S.remitLog.filter(e=>e.date===df);
   const byRider = {};
-  filteredLog.forEach((e,_i)=>{
+  filteredLog.forEach((e)=>{
     const i = S.remitLog.indexOf(e);
     if(!byRider[e.riderName]) byRider[e.riderName] = [];
     byRider[e.riderName].push({...e, idx:i});
@@ -6297,17 +6373,105 @@ function renderRemitPage() {
     el.innerHTML = `<div class="card"><p style="color:var(--muted);padding:20px;text-align:center;">Walang remit entries${df?' para sa petsang ito':''}.</p></div>`;
     return;
   }
+
+  // Helper: build cancelled items detail for a remit entry
+  function buildCancelledDetail(entry) {
+    const riderName = entry.riderName;
+    const date      = entry.date;
+    // Find all orders assigned to this rider on this date
+    const riderOrders = S.orders.map((o,i)=>({...o,idx:i}))
+      .filter(o=>o.assignedRider===riderName && (!date||o.date===date));
+
+    const wholeOrderCancels = riderOrders.filter(o=>['Cancelled','Update'].includes(o.status));
+    const deliveredWithItemCancels = riderOrders.filter(o=>{
+      if(o.status!=='Delivered') return false;
+      const iS=o.itemStatuses||{};
+      return o.items.some((_,ii)=>iS[ii]==='Cancelled'||(o.itemCancelQty||{})[ii]>0);
+    });
+
+    if(!wholeOrderCancels.length && !deliveredWithItemCancels.length) return '';
+
+    let html = `<div style="margin-top:8px;padding:8px 10px;background:rgba(224,85,85,0.07);border:1px solid rgba(224,85,85,0.3);border-radius:6px;">
+      <div style="font-size:10.5px;font-weight:700;color:var(--red);margin-bottom:6px;">⚠️ Cancelled Details — ${riderName} (${date})</div>`;
+
+    if(wholeOrderCancels.length) {
+      html += `<div style="font-size:10px;color:var(--orange);font-weight:600;margin-bottom:4px;">📦 Whole-Order Cancels (${wholeOrderCancels.length}):</div>
+      <div class="table-wrap"><table style="font-size:10px;">
+        <thead><tr style="background:rgba(224,85,85,0.1);">
+          <th>Order #</th><th>Customer</th><th>Contact</th><th>Items</th><th>SF</th><th>Orig. Amount</th><th>Status</th><th>Rider Remark</th>
+        </tr></thead><tbody>
+        ${wholeOrderCancels.map(o=>`<tr>
+          <td style="color:var(--gold);font-weight:700;">${onum(o.idx)}</td>
+          <td style="font-weight:600;">${o.name}</td>
+          <td>${o.contact||'—'}</td>
+          <td style="font-size:9.5px;">${o.items.map(it=>`[${it.code||'?'}] ${it.desc} (${p(it.total)})`).join('<br>')}</td>
+          <td>${p(o.shipping)}</td>
+          <td style="text-decoration:line-through;color:var(--muted);">${p(o.grandTotal)}</td>
+          <td><span class="status ${sclass(o.status)}" style="font-size:9px;">${o.status}</span></td>
+          <td style="font-size:9.5px;color:var(--orange);">${o.riderRemarks||'—'}</td>
+        </tr>`).join('')}
+        <tr style="background:rgba(224,85,85,0.06);font-weight:700;">
+          <td colspan="5" style="color:var(--red);">Total Cancelled Amount</td>
+          <td style="color:var(--red);text-decoration:line-through;">${p(wholeOrderCancels.reduce((s,o)=>s+o.grandTotal,0))}</td>
+          <td colspan="2" style="font-size:9px;color:var(--muted);">→ Remit: ₱0.00</td>
+        </tr>
+        </tbody>
+      </table></div>`;
+    }
+
+    if(deliveredWithItemCancels.length) {
+      html += `<div style="font-size:10px;color:var(--orange);font-weight:600;margin:8px 0 4px;">📦 Partial Item Cancels (${deliveredWithItemCancels.length} order/s):</div>
+      <div class="table-wrap"><table style="font-size:10px;">
+        <thead><tr style="background:rgba(255,165,0,0.1);">
+          <th>Order #</th><th>Customer</th><th>Cancelled Item</th><th>Cancelled Qty</th><th>Cancelled Amt</th><th>Remaining Amt</th><th>Rider Remark</th>
+        </tr></thead><tbody>
+        ${deliveredWithItemCancels.flatMap(o=>{
+          const iS=o.itemStatuses||{};
+          const iCQ=o.itemCancelQty||{};
+          const iR=o.itemRemarks||{};
+          return o.items.map((it,ii)=>{
+            const isCancelled = iS[ii]==='Cancelled';
+            const partialQty  = iCQ[ii]||0;
+            if(!isCancelled && !partialQty) return '';
+            const totalQty    = it.grams||it.qty||1;
+            const unit        = it.pergram>0?'g':'pcs';
+            const cancelQty   = isCancelled ? totalQty : partialQty;
+            const priceUnit   = it.total / Math.max(1,totalQty);
+            const cancelAmt   = cancelQty * priceUnit;
+            const remainAmt   = it.total - cancelAmt;
+            return `<tr>
+              <td style="color:var(--gold);font-weight:700;">${onum(o.idx)}</td>
+              <td style="font-weight:600;">${o.name}</td>
+              <td style="font-size:9.5px;">[${it.code||'?'}] ${it.desc}</td>
+              <td style="color:var(--red);font-weight:700;">${cancelQty}${unit} ${isCancelled?'(Full)':'(Partial)'}</td>
+              <td style="color:var(--red);font-weight:700;">-${p(cancelAmt)}</td>
+              <td style="color:var(--green);">${p(remainAmt)}</td>
+              <td style="font-size:9.5px;color:var(--orange);">${iR[ii]||o.riderRemarks||'—'}</td>
+            </tr>`;
+          }).filter(Boolean);
+        }).join('')}
+        </tbody>
+      </table></div>`;
+    }
+
+    html += `</div>`;
+    return html;
+  }
+
   const statusColor = s => s==='Remitted'?'var(--green)':s==='Remitting'?'var(--orange)':'var(--muted)';
   const statusIcon  = s => s==='Remitted'?'✅':s==='Remitting'?'🏃':'⏳';
+
   el.innerHTML = Object.entries(byRider).map(([riderName, entries])=>{
     const grandSubtotal = entries.reduce((s,e)=>s+(e.codSubtotal||e.subtotal||0),0);
     const grandNet      = entries.reduce((s,e)=>s+(e.netTotal||e.netEarn||0),0);
+    const totalCancelled= entries.reduce((s,e)=>s+(e.cancelledCount||0),0);
     const remittedCount = entries.filter(e=>e.remitStatus==='Remitted').length;
     return `<div class="card" style="margin-bottom:13px;">
       <div class="card-header">
         <span class="card-title">🏍️ ${riderName}</span>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <span style="font-size:11px;color:var(--muted);">${entries.length} entry/entries · ${remittedCount} Remitted</span>
+          ${totalCancelled?`<span style="font-size:11px;color:var(--red);font-weight:600;">⚠️ ${totalCancelled} cancelled order(s)</span>`:''}
           <span style="font-size:11.5px;color:var(--blue);font-weight:600;">Subtotal: ${p(grandSubtotal)}</span>
           <span style="font-size:11.5px;color:var(--gold);font-weight:700;">Net Total: ${p(grandNet)}</span>
           <button class="btn btn-gold btn-sm" onclick="openRemitModal()">+ Add</button>
@@ -6315,21 +6479,23 @@ function renderRemitPage() {
       </div>
       <div class="table-wrap"><table style="font-size:11px;">
         <thead><tr style="background:rgba(201,168,76,0.08);">
-          <th>Date</th><th>Parcels</th><th>Delivered</th><th>Cancelled</th>
+          <th>Date</th><th>Parcels</th><th>Delivered</th>
+          <th style="color:var(--red);">Cancelled</th>
           <th>Total SF</th><th>−SF 10%</th><th>−Benefits</th>
-          <th style="color:var(--blue);">Subtotal</th>
-          <th style="color:var(--muted);">Net SF</th>
+          <th style="color:var(--blue);">COD Subtotal</th>
+          <th style="color:var(--muted);">Net SF Deduct</th>
           <th style="color:var(--gold);">Net Total Remit</th>
           <th>Status</th><th>Actions</th>
         </tr></thead>
         <tbody>
           ${entries.map(e=>{
             const st = e.remitStatus||'For Remittance';
-            return `<tr>
+            const hasCancels = (e.cancelledCount||0)>0;
+            return `<tr style="${hasCancels?'background:rgba(224,85,85,0.04);':''}">
               <td>${e.date}</td>
               <td style="text-align:center;font-weight:600;">${e.parcelCount||0}</td>
               <td style="color:var(--green);font-weight:600;">${e.deliveredCount||'—'}</td>
-              <td style="color:var(--red);">${e.cancelledCount||0}</td>
+              <td style="color:${hasCancels?'var(--red)':'var(--muted)'};font-weight:${hasCancels?'700':'400'};">${hasCancels?'⚠️':''} ${e.cancelledCount||0}</td>
               <td>${p(e.totalSF||0)}</td>
               <td style="color:var(--red);">-${p(e.sf10||0)}</td>
               <td style="color:var(--red);">-${p(e.totalBenefits||0)}</td>
@@ -6341,10 +6507,15 @@ function renderRemitPage() {
                 <button class="btn btn-outline btn-sm" onclick="openRemitModal(${e.idx})">✏️</button>
                 <button class="btn btn-red btn-sm" onclick="delRemit(${e.idx})">🗑️</button>
               </td>
-            </tr>`;
+            </tr>
+            ${hasCancels ? `<tr style="background:rgba(224,85,85,0.02);">
+              <td colspan="12" style="padding:0 8px 8px;">
+                ${buildCancelledDetail(e)}
+              </td>
+            </tr>` : ''}`;
           }).join('')}
           <tr style="background:rgba(201,168,76,0.08);font-weight:700;font-size:12px;">
-            <td colspan="7" style="color:var(--gold);">TOTALS</td>
+            <td colspan="7" style="color:var(--gold);">TOTALS — ${riderName}</td>
             <td style="color:var(--blue);">${p(grandSubtotal)}</td>
             <td></td>
             <td style="color:var(--gold);">${p(grandNet)}</td>
