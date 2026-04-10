@@ -1616,7 +1616,12 @@ window.loadFromFirebase = async function() {
       <div class="form-group"><label>Type</label>
         <select class="form-control" id="rider-type"><option>LBC</option><option>Own Rider</option><option>Partner Courier</option></select>
       </div>
-      <div class="form-group"><label>Contact</label><input class="form-control" id="rider-contact"></div>
+      <div class="form-group"><label>Contact Number (11 digits)</label>
+        <input class="form-control" id="rider-contact" type="tel" maxlength="11"
+          placeholder="09XXXXXXXXX"
+          oninput="this.value=this.value.replace(/\D/g,'').slice(0,11); document.getElementById('rider-contact-count').textContent=this.value.length+'/11';">
+        <span id="rider-contact-count" style="font-size:10.5px;color:var(--muted);margin-top:2px;display:block;">0/11</span>
+      </div>
       <div class="form-group"><label>Rider Password (CEO assigns)</label><input type="password" class="form-control" id="rider-password" placeholder="Set rider login password"></div>
     </div>
     <input type="hidden" id="rider-edit-idx" value="">
@@ -2734,47 +2739,95 @@ function unverifyOrder(i){
 // ============ INVOICE ============
 function openInvoice(i){
   const o=S.orders[i];
-  const hasGrams = o.items.some(it => it.grams > 0 && !it.fixPrice);
+  const biz=S.bizInfo||{};
+  const bizName=biz.name||'Goldchelle Online Enterprises';
+  const bizAddress=biz.address||'Las Pinas City, Metro Manila, PH';
+  const bizPhone=biz.phone||'0917-130-7239';
+  const bizFb=biz.fb||'FB: Goldchelle Online Enterprise';
+
   const rows=o.items.map(it=>{
-    const discount = it.discount || 0;
-    const discStr = discount > 0 ? ` <span style="color:#e05555;font-size:9px;">(-${p(discount)})</span>` : '';
-    if(it.fixPrice || (!it.grams && !it.pergram)){
-      return `<tr><td>${it.code}</td><td style="text-align:left;">${it.desc}${discStr}</td><td>${it.qty}</td><td>—</td><td>—</td><td style="font-weight:600;">${p(it.total)}</td></tr>`;
-    }
-    return `<tr><td>${it.code}</td><td style="text-align:left;">${it.desc}${discStr}</td><td>${it.qty}</td><td>${it.grams?it.grams+'g':'—'}</td><td>${it.pergram?p(it.pergram):'—'}</td><td style="font-weight:600;">${p(it.total)}</td></tr>`;
+    const discount=it.discount||0;
+    const discNote=discount>0?` (-₱${discount.toFixed(2)})`:'';
+    const isGrams=it.grams>0&&!it.fixPrice;
+    const grams=isGrams?it.grams+'g':'—';
+    const perG=isGrams?'₱'+Number(it.pergram||0).toFixed(2):'—';
+    const qty=it.qty||1;
+    return `<tr>
+      <td style="border:1px solid #bbb;padding:4px 3px;text-align:center;font-size:10px;">${it.code||'—'}</td>
+      <td style="border:1px solid #bbb;padding:4px 5px;text-align:left;font-size:10.5px;">${it.desc||''}${discNote}</td>
+      <td style="border:1px solid #bbb;padding:4px 3px;text-align:center;font-size:10px;">${qty}</td>
+      <td style="border:1px solid #bbb;padding:4px 3px;text-align:center;font-size:10px;">${grams}</td>
+      <td style="border:1px solid #bbb;padding:4px 3px;text-align:center;font-size:10px;">${perG}</td>
+      <td style="border:1px solid #bbb;padding:4px 3px;text-align:center;font-size:10.5px;font-weight:700;">₱${Number(it.total||0).toFixed(2)}</td>
+    </tr>`;
   }).join('');
-  const blanks=Math.max(0,6-o.items.length);
-  const methodLabel = o.paymentMethod==='COD'?'Cash on Delivery':o.paymentMethod==='LBC'?'LBC Courier':o.paymentMethod==='INTERNATIONAL'?'International Shipping':'—';
-  document.getElementById('invoice-area').innerHTML=`<div class="inv-wrap">
-    <div class="inv-header">
-      <div class="inv-brand"><h2>Goldchelle Online Enterprises</h2><p>Las Pinas City, Metro Manila, PH</p><p>📞 0917-130-7239</p><p>fb.com/goldchelleonlineenterprise</p></div>
-      <div class="inv-cod-label"><span class="cod-big">${o.paymentMethod||'COD'}</span><span class="inv-small">INVOICE · ${methodLabel}</span></div>
+  const blanks=Math.max(0,4-o.items.length);
+  const blankRows=Array(blanks).fill(`<tr>
+    <td style="border:1px solid #bbb;padding:9px 3px;">&nbsp;</td><td style="border:1px solid #bbb;"></td>
+    <td style="border:1px solid #bbb;"></td><td style="border:1px solid #bbb;"></td>
+    <td style="border:1px solid #bbb;"></td><td style="border:1px solid #bbb;"></td>
+  </tr>`).join('');
+  const discRow=o.totalDiscount>0?`<tr>
+    <td colspan="5" style="border:1px solid #bbb;padding:4px 6px;text-align:right;font-size:10px;">Discount:</td>
+    <td style="border:1px solid #bbb;padding:4px 3px;text-align:center;color:#c0392b;font-size:10px;">-₱${Number(o.totalDiscount).toFixed(2)}</td>
+  </tr>`:'';
+  const thStyle='border:1px solid #999;padding:5px 4px;text-align:center;background:#f0f0f0;font-size:10.5px;font-weight:700;';
+  document.getElementById('invoice-area').innerHTML=`<div style="background:white;color:#111;font-family:Arial,Helvetica,sans-serif;max-width:680px;margin:0 auto;padding:16px 20px;border:1.5px solid #ccc;">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #111;">
+    <div>
+      <div style="font-family:Georgia,serif;font-size:26px;font-weight:900;letter-spacing:-1px;color:#111;line-height:1;">Goldchelle</div>
+      <div style="font-size:9px;font-weight:700;letter-spacing:2.5px;color:#444;margin-top:1px;">◆ ONLINE ENTERPRISES</div>
     </div>
-    <div class="inv-fields">
-      <div class="inv-field"><label>Name:</label><span>${o.name}</span></div>
-      <div class="inv-field"><label>Contact #:</label><span>${o.contact}</span></div>
-      <div class="inv-field"><label>Address:</label><span>${o.address}</span></div>
-      <div class="inv-field"><label>Date:</label><span>${o.date}</span></div>
+    <div style="text-align:right;font-size:11px;color:#333;line-height:1.7;">
+      <div>${bizAddress}</div>
+      <div>${bizPhone}</div>
+      <div>${bizFb}</div>
     </div>
-    <div class="inv-landmark"><label>Landmark:</label><span>${o.landmark||'—'}</span></div>
-    <div class="inv-table-wrap"><table class="inv-table">
-      <thead><tr><th>Serial Code</th><th style="text-align:left;">Item Description</th><th>Qty</th><th>Gram</th><th>Per Gram</th><th>Total</th></tr></thead>
-      <tbody>${rows}${Array(blanks).fill('<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>').join('')}</tbody>
-    </table></div>
-    <div class="inv-footer-row">
-      <div class="inv-note"><strong>Paalala sa aming mga buyer</strong><br>Kukunan po kayo ni rider ng video upon opening the parcel, katibayan po ito kung may kulang/mali/damage ang item. Kaya maigi na paki check po ng mabuti ang items bago ito bayaran. Once po na pumirma o inaprobahan niyo na po ang resibo ay wala ng pananagutan ang Goldchelle Online Enterprises sa anumang maging problema ng item/s.</div>
-      <div class="inv-totals">
-        ${o.totalDiscount > 0 ? `<div class="inv-total-row"><span>Items Subtotal</span><span>${p(o.itemsTotal + (o.totalDiscount||0))}</span></div><div class="inv-total-row" style="color:#e05555;"><span>Discount</span><span>-${p(o.totalDiscount)}</span></div>` : ''}
-        <div class="inv-total-row"><span>Shipping Fee</span><span>${p(o.shipping)}</span></div>
-        <div class="inv-total-row grand"><span>Total Amount</span><span>${p(o.grandTotal)}</span></div>
-      </div>
+  </div>
+  <div style="margin-bottom:12px;font-size:12px;">
+    <div style="display:flex;gap:8px;line-height:2.1;"><span style="font-weight:700;min-width:115px;">Name:</span><span style="flex:1;border-bottom:1px solid #888;">${o.name||''}</span></div>
+    <div style="display:flex;gap:8px;line-height:2.1;"><span style="font-weight:700;min-width:115px;">Address:</span><span style="flex:1;border-bottom:1px solid #888;">${o.address||''}${o.landmark?' — '+o.landmark:''}</span></div>
+    <div style="display:flex;gap:8px;line-height:2.1;"><span style="font-weight:700;min-width:115px;">Contact #:</span><span style="flex:1;border-bottom:1px solid #888;">${o.contact||''}${o.backupContact?' / '+o.backupContact:''}</span></div>
+    <div style="display:flex;gap:8px;line-height:2.1;"><span style="font-weight:700;min-width:115px;">Admin’s Name:</span><span style="flex:1;border-bottom:1px solid #888;">&nbsp;</span></div>
+    <div style="display:flex;gap:8px;line-height:2.1;"><span style="font-weight:700;min-width:115px;">Date:</span><span style="flex:1;border-bottom:1px solid #888;">${o.date||''}</span></div>
+  </div>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">
+    <thead><tr>
+      <th style="${thStyle}min-width:60px;">Serial</th>
+      <th style="${thStyle}text-align:left;min-width:130px;">Desc</th>
+      <th style="${thStyle}">Qty</th>
+      <th style="${thStyle}">G</th>
+      <th style="${thStyle}">Per G</th>
+      <th style="${thStyle}">Total</th>
+    </tr></thead>
+    <tbody>
+      ${rows}${blankRows}${discRow}
+      <tr>
+        <td colspan="5" style="border:1px solid #bbb;padding:5px 8px;text-align:right;font-size:11px;font-weight:700;">SF:</td>
+        <td style="border:1px solid #bbb;padding:5px 3px;text-align:center;font-size:11px;font-weight:700;">₱${Number(o.shipping||0).toFixed(2)}</td>
+      </tr>
+      <tr>
+        <td colspan="5" style="border:2px solid #555;padding:6px 8px;text-align:right;font-size:13px;font-weight:900;background:#f5f5f5;">TOTAL:</td>
+        <td style="border:2px solid #555;padding:6px 3px;text-align:center;font-size:13px;font-weight:900;background:#f5f5f5;">₱${Number(o.grandTotal||0).toFixed(2)}</td>
+      </tr>
+    </tbody>
+  </table>
+  <div style="font-size:11px;color:#333;margin:6px 0 4px;">Received the above item/s in good condition</div>
+  <div style="font-size:10.5px;color:#111;line-height:1.6;margin-bottom:14px;">
+    <div style="font-weight:900;font-size:11.5px;margin-bottom:2px;text-decoration:underline;">PAALALA SA AMING MGA BUYER:</div>
+    Kukunan po kayo ni rider ng video upon opening the parcel, katibayan po ito kung may kulang/mali/damage ang item. Kaya maigi na paki check po ng Mabuti ang items bago ito bayaran. Once po na pumirma o inaprobahan nyo na po ang resibo, wala ng pananagutan ang Goldchelle Online Enterprises sa anumang maging problema ng item/s.
+  </div>
+  <div style="display:flex;justify-content:space-around;gap:30px;margin-top:16px;">
+    <div style="text-align:center;flex:1;">
+      <div style="border-bottom:1.5px solid #111;height:36px;margin-bottom:5px;"></div>
+      <div style="font-size:11.5px;font-weight:700;">Rider’s Name</div>
     </div>
-    <p style="padding:2px 17px;font-size:9.5px;color:#555;">Received the above item/s in good condition.</p>
-    <div class="inv-sigs">
-      <div class="inv-sig"><p style="font-weight:700;font-size:11px;margin-bottom:4px;">&nbsp;</p><div class="inv-sig-line"></div><p>Encoded by / Admin</p></div>
-      <div class="inv-sig"><p style="font-weight:700;font-size:11px;margin-bottom:4px;">&nbsp;</p><div class="inv-sig-line"></div><p>Rider's Signature</p></div>
-      <div class="inv-sig"><p style="font-weight:700;font-size:11px;margin-bottom:4px;">&nbsp;</p><div class="inv-sig-line"></div><p>Customer's Signature</p></div>
-    </div></div>`;
+    <div style="text-align:center;flex:1;">
+      <div style="border-bottom:1.5px solid #111;height:36px;margin-bottom:5px;"></div>
+      <div style="font-size:11.5px;font-weight:700;">Customer’s Signature</div>
+    </div>
+  </div>
+</div>`;
   openModal('modal-invoice');
 }
 
@@ -3591,6 +3644,7 @@ function openAddRider(){
   ['rider-name','rider-contact'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const pw=document.getElementById('rider-password');if(pw)pw.value='';
   document.getElementById('rider-edit-idx').value='';
+  const cnt=document.getElementById('rider-contact-count');if(cnt)cnt.textContent='0/11';
   populateLocationDropdown();
   if(curLocation&&curLocation!=='ALL'){const sel=document.getElementById('rider-location');if(sel)sel.value=curLocation;}
   openModal('modal-rider');
@@ -3600,7 +3654,9 @@ function openEditRider(i){
   const r=S.riders[i];
   document.getElementById('rider-modal-title').textContent='Edit Rider – '+r.name;
   document.getElementById('rider-name').value=r.name;
-  document.getElementById('rider-contact').value=r.contact||'';
+  const contact = r.contact||'';
+  document.getElementById('rider-contact').value=contact;
+  const cnt=document.getElementById('rider-contact-count');if(cnt)cnt.textContent=contact.length+'/11';
   document.getElementById('rider-type').value=r.type||'LBC';
   const pw=document.getElementById('rider-password');if(pw)pw.value=r.password||'';
   document.getElementById('rider-edit-idx').value=i;
@@ -4955,14 +5011,15 @@ function saveRider() {
   const name = document.getElementById('rider-name').value.trim();
   const loc = document.getElementById('rider-location').value.trim();
   if(!name || !loc) { toast('Name and Location required'); return; }
+  const contact = document.getElementById('rider-contact').value.replace(/\D/g,'');
+  if(contact && contact.length !== 11) { toast('⚠️ Contact number must be exactly 11 digits'); document.getElementById('rider-contact').focus(); return; }
   const pw = document.getElementById('rider-password').value;
   const idx = document.getElementById('rider-edit-idx').value;
-  // preserve existing password if field is empty on edit
   const existingPw = idx !== '' ? (S.riders[+idx].password || '') : '';
   const obj = {
     name, location: loc,
     type: document.getElementById('rider-type').value,
-    contact: document.getElementById('rider-contact').value,
+    contact,
     password: pw || existingPw
   };
   if(idx !== '') S.riders[+idx] = obj; else S.riders.push(obj);
