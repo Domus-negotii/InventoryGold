@@ -7,6 +7,25 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{--gold:#c9a84c;--gold-light:#e8d08a;--gold-dark:#9c7a2e;--navy:#0f1b2d;--navy-mid:#162035;--navy-card:#1c2a40;--navy-border:#263554;--white:#f8f6f0;--muted:#8a95a8;--green:#2ecc8a;--red:#e05555;--orange:#e08a30;--blue:#4a90d9;--purple:#9b6fd9;--fh:'Playfair Display',serif;--fb:'DM Sans',sans-serif;}
+/* ── LIGHT MODE ── */
+body.light-mode{--navy:#f0f2f7;--navy-mid:#ffffff;--navy-card:#f8f9fc;--navy-border:#d0d7e6;--white:#1a2236;--muted:#6b7a99;}
+body.light-mode .sidebar{background:#fff;border-right-color:#d0d7e6;}
+body.light-mode .topbar{background:#fff;border-bottom-color:#d0d7e6;}
+body.light-mode .nav-item{color:#6b7a99;}
+body.light-mode .nav-item:hover{background:rgba(201,168,76,0.08);}
+body.light-mode .nav-item.active{background:rgba(201,168,76,0.12);}
+body.light-mode .form-control{background:#f0f2f7;color:#1a2236;border-color:#d0d7e6;}
+body.light-mode .modal{background:#fff;border-color:#d0d7e6;}
+body.light-mode .modal-overlay{background:rgba(100,110,130,0.55);}
+body.light-mode table td{color:#2a3550;}
+body.light-mode .finance-lock{background:rgba(230,235,245,0.97);}
+body.light-mode .lock-box{background:#fff;}
+body.light-mode .topbar-title{color:var(--gold);}
+body.light-mode .sidebar-logo h1{color:var(--gold);}
+body.light-mode select.form-control option{background:#fff;color:#1a2236;}
+/* Theme toggle button */
+.theme-toggle{background:none;border:1px solid var(--navy-border);border-radius:20px;padding:3px 10px;cursor:pointer;font-size:13px;color:var(--muted);transition:all 0.2s;line-height:1;}
+.theme-toggle:hover{border-color:var(--gold);color:var(--gold);}
 *{margin:0;padding:0;box-sizing:border-box;}
 body{background:var(--navy);color:var(--white);font-family:var(--fb);min-height:100vh;display:flex;}
 
@@ -718,6 +737,7 @@ window.loadFromFirebase = async function() {
     <div class="user-badge">
       <span id="topbar-date" style="font-size:11px;color:var(--muted);"></span>
       <span id="sync-indicator" class="sync-indicator" style="color:var(--muted);">⬤ Offline</span>
+      <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Light/Dark Mode">🌙</button>
       <span class="user-role-tag" id="user-role-tag">Admin</span>
       <span class="badge-pill" id="user-name-badge">Goldchelle</span>
       <button class="btn btn-outline btn-sm" onclick="logoutUser()" style="font-size:10px;padding:3px 8px;">Logout</button>
@@ -1016,27 +1036,39 @@ window.loadFromFirebase = async function() {
     <!-- Stats -->
     <div class="stats-grid" id="return-stats"></div>
 
-    <!-- Sub-tabs -->
+    <!-- Sub-tabs: 4 tabs -->
     <div class="section-tabs no-print" style="margin-bottom:13px;" id="returns-tabs">
-      <button class="tab-btn active" onclick="setReturnTab('orders')">🚫 Cancelled Orders</button>
-      <button class="tab-btn" onclick="setReturnTab('items')" id="ret-tab-items-btn">📦 Cancelled Items</button>
-      <button class="tab-btn" onclick="setReturnTab('log')">📋 Return Log</button>
+      <button class="tab-btn active"  onclick="setReturnTab('orders')">🚫 Cancelled Orders</button>
+      <button class="tab-btn"         onclick="setReturnTab('update')" id="ret-tab-update-btn">🔄 For Update</button>
+      <button class="tab-btn"         onclick="setReturnTab('items')"  id="ret-tab-items-btn">📦 Cancelled Items</button>
+      <button class="tab-btn"         onclick="setReturnTab('log')">📋 Return Log</button>
     </div>
 
     <!-- Tab: Cancelled Orders -->
     <div id="ret-tab-orders">
       <div class="card">
         <div class="card-header">
-          <span class="card-title">🚫 Cancelled / For Update Orders</span>
-          <div style="display:flex;gap:8px;align-items:center;">
+          <span class="card-title">🚫 Cancelled Orders</span>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <input type="date" class="form-control" id="ret-orders-date" style="width:155px;font-size:11px;" oninput="renderReturnOrders()" title="Filter by date">
-            <button class="btn btn-outline btn-sm" onclick="document.getElementById('ret-orders-date').value='';renderReturnOrders()">All</button>
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('ret-orders-date').value='';renderReturnOrders()">All Dates</button>
           </div>
         </div>
-        <div class="table-wrap"><table>
-          <thead><tr><th>Order #</th><th>Customer</th><th>Contact</th><th>Address</th><th>Admin</th><th>Rider</th><th>Date</th><th>Items</th><th>SF</th><th>Amount</th><th>Status</th><th>Update Status</th></tr></thead>
-          <tbody id="returns-tbody"></tbody>
-        </table></div>
+        <div id="ret-cancelled-orders-content"></div>
+      </div>
+    </div>
+
+    <!-- Tab: For Update Orders -->
+    <div id="ret-tab-update" style="display:none;">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🔄 For Update Orders</span>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input type="date" class="form-control" id="ret-update-date" style="width:155px;font-size:11px;" oninput="renderUpdateOrders()" title="Filter by date">
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('ret-update-date').value='';renderUpdateOrders()">All Dates</button>
+          </div>
+        </div>
+        <div id="ret-update-orders-content"></div>
       </div>
     </div>
 
@@ -1045,13 +1077,13 @@ window.loadFromFirebase = async function() {
       <div class="card">
         <div class="card-header">
           <span class="card-title">📦 Cancelled Items (Per Item)</span>
-          <span style="font-size:11px;color:var(--muted);">Items na ni-cancel ng rider kahit nasa isang parcel. Stock ay naibalik na.</span>
+          <span style="font-size:11px;color:var(--muted);">Items na ni-cancel ng rider. Stock ay awtomatikong na-restore.</span>
         </div>
         <div class="table-wrap"><table>
           <thead><tr>
-            <th>Order #</th><th>Customer</th><th>Rider</th><th>Date</th>
-            <th>Item Code</th><th>Description</th><th>Qty/Grams</th><th>Item Value</th>
-            <th>Item Status</th><th>Record Return</th>
+            <th>Order #</th><th>Customer</th><th>Contact</th><th>Rider</th><th>Date</th>
+            <th>Code</th><th>Description</th><th>Cancelled Qty</th><th>Item Value</th>
+            <th>Item Status</th><th>Rider Remark</th><th>Record Return</th>
           </tr></thead>
           <tbody id="cancelled-items-tbody"></tbody>
         </table></div>
@@ -2023,6 +2055,23 @@ function toast(msg,t=2500){
   el.innerHTML=msg; el.style.borderColor='var(--gold)'; el.style.display='block';
   setTimeout(()=>{ if(!_pendingDelete) el.style.display='none'; }, t);
 }
+
+// ── LIGHT / DARK MODE TOGGLE ──────────────────────────────────────
+function toggleTheme(){
+  const isLight = document.body.classList.toggle('light-mode');
+  const btn = document.getElementById('theme-toggle-btn');
+  if(btn) btn.textContent = isLight ? '☀️' : '🌙';
+  try{ localStorage.setItem('gce_theme', isLight?'light':'dark'); }catch(e){}
+}
+(function applyStoredTheme(){
+  try{
+    if(localStorage.getItem('gce_theme')==='light'){
+      document.body.classList.add('light-mode');
+      const btn=document.getElementById('theme-toggle-btn');
+      if(btn) btn.textContent='☀️';
+    }
+  }catch(e){}
+})();
 function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 document.getElementById('topbar-date').textContent=new Date().toLocaleDateString('en-PH',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
@@ -2875,7 +2924,7 @@ function printInvoiceThermal() {
 /* ── 74mm Thermal Page ── */
 @page {
   size: 74mm auto;
-  margin: 0mm 1mm;
+  margin: 20mm 1mm;
 }
 * { box-sizing:border-box; margin:0; padding:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
 html, body {
@@ -2965,7 +3014,12 @@ function renderForUpdateTab() {
 
 function resolveUpdate(orderIdx, newStatus) {
   S.orders[orderIdx].status = newStatus;
-  save(); toast('✅ Status → '+newStatus); renderForUpdateTab(); refreshUpdateBadge();
+  save(); toast('✅ Status → '+newStatus);
+  renderForUpdateTab(); refreshUpdateBadge();
+  // Also refresh returns page if visible
+  if(returnTab==='update') renderUpdateOrders();
+  else if(returnTab==='orders') renderReturnOrders();
+  renderReturns();
   if(currentRole==='owner') renderDash();
 }
 
@@ -3051,74 +3105,195 @@ function renderDailyParcels(){
 let returnTab = 'orders';
 function setReturnTab(tab) {
   returnTab = tab;
+  const tabs = ['orders','update','items','log'];
   document.querySelectorAll('#returns-tabs .tab-btn').forEach((b,i) =>
-    b.classList.toggle('active', ['orders','items','log'][i] === tab));
-  document.getElementById('ret-tab-orders').style.display = tab==='orders' ? '' : 'none';
-  document.getElementById('ret-tab-items').style.display  = tab==='items'  ? '' : 'none';
-  document.getElementById('ret-tab-log').style.display    = tab==='log'    ? '' : 'none';
-  if(tab==='orders') renderReturnOrders();
-  else if(tab==='items') renderCancelledItems();
-  else renderReturnLog();
+    b.classList.toggle('active', tabs[i] === tab));
+  document.getElementById('ret-tab-orders').style.display  = tab==='orders' ? '' : 'none';
+  document.getElementById('ret-tab-update').style.display  = tab==='update' ? '' : 'none';
+  document.getElementById('ret-tab-items').style.display   = tab==='items'  ? '' : 'none';
+  document.getElementById('ret-tab-log').style.display     = tab==='log'    ? '' : 'none';
+  if(tab==='orders')      renderReturnOrders();
+  else if(tab==='update') renderUpdateOrders();
+  else if(tab==='items')  renderCancelledItems();
+  else                    renderReturnLog();
 }
 
 function renderReturns() {
-  // Gather stats
   const cancelledOrders = S.orders.filter(o=>o.status==='Cancelled').length;
-  const updateOrders = S.orders.filter(o=>o.status==='Update').length;
-  // Count cancelled items across all orders
+  const updateOrders    = S.orders.filter(o=>o.status==='Update').length;
   let cancelledItemCount = 0;
   S.orders.forEach(o=>{
-    const itemStatuses = o.itemStatuses || {};
-    const itemCancelQty = o.itemCancelQty || {};
-    o.items.forEach((_,ii)=>{
-      if(itemStatuses[ii]==='Cancelled' || (itemCancelQty[ii]||0)>0) cancelledItemCount++;
-    });
+    const iS = o.itemStatuses||{}, iCQ = o.itemCancelQty||{};
+    o.items.forEach((_,ii)=>{ if(iS[ii]==='Cancelled'||(iCQ[ii]||0)>0) cancelledItemCount++; });
   });
   const returnLogCount = (S.returnLog||[]).length;
+  const cancelTotalAmt = S.orders.filter(o=>o.status==='Cancelled').reduce((s,o)=>s+o.grandTotal,0);
 
   document.getElementById('return-stats').innerHTML=`
-    <div class="stat-card red"><div class="stat-label">Cancelled Orders</div><div class="stat-value">${cancelledOrders}</div></div>
-    <div class="stat-card purple"><div class="stat-label">For Update</div><div class="stat-value">${updateOrders}</div></div>
-    <div class="stat-card orange"><div class="stat-label">Cancelled Items</div><div class="stat-value">${cancelledItemCount}</div><div class="stat-sub">individual items</div></div>
-    <div class="stat-card blue"><div class="stat-label">Return Log Entries</div><div class="stat-value">${returnLogCount}</div></div>`;
+    <div class="stat-card red">   <div class="stat-label">Cancelled Orders</div><div class="stat-value">${cancelledOrders}</div><div class="stat-sub">${p(cancelTotalAmt)} orig. value</div></div>
+    <div class="stat-card orange"><div class="stat-label">For Update</div><div class="stat-value">${updateOrders}</div><div class="stat-sub">Pending resolution</div></div>
+    <div class="stat-card purple"><div class="stat-label">Cancelled Items</div><div class="stat-value">${cancelledItemCount}</div><div class="stat-sub">individual items</div></div>
+    <div class="stat-card blue">  <div class="stat-label">Return Log</div><div class="stat-value">${returnLogCount}</div><div class="stat-sub">manual entries</div></div>`;
 
-  // Update cancelled items badge
+  // Update badge labels
+  const updateBtn = document.getElementById('ret-tab-update-btn');
+  if(updateBtn) updateBtn.textContent = updateOrders>0 ? `🔄 For Update (${updateOrders})` : '🔄 For Update';
   const itemsBtn = document.getElementById('ret-tab-items-btn');
-  if(itemsBtn) itemsBtn.textContent = cancelledItemCount > 0
-    ? `📦 Cancelled Items (${cancelledItemCount})`
-    : '📦 Cancelled Items';
+  if(itemsBtn) itemsBtn.textContent = cancelledItemCount>0 ? `📦 Cancelled Items (${cancelledItemCount})` : '📦 Cancelled Items';
 
   // Render active tab
-  if(returnTab==='orders') renderReturnOrders();
-  else if(returnTab==='items') renderCancelledItems();
-  else renderReturnLog();
+  if(returnTab==='orders')      renderReturnOrders();
+  else if(returnTab==='update') renderUpdateOrders();
+  else if(returnTab==='items')  renderCancelledItems();
+  else                          renderReturnLog();
 }
 
+// ── CANCELLED ORDERS (full item detail) ─────────────────────────────
 function renderReturnOrders() {
-  const TRACK_STATUSES=['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'];
-  const st=['Cancelled','Update'];
-  const df = document.getElementById('ret-orders-date')?.value||'';
-  const rows = S.orders.map((o,i)=>({...o,idx:i})).filter(o=>st.includes(o.status) && (!df||o.date===df));
-  document.getElementById('returns-tbody').innerHTML = rows.length ? rows.map(o=>`<tr>
-    <td style="color:var(--gold);font-weight:600;">${onum(o.idx)}</td>
-    <td style="font-weight:500;">${o.name}</td>
-    <td>${o.contact||'—'}</td>
-    <td style="font-size:10.5px;">${o.address||'—'}</td>
-    <td>${o.admin||'—'}</td>
-    <td style="color:var(--blue);">🏍️ ${o.assignedRider||'—'}</td>
-    <td>${o.date}</td>
-    <td style="font-size:10.5px;">${o.items.map(it=>`${it.code||'?'} (${p(it.total)})`).join(', ')}</td>
-    <td>${p(o.shipping)}</td>
-    <td style="color:var(--red);font-weight:700;">${p(o.grandTotal)}</td>
-    <td><span class="status ${sclass(o.status)}">${o.status}</span></td>
-    <td>
-      <select class="form-control" style="width:145px;font-size:10.5px;padding:3px 6px;"
-        onchange="updateStatus(${o.idx},this.value)">
-        ${TRACK_STATUSES.map(s=>`<option${o.status===s?' selected':''}>${s}</option>`).join('')}
-      </select>
-    </td>
-  </tr>`).join('')
-  : `<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:26px;">Walang cancelled/update orders${df?' para sa petsang ito':''}.</td></tr>`;
+  const df  = document.getElementById('ret-orders-date')?.value||'';
+  const el  = document.getElementById('ret-cancelled-orders-content'); if(!el) return;
+  const rows = S.orders.map((o,i)=>({...o,idx:i}))
+    .filter(o=>o.status==='Cancelled' && (!df||o.date===df));
+
+  if(!rows.length){
+    el.innerHTML=`<p style="color:var(--muted);padding:24px;text-align:center;">Walang cancelled orders${df?' para sa petsang ito':''}.</p>`;
+    return;
+  }
+
+  el.innerHTML = rows.map(o=>{
+    const iS  = o.itemStatuses||{};
+    const iCQ = o.itemCancelQty||{};
+    const iR  = o.itemRemarks||{};
+    const itemRows = o.items.map((it,ii)=>{
+      const st        = iS[ii]||'—';
+      const isGrams   = it.pergram>0;
+      const totalQty  = isGrams ? it.grams : (it.qty||1);
+      const unit      = isGrams ? 'g' : 'pcs';
+      const cancelQty = iCQ[ii]||0;
+      const stColor   = st==='Cancelled'?'var(--red)':st==='Delivered'?'var(--green)':'var(--muted)';
+      const disc      = it.discount||0;
+      return `<tr>
+        <td style="font-family:monospace;font-size:11px;color:var(--gold);font-weight:700;">${it.code||'—'}</td>
+        <td style="font-size:11.5px;">${it.desc||'—'}</td>
+        <td style="text-align:center;">${isGrams?`${it.grams}g @ ${p(it.pergram)}/g`:`×${it.qty||1}`}</td>
+        <td style="color:${disc>0?'var(--orange)':'var(--muted)'};text-align:center;">${disc>0?'-'+p(disc):disc===0?'—':p(disc)}</td>
+        <td style="color:var(--green);font-weight:700;text-align:right;">${p(it.total)}</td>
+        <td style="text-align:center;"><span class="status ${st==='Cancelled'?'cancelled':st==='Delivered'?'delivered':'transit'}" style="font-size:9px;">${st||'—'}</span></td>
+        <td style="font-size:10px;color:var(--orange);">${iR[ii]||'—'}</td>
+      </tr>`;
+    }).join('');
+
+    return `<div style="border:1px solid var(--navy-border);border-radius:8px;margin-bottom:12px;overflow:hidden;">
+      <!-- Order Header -->
+      <div style="background:rgba(224,85,85,0.08);padding:10px 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;border-bottom:1px solid var(--navy-border);">
+        <span style="font-family:var(--fh);font-size:14px;color:var(--gold);font-weight:700;">${onum(o.idx)}</span>
+        <span class="status cancelled" style="font-size:10px;">🚫 Cancelled</span>
+        <span style="font-size:12px;font-weight:600;">${o.name}</span>
+        <span style="font-size:11.5px;color:var(--muted);">📞 ${o.contact||'—'}</span>
+        <span style="font-size:11.5px;color:var(--muted);">📍 ${o.city||o.address||'—'}${o.landmark?' — '+o.landmark:''}</span>
+        <span style="font-size:11.5px;color:var(--muted);">📅 ${o.date}</span>
+        <span style="font-size:11.5px;color:var(--muted);">👤 ${o.admin||'—'}</span>
+        <span style="font-size:11.5px;color:var(--blue);">🏍️ ${o.assignedRider||'Unassigned'}</span>
+        <span style="font-size:11px;color:var(--muted);">Method: <strong>${o.paymentMethod||'COD'}</strong></span>
+        <span style="margin-left:auto;font-size:11.5px;color:var(--muted);">SF: ${p(o.shipping)}</span>
+        <span style="font-size:13px;font-weight:700;color:var(--red);text-decoration:line-through;">${p(o.grandTotal)}</span>
+        ${o.riderRemarks?`<div style="width:100%;font-size:10.5px;color:var(--orange);margin-top:2px;">⚠️ Rider Remark: <strong>${o.riderRemarks}</strong></div>`:''}
+      </div>
+      <!-- Items Detail -->
+      <div style="padding:10px 14px;">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Items in this Order</div>
+        <div class="table-wrap"><table style="font-size:11.5px;">
+          <thead><tr style="background:rgba(201,168,76,0.07);">
+            <th>Code</th><th>Description</th><th>Qty / Grams</th><th>Discount</th><th>Item Total</th><th>Item Status</th><th>Rider Remark</th>
+          </tr></thead>
+          <tbody>${itemRows}</tbody>
+        </table></div>
+        <!-- Totals row + action -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;flex-wrap:wrap;gap:8px;">
+          <div style="display:flex;gap:16px;font-size:12px;">
+            <span>Items: <strong style="color:var(--red);text-decoration:line-through;">${p(o.itemsTotal||0)}</strong></span>
+            <span>SF: <strong>${p(o.shipping)}</strong></span>
+            <span>Grand Total: <strong style="color:var(--red);text-decoration:line-through;">${p(o.grandTotal)}</strong></span>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <select class="form-control" style="width:160px;font-size:10.5px;padding:3px 6px;"
+              onchange="updateStatus(${o.idx},this.value)">
+              ${['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'].map(s=>`<option${o.status===s?' selected':''}>${s}</option>`).join('')}
+            </select>
+            <button class="btn btn-outline btn-sm" onclick="openInvoice(${o.idx})">🖨️ Invoice</button>
+            <button class="btn btn-blue btn-sm" onclick="openReturnLogModal('${onum(o.idx)}',null)">📋 Log Return</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── FOR UPDATE ORDERS ────────────────────────────────────────────────
+function renderUpdateOrders() {
+  const df = document.getElementById('ret-update-date')?.value||'';
+  const el = document.getElementById('ret-update-orders-content'); if(!el) return;
+  const rows = S.orders.map((o,i)=>({...o,idx:i}))
+    .filter(o=>o.status==='Update' && (!df||o.date===df));
+
+  if(!rows.length){
+    el.innerHTML=`<p style="color:var(--muted);padding:24px;text-align:center;">Walang "For Update" orders${df?' para sa petsang ito':''}.</p>`;
+    return;
+  }
+
+  el.innerHTML = rows.map(o=>{
+    const iS  = o.itemStatuses||{};
+    const iR  = o.itemRemarks||{};
+    const itemRows = o.items.map((it,ii)=>{
+      const st      = iS[ii]||'Pending';
+      const stColor = st==='Cancelled'?'var(--red)':st==='Delivered'?'var(--green)':'var(--muted)';
+      return `<tr>
+        <td style="font-family:monospace;font-size:11px;color:var(--gold);font-weight:700;">${it.code||'—'}</td>
+        <td style="font-size:11.5px;">${it.desc||'—'}</td>
+        <td style="text-align:center;">${it.pergram>0?`${it.grams}g`:` ×${it.qty||1}`}</td>
+        <td style="color:var(--green);font-weight:700;text-align:right;">${p(it.total)}</td>
+        <td><span class="status ${st==='Cancelled'?'cancelled':st==='Delivered'?'delivered':'transit'}" style="font-size:9px;">${st}</span></td>
+        <td style="font-size:10px;color:var(--orange);">${iR[ii]||'—'}</td>
+      </tr>`;
+    }).join('');
+
+    return `<div style="border:1px solid var(--navy-border);border-radius:8px;margin-bottom:12px;overflow:hidden;">
+      <div style="background:rgba(224,138,48,0.08);padding:10px 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;border-bottom:1px solid var(--navy-border);">
+        <span style="font-family:var(--fh);font-size:14px;color:var(--gold);font-weight:700;">${onum(o.idx)}</span>
+        <span class="status return" style="font-size:10px;">🔄 For Update</span>
+        <span style="font-size:12px;font-weight:600;">${o.name}</span>
+        <span style="font-size:11.5px;color:var(--muted);">📞 ${o.contact||'—'}</span>
+        <span style="font-size:11.5px;color:var(--muted);">📍 ${o.city||o.address||'—'}${o.landmark?' — '+o.landmark:''}</span>
+        <span style="font-size:11.5px;color:var(--muted);">📅 ${o.date}</span>
+        <span style="font-size:11.5px;color:var(--muted);">👤 ${o.admin||'—'}</span>
+        <span style="font-size:11.5px;color:var(--blue);">🏍️ ${o.assignedRider||'Unassigned'}</span>
+        ${o.riderRemarks?`<div style="width:100%;font-size:10.5px;color:var(--orange);margin-top:2px;">⚠️ Rider Remark: <strong>${o.riderRemarks}</strong></div>`:''}
+      </div>
+      <div style="padding:10px 14px;">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Items in this Order</div>
+        <div class="table-wrap"><table style="font-size:11.5px;">
+          <thead><tr style="background:rgba(201,168,76,0.07);">
+            <th>Code</th><th>Description</th><th>Qty / Grams</th><th>Item Total</th><th>Item Status</th><th>Rider Remark</th>
+          </tr></thead>
+          <tbody>${itemRows}</tbody>
+        </table></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;flex-wrap:wrap;gap:8px;">
+          <div style="display:flex;gap:16px;font-size:12px;">
+            <span>Total: <strong style="color:var(--gold);">${p(o.grandTotal)}</strong></span>
+            <span>SF: ${p(o.shipping)}</span>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn btn-green btn-sm" onclick="resolveUpdate(${o.idx},'Out for Delivery')">🔁 Re-Deliver</button>
+            <button class="btn btn-red btn-sm"   onclick="resolveUpdate(${o.idx},'Cancelled')">✕ Cancel</button>
+            <button class="btn btn-outline btn-sm" onclick="openInvoice(${o.idx})">🖨️ Invoice</button>
+            <select class="form-control" style="width:160px;font-size:10.5px;padding:3px 6px;" onchange="updateStatus(${o.idx},this.value)">
+              ${['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'].map(s=>`<option${o.status===s?' selected':''}>${s}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function renderCancelledItems() {
@@ -3126,44 +3301,39 @@ function renderCancelledItems() {
   if(!tbody) return;
   const rows = [];
   S.orders.forEach((o,oi)=>{
-    const itemStatuses = o.itemStatuses || {};
-    const itemCancelQty = o.itemCancelQty || {};
+    const iS=o.itemStatuses||{}, iCQ=o.itemCancelQty||{}, iR=o.itemRemarks||{};
     o.items.forEach((it,ii)=>{
-      const isCancelled = itemStatuses[ii] === 'Cancelled';
-      const partialQty = itemCancelQty[ii] || 0;
-      // Include fully cancelled items OR items with partial cancel qty
-      if(!isCancelled && partialQty === 0) return;
-      const isGrams = it.grams > 0;
+      const isCancelled = iS[ii]==='Cancelled';
+      const partialQty  = iCQ[ii]||0;
+      if(!isCancelled && partialQty===0) return;
+      const isGrams  = it.grams>0;
       const totalQty = isGrams ? it.grams : (it.qty||1);
-      // Actual cancelled qty: full cancel = totalQty, partial = partialQty
       const cancelledQty = isCancelled ? totalQty : partialQty;
       const unit = isGrams ? 'g' : (cancelledQty>1?'pcs':'pc');
-      const qtyGrams = `${cancelledQty}${unit}`;
-      // Hide if already has a return log entry
-      const hasReturnLog = (S.returnLog||[]).some(r =>
-        r.orderNum === onum(oi) && r.itemIdx === ii);
-      if(!hasReturnLog) rows.push({ o, oi, it, ii, isGrams, qtyGrams, cancelledQty, isCancelled, partialQty, totalQty });
+      const hasReturnLog = (S.returnLog||[]).some(r=>r.orderNum===onum(oi)&&r.itemIdx===ii);
+      if(!hasReturnLog) rows.push({o,oi,it,ii,isGrams,cancelledQty,totalQty,unit,isCancelled,partialQty,remark:iR[ii]||o.riderRemarks||''});
     });
   });
-  tbody.innerHTML = rows.length ? rows.map(({o, oi, it, ii, qtyGrams, isCancelled, partialQty, totalQty})=>`<tr>
+  tbody.innerHTML = rows.length ? rows.map(({o,oi,it,ii,cancelledQty,totalQty,unit,isCancelled,partialQty,remark})=>`<tr>
     <td style="color:var(--gold);font-weight:600;">${onum(oi)}</td>
     <td style="font-weight:500;">${o.name}</td>
-    <td>${o.contact||'—'}</td>
+    <td style="font-size:11px;">${o.contact||'—'}</td>
     <td style="color:var(--blue);">🏍️ ${o.assignedRider||'—'}</td>
     <td>${o.date}</td>
     <td style="font-family:monospace;font-size:11px;color:var(--gold);">${it.code||'—'}</td>
-    <td>${it.desc||'—'}</td>
-    <td style="font-weight:600;color:${isCancelled?'var(--red)':'var(--orange)'};">${qtyGrams}
-      ${!isCancelled?`<div style="font-size:9px;color:var(--muted);">of ${totalQty}${it.grams>0?'g':' pcs'} total</div>`:''}
+    <td style="font-size:11.5px;">${it.desc||'—'}</td>
+    <td style="font-weight:600;color:${isCancelled?'var(--red)':'var(--orange)'};">
+      ${cancelledQty}${unit} ${!isCancelled?`<div style="font-size:9px;color:var(--muted);">of ${totalQty}${it.grams>0?'g':' pcs'} total (Partial)</div>`:'(Full)'}
     </td>
     <td style="color:var(--red);font-weight:700;">${p(it.total)}</td>
     <td>
-      <span class="status ${isCancelled?'cancelled':'orange'}" style="font-size:9px;">${isCancelled?'Cancelled':'Partial Cancel'}</span><br>
-      <span style="font-size:9px;color:var(--green);">✅ Stock restored</span>
+      <span class="status ${isCancelled?'cancelled':'orange'}" style="font-size:9px;">${isCancelled?'Cancelled':'Partial Cancel'}</span>
+      <div style="font-size:9px;color:var(--green);">✅ Stock restored</div>
     </td>
-    <td><button class="btn btn-blue btn-sm" onclick="openReturnLogModal('${onum(oi)}',${ii})">📋 Record Return</button></td>
+    <td style="font-size:10.5px;color:var(--orange);">${remark||'—'}</td>
+    <td><button class="btn btn-blue btn-sm" onclick="openReturnLogModal('${onum(oi)}',${ii})">📋 Log Return</button></td>
   </tr>`).join('')
-  : '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">Walang pending cancelled items. Lahat ay naka-log na sa Return Log.</td></tr>';
+  : '<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:26px;">Lahat ng cancelled items ay naka-log na sa Return Log.</td></tr>';
 }
 
 // ── RETURN LOG (Manual) ───────────────────────────────────────────
