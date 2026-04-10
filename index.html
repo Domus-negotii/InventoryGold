@@ -200,15 +200,28 @@ select.form-control{cursor:pointer;}
   #adminsheet-content,.finance-lock,.page-lockable>.action-row{display:none!important;}
   .main{margin-left:0!important;background:white!important;}
   .page{display:none!important;padding:0!important;background:white!important;}
-  /* Show only the active print area */
   #payroll-print,
   #daily-sales-print,
   #pnl-print,
   #adminsheet-print{display:block!important;background:white!important;}
-  /* Keep invoice modal visible when printing */
+  /* XPrinter KP200L 80mm thermal — keep invoice modal visible */
   .modal-overlay.open{display:flex!important;position:fixed;inset:0;background:white!important;z-index:9999;}
   .modal-overlay.open .modal{max-height:none!important;overflow:visible!important;border:none!important;background:white!important;}
   .modal-overlay.open .no-print{display:none!important;}
+  /* 80mm paper = 72mm printable width */
+  @page{size:80mm auto;margin:2mm 3mm;}
+  .inv-wrap{max-width:72mm!important;border:none!important;font-size:9px!important;}
+  .inv-header{padding:4px 4px!important;}
+  .inv-brand h2{font-size:12px!important;}
+  .inv-fields{grid-template-columns:1fr!important;gap:1px 4px!important;padding:4px 4px 2px!important;}
+  .inv-field{font-size:8.5px!important;}
+  .inv-landmark{padding:1px 4px 4px!important;font-size:8.5px!important;}
+  .inv-table-wrap{padding:0 4px!important;}
+  .inv-table th,.inv-table td{padding:3px 3px!important;font-size:8.5px!important;}
+  .inv-footer-row{padding:4px 4px!important;flex-direction:column!important;}
+  .inv-totals{min-width:unset!important;width:100%!important;}
+  .inv-sigs{padding:8px 4px 6px!important;gap:6px!important;}
+  .inv-sig-line{width:100%!important;}
 }
 /* Invoice */
 .inv-wrap{background:white;color:#1a1a1a;font-family:Arial,sans-serif;max-width:720px;border:2px dashed #bbb;margin:0 auto;}
@@ -492,6 +505,23 @@ window.loadFromFirebase = async function() {
           <div><div class="role-name">Rider</div><div class="role-desc">View &amp; update my parcels only</div></div>
         </div>
       </div>
+      <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
+        <div class="role-btn" id="role-remitter" onclick="selectRole('remitter')" style="padding:10px 8px;text-align:center;">
+          <div style="font-size:20px;">💰</div>
+          <div class="role-name" style="font-size:11px;">Remitter</div>
+          <div class="role-desc" style="font-size:9px;">Remit &amp; Benefits</div>
+        </div>
+        <div class="role-btn" id="role-sorter" onclick="selectRole('sorter')" style="padding:10px 8px;text-align:center;">
+          <div style="font-size:20px;">📦</div>
+          <div class="role-name" style="font-size:11px;">Parcel Sorter</div>
+          <div class="role-desc" style="font-size:9px;">Sort &amp; Track</div>
+        </div>
+        <div class="role-btn" id="role-checker" onclick="selectRole('checker')" style="padding:10px 8px;text-align:center;">
+          <div style="font-size:20px;">✅</div>
+          <div class="role-name" style="font-size:11px;">Checker</div>
+          <div class="role-desc" style="font-size:9px;">Verify Orders</div>
+        </div>
+      </div>
     </div>
 
     <!-- Step 2a: Owner -->
@@ -533,6 +563,42 @@ window.loadFromFirebase = async function() {
       </div>
       <div class="login-err" id="login-rider-err"></div>
       <button class="btn btn-gold" style="width:100%;justify-content:center;padding:10px;margin-top:8px;" onclick="doLogin()">🏍️ Login as Rider</button>
+      <button class="btn btn-outline btn-sm" style="width:100%;justify-content:center;margin-top:8px;" onclick="backToRoleSelect()">← Back</button>
+    </div>
+
+    <!-- Remitter login -->
+    <div id="login-step-remitter" style="display:none;">
+      <div style="font-size:13px;color:var(--gold);font-weight:600;margin-bottom:14px;">💰 Remitter Login</div>
+      <div class="form-group" style="margin-bottom:10px;"><label>Password</label>
+        <input type="password" class="form-control" id="login-remitter-pw" placeholder="Remitter password"
+          style="text-align:center;letter-spacing:3px;font-size:16px;" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <div class="login-err" id="login-remitter-err"></div>
+      <button class="btn btn-gold" style="width:100%;justify-content:center;padding:10px;margin-top:8px;" onclick="doLogin()">💰 Login as Remitter</button>
+      <button class="btn btn-outline btn-sm" style="width:100%;justify-content:center;margin-top:8px;" onclick="backToRoleSelect()">← Back</button>
+    </div>
+
+    <!-- Parcel Sorter login -->
+    <div id="login-step-sorter" style="display:none;">
+      <div style="font-size:13px;color:var(--blue);font-weight:600;margin-bottom:14px;">📦 Parcel Sorter Login</div>
+      <div class="form-group" style="margin-bottom:10px;"><label>Password</label>
+        <input type="password" class="form-control" id="login-sorter-pw" placeholder="Parcel sorter password"
+          style="text-align:center;letter-spacing:3px;font-size:16px;" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <div class="login-err" id="login-sorter-err"></div>
+      <button class="btn btn-gold" style="width:100%;justify-content:center;padding:10px;margin-top:8px;" onclick="doLogin()">📦 Login as Sorter</button>
+      <button class="btn btn-outline btn-sm" style="width:100%;justify-content:center;margin-top:8px;" onclick="backToRoleSelect()">← Back</button>
+    </div>
+
+    <!-- Checker login -->
+    <div id="login-step-checker" style="display:none;">
+      <div style="font-size:13px;color:var(--orange);font-weight:600;margin-bottom:14px;">✅ Checker Login</div>
+      <div class="form-group" style="margin-bottom:10px;"><label>Password</label>
+        <input type="password" class="form-control" id="login-checker-pw" placeholder="Checker password"
+          style="text-align:center;letter-spacing:3px;font-size:16px;" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <div class="login-err" id="login-checker-err"></div>
+      <button class="btn btn-gold" style="width:100%;justify-content:center;padding:10px;margin-top:8px;" onclick="doLogin()">✅ Login as Checker</button>
       <button class="btn btn-outline btn-sm" style="width:100%;justify-content:center;margin-top:8px;" onclick="backToRoleSelect()">← Back</button>
     </div>
 
@@ -1647,9 +1713,11 @@ window.loadFromFirebase = async function() {
       <div class="form-group"><label>Serial Code *</label><input class="form-control" id="inv-code" placeholder="e.g. 18KP10V89" onkeydown="invNextField(event,this)"></div>
       <div class="form-group"><label>Description *</label><input class="form-control" id="inv-desc" onkeydown="invNextField(event,this)"></div>
       <div class="form-group inv-grams-row"><label>Grams (total in stock)</label><input type="number" class="form-control" id="inv-grams" value="0" oninput="calcInv()" onkeydown="invNextField(event,this)"></div>
-      <div class="form-group inv-grams-row"><label>Per Gram (₱)</label><input type="number" class="form-control" id="inv-pergram" value="0" oninput="calcInv()" onkeydown="invNextField(event,this)"></div>
+      <div class="form-group inv-grams-row"><label>Per Gram (₱)</label><input type="number" class="form-control" id="inv-pergram" value="0.00" step="0.01" oninput="calcInv()" onkeydown="invNextField(event,this)"></div>
+      <div class="form-group inv-grams-row"><label>Capital / Cost per gram (₱)</label><input type="number" class="form-control" id="inv-capital-gram" value="0.00" step="0.01" oninput="calcInv()" onkeydown="invNextField(event,this)" placeholder="Cost price per gram"></div>
       <div class="form-group inv-grams-row"><label>Unit Value (auto)</label><input class="form-control" id="inv-unitval" readonly style="background:rgba(201,168,76,0.08);color:var(--gold);"></div>
-      <div class="form-group inv-fixprice-row" style="display:none;"><label>Fix Price (₱) per unit</label><input type="number" class="form-control" id="inv-fixprice" value="0" onkeydown="invNextField(event,this)"></div>
+      <div class="form-group inv-fixprice-row" style="display:none;"><label>Fix Price (₱) per unit</label><input type="number" class="form-control" id="inv-fixprice" value="0.00" step="0.01" onkeydown="invNextField(event,this)"></div>
+      <div class="form-group inv-fixprice-row" style="display:none;"><label>Capital / Cost per unit (₱)</label><input type="number" class="form-control" id="inv-capital-fix" value="0.00" step="0.01" onkeydown="invNextField(event,this)" placeholder="Cost price per unit"></div>
       <div class="form-group inv-fixprice-row" style="display:none;"><label>Quantity *</label><input type="number" class="form-control" id="inv-qty" value="0" min="0" onkeydown="invNextField(event,this)"></div>
     </div>
     <input type="hidden" id="inv-edit-idx" value="">
@@ -1808,9 +1876,17 @@ window.loadFromFirebase = async function() {
       <div class="form-group"><label>Cashbond Password</label><input type="password" class="form-control" id="tab-pw-cashbond" placeholder="Leave blank = use owner password"></div>
       <div class="form-group"><label>📦 LBC/INTL Checker Password</label><input type="password" class="form-control" id="tab-pw-lbcchecker" placeholder="Separate password for LBC checker"></div>
     </div>
+    <div style="border-top:1px solid var(--navy-border);margin:14px 0 10px;padding-top:12px;">
+      <p style="font-size:12px;color:var(--gold);font-weight:600;margin-bottom:10px;">🔐 Special Role Login Passwords</p>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div class="form-group"><label>💰 Remitter Password</label><input type="password" class="form-control" id="special-pw-remitter" placeholder="e.g. remit2026"></div>
+        <div class="form-group"><label>📦 Parcel Sorter Password</label><input type="password" class="form-control" id="special-pw-sorter" placeholder="e.g. sort2026"></div>
+        <div class="form-group"><label>✅ Checker Role Password</label><input type="password" class="form-control" id="special-pw-checker" placeholder="e.g. check2026"></div>
+      </div>
+    </div>
     <div id="tab-pw-status" style="font-size:12px;margin-top:8px;min-height:16px;"></div>
     <div class="form-actions">
-      <button class="btn btn-gold" onclick="saveTabPasswords()">💾 Save Passwords</button>
+      <button class="btn btn-gold" onclick="saveTabPasswords()">💾 Save All Passwords</button>
       <button class="btn btn-outline" onclick="closeModal('modal-tab-passwords')">Cancel</button>
     </div>
   </div>
@@ -1898,7 +1974,7 @@ window.loadFromFirebase = async function() {
 const KEY='gce_v5';
 // Clear old version keys on load
 ['gce_v3','gce_v4'].forEach(k=>{ try{localStorage.removeItem(k);}catch(e){} });
-let S=JSON.parse(localStorage.getItem(KEY)||'null')||{orders:[],riders:[],locations:[],payroll:[],expenses:[],inventory:[],stockLog:[],remitLog:[],cashbondLog:[],benefitsLog:[]};
+let S=JSON.parse(localStorage.getItem(KEY)||'null')||{orders:[],riders:[],locations:[],payroll:[],expenses:[],inventory:[],stockLog:[],remitLog:[],cashbondLog:[],benefitsLog:[],specialPasswords:{remitter:'remit2026',sorter:'sort2026',checker:'check2026'}};
 if(!S.locations)S.locations=[];
 if(!S.stockLog)S.stockLog=[];
 if(!S.remitLog)S.remitLog=[];
@@ -1911,6 +1987,7 @@ if(!S.bizInfo)S.bizInfo={name:'Goldchelle Online Enterprises',address:'Las Pinas
 // Tab-specific passwords (CEO can set independently)
 if(!S.tabPasswords)S.tabPasswords={checker:'',tracking:'',riders:'',ridersremit:'',cashbond:'',lbcchecker:''};
 if(!S.tabPasswords.lbcchecker) S.tabPasswords.lbcchecker='';
+if(!S.specialPasswords) S.specialPasswords={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
 // Migrate existing inventory items that are missing itemType
 if(S.inventory) S.inventory.forEach(it=>{ if(!it.itemType) it.itemType='grams'; });
 // Migrate existing orders — add new fields if missing
@@ -2966,10 +3043,20 @@ function openReturnLogModal(orderNum='', itemIdx=null) {
       const it = o.items[itemIdx];
       if(it) {
         const isGrams = it.grams > 0;
+        const cancelledQty = (o.itemCancelQty||{})[itemIdx] || 0;
+        const totalQty = isGrams ? it.grams : (it.qty||1);
+        // Use cancelled qty if partial, otherwise full qty
+        const retQty = cancelledQty > 0 && cancelledQty < totalQty ? cancelledQty : totalQty;
         document.getElementById('ret-item-desc').value = `${it.code||''} — ${it.desc||''}`;
-        document.getElementById('ret-qty-grams').value = isGrams ? it.grams : (it.qty||1);
+        document.getElementById('ret-qty-grams').value = retQty;
         document.getElementById('ret-unit').value = isGrams ? 'grams' : 'pcs';
         document.getElementById('ret-value').value = it.total||0;
+        // Auto-fill rider and cancel reason from order
+        const itemRemark = (o.itemRemarks||{})[itemIdx] || '';
+        if(itemRemark) document.getElementById('ret-reason').value = itemRemark;
+        if(o.assignedRider) document.getElementById('ret-received-by').value = o.assignedRider;
+        // Auto-fill notes with order context
+        document.getElementById('ret-notes').value = `Order: ${orderNum} | Customer: ${o.name} | ${o.contact||''}${o.assignedRider?' | Rider: '+o.assignedRider:''}`;
       }
     }
   }
@@ -3450,11 +3537,13 @@ function renderPayroll(tab){
 
 function backToRoleSelect(){
   selectedRole=null;
-  ['owner','admin','rider'].forEach(id=>{const el=document.getElementById('login-step-'+id);if(el)el.style.display='none';});
+  ['owner','admin','rider','remitter','sorter','checker'].forEach(id=>{const el=document.getElementById('login-step-'+id);if(el)el.style.display='none';});
   const rs=document.getElementById('login-step-role');if(rs)rs.style.display='block';
   document.querySelectorAll('.role-btn').forEach(b=>b.classList.remove('selected'));
-  ['login-owner-pw','login-admin-pw','login-rider-pw-main'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  ['login-owner-err','login-admin-err','login-rider-err'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='';});
+  ['login-owner-pw','login-admin-pw','login-rider-pw-main','login-remitter-pw','login-sorter-pw','login-checker-pw']
+    .forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['login-owner-err','login-admin-err','login-rider-err','login-remitter-err','login-sorter-err','login-checker-err']
+    .forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='';});
 }
 
 function addAdminAccount(){
@@ -3700,35 +3789,50 @@ function renderInv(tab){
       if(it.itemType==='fixprice') return s+(it.fixPrice||0)*(it.qty||0);
       return s+(it.grams||0)*(it.pergram||0);
     },0);
+    const totalCapital=S.inventory.reduce((s,it)=>{
+      if(it.itemType==='fixprice') return s+(it.capitalPerUnit||0)*(it.qty||0);
+      return s+(it.grams||0)*(it.capitalPerGram||0);
+    },0);
     el.innerHTML=`<div class="stats-grid">
       <div class="stat-card gold"><div class="stat-label">Stock Value</div><div class="stat-value">${p(totalVal)}</div></div>
       <div class="stat-card blue"><div class="stat-label">Products</div><div class="stat-value">${S.inventory.length}</div></div>
       <div class="stat-card green"><div class="stat-label">Fix Price Items</div><div class="stat-value">${S.inventory.filter(it=>it.itemType==='fixprice').reduce((s,it)=>s+(it.qty||0),0)} pcs</div></div>
+      <div class="stat-card orange"><div class="stat-label">Total Capital</div><div class="stat-value">${p(totalCapital)}</div></div>
+      <div class="stat-card green"><div class="stat-label">Potential Profit</div><div class="stat-value">${p(totalVal-totalCapital)}</div></div>
     </div>
     <div class="card"><div class="table-wrap"><table><thead><tr>
-      <th>Serial Code</th><th>Description</th><th>Type</th><th>Stock / Grams</th><th>Price Info</th><th>Stock Value</th><th>Actions</th>
+      <th>Serial Code</th><th>Description</th><th>Type</th><th>Stock</th><th>Price</th><th>Capital</th><th>Stock Value</th><th>Profit/unit</th><th>Actions</th>
     </tr></thead>
     <tbody>${S.inventory.map((it,i)=>{
       const isFix = it.itemType==='fixprice';
       const stockDisplay = isFix
         ? `<span style="font-weight:700;color:${it.qty<=2?'var(--red)':it.qty<=5?'var(--orange)':'var(--green)'};">${it.qty} pcs ${it.qty<=2?'⚠️':''}</span>`
         : `<span style="font-weight:700;color:var(--blue);">${it.grams}g</span>`;
-      const priceInfo = isFix ? `₱${it.fixPrice}/pc` : `${it.pergram?p(it.pergram)+'/g':'—'}`;
+      const priceInfo = isFix ? `₱${(it.fixPrice||0).toFixed(2)}/pc` : `${it.pergram?'₱'+(it.pergram||0).toFixed(2)+'/g':'—'}`;
+      const capitalInfo = isFix
+        ? (it.capitalPerUnit ? `₱${(it.capitalPerUnit||0).toFixed(2)}/pc` : '—')
+        : (it.capitalPerGram ? `₱${(it.capitalPerGram||0).toFixed(2)}/g` : '—');
       const stockVal = isFix ? (it.fixPrice||0)*(it.qty||0) : (it.grams||0)*(it.pergram||0);
+      const profitPerUnit = isFix
+        ? (it.fixPrice||0) - (it.capitalPerUnit||0)
+        : (it.pergram||0) - (it.capitalPerGram||0);
+      const profitColor = profitPerUnit > 0 ? 'var(--green)' : profitPerUnit < 0 ? 'var(--red)' : 'var(--muted)';
       return `<tr>
         <td style="color:var(--gold);font-family:monospace;">${it.code}</td>
         <td style="font-weight:500;">${it.desc}</td>
         <td><span class="status ${isFix?'blue':'gold'}" style="font-size:9px;">${isFix?'Fix Price':'By Grams'}</span></td>
         <td>${stockDisplay}</td>
         <td style="font-size:11.5px;">${priceInfo}</td>
+        <td style="font-size:11.5px;color:var(--orange);">${capitalInfo}</td>
         <td style="color:var(--green);font-weight:600;">${p(stockVal)}</td>
+        <td style="font-size:11.5px;font-weight:700;color:${profitColor};">${profitPerUnit>0?'+':''}₱${profitPerUnit.toFixed(2)}${isFix?'/pc':'/g'}</td>
         <td style="display:flex;gap:3px;">
           <button class="btn btn-outline btn-sm" onclick="openEditInv(${i})">✏️</button>
           ${isFix?`<button class="btn btn-green btn-sm" onclick="openStockModal('in',${i})">↑ In</button>
           <button class="btn btn-orange btn-sm" onclick="openStockModal('out',${i})">↓ Out</button>`:''}
           <button class="btn btn-red btn-sm" onclick="delInv(${i})">🗑️</button>
         </td></tr>`;
-    }).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:26px;">No products</td></tr>'}
+    }).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:26px;">No products</td></tr>'}
     </tbody></table></div></div>`;
   }else if(tab==='stockin'||tab==='stockout'){
     const type=tab==='stockin'?'in':'out';
@@ -3775,21 +3879,20 @@ function renderInv(tab){
   }
 }
 function openAddInvModal() {
-  // Reset ALL fields to blank before opening for a new product
   document.getElementById('inv-code').value = '';
   document.getElementById('inv-desc').value = '';
   document.getElementById('inv-grams').value = '0';
-  document.getElementById('inv-pergram').value = '0';
-  const fpi = document.getElementById('inv-fixprice'); if(fpi) fpi.value = '0';
+  document.getElementById('inv-pergram').value = '0.00';
+  const cg = document.getElementById('inv-capital-gram'); if(cg) cg.value = '0.00';
+  const fpi = document.getElementById('inv-fixprice'); if(fpi) fpi.value = '0.00';
+  const cfi = document.getElementById('inv-capital-fix'); if(cfi) cfi.value = '0.00';
   document.getElementById('inv-qty').value = '0';
   document.getElementById('inv-modal-title').textContent = 'Add Product';
   document.getElementById('inv-edit-idx').value = '';
-  // Reset item type to grams (default)
   const typeGrams = document.getElementById('inv-type-grams');
   const typeFixed = document.getElementById('inv-type-fixprice');
   if(typeGrams) typeGrams.checked = true;
   if(typeFixed) typeFixed.checked = false;
-  // Show grams rows, hide fixprice rows
   document.querySelectorAll('.inv-grams-row').forEach(el=>el.style.display='');
   document.querySelectorAll('.inv-fixprice-row').forEach(el=>el.style.display='none');
   calcInv();
@@ -3809,8 +3912,10 @@ function openEditInv(i){
   document.getElementById('inv-type').value=t;
   toggleInvType();
   document.getElementById('inv-grams').value=it.grams||0;
-  document.getElementById('inv-pergram').value=it.pergram||0;
-  const fpi=document.getElementById('inv-fixprice'); if(fpi) fpi.value=it.fixPrice||0;
+  document.getElementById('inv-pergram').value=(it.pergram||0).toFixed(2);
+  const cg=document.getElementById('inv-capital-gram'); if(cg) cg.value=(it.capitalPerGram||0).toFixed(2);
+  const fpi=document.getElementById('inv-fixprice'); if(fpi) fpi.value=(it.fixPrice||0).toFixed(2);
+  const cfi=document.getElementById('inv-capital-fix'); if(cfi) cfi.value=(it.capitalPerUnit||0).toFixed(2);
   document.getElementById('inv-qty').value=it.qty||0;
   document.getElementById('inv-edit-idx').value=i;
   calcInv(); openModal('modal-inventory');
@@ -3854,12 +3959,14 @@ function saveInv(){
   let obj;
   if(t==='fixprice'){
     const qty=+document.getElementById('inv-qty').value||0;
-    const fp=+document.getElementById('inv-fixprice')?.value||0;
-    obj={code,desc,itemType:'fixprice',fixPrice:fp,qty,grams:0,pergram:0};
+    const fp=parseFloat(document.getElementById('inv-fixprice')?.value)||0;
+    const cap=parseFloat(document.getElementById('inv-capital-fix')?.value)||0;
+    obj={code,desc,itemType:'fixprice',fixPrice:fp,capitalPerUnit:cap,qty,grams:0,pergram:0};
   } else {
     const grams=+document.getElementById('inv-grams').value||0;
-    const pergram=+document.getElementById('inv-pergram').value||0;
-    obj={code,desc,itemType:'grams',grams,pergram,qty:0,fixPrice:0};
+    const pergram=parseFloat(document.getElementById('inv-pergram').value)||0;
+    const cap=parseFloat(document.getElementById('inv-capital-gram')?.value)||0;
+    obj={code,desc,itemType:'grams',grams,pergram,capitalPerGram:cap,qty:0,fixPrice:0};
   }
   if(editIdx!=='') S.inventory[+editIdx]=obj; else S.inventory.push(obj);
   save(); closeModal('modal-inventory'); toast('✅ Product saved!');
@@ -4477,7 +4584,7 @@ function checkPw(pw){ return hashPw(pw)===getOwnerHash(); }
 
 function selectRole(role){
   selectedRole=role;
-  ['owner','admin','rider'].forEach(id=>{
+  ['owner','admin','rider','remitter','sorter','checker'].forEach(id=>{
     const el=document.getElementById('login-step-'+id); if(el)el.style.display='none';
   });
   document.querySelectorAll('.role-btn').forEach(b=>b.classList.remove('selected'));
@@ -4503,6 +4610,15 @@ function selectRole(role){
       });
     }
     document.getElementById('login-step-rider').style.display='block';
+  } else if(role==='remitter'){
+    document.getElementById('login-step-remitter').style.display='block';
+    setTimeout(()=>document.getElementById('login-remitter-pw')?.focus(),50);
+  } else if(role==='sorter'){
+    document.getElementById('login-step-sorter').style.display='block';
+    setTimeout(()=>document.getElementById('login-sorter-pw')?.focus(),50);
+  } else if(role==='checker'){
+    document.getElementById('login-step-checker').style.display='block';
+    setTimeout(()=>document.getElementById('login-checker-pw')?.focus(),50);
   }
 }
 
@@ -4531,6 +4647,24 @@ function doLogin(){
     if(!rider.password){ err.textContent='❌ No password set. Contact CEO.'; return; }
     if(rider.password!==pw){ err.textContent='❌ Incorrect password'; document.getElementById('login-rider-pw-main').value=''; document.getElementById('login-rider-pw-main').focus(); return; }
     currentRole='rider'; currentRider={...rider,idx:+idx}; currentUser={name:rider.name,role:'rider'};
+  } else if(selectedRole==='remitter'){
+    const pw=document.getElementById('login-remitter-pw').value;
+    const err=document.getElementById('login-remitter-err');
+    const correct=S.specialPasswords?.remitter||'remit2026';
+    if(pw!==correct){ err.textContent='❌ Incorrect password'; document.getElementById('login-remitter-pw').value=''; document.getElementById('login-remitter-pw').focus(); return; }
+    currentRole='remitter'; currentUser={name:'Remitter',role:'remitter'};
+  } else if(selectedRole==='sorter'){
+    const pw=document.getElementById('login-sorter-pw').value;
+    const err=document.getElementById('login-sorter-err');
+    const correct=S.specialPasswords?.sorter||'sort2026';
+    if(pw!==correct){ err.textContent='❌ Incorrect password'; document.getElementById('login-sorter-pw').value=''; document.getElementById('login-sorter-pw').focus(); return; }
+    currentRole='sorter'; currentUser={name:'Parcel Sorter',role:'sorter'};
+  } else if(selectedRole==='checker'){
+    const pw=document.getElementById('login-checker-pw').value;
+    const err=document.getElementById('login-checker-err');
+    const correct=S.specialPasswords?.checker||'check2026';
+    if(pw!==correct){ err.textContent='❌ Incorrect password'; document.getElementById('login-checker-pw').value=''; document.getElementById('login-checker-pw').focus(); return; }
+    currentRole='checker'; currentUser={name:'Checker',role:'checker'};
   }
   sessionKey=Date.now();
   document.getElementById('login-screen').classList.add('hidden');
@@ -4544,12 +4678,16 @@ function doLogin(){
       const l=document.getElementById('rider-dash-location'); if(l)l.textContent=currentRider.location||'—';
       renderRiderParcels();
     });
+  } else if(currentRole==='remitter'){
+    initApp().then(()=>{ gotoPage('ridersremit'); });
+  } else if(currentRole==='sorter'){
+    initApp().then(()=>{ gotoPage('sorting'); });
+  } else if(currentRole==='checker'){
+    initApp().then(()=>{ gotoPage('checker'); });
   } else if(currentRole==='admin') {
     initApp().then(()=>{ gotoPage('orders'); });
   } else {
-    // owner — go to dashboard
     initApp().then(()=>{ 
-      // bypass gotoPage CEO guard since we ARE the owner
       document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
       document.getElementById('page-dashboard')?.classList.add('active');
       document.getElementById('topbar-title').textContent='Dashboard';
@@ -4562,29 +4700,41 @@ function doLogin(){
 function applyRoleUI(){
   const roleTag=document.getElementById('user-role-tag');
   const nameBadge=document.getElementById('user-name-badge');
-  const icons={owner:'👑',admin:'👤',rider:'🏍️'};
+  const icons={owner:'👑',admin:'👤',rider:'🏍️',remitter:'💰',sorter:'📦',checker:'✅'};
   if(roleTag){ roleTag.textContent=(icons[currentRole]||'')+' '+(currentUser?.name||currentRole||''); roleTag.className='user-role-tag '+(currentRole||'admin'); }
   if(nameBadge) nameBadge.textContent=currentUser?.name||'User';
-  if(currentRole==='rider'){
-    document.querySelectorAll('.nav-item').forEach(el=>{
-      const oc=el.getAttribute('onclick')||''; el.style.display=oc.includes('riderdash')?'flex':'none';
-    });
-  } else {
-    document.querySelectorAll('.nav-item').forEach(el=>el.style.display='flex');
+
+  // Nav visibility per role
+  const rolePages = {
+    rider:    ['riderdash'],
+    remitter: ['ridersremit','cashbond','benefits','sorting'],
+    sorter:   ['sorting','tracking'],
+    checker:  ['checker'],
+  };
+  const allowed = rolePages[currentRole] || null;
+  document.querySelectorAll('.nav-item').forEach(el=>{
+    if(!allowed){ // owner or admin — show all
+      el.style.display='flex';
+    } else {
+      const oc=el.getAttribute('onclick')||'';
+      const show = allowed.some(p=>oc.includes("'"+p+"'"));
+      el.style.display=show?'flex':'none';
+    }
+  });
+  if(currentRole==='owner'||currentRole==='admin'){
     document.querySelectorAll('.owner-only').forEach(el=>{ el.style.display=currentRole==='owner'?'flex':'none'; });
   }
-  // For owner: unlock all fin pages automatically
-  // For admin: checker/tracking/riders need their own passwords (not auto-unlocked)
+
+  // Auto-unlock specific pages for special roles
   FIN_PAGES.forEach(page=>{
     const lockEl=document.getElementById('lock-'+page);
-    if(currentRole==='owner') {
+    if(currentRole==='owner'){
+      if(lockEl) lockEl.classList.add('unlocked');
+    } else if(currentRole==='remitter' && ['ridersremit','cashbond','benefits'].includes(page)){
+      if(lockEl) lockEl.classList.add('unlocked');
+    } else if(currentRole==='checker' && page==='checker'){
       if(lockEl) lockEl.classList.add('unlocked');
     } else {
-      // Admin/non-owner: pages with tab-specific passwords stay locked even for admin
-      const tabPw = S.tabPasswords?.[page]||'';
-      const needsTabPw = ['checker','tracking','riders'].includes(page);
-      // If tab has specific password, non-owner must enter it
-      // If no tab password set, non-owner must use owner password — keep locked
       if(lockEl) lockEl.classList.remove('unlocked');
     }
   });
@@ -5731,28 +5881,40 @@ function updateRidersTableHeader() {
 // ============================================================
 function openTabPasswordsModal() {
   if(!S.tabPasswords) S.tabPasswords = {checker:'', tracking:'', riders:'', ridersremit:'', cashbond:'', lbcchecker:''};
+  if(!S.specialPasswords) S.specialPasswords = {remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
   document.getElementById('tab-pw-checker').value = S.tabPasswords.checker || '';
   document.getElementById('tab-pw-tracking').value = S.tabPasswords.tracking || '';
   document.getElementById('tab-pw-riders').value = S.tabPasswords.riders || '';
   document.getElementById('tab-pw-ridersremit').value = S.tabPasswords.ridersremit || '';
   document.getElementById('tab-pw-cashbond').value = S.tabPasswords.cashbond || '';
   document.getElementById('tab-pw-lbcchecker').value = S.tabPasswords.lbcchecker || '';
+  document.getElementById('special-pw-remitter').value = S.specialPasswords.remitter || '';
+  document.getElementById('special-pw-sorter').value = S.specialPasswords.sorter || '';
+  document.getElementById('special-pw-checker').value = S.specialPasswords.checker || '';
   document.getElementById('tab-pw-status').textContent = '';
   openModal('modal-tab-passwords');
 }
 function saveTabPasswords() {
   if(!S.tabPasswords) S.tabPasswords = {};
+  if(!S.specialPasswords) S.specialPasswords = {};
   S.tabPasswords.checker = document.getElementById('tab-pw-checker').value;
   S.tabPasswords.tracking = document.getElementById('tab-pw-tracking').value;
   S.tabPasswords.riders = document.getElementById('tab-pw-riders').value;
   S.tabPasswords.ridersremit = document.getElementById('tab-pw-ridersremit').value;
   S.tabPasswords.cashbond = document.getElementById('tab-pw-cashbond').value;
   S.tabPasswords.lbcchecker = document.getElementById('tab-pw-lbcchecker').value;
+  // Special role passwords — only update if non-empty
+  const rp = document.getElementById('special-pw-remitter').value;
+  const sp = document.getElementById('special-pw-sorter').value;
+  const cp = document.getElementById('special-pw-checker').value;
+  if(rp) S.specialPasswords.remitter = rp;
+  if(sp) S.specialPasswords.sorter = sp;
+  if(cp) S.specialPasswords.checker = cp;
   save();
   document.getElementById('tab-pw-status').style.color = 'var(--green)';
-  document.getElementById('tab-pw-status').textContent = '✅ Tab passwords saved!';
+  document.getElementById('tab-pw-status').textContent = '✅ All passwords saved!';
   setTimeout(() => closeModal('modal-tab-passwords'), 1200);
-  toast('🔑 Tab passwords updated!');
+  toast('🔑 Passwords updated!');
 }
 
 // ============================================================
