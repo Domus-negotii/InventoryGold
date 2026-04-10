@@ -200,28 +200,23 @@ select.form-control{cursor:pointer;}
   #adminsheet-content,.finance-lock,.page-lockable>.action-row{display:none!important;}
   .main{margin-left:0!important;background:white!important;}
   .page{display:none!important;padding:0!important;background:white!important;}
-  #payroll-print,
-  #daily-sales-print,
-  #pnl-print,
-  #adminsheet-print{display:block!important;background:white!important;}
-  /* XPrinter KP200L 80mm thermal — keep invoice modal visible */
-  .modal-overlay.open{display:flex!important;position:fixed;inset:0;background:white!important;z-index:9999;}
-  .modal-overlay.open .modal{max-height:none!important;overflow:visible!important;border:none!important;background:white!important;}
-  .modal-overlay.open .no-print{display:none!important;}
-  /* 80mm paper = 72mm printable width */
+  #payroll-print,#daily-sales-print,#pnl-print,#adminsheet-print{display:block!important;background:white!important;}
+  /* XPrinter KP200L 80mm thermal — auto size, no dialog needed */
   @page{size:80mm auto;margin:2mm 3mm;}
-  .inv-wrap{max-width:72mm!important;border:none!important;font-size:9px!important;}
-  .inv-header{padding:4px 4px!important;}
-  .inv-brand h2{font-size:12px!important;}
-  .inv-fields{grid-template-columns:1fr!important;gap:1px 4px!important;padding:4px 4px 2px!important;}
-  .inv-field{font-size:8.5px!important;}
-  .inv-landmark{padding:1px 4px 4px!important;font-size:8.5px!important;}
-  .inv-table-wrap{padding:0 4px!important;}
-  .inv-table th,.inv-table td{padding:3px 3px!important;font-size:8.5px!important;}
-  .inv-footer-row{padding:4px 4px!important;flex-direction:column!important;}
-  .inv-totals{min-width:unset!important;width:100%!important;}
-  .inv-sigs{padding:8px 4px 6px!important;gap:6px!important;}
-  .inv-sig-line{width:100%!important;}
+  .modal-overlay.open{display:flex!important;position:fixed;inset:0;background:white!important;z-index:9999;}
+  .modal-overlay.open .modal{max-height:none!important;overflow:visible!important;border:none!important;box-shadow:none!important;background:white!important;padding:0!important;max-width:100%!important;width:80mm!important;}
+  .modal-overlay.open .no-print{display:none!important;}
+  /* Invoice print styles — 80mm, B&W, no outer border */
+  #inv-print-wrap{max-width:74mm!important;padding:2mm 3mm!important;border:none!important;font-size:8.5px!important;}
+  #inv-print-wrap div[style*="font-size:26px"]{font-size:15px!important;}
+  #inv-print-wrap div[style*="letter-spacing:2.5px"]{font-size:7px!important;}
+  #inv-print-wrap div[style*="font-size:11.5px"]{font-size:9px!important;}
+  #inv-print-wrap div[style*="font-size:10.5px"]{font-size:8.5px!important;}
+  #inv-print-wrap div[style*="font-size:11px"]{font-size:9px!important;}
+  #inv-print-wrap th,#inv-print-wrap td{font-size:8px!important;padding:2px 2px!important;}
+  #inv-print-wrap div[style*="font-size:13px"]{font-size:10px!important;}
+  #inv-print-wrap div[style*="height:36px"]{height:20px!important;}
+  #inv-print-wrap div[style*="font-size:11.5px;font-weight:700"]{font-size:8.5px!important;}
 }
 /* Invoice */
 .inv-wrap{background:white;color:#1a1a1a;font-family:Arial,sans-serif;max-width:720px;border:2px dashed #bbb;margin:0 auto;}
@@ -1571,6 +1566,7 @@ window.loadFromFirebase = async function() {
           <th style="padding:6px 7px;color:var(--gold);font-size:9.5px;">Per Gram (₱)</th>
           <th style="padding:6px 7px;color:var(--gold);font-size:9.5px;">Subtotal (₱)</th>
           <th style="padding:6px 7px;color:var(--red);font-size:9.5px;">Discount (₱)</th>
+          <th style="padding:6px 7px;color:var(--muted);font-size:9.5px;">Discount Reason</th>
           <th style="padding:6px 7px;color:var(--gold);font-size:9.5px;">Total (₱)</th>
           <th></th>
         </tr></thead>
@@ -2078,6 +2074,7 @@ function addItemRow(tbodyId, calcFn, it={}) {
   const row = document.createElement('tr');
   const qgVal = it.grams || it.qty || 0;
   const discVal = it.discount || 0;
+  const discRemarkVal = it.discountRemark || '';
   const pg = it.pergram || 0;
   const subtotalVal = (qgVal > 0 && pg > 0) ? Math.ceil(qgVal * pg) : ((it.total||0) + discVal);
   const totalVal = it.total || 0;
@@ -2093,6 +2090,7 @@ function addItemRow(tbodyId, calcFn, it={}) {
     <td><input type="number" class="form-control row-pg-input" style="width:80px;font-size:11px;" value="${pg}" placeholder="Per gram" oninput="calcEnc()" onkeydown="rowTabNext(event,this)"></td>
     <td><input type="number" class="form-control row-subtotal-input" style="width:85px;font-size:11px;color:var(--muted);background:rgba(38,53,84,0.4);" value="${subtotalVal}" step="0.01" readonly tabindex="-1"></td>
     <td><input type="number" class="form-control row-discount-input" style="width:75px;font-size:11px;color:var(--red);" value="${discVal}" step="0.01" min="0" placeholder="0" oninput="calcEnc()" onkeydown="rowTabNext(event,this)"></td>
+    <td><input class="form-control row-discount-remark" style="width:110px;font-size:10.5px;color:var(--muted);" value="${discRemarkVal}" placeholder="Discount reason" onkeydown="rowTabNext(event,this)"></td>
     <td><input type="number" class="form-control row-total-input" style="width:85px;font-size:11px;color:var(--gold);font-weight:600;background:rgba(201,168,76,0.08);" value="${totalVal}" step="0.01" readonly tabindex="-1"></td>
     <td><button class="btn btn-red btn-sm" onclick="this.closest('tr').remove();calcEnc()">✕</button></td>`;
   document.getElementById(tbodyId).appendChild(row);
@@ -2143,12 +2141,13 @@ function getItems(id) {
     const qgVal = parseFloat(r.querySelector('.row-qg-input')?.value)||0;
     const pg = parseFloat(r.querySelector('.row-pg-input')?.value)||0;
     const discount = parseFloat(r.querySelector('.row-discount-input')?.value)||0;
+    const discountRemark = r.querySelector('.row-discount-remark')?.value||'';
     const totalInput = r.querySelector('.row-total-input');
     const totalVal = parseFloat(totalInput?.value)||0;
     // qty vs grams: if pergram > 0 it's gram-based, else qty-based
     const grams = pg > 0 ? qgVal : 0;
     const qty = pg > 0 ? 1 : (qgVal||1);
-    rows.push({code, desc, qty, grams, pergram:pg, discount, total:totalVal, fixPrice: pg === 0});
+    rows.push({code, desc, qty, grams, pergram:pg, discount, discountRemark, total:totalVal, fixPrice: pg === 0});
   });
   return rows;
 }
@@ -2367,7 +2366,7 @@ function renderMyOrders() {
       ${o.checkerStatus!=='Verified'
         ? `<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>`
         : `<span style="font-size:9.5px;color:var(--muted);padding:2px 6px;">🔒 Verified</span>`}
-      <button class="btn btn-blue btn-sm" onclick="openInvoice(${i})">🖨️</button>
+      ${currentRole==='owner' ? `<button class="btn btn-blue btn-sm" onclick="openInvoice(${i})">🖨️</button>` : ''}
       ${o.checkerStatus!=='Verified'
         ? `<button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>`
         : ''}
@@ -2740,91 +2739,96 @@ function unverifyOrder(i){
 function openInvoice(i){
   const o=S.orders[i];
   const biz=S.bizInfo||{};
-  const bizName=biz.name||'Goldchelle Online Enterprises';
   const bizAddress=biz.address||'Las Pinas City, Metro Manila, PH';
   const bizPhone=biz.phone||'0917-130-7239';
   const bizFb=biz.fb||'FB: Goldchelle Online Enterprise';
+  // Admin name = logged-in user
+  const adminName = (currentUser&&currentUser.name&&currentUser.name!=='Owner') ? currentUser.name : (o.admin||'');
 
+  // Item rows — exact count, no blank rows
   const rows=o.items.map(it=>{
     const discount=it.discount||0;
-    const discNote=discount>0?` (-₱${discount.toFixed(2)})`:'';
+    const discNote=discount>0?` (disc: -\u20b1${discount.toFixed(2)})`:
+      '';
     const isGrams=it.grams>0&&!it.fixPrice;
-    const grams=isGrams?it.grams+'g':'—';
-    const perG=isGrams?'₱'+Number(it.pergram||0).toFixed(2):'—';
+    const grams=isGrams?it.grams+'g':'\u2014';
+    const perG=isGrams?'\u20b1'+Number(it.pergram||0).toFixed(2):'\u2014';
     const qty=it.qty||1;
+    const td='padding:4px 4px;text-align:center;font-size:10.5px;border-bottom:1px solid #ddd;';
     return `<tr>
-      <td style="border:1px solid #bbb;padding:4px 3px;text-align:center;font-size:10px;">${it.code||'—'}</td>
-      <td style="border:1px solid #bbb;padding:4px 5px;text-align:left;font-size:10.5px;">${it.desc||''}${discNote}</td>
-      <td style="border:1px solid #bbb;padding:4px 3px;text-align:center;font-size:10px;">${qty}</td>
-      <td style="border:1px solid #bbb;padding:4px 3px;text-align:center;font-size:10px;">${grams}</td>
-      <td style="border:1px solid #bbb;padding:4px 3px;text-align:center;font-size:10px;">${perG}</td>
-      <td style="border:1px solid #bbb;padding:4px 3px;text-align:center;font-size:10.5px;font-weight:700;">₱${Number(it.total||0).toFixed(2)}</td>
+      <td style="${td}">${it.code||'\u2014'}</td>
+      <td style="${td}text-align:left;">${it.desc||''}${discNote}</td>
+      <td style="${td}">${qty}</td>
+      <td style="${td}">${grams}</td>
+      <td style="${td}">${perG}</td>
+      <td style="${td}font-weight:700;">\u20b1${Number(it.total||0).toFixed(2)}</td>
     </tr>`;
   }).join('');
-  const blanks=Math.max(0,4-o.items.length);
-  const blankRows=Array(blanks).fill(`<tr>
-    <td style="border:1px solid #bbb;padding:9px 3px;">&nbsp;</td><td style="border:1px solid #bbb;"></td>
-    <td style="border:1px solid #bbb;"></td><td style="border:1px solid #bbb;"></td>
-    <td style="border:1px solid #bbb;"></td><td style="border:1px solid #bbb;"></td>
-  </tr>`).join('');
+
   const discRow=o.totalDiscount>0?`<tr>
-    <td colspan="5" style="border:1px solid #bbb;padding:4px 6px;text-align:right;font-size:10px;">Discount:</td>
-    <td style="border:1px solid #bbb;padding:4px 3px;text-align:center;color:#c0392b;font-size:10px;">-₱${Number(o.totalDiscount).toFixed(2)}</td>
+    <td colspan="5" style="padding:4px 6px;text-align:right;font-size:10px;border-bottom:1px solid #ddd;">Total Discount:</td>
+    <td style="padding:4px 4px;text-align:center;border-bottom:1px solid #ddd;font-size:10px;">-\u20b1${Number(o.totalDiscount).toFixed(2)}</td>
   </tr>`:'';
-  const thStyle='border:1px solid #999;padding:5px 4px;text-align:center;background:#f0f0f0;font-size:10.5px;font-weight:700;';
-  document.getElementById('invoice-area').innerHTML=`<div style="background:white;color:#111;font-family:Arial,Helvetica,sans-serif;max-width:680px;margin:0 auto;padding:16px 20px;border:1.5px solid #ccc;">
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #111;">
+
+  const thStyle='padding:5px 4px;text-align:center;font-size:10.5px;font-weight:700;border-top:1.5px solid #111;border-bottom:1.5px solid #111;';
+  const field=(label,val)=>`<div style="display:flex;gap:6px;margin-bottom:3px;font-size:11.5px;">
+    <span style="font-weight:700;min-width:115px;">${label}</span>
+    <span style="flex:1;">${val||''}</span>
+  </div>`;
+
+  document.getElementById('invoice-area').innerHTML=`<div id="inv-print-wrap" style="background:white;color:#111;font-family:Arial,Helvetica,sans-serif;width:100%;max-width:680px;margin:0 auto;padding:14px 16px;">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid #111;">
     <div>
       <div style="font-family:Georgia,serif;font-size:26px;font-weight:900;letter-spacing:-1px;color:#111;line-height:1;">Goldchelle</div>
-      <div style="font-size:9px;font-weight:700;letter-spacing:2.5px;color:#444;margin-top:1px;">◆ ONLINE ENTERPRISES</div>
+      <div style="font-size:9px;font-weight:700;letter-spacing:2.5px;color:#444;margin-top:1px;">\u25c6 ONLINE ENTERPRISES</div>
     </div>
-    <div style="text-align:right;font-size:11px;color:#333;line-height:1.7;">
+    <div style="text-align:right;font-size:10.5px;color:#111;line-height:1.7;">
       <div>${bizAddress}</div>
       <div>${bizPhone}</div>
       <div>${bizFb}</div>
     </div>
   </div>
-  <div style="margin-bottom:12px;font-size:12px;">
-    <div style="display:flex;gap:8px;line-height:2.1;"><span style="font-weight:700;min-width:115px;">Name:</span><span style="flex:1;border-bottom:1px solid #888;">${o.name||''}</span></div>
-    <div style="display:flex;gap:8px;line-height:2.1;"><span style="font-weight:700;min-width:115px;">Address:</span><span style="flex:1;border-bottom:1px solid #888;">${o.address||''}${o.landmark?' — '+o.landmark:''}</span></div>
-    <div style="display:flex;gap:8px;line-height:2.1;"><span style="font-weight:700;min-width:115px;">Contact #:</span><span style="flex:1;border-bottom:1px solid #888;">${o.contact||''}${o.backupContact?' / '+o.backupContact:''}</span></div>
-    <div style="display:flex;gap:8px;line-height:2.1;"><span style="font-weight:700;min-width:115px;">Admin’s Name:</span><span style="flex:1;border-bottom:1px solid #888;">&nbsp;</span></div>
-    <div style="display:flex;gap:8px;line-height:2.1;"><span style="font-weight:700;min-width:115px;">Date:</span><span style="flex:1;border-bottom:1px solid #888;">${o.date||''}</span></div>
+  <div style="margin-bottom:10px;">
+    ${field('Name:',o.name)}
+    ${field('Address:',o.address+(o.landmark?' \u2014 '+o.landmark:''))}
+    ${field('Contact #:',o.contact+(o.backupContact?' / '+o.backupContact:''))}
+    ${field("Admin's Name:",adminName)}
+    ${field('Date:',o.date)}
   </div>
-  <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">
+  <table style="width:100%;border-collapse:collapse;margin-bottom:4px;">
     <thead><tr>
-      <th style="${thStyle}min-width:60px;">Serial</th>
-      <th style="${thStyle}text-align:left;min-width:130px;">Desc</th>
+      <th style="${thStyle}min-width:58px;">Serial</th>
+      <th style="${thStyle}text-align:left;min-width:120px;">Description</th>
       <th style="${thStyle}">Qty</th>
       <th style="${thStyle}">G</th>
       <th style="${thStyle}">Per G</th>
-      <th style="${thStyle}">Total</th>
+      <th style="${thStyle}min-width:65px;">Total</th>
     </tr></thead>
     <tbody>
-      ${rows}${blankRows}${discRow}
+      ${rows}${discRow}
       <tr>
-        <td colspan="5" style="border:1px solid #bbb;padding:5px 8px;text-align:right;font-size:11px;font-weight:700;">SF:</td>
-        <td style="border:1px solid #bbb;padding:5px 3px;text-align:center;font-size:11px;font-weight:700;">₱${Number(o.shipping||0).toFixed(2)}</td>
+        <td colspan="5" style="padding:5px 6px;text-align:right;font-size:11px;font-weight:700;border-top:1px solid #999;">SF:</td>
+        <td style="padding:5px 4px;text-align:center;font-size:11px;font-weight:700;border-top:1px solid #999;">\u20b1${Number(o.shipping||0).toFixed(2)}</td>
       </tr>
       <tr>
-        <td colspan="5" style="border:2px solid #555;padding:6px 8px;text-align:right;font-size:13px;font-weight:900;background:#f5f5f5;">TOTAL:</td>
-        <td style="border:2px solid #555;padding:6px 3px;text-align:center;font-size:13px;font-weight:900;background:#f5f5f5;">₱${Number(o.grandTotal||0).toFixed(2)}</td>
+        <td colspan="5" style="border-top:2px solid #111;border-bottom:2px solid #111;padding:6px 6px;text-align:right;font-size:13px;font-weight:900;">TOTAL:</td>
+        <td style="border-top:2px solid #111;border-bottom:2px solid #111;padding:6px 4px;text-align:center;font-size:13px;font-weight:900;">\u20b1${Number(o.grandTotal||0).toFixed(2)}</td>
       </tr>
     </tbody>
   </table>
-  <div style="font-size:11px;color:#333;margin:6px 0 4px;">Received the above item/s in good condition</div>
-  <div style="font-size:10.5px;color:#111;line-height:1.6;margin-bottom:14px;">
+  <div style="font-size:11px;color:#333;margin:7px 0 5px;">Received the above item/s in good condition</div>
+  <div style="font-size:10.5px;color:#111;line-height:1.6;margin-bottom:16px;">
     <div style="font-weight:900;font-size:11.5px;margin-bottom:2px;text-decoration:underline;">PAALALA SA AMING MGA BUYER:</div>
     Kukunan po kayo ni rider ng video upon opening the parcel, katibayan po ito kung may kulang/mali/damage ang item. Kaya maigi na paki check po ng Mabuti ang items bago ito bayaran. Once po na pumirma o inaprobahan nyo na po ang resibo, wala ng pananagutan ang Goldchelle Online Enterprises sa anumang maging problema ng item/s.
   </div>
   <div style="display:flex;justify-content:space-around;gap:30px;margin-top:16px;">
     <div style="text-align:center;flex:1;">
       <div style="border-bottom:1.5px solid #111;height:36px;margin-bottom:5px;"></div>
-      <div style="font-size:11.5px;font-weight:700;">Rider’s Name</div>
+      <div style="font-size:11.5px;font-weight:700;">Rider\u2019s Name</div>
     </div>
     <div style="text-align:center;flex:1;">
       <div style="border-bottom:1.5px solid #111;height:36px;margin-bottom:5px;"></div>
-      <div style="font-size:11.5px;font-weight:700;">Customer’s Signature</div>
+      <div style="font-size:11.5px;font-weight:700;">Customer\u2019s Signature</div>
     </div>
   </div>
 </div>`;
@@ -6069,6 +6073,8 @@ function populateRemitParcels() {
       const baseStr = it.pergram > 0
         ? `${it.code}: ${it.desc} (${it.grams}g × ${p(it.pergram)}/g = ${p(it.total)})`
         : `${it.code}: ${it.desc} ×${it.qty} = ${p(it.total)}`;
+      const discRemark = it.discountRemark ? `<span style="color:var(--orange);font-size:9px;"> [Disc: ${it.discountRemark}]</span>` : '';
+      const fullStr = baseStr + (it.discount>0?` -₱${it.discount.toFixed(2)}${it.discountRemark?' ('+it.discountRemark+')':''}`:'')
 
       if(isWholeOrderCancelled || isItemCancelled) {
         return `<span style="text-decoration:line-through;color:var(--muted);opacity:0.7;">${baseStr}</span>
@@ -6080,7 +6086,7 @@ function populateRemitParcels() {
                   &nbsp;✅ Remaining: <strong>${remainQty}${unit}</strong> = <span style="color:var(--green);">${p(remainAmt)}</span>
                 </span>`;
       }
-      return baseStr;
+      return fullStr;
     }).join('<br>');
 
     // Check for any partial/full item cancels in this delivered order
