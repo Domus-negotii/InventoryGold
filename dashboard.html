@@ -36,7 +36,19 @@ body{background:var(--navy);color:var(--white);font-family:var(--fb);min-height:
 .sidebar-logo p{font-size:9.5px;color:var(--muted);margin-top:2px;letter-spacing:1px;text-transform:uppercase;}
 .nav-section{padding:9px 0 2px;}
 .nav-label{font-size:8.5px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;padding:0 13px 4px;}
-.nav-item{display:flex;align-items:center;gap:8px;padding:7px 13px;cursor:pointer;font-size:12px;color:var(--muted);transition:all 0.18s;border-left:3px solid transparent;}
+.nav-item{display:flex;align-items:center;gap:8px;padding:7px 13px;cursor:pointer;font-size:12px;font-weight:700;color:var(--muted);transition:all 0.18s;border-left:3px solid transparent;}
+/* Sidebar collapse */
+.sidebar{transition:width 0.22s ease,left 0.22s ease;}
+.sidebar.collapsed{width:0;overflow:hidden;border-right:none;}
+.main{transition:margin-left 0.22s ease;}
+.main.expanded{margin-left:0;}
+.sidebar-toggle-btn{display:none;background:none;border:none;color:var(--gold);font-size:20px;cursor:pointer;padding:0 8px;line-height:1;}
+@media(max-width:768px){
+  .sidebar-toggle-btn{display:block;}
+  .sidebar{left:-232px;}
+  .sidebar.mobile-open{left:0;}
+  .main{margin-left:0!important;}
+}
 .nav-item:hover{color:var(--white);background:rgba(201,168,76,0.07);}
 .nav-item.active{color:var(--gold);background:rgba(201,168,76,0.1);border-left-color:var(--gold);}
 .nav-item svg{width:13px;height:13px;flex-shrink:0;}
@@ -221,7 +233,7 @@ select.form-control{cursor:pointer;}
   .page{display:none!important;padding:0!important;background:white!important;}
   #payroll-print,#daily-sales-print,#pnl-print,#adminsheet-print{display:block!important;background:white!important;}
   /* XPrinter KP200L 80mm thermal — auto size, no dialog needed */
-  @page{size:80mm auto;margin:2mm 3mm;}
+  @page{size:80mm auto;margin:25.4mm 3mm;}
   .modal-overlay.open{display:flex!important;position:fixed;inset:0;background:white!important;z-index:9999;}
   .modal-overlay.open .modal{max-height:none!important;overflow:visible!important;border:none!important;box-shadow:none!important;background:white!important;padding:0!important;max-width:100%!important;width:80mm!important;}
   .modal-overlay.open .no-print{display:none!important;}
@@ -768,7 +780,10 @@ window.loadFromFirebase = async function() {
 <!-- MAIN -->
 <div class="main">
   <div class="topbar">
-    <span class="topbar-title" id="topbar-title">Dashboard</span>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button class="sidebar-toggle-btn" onclick="toggleSidebar()" title="Toggle Sidebar">☰</button>
+      <span class="topbar-title" id="topbar-title">Dashboard</span>
+    </div>
     <div class="user-badge">
       <span id="topbar-date" style="font-size:11px;color:var(--muted);"></span>
       <span id="sync-indicator" class="sync-indicator" style="color:var(--muted);">⬤ Offline</span>
@@ -7027,13 +7042,53 @@ async function initApp(){
   if(invBtn) invBtn.innerHTML=`<button class="btn btn-gold" onclick="openAddInvModal()">+ Add Product</button>`;
 
   renderDash();
+  startAutoRefresh();
 }
 
 // ============ STARTUP ============
-// Firebase uses REST API — no SDK init needed
 (function(){
   try { if(typeof loadFbConfig === 'function') loadFbConfig(); } catch(e) {}
 })();
+
+// ── Sidebar toggle (mobile) ──────────────────────────────────────────────
+function toggleSidebar(){
+  const sb = document.querySelector('.sidebar');
+  const main = document.querySelector('.main');
+  if(window.innerWidth <= 768){
+    sb.classList.toggle('mobile-open');
+  } else {
+    const collapsed = sb.classList.toggle('collapsed');
+    if(main) main.classList.toggle('expanded', collapsed);
+  }
+}
+// Close sidebar on mobile when nav item clicked
+document.querySelectorAll('.nav-item').forEach(el=>{
+  el.addEventListener('click', ()=>{
+    if(window.innerWidth<=768) document.querySelector('.sidebar')?.classList.remove('mobile-open');
+  });
+});
+
+// ── Auto-refresh from Firebase every 30 seconds ─────────────────────────
+let _autoRefreshTimer = null;
+function startAutoRefresh(){
+  if(_autoRefreshTimer) return;
+  _autoRefreshTimer = setInterval(async ()=>{
+    if(!window._fbReady || !window.loadFromFirebase) return;
+    try {
+      const fbData = await window.loadFromFirebase();
+      if(!fbData) return;
+      // Merge new data silently (don't reset UI)
+      const keys = ['orders','riders','locations','payroll','expenses','inventory',
+                    'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
+                    'returnLog','govSettings','bizInfo','tabPasswords','adminAccounts'];
+      keys.forEach(k=>{ if(fbData[k]!==undefined) S[k]=fbData[k]; });
+      if(!S.govSettings) S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
+      persist();
+      // Silently re-render current page
+      if(typeof renderDash==='function') try{renderDash();}catch(e){}
+    } catch(e){ console.warn('Auto-refresh error:',e.message); }
+  }, 30000); // every 30 seconds
+}
 // Show login screen on load (login screen is visible by default)
 // initApp() is called after successful doLogin()
 </script>
