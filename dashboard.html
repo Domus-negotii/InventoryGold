@@ -1,9 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
- <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
- 
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Goldchelle Online Enterprises – Logistics System v4</title>
@@ -498,6 +495,13 @@ window.loadFromFirebase = async function() {
   const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
   try {
     const r = await fetch(url);
+    if(r.status === 404) {
+      // Document doesn't exist yet — fresh database, will be created on first save
+      console.log('Firestore: No data yet — starting fresh');
+      const el = document.getElementById('sync-indicator');
+      if(el){ el.style.color='var(--green)'; el.textContent='☁ Online (New)'; }
+      return null;
+    }
     if(!r.ok) return null;
     const doc = await r.json();
     if(!doc.fields) return null;
