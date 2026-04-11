@@ -45,7 +45,7 @@ body{background:var(--navy);color:var(--white);font-family:var(--fb);min-height:
 .main{margin-left:232px;flex:1;min-height:100vh;}
 .topbar{background:var(--navy-mid);border-bottom:1px solid var(--navy-border);padding:11px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;}
 .topbar-title{font-family:var(--fh);font-size:17px;color:var(--gold);}
-.badge-pill{background:var(--gold);color:var(--navy);border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600;}
+.badge-pill{background:var(--gold);color:var(--navy);border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;}
 .page{padding:20px 24px;display:none;}
 .page.active{display:block;}
 
@@ -53,7 +53,7 @@ body{background:var(--navy);color:var(--white);font-family:var(--fb);min-height:
 .card{background:var(--navy-card);border:1px solid var(--navy-border);border-radius:10px;padding:16px;}
 .card+.card{margin-top:13px;}
 .card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;}
-.card-title{font-size:11.5px;font-weight:600;color:var(--gold-light);text-transform:uppercase;letter-spacing:0.5px;}
+.card-title{font-size:11.5px;font-weight:700;color:var(--gold-light);text-transform:uppercase;letter-spacing:0.5px;}
 
 /* STATS */
 .stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:11px;margin-bottom:16px;}
@@ -73,13 +73,13 @@ body{background:var(--navy);color:var(--white);font-family:var(--fb);min-height:
 .table-wrap{overflow-x:auto;border-radius:7px;}
 table{width:100%;border-collapse:collapse;font-size:12px;}
 thead tr{background:rgba(201,168,76,0.09);}
-th{padding:8px 10px;text-align:left;font-size:9.5px;color:var(--gold);text-transform:uppercase;letter-spacing:0.7px;font-weight:600;white-space:nowrap;}
+th{padding:8px 10px;text-align:left;font-size:9.5px;color:var(--gold);text-transform:uppercase;letter-spacing:0.7px;font-weight:700;white-space:nowrap;}
 td{padding:8px 10px;border-bottom:1px solid var(--navy-border);color:#cdd3dc;vertical-align:middle;}
 tr:last-child td{border-bottom:none;}
 tr:hover td{background:rgba(201,168,76,0.03);}
 
 /* STATUS BADGES */
-.status{display:inline-block;padding:2px 7px;border-radius:20px;font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;}
+.status{display:inline-block;padding:2px 7px;border-radius:20px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;}
 .status.transit{background:rgba(74,144,217,0.15);color:var(--blue);}
 .status.delivering{background:rgba(224,138,48,0.15);color:var(--orange);}
 .status.delivered{background:rgba(46,204,138,0.15);color:var(--green);}
@@ -91,12 +91,12 @@ tr:hover td{background:rgba(201,168,76,0.03);}
 .status.green{background:rgba(46,204,138,0.15);color:var(--green);}
 .status.orange{background:rgba(224,138,48,0.15);color:var(--orange);}
 .status.purple{background:rgba(155,111,217,0.15);color:var(--purple);}
-.checker-tag{font-size:9.5px;padding:2px 6px;border-radius:3px;font-weight:600;}
+.checker-tag{font-size:9.5px;padding:2px 6px;border-radius:3px;font-weight:700;}
 .checker-tag.pending{background:rgba(224,138,48,0.2);color:var(--orange);}
 .checker-tag.verified{background:rgba(46,204,138,0.2);color:var(--green);}
 
 /* BUTTONS */
-.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:7px;border:none;cursor:pointer;font-family:var(--fb);font-size:11.5px;font-weight:600;transition:all 0.18s;}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:7px;border:none;cursor:pointer;font-family:var(--fb);font-size:11.5px;font-weight:700;transition:all 0.18s;}
 .btn-gold{background:var(--gold);color:var(--navy);}.btn-gold:hover{background:var(--gold-light);}
 .btn-outline{background:transparent;border:1px solid var(--navy-border);color:var(--muted);}
 .btn-outline:hover{border-color:var(--gold);color:var(--gold);}
@@ -128,7 +128,7 @@ select.form-control{cursor:pointer;}
 /* TABS */
 .section-tabs{display:flex;gap:6px;flex-wrap:wrap;}
 .tab-btn{padding:5px 13px;border-radius:7px;border:1px solid var(--navy-border);background:transparent;color:var(--muted);cursor:pointer;font-size:11.5px;font-family:var(--fb);transition:all 0.18s;}
-.tab-btn.active{background:var(--gold);color:var(--navy);border-color:var(--gold);font-weight:600;}
+.tab-btn.active{background:var(--gold);color:var(--navy);border-color:var(--gold);font-weight:700;}
 .tab-btn:hover:not(.active){border-color:var(--gold);color:var(--gold);}
 
 /* RIDER LOCATION TABS */
@@ -147,7 +147,7 @@ select.form-control{cursor:pointer;}
 .info-row:last-child{border-bottom:none;}
 
 /* STOCK BADGES */
-.stock-in{color:var(--green);font-weight:600;}
+.stock-in{color:var(--green);font-weight:700;}
 .stock-out{color:var(--red);font-weight:600;}
 .stock-adj{color:var(--orange);font-weight:600;}
 
@@ -158,7 +158,7 @@ select.form-control{cursor:pointer;}
 .cal-nav:hover{border-color:var(--gold);color:var(--gold);}
 .cal-month-label{font-family:var(--fh);font-size:16px;color:var(--gold);}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);border-left:1px solid var(--navy-border);}
-.cal-day-header{text-align:center;font-size:10px;font-weight:600;color:var(--muted);padding:8px 4px;background:rgba(201,168,76,0.06);border-right:1px solid var(--navy-border);border-bottom:1px solid var(--navy-border);letter-spacing:0.5px;text-transform:uppercase;}
+.cal-day-header{text-align:center;font-size:10px;font-weight:700;color:var(--muted);padding:8px 4px;background:rgba(201,168,76,0.06);border-right:1px solid var(--navy-border);border-bottom:1px solid var(--navy-border);letter-spacing:0.5px;text-transform:uppercase;}
 .cal-cell{min-height:88px;border-right:1px solid var(--navy-border);border-bottom:1px solid var(--navy-border);padding:6px;cursor:pointer;transition:background 0.15s;position:relative;}
 .cal-cell:hover{background:rgba(201,168,76,0.05);}
 .cal-cell.today{background:rgba(201,168,76,0.08);}
@@ -181,7 +181,7 @@ select.form-control{cursor:pointer;}
 .remit-label{font-size:11.5px;color:var(--muted);flex:1;}
 .remit-input{background:var(--navy-mid);border:1px solid var(--navy-border);border-radius:5px;padding:4px 8px;color:var(--white);font-family:var(--fb);font-size:12px;width:110px;text-align:right;}
 .remit-input:focus{outline:none;border-color:var(--gold);}
-.remit-total{display:flex;justify-content:space-between;padding:9px 0;border-top:1px solid var(--navy-border);margin-top:6px;font-size:13px;font-weight:600;}
+.remit-total{display:flex;justify-content:space-between;padding:9px 0;border-top:1px solid var(--navy-border);margin-top:6px;font-size:13px;font-weight:700;}
 
 /* TOAST */
 .toast{position:fixed;bottom:20px;right:20px;background:var(--navy-card);border:1px solid var(--gold);color:var(--white);padding:10px 16px;border-radius:8px;font-size:12.5px;z-index:999;display:none;animation:slideUp 0.3s ease;max-width:380px;box-shadow:0 4px 24px rgba(0,0,0,0.4);}
@@ -202,7 +202,7 @@ select.form-control{cursor:pointer;}
 .sort-card.dragging{opacity:0.5;transform:scale(0.97);box-shadow:0 4px 20px rgba(0,0,0,0.5);}
 .sort-card.drag-placeholder{background:rgba(201,168,76,0.05);border:1.5px dashed var(--gold);opacity:0.5;}
 .sort-card-order{font-size:9.5px;color:var(--gold);font-weight:700;margin-bottom:2px;}
-.sort-card-name{font-size:11.5px;font-weight:600;color:var(--white);}
+.sort-card-name{font-size:11.5px;font-weight:700;color:var(--white);}
 .sort-card-city{font-size:10px;color:var(--muted);}
 .sort-card-total{font-size:11px;color:var(--green);font-weight:700;text-align:right;margin-top:3px;}
 .sort-card-status{display:inline-block;font-size:9px;margin-top:3px;}
@@ -425,39 +425,86 @@ select.form-control{cursor:pointer;}
 <!-- Firebase Compat SDK (works without ES modules) -->
 <!-- Firebase loaded lazily via initFirebase() only when config is provided -->
 <script>
-// Firebase — safe offline-first implementation
-// No dynamic script loading to avoid "Script error." from CDN failures
+// Firebase — dynamic loader with CDN fallbacks
 window._fbReady = false;
 window._db = null;
 
+const _FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBXs5CPYgUUWlwwnO99IObzlgyyglEP9Xg",
+  authDomain: "goldchelle-logistics.firebaseapp.com",
+  projectId: "goldchelle-logistics",
+  storageBucket: "goldchelle-logistics.firebasestorage.app",
+  messagingSenderId: "736631888684",
+  appId: "1:736631888684:web:e770c2f9695284cd976a89",
+  measurementId: "G-SVN6MWQSLW"
+};
+
 window.initFirebase = function(cfg) {
-  if(!cfg || !cfg.apiKey || cfg.apiKey.includes('YOUR_API_KEY')) {
+  const useCfg = cfg || _FIREBASE_CONFIG;
+  if(!useCfg || !useCfg.apiKey || useCfg.apiKey.includes('YOUR_API_KEY')) {
     console.log('Firebase: No valid config — running offline only');
     return false;
   }
-  
   try {
-    // initialize if not already done
-    if (!firebase.apps.length) {
-      firebase.initializeApp(cfg);
+    if(!firebase.apps.length) {
+      firebase.initializeApp(useCfg);
     }
-    
     window._db = firebase.firestore();
     window._fbReady = true;
-    
-    // Update UI indicator
+    try { localStorage.setItem('gce_fb_config', JSON.stringify(useCfg)); } catch(e){}
+    console.log('✅ Firebase connected:', useCfg.projectId);
     const el = document.getElementById('sync-indicator');
     if(el){ el.style.color='var(--green)'; el.textContent='☁ Online'; }
-    
-    console.log('Firebase connected successfully!');
     return true;
-  } catch (e) {
-    console.error("Firebase initialization failed:", e.message);
+  } catch(e) {
+    console.warn('Firebase init error:', e.message);
+    window._fbReady = false;
     return false;
   }
 };
 
+// Dynamically load Firebase SDK then connect
+function _loadFirebaseSDK(callback) {
+  if(typeof firebase !== 'undefined') { callback(); return; }
+
+  const VER = '9.23.0';
+  const CDNS = [
+    `https://www.gstatic.com/firebasejs/${VER}/firebase-app-compat.js`,
+    `https://cdnjs.cloudflare.com/ajax/libs/firebase/${VER}/firebase-app-compat.min.js`
+  ];
+
+  function loadScript(src, onOk, onFail) {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = onOk;
+    s.onerror = onFail;
+    document.head.appendChild(s);
+  }
+
+  function loadFirestore(onOk) {
+    const FSCDNS = [
+      `https://www.gstatic.com/firebasejs/${VER}/firebase-firestore-compat.js`,
+      `https://cdnjs.cloudflare.com/ajax/libs/firebase/${VER}/firebase-firestore-compat.min.js`
+    ];
+    loadScript(FSCDNS[0], onOk, () => loadScript(FSCDNS[1], onOk, () => console.warn('Firestore CDN failed')));
+  }
+
+  loadScript(CDNS[0],
+    () => loadFirestore(callback),
+    () => loadScript(CDNS[1],
+      () => loadFirestore(callback),
+      () => console.warn('All Firebase CDNs failed — offline mode')
+    )
+  );
+}
+
+// Auto-connect
+_loadFirebaseSDK(function() {
+  window.initFirebase(_FIREBASE_CONFIG);
+});
+
 window.syncToFirebase = function(S) {
+  // Only syncs if Firebase is properly initialized (after page reload with CDN)
   if(!window._fbReady || !window._db) return;
   try {
     window._db.collection('gce_state').doc('main').set({
@@ -472,16 +519,12 @@ window.syncToFirebase = function(S) {
     }).then(() => {
       const el = document.getElementById('sync-indicator');
       if(el){ el.style.color='var(--green)'; el.textContent='☁ Synced'; }
-      setTimeout(()=>{ 
-         const e=document.getElementById('sync-indicator'); 
-         if(e&&e.textContent==='☁ Synced') e.textContent='☁ Online'; 
-      }, 2000);
+      setTimeout(()=>{ const e=document.getElementById('sync-indicator'); if(e&&e.textContent==='☁ Synced')e.textContent='☁ Online'; }, 2000);
     }).catch(e => {
-      console.error("Sync Error:", e);
       const el = document.getElementById('sync-indicator');
       if(el){ el.style.color='var(--orange)'; el.textContent='☁ Sync Error'; }
     });
-  } catch(e) { console.warn('Firebase sync error:', e.message); }
+  } catch(e) { console.warn('Firebase sync error (non-fatal):', e.message); }
 };
 
 window.loadFromFirebase = async function() {
@@ -527,7 +570,7 @@ window.loadFromFirebase = async function() {
         </div>
         <div class="role-btn" id="role-admin" onclick="selectRole('admin')">
           <div class="role-icon">👤</div>
-          <div class="role-name">Admin</div>
+          <div class="role-name">Admin / Staff</div>
           <div class="role-desc">Orders &amp; Operations</div>
         </div>
       </div>
@@ -654,12 +697,12 @@ window.loadFromFirebase = async function() {
       <strong style="color:var(--orange);">Without config:</strong> System works offline using local browser storage only.
     </p>
     <div class="fb-config-grid">
-      <div class="form-group"><label>API Key</label><input class="form-control" id="fb-apikey" placeholder="AIzaSy..."></div>
-      <div class="form-group"><label>Auth Domain</label><input class="form-control" id="fb-authdomain" placeholder="yourproject.firebaseapp.com"></div>
-      <div class="form-group"><label>Project ID</label><input class="form-control" id="fb-projectid" placeholder="your-project-id"></div>
-      <div class="form-group"><label>Storage Bucket</label><input class="form-control" id="fb-storagebucket" placeholder="yourproject.appspot.com"></div>
-      <div class="form-group"><label>Messaging Sender ID</label><input class="form-control" id="fb-senderid" placeholder="123456789"></div>
-      <div class="form-group"><label>App ID</label><input class="form-control" id="fb-appid" placeholder="1:123456789:web:abc..."></div>
+      <div class="form-group"><label>API Key</label><input class="form-control" id="fb-apikey" placeholder="AIzaSyBXs5CPYgUUWlwwnO99IObzlgyyglEP9Xg"></div>
+      <div class="form-group"><label>Auth Domain</label><input class="form-control" id="fb-authdomain" placeholder="goldchelle-logistics.firebaseapp.com"></div>
+      <div class="form-group"><label>Project ID</label><input class="form-control" id="fb-projectid" placeholder="goldchelle-logistics"></div>
+      <div class="form-group"><label>Storage Bucket</label><input class="form-control" id="fb-storagebucket" placeholder="goldchelle-logistics.firebasestorage.app"></div>
+      <div class="form-group"><label>Messaging Sender ID</label><input class="form-control" id="fb-senderid" placeholder="736631888684"></div>
+      <div class="form-group"><label>App ID</label><input class="form-control" id="fb-appid" placeholder="1:736631888684:web:e770c2f9695284cd976a89""></div>
     </div>
     <div style="background:var(--navy);border-radius:8px;padding:12px;margin-top:12px;font-size:11.5px;color:var(--muted);">
       💡 <strong style="color:var(--white);">How to get this:</strong> Firebase Console → Your Project → Project Settings → Your Apps → Web App → Config object
@@ -2822,7 +2865,7 @@ function openInvoice(i){
     const qtyStr   = isGrams ? `${it.grams}g` : `×${it.qty||1}`;
     const rateStr  = isGrams ? `@\u20b1${Number(it.pergram).toFixed(2)}/g` : '';
     const disc     = it.discount||0;
-    const discStr  = disc>0 ? `<br><span style="font-size:7.5px;color:#000;">&nbsp;Disc:-\u20b1${disc.toFixed(2)}${it.discountRemark?' ('+it.discountRemark+')':''}</span>` : '';
+    const discStr  = disc>0 ? `<br><span style="font-size:8.5px;color:#000;">&nbsp;Disc:-\u20b1${disc.toFixed(2)}${it.discountRemark?' ('+it.discountRemark+')':''}</span>` : '';
     const T='padding:2px 1px;vertical-align:top;font-size:8.5px;color:#000;';
     return `<tr>
       <td style="${T}font-weight:700;">[${it.code||'—'}]<br><span style="font-weight:400;">${it.desc||''}</span>${discStr}</td>
@@ -2900,7 +2943,7 @@ function openInvoice(i){
 
   <!-- ── PAALALA ── -->
   <div style="font-size:7.5px;color:#000;line-height:1.5;">
-    <div style="font-weight:900;font-size:8px;text-decoration:underline;margin-bottom:2px;">PAALALA SA AMING MGA BUYER:</div>
+    <div style="font-weight:900;font-size:10px;text-decoration:underline;margin-bottom:2px;">PAALALA SA AMING MGA BUYER:</div>
     Kukunan po kayo ni rider ng video upon opening the parcel, katibayan po ito kung may kulang/mali/damage ang item. Paki-check po ng mabuti ang items bago bayaran. Once po pumirma o inaprobahan ang resibo, wala ng pananagutan ang Goldchelle Online Enterprises sa anumang problema ng item/s.
   </div>
 
@@ -2921,7 +2964,10 @@ function openInvoice(i){
   <!-- ── FOOTER ── -->
   ${DASH_LINE}
   <div style="text-align:center;font-size:7px;color:#000;margin-top:2px;">Order # ${onum(i)} &nbsp;|&nbsp; Thank you for shopping!</div>
-
+<div>
+  </div>
+<div>
+  </div>
 </div>`;
 
   document.getElementById('invoice-area').innerHTML = receipt;
@@ -6952,6 +6998,11 @@ async function initApp(){
   const syncEl = document.getElementById('sync-indicator');
   if(syncEl){ syncEl.textContent='⬤ Offline'; syncEl.style.color='var(--muted)'; }
 
+  // Ensure Firebase is connected (in case load event already fired before login)
+  if(!window._fbReady) {
+    _loadFirebaseSDK(function() { window.initFirebase(_FIREBASE_CONFIG); });
+  }
+
   // Try Firebase if configured (after page reload with CDN)
   if(window._fbReady && window.loadFromFirebase){
     try {
@@ -6980,6 +7031,25 @@ async function initApp(){
   setVal('ds-date', today());
   setVal('pnl-date', today());
   setVal('daily-date', today());
+  setVal('checker-date', today());
+  setVal('track-date', today());
+  setVal('track-lbc-date', today());
+  setVal('track-intl-date', today());
+  setVal('sort-date', today());
+  setVal('ret-orders-date', today());
+  setVal('ret-update-date', today());
+  setVal('remit-page-date', today());
+  setVal('cashbond-page-date', today());
+  setVal('my-order-date', today());
+  setVal('order-date-filter', today());
+  setVal('enc-date', tomorrow());
+  setVal('pay-date', today());
+  setVal('exp-date', today());
+  setVal('stock-date', today());
+  setVal('remit-date', today());
+  setVal('ret-date', today());
+  setVal('cb-date', today());
+  setVal('ben-date', today());
   const now = new Date();
   const mStart = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-01';
   setVal('as-date-from', mStart);
@@ -6991,12 +7061,13 @@ async function initApp(){
 }
 
 // ============ STARTUP ============
-// Load firebase config from localStorage if saved
+// Firebase is auto-connected via hardcoded config above (on window load)
+// Also check localStorage for any overridden config
 (function(){
   try {
     const cfg = JSON.parse(localStorage.getItem('gce_fb_config')||'null');
-    if(cfg && typeof window.initFirebase === 'function'){
-      window.initFirebase(cfg);
+    if(cfg && cfg.apiKey && !cfg.apiKey.includes('YOUR_API_KEY') && typeof window.initFirebase === 'function'){
+      if(typeof firebase !== 'undefined') window.initFirebase(cfg);
     }
     if(typeof loadFbConfig === 'function') loadFbConfig();
   } catch(e) {
