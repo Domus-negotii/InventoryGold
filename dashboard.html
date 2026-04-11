@@ -431,19 +431,33 @@ window._fbReady = false;
 window._db = null;
 
 window.initFirebase = function(cfg) {
-  // Firebase is optional — system works fully offline without it
-  // To enable: paste config in Settings → Firebase Config
-  // Then the page reload will attempt connection
-  if(!cfg || !cfg.apiKey || cfg.apiKey.includes("AIzaSyBXs5CPYgUUWlwwnO99IObzlgyyglEP9Xg")) {
+  if(!cfg || !cfg.apiKey || cfg.apiKey.includes('YOUR_API_KEY')) {
     console.log('Firebase: No valid config — running offline only');
     return false;
   }
-  console.log('Firebase config found — reload page after saving config to connect');
-  return false; // Will be true after CDN is loaded via page reload with script tags
+  
+  try {
+    // initialize if not already done
+    if (!firebase.apps.length) {
+      firebase.initializeApp(cfg);
+    }
+    
+    window._db = firebase.firestore();
+    window._fbReady = true;
+    
+    // Update UI indicator
+    const el = document.getElementById('sync-indicator');
+    if(el){ el.style.color='var(--green)'; el.textContent='☁ Online'; }
+    
+    console.log('Firebase connected successfully!');
+    return true;
+  } catch (e) {
+    console.error("Firebase initialization failed:", e.message);
+    return false;
+  }
 };
 
 window.syncToFirebase = function(S) {
-  // Only syncs if Firebase is properly initialized (after page reload with CDN)
   if(!window._fbReady || !window._db) return;
   try {
     window._db.collection('gce_state').doc('main').set({
@@ -458,12 +472,16 @@ window.syncToFirebase = function(S) {
     }).then(() => {
       const el = document.getElementById('sync-indicator');
       if(el){ el.style.color='var(--green)'; el.textContent='☁ Synced'; }
-      setTimeout(()=>{ const e=document.getElementById('sync-indicator'); if(e&&e.textContent==='☁ Synced')e.textContent='☁ Online'; }, 2000);
+      setTimeout(()=>{ 
+         const e=document.getElementById('sync-indicator'); 
+         if(e&&e.textContent==='☁ Synced') e.textContent='☁ Online'; 
+      }, 2000);
     }).catch(e => {
+      console.error("Sync Error:", e);
       const el = document.getElementById('sync-indicator');
       if(el){ el.style.color='var(--orange)'; el.textContent='☁ Sync Error'; }
     });
-  } catch(e) { console.warn('Firebase sync error (non-fatal):', e.message); }
+  } catch(e) { console.warn('Firebase sync error:', e.message); }
 };
 
 window.loadFromFirebase = async function() {
