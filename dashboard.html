@@ -423,128 +423,95 @@ select.form-control{cursor:pointer;}
 
 <!-- Firebase SDK -->
 <!-- Firebase Compat SDK (works without ES modules) -->
-<!-- Firebase loaded lazily via initFirebase() only when config is provided -->
+<!-- Firebase: No SDK needed — uses REST API directly -->
 <script>
-// Firebase — dynamic loader with CDN fallbacks
-window._fbReady = false;
-window._db = null;
+// ── Firestore REST API (no external scripts required) ──────────────
+const _FB_PROJECT = 'goldchelle-logistics';
+const _FB_APIKEY  = 'AIzaSyBXs5CPYgUUWlwwnO99IObzlgyyglEP9Xg';
+const _FB_BASE    = `https://firestore.googleapis.com/v1/projects/${_FB_PROJECT}/databases/(default)/documents`;
 
-const _FIREBASE_CONFIG = {
-  apiKey: "AIzaSyBXs5CPYgUUWlwwnO99IObzlgyyglEP9Xg",
-  authDomain: "goldchelle-logistics.firebaseapp.com",
-  projectId: "goldchelle-logistics",
-  storageBucket: "goldchelle-logistics.firebasestorage.app",
-  messagingSenderId: "736631888684",
-  appId: "1:736631888684:web:e770c2f9695284cd976a89",
-  measurementId: "G-SVN6MWQSLW"
-};
+window._fbReady = true; // always ready — uses fetch()
+window._db      = null; // not used with REST approach
 
-window.initFirebase = function(cfg) {
-  const useCfg = cfg || _FIREBASE_CONFIG;
-  if(!useCfg || !useCfg.apiKey || useCfg.apiKey.includes('YOUR_API_KEY')) {
-    console.log('Firebase: No valid config — running offline only');
-    return false;
-  }
-  try {
-    if(!firebase.apps.length) {
-      firebase.initializeApp(useCfg);
-    }
-    window._db = firebase.firestore();
-    window._fbReady = true;
-    try { localStorage.setItem('gce_fb_config', JSON.stringify(useCfg)); } catch(e){}
-    console.log('✅ Firebase connected:', useCfg.projectId);
-    const el = document.getElementById('sync-indicator');
-    if(el){ el.style.color='var(--green)'; el.textContent='☁ Online'; }
-    return true;
-  } catch(e) {
-    console.warn('Firebase init error:', e.message);
-    window._fbReady = false;
-    return false;
-  }
-};
+function _loadFirebaseSDK(cb){ cb(); } // no-op, kept for compatibility
+window.initFirebase = function(){ return true; }; // no-op, kept for compatibility
 
-// Dynamically load Firebase SDK then connect
-function _loadFirebaseSDK(callback) {
-  if(typeof firebase !== 'undefined') { callback(); return; }
-
-  const VER = '9.23.0';
-  const CDNS = [
-    `https://www.gstatic.com/firebasejs/${VER}/firebase-app-compat.js`,
-    `https://cdnjs.cloudflare.com/ajax/libs/firebase/${VER}/firebase-app-compat.min.js`
-  ];
-
-  function loadScript(src, onOk, onFail) {
-    const s = document.createElement('script');
-    s.src = src;
-    s.onload = onOk;
-    s.onerror = onFail;
-    document.head.appendChild(s);
-  }
-
-  function loadFirestore(onOk) {
-    const FSCDNS = [
-      `https://www.gstatic.com/firebasejs/${VER}/firebase-firestore-compat.js`,
-      `https://cdnjs.cloudflare.com/ajax/libs/firebase/${VER}/firebase-firestore-compat.min.js`
-    ];
-    loadScript(FSCDNS[0], onOk, () => loadScript(FSCDNS[1], onOk, () => console.warn('Firestore CDN failed')));
-  }
-
-  loadScript(CDNS[0],
-    () => loadFirestore(callback),
-    () => loadScript(CDNS[1],
-      () => loadFirestore(callback),
-      () => console.warn('All Firebase CDNs failed — offline mode')
-    )
-  );
+// ── Convert JS value → Firestore typed value ──────────────────────
+function _toFS(val) {
+  if(val === null || val === undefined) return {nullValue: null};
+  if(typeof val === 'boolean') return {booleanValue: val};
+  if(typeof val === 'number')  return Number.isInteger(val) ? {integerValue: String(val)} : {doubleValue: val};
+  if(typeof val === 'string')  return {stringValue: val};
+  if(Array.isArray(val))       return {arrayValue: {values: val.map(_toFS)}};
+  if(typeof val === 'object')  return {mapValue: {fields: Object.fromEntries(Object.entries(val).map(([k,v])=>[k,_toFS(v)]))}};
+  return {stringValue: String(val)};
 }
 
-// Auto-connect
-_loadFirebaseSDK(function() {
-  window.initFirebase(_FIREBASE_CONFIG);
-});
+// ── Convert Firestore typed value → JS value ──────────────────────
+function _fromFS(fv) {
+  if(!fv) return null;
+  if('nullValue'     in fv) return null;
+  if('booleanValue'  in fv) return fv.booleanValue;
+  if('integerValue'  in fv) return Number(fv.integerValue);
+  if('doubleValue'   in fv) return fv.doubleValue;
+  if('stringValue'   in fv) return fv.stringValue;
+  if('arrayValue'    in fv) return (fv.arrayValue.values||[]).map(_fromFS);
+  if('mapValue'      in fv) return Object.fromEntries(Object.entries(fv.mapValue.fields||{}).map(([k,v])=>[k,_fromFS(v)]));
+  return null;
+}
 
-window.syncToFirebase = function(S) {
-  // Only syncs if Firebase is properly initialized (after page reload with CDN)
-  if(!window._fbReady || !window._db) return;
+// ── WRITE to Firestore ────────────────────────────────────────────
+window.syncToFirebase = async function(S) {
+  const fields = {};
+  ['orders','riders','locations','payroll','expenses','inventory','stockLog',
+   'adminNames','remitLog','cashbondLog','benefitsLog','returnLog'].forEach(k=>{
+    fields[k] = _toFS(S[k]||[]);
+  });
+  ['govSettings','bizInfo','tabPasswords'].forEach(k=>{
+    fields[k] = _toFS(S[k]||{});
+  });
+  fields['adminAccounts'] = _toFS(S.adminAccounts||[]);
+
+  const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
   try {
-    window._db.collection('gce_state').doc('main').set({
-      orders: S.orders||[], riders: S.riders||[], locations: S.locations||[],
-      payroll: S.payroll||[], expenses: S.expenses||[], inventory: S.inventory||[],
-      stockLog: S.stockLog||[], govSettings: S.govSettings||{},
-      adminNames: S.adminNames||[], bizInfo: S.bizInfo||{},
-      adminAccounts: S.adminAccounts||[],
-      remitLog: S.remitLog||[], cashbondLog: S.cashbondLog||[],
-      benefitsLog: S.benefitsLog||[], tabPasswords: S.tabPasswords||{},
-      returnLog: S.returnLog||[]
-    }).then(() => {
-      const el = document.getElementById('sync-indicator');
-      if(el){ el.style.color='var(--green)'; el.textContent='☁ Synced'; }
-      setTimeout(()=>{ const e=document.getElementById('sync-indicator'); if(e&&e.textContent==='☁ Synced')e.textContent='☁ Online'; }, 2000);
-    }).catch(e => {
-      const el = document.getElementById('sync-indicator');
-      if(el){ el.style.color='var(--orange)'; el.textContent='☁ Sync Error'; }
+    const r = await fetch(url, {
+      method: 'PATCH',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({fields})
     });
-  } catch(e) { console.warn('Firebase sync error (non-fatal):', e.message); }
+    const el = document.getElementById('sync-indicator');
+    if(r.ok){
+      if(el){ el.style.color='var(--green)'; el.textContent='☁ Synced'; }
+      setTimeout(()=>{ const e=document.getElementById('sync-indicator'); if(e&&e.textContent==='☁ Synced') e.textContent='☁ Online'; },2000);
+    } else {
+      if(el){ el.style.color='var(--orange)'; el.textContent='☁ Sync Error'; }
+      console.warn('Firestore PATCH error:', r.status, await r.text());
+    }
+  } catch(e) { console.warn('Firebase sync error:', e.message); }
 };
 
+// ── READ from Firestore ───────────────────────────────────────────
 window.loadFromFirebase = async function() {
-  if(!window._fbReady || !window._db) return null;
+  const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
   try {
-    const snap = await window._db.collection('gce_state').doc('main').get();
-    if(!snap.exists) return null;
-    const data = snap.data();
-    // Ensure new arrays exist
-    if(!data.remitLog) data.remitLog = [];
-    if(!data.cashbondLog) data.cashbondLog = [];
-    if(!data.benefitsLog) data.benefitsLog = [];
-    if(!data.tabPasswords) data.tabPasswords = {};
+    const r = await fetch(url);
+    if(!r.ok) return null;
+    const doc = await r.json();
+    if(!doc.fields) return null;
+    const data = Object.fromEntries(Object.entries(doc.fields).map(([k,v])=>[k,_fromFS(v)]));
+    if(!data.remitLog)      data.remitLog = [];
+    if(!data.cashbondLog)   data.cashbondLog = [];
+    if(!data.benefitsLog)   data.benefitsLog = [];
+    if(!data.tabPasswords)  data.tabPasswords = {};
     if(!data.adminAccounts) data.adminAccounts = [];
-    if(!data.returnLog) data.returnLog = [];
-    // Migrate old statuses from Firestore
+    if(!data.returnLog)     data.returnLog = [];
     const SM={'In Transit':'Preparing','Delivering':'Out for Delivery','For Return':'Update','Returned':'Cancelled'};
     if(data.orders) data.orders.forEach(o=>{ if(SM[o.status]) o.status=SM[o.status]; });
+    // Show Online indicator
+    const el = document.getElementById('sync-indicator');
+    if(el){ el.style.color='var(--green)'; el.textContent='☁ Online'; }
     return data;
-  } catch(e) { return null; }
+  } catch(e) { console.warn('Firebase load error:', e.message); return null; }
 };
 </script>
 
@@ -6998,12 +6965,7 @@ async function initApp(){
   const syncEl = document.getElementById('sync-indicator');
   if(syncEl){ syncEl.textContent='⬤ Offline'; syncEl.style.color='var(--muted)'; }
 
-  // Ensure Firebase is connected (in case load event already fired before login)
-  if(!window._fbReady) {
-    _loadFirebaseSDK(function() { window.initFirebase(_FIREBASE_CONFIG); });
-  }
-
-  // Try Firebase if configured (after page reload with CDN)
+  // Try Firebase (REST API — always ready)
   if(window._fbReady && window.loadFromFirebase){
     try {
       if(syncEl){ syncEl.textContent='☁ Loading...'; syncEl.style.color='var(--orange)'; }
@@ -7061,18 +7023,9 @@ async function initApp(){
 }
 
 // ============ STARTUP ============
-// Firebase is auto-connected via hardcoded config above (on window load)
-// Also check localStorage for any overridden config
+// Firebase uses REST API — no SDK init needed
 (function(){
-  try {
-    const cfg = JSON.parse(localStorage.getItem('gce_fb_config')||'null');
-    if(cfg && cfg.apiKey && !cfg.apiKey.includes('YOUR_API_KEY') && typeof window.initFirebase === 'function'){
-      if(typeof firebase !== 'undefined') window.initFirebase(cfg);
-    }
-    if(typeof loadFbConfig === 'function') loadFbConfig();
-  } catch(e) {
-    console.warn('Startup error (non-fatal):', e.message);
-  }
+  try { if(typeof loadFbConfig === 'function') loadFbConfig(); } catch(e) {}
 })();
 // Show login screen on load (login screen is visible by default)
 // initApp() is called after successful doLogin()
