@@ -2494,6 +2494,9 @@ function _renderAdminPersonalSheet() {
         <tbody id="my-orders-tbody"></tbody>
       </table></div>
     </div>`;
+  // Set default date = tomorrow right after element is created
+  const modf = document.getElementById('my-order-date');
+  if(modf && !modf.value) modf.value = tomorrow();
   renderMyOrders();
 }
 
@@ -2597,6 +2600,9 @@ function _renderOwnerOrdersView() {
       </table></div>
     </div>`;
 
+  // Set default date = tomorrow right after element is created
+  const odf = document.getElementById('order-date-filter');
+  if(odf && !odf.value) odf.value = tomorrow();
   renderOrders();
 }
 
@@ -2793,33 +2799,59 @@ function renderChecker(){
 
   if(isCOD) {
     const riderOpts = '<option value="">-- Assign Rider --</option>' + S.riders.map(r=>`<option value="${r.name}">${r.name} (${r.location||'—'})</option>`).join('');
-    document.getElementById('checker-tbody').innerHTML = list.length ? list.map(({o,i}) => `<tr>
-      <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
-      <td style="font-weight:500;">${o.name}</td>
-      <td style="font-size:11px;">${o.contact||'—'}</td>
-      <td>${o.admin}</td><td>${o.date}</td>
-      <td>${p(o.itemsTotal)}</td><td>${p(o.shipping)}</td>
-      <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
-      <td>
-        <select class="form-control" style="width:145px;font-size:10.5px;padding:3px 6px;" onchange="assignRiderFromChecker(${i},this.value)">
-          ${riderOpts.replace(`value="${o.assignedRider||''}"`,`value="${o.assignedRider||''}" selected`)}
-        </select>
-        ${o.assignedRider?`<div style="font-size:9.5px;color:var(--blue);margin-top:2px;">🏍️ ${o.assignedRider}</div>`:''}
-      </td>
-      <td>
-        <span class="checker-tag ${o.checkerStatus==='Verified'?'verified':'pending'}" style="margin-bottom:4px;display:block;">${o.checkerStatus}</span>
-      </td>
-      <td style="display:flex;gap:3px;flex-wrap:wrap;">
-        ${!['Ready','Out for Delivery','Delivered','Cancelled','Update'].includes(o.status)
-          ? `<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>` : ''}
-        ${o.checkerStatus!=='Verified'
-          ? `<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`
-          : `<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`}
-        <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
-        <button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>
-      </td>
-    </tr>`).join('') :
-    `<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">No COD orders found</td></tr>`;
+    // Group by admin
+    const codAdminGroups = {};
+    list.forEach(({o,i}) => {
+      const adm = o.admin || '(No Admin)';
+      if(!codAdminGroups[adm]) codAdminGroups[adm] = [];
+      codAdminGroups[adm].push({o,i});
+    });
+    if(!list.length) {
+      document.getElementById('checker-tbody').innerHTML =
+        `<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">No COD orders found</td></tr>`;
+    } else {
+      let codRows = '';
+      Object.keys(codAdminGroups).sort().forEach(adm => {
+        codRows += `<tr style="background:rgba(201,168,76,0.08);">
+          <td colspan="11" style="padding:7px 12px;font-weight:700;font-size:11px;color:var(--gold);
+            text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--navy-border);">
+            👤 ${adm}
+            <span style="color:var(--muted);font-weight:400;font-size:10px;margin-left:6px;">
+              ${codAdminGroups[adm].length} order${codAdminGroups[adm].length>1?'s':''}
+            </span>
+          </td></tr>`;
+        codAdminGroups[adm].forEach(({o,i}) => {
+          const isLocked = ['Ready','Out for Delivery','Delivered','Cancelled','Update'].includes(o.status);
+          codRows += `<tr>
+            <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
+            <td style="font-weight:500;">${o.name}</td>
+            <td style="font-size:11px;">${o.contact||'—'}</td>
+            <td>${o.date}</td>
+            <td>${p(o.itemsTotal)}</td><td>${p(o.shipping)}</td>
+            <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
+            <td>
+              <select class="form-control" style="width:145px;font-size:10.5px;padding:3px 6px;"
+                onchange="assignRiderFromChecker(${i},this.value)">
+                ${riderOpts.replace(`value="${o.assignedRider||''}"`,`value="${o.assignedRider||''}" selected`)}
+              </select>
+              ${o.assignedRider?`<div style="font-size:9.5px;color:var(--blue);margin-top:2px;">🏍️ ${o.assignedRider}</div>`:''}
+            </td>
+            <td>
+              <span class="checker-tag ${o.checkerStatus==='Verified'?'verified':'pending'}" style="margin-bottom:4px;display:block;">${o.checkerStatus}</span>
+            </td>
+            <td style="display:flex;gap:3px;flex-wrap:wrap;">
+              ${!isLocked?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>`:''}
+              ${o.checkerStatus!=='Verified'
+                ?`<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`
+                :`<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`}
+              <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
+              <button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>
+            </td>
+          </tr>`;
+        });
+      });
+      document.getElementById('checker-tbody').innerHTML = codRows;
+    }
   } else {
     // LBC / INTERNATIONAL — payment status + verification flow
     const PAYMENT_STATUSES = ['No Payment','Partial','Fully Paid'];
