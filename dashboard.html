@@ -8,116 +8,7 @@
 <style>
 :root{--gold:#c9a84c;--gold-light:#e8d08a;--gold-dark:#9c7a2e;--navy:#0f1b2d;--navy-mid:#162035;--navy-card:#1c2a40;--navy-border:#263554;--white:#f8f6f0;--muted:#8a95a8;--green:#2ecc8a;--red:#e05555;--orange:#e08a30;--blue:#4a90d9;--purple:#9b6fd9;--fh:'Playfair Display',serif;--fb:'DM Sans',sans-serif;}
 /* ── LIGHT MODE ── */
-/* ── SPLASH SCREEN ── */
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&display=swap');
-#splash-screen{
-  position:fixed;inset:0;z-index:99999!important;
-  background:#06101e;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  cursor:pointer;overflow:hidden;
-  animation:spIn 0.9s cubic-bezier(0.16,1,0.3,1) both;
-}
-/* background glow blob */
-.sp-glow{
-  position:absolute;top:50%;left:50%;
-  transform:translate(-50%,-55%);
-  width:500px;height:500px;border-radius:50%;
-  background:radial-gradient(ellipse,rgba(201,168,76,0.13) 0%,transparent 68%);
-  animation:spGlow 4s ease-in-out infinite;pointer-events:none;
-}
-/* diamond wrapper */
-.sp-diamond-wrap{
-  position:relative;
-  animation:spDrop 1s cubic-bezier(0.16,1,0.3,1) 0.15s both;
-}
-.sp-diamond-svg{
-  width:clamp(120px,22vw,180px);
-  height:clamp(120px,22vw,180px);
-  filter:drop-shadow(0 0 28px rgba(201,168,76,0.55));
-  animation:spSpin 12s linear infinite, spFloat 3.5s ease-in-out infinite;
-}
-/* sparkle stars on diamond */
-.sp-sparkle{
-  animation:spSparkle 2s ease-in-out infinite;
-  transform-origin:center;
-}
-/* reflection under diamond */
-.sp-reflection{
-  width:80px;height:12px;margin:-4px auto 0;
-  background:radial-gradient(ellipse,rgba(201,168,76,0.35) 0%,transparent 70%);
-  animation:spFloat 3.5s ease-in-out infinite reverse;
-  filter:blur(4px);
-}
-/* text block */
-.sp-text-wrap{
-  margin-top:28px;text-align:center;
-  animation:spRise 1s cubic-bezier(0.16,1,0.3,1) 0.4s both;
-}
-.sp-brand{
-  font-family:'Cormorant Garamond','Georgia',serif;
-  font-size:clamp(42px,9vw,76px);
-  font-weight:300;
-  letter-spacing:0.06em;
-  background:linear-gradient(135deg,#f5e27a 0%,#c9a84c 40%,#e8d080 70%,#9c7a2e 100%);
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-  line-height:1;
-  filter:drop-shadow(0 2px 12px rgba(201,168,76,0.4));
-}
-.sp-divider{
-  display:flex;align-items:center;gap:12px;
-  margin:14px auto 12px;width:260px;
-}
-.sp-divider span:not(.sp-div-diamond){
-  flex:1;height:1px;
-  background:linear-gradient(90deg,transparent,rgba(201,168,76,0.5),transparent);
-}
-.sp-div-diamond{
-  color:#c9a84c;font-size:9px;
-  animation:spSparkle 2.5s ease-in-out infinite;
-}
-.sp-sub{
-  font-family:'DM Sans',sans-serif;
-  font-size:clamp(10px,2vw,12px);
-  letter-spacing:0.35em;
-  color:rgba(201,168,76,0.75);
-  text-transform:uppercase;font-weight:500;
-}
-.sp-tagline{
-  font-family:'DM Sans',sans-serif;
-  font-size:11px;letter-spacing:0.15em;
-  color:rgba(138,149,168,0.6);
-  margin-top:8px;text-transform:uppercase;
-}
-/* tap cue */
-.sp-tap{
-  position:absolute;bottom:48px;left:50%;transform:translateX(-50%);
-  font-family:'DM Sans',sans-serif;
-  font-size:10px;letter-spacing:0.25em;text-transform:uppercase;
-  color:rgba(138,149,168,0.45);
-  animation:spBlink 2.5s ease-in-out infinite;
-  white-space:nowrap;
-}
-/* corner */
-.sp-corner{
-  position:absolute;bottom:20px;right:24px;
-  font-family:'DM Sans',sans-serif;
-  font-size:9px;letter-spacing:0.15em;
-  color:rgba(138,149,168,0.3);
-}
-/* keyframes */
-@keyframes spIn{from{opacity:0}to{opacity:1}}
-@keyframes spDrop{from{opacity:0;transform:translateY(-30px)}to{opacity:1;transform:translateY(0)}}
-@keyframes spRise{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
-@keyframes spGlow{0%,100%{opacity:0.7;transform:translate(-50%,-55%) scale(1)}50%{opacity:1;transform:translate(-50%,-55%) scale(1.1)}}
-@keyframes spFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
-@keyframes spSpin{from{transform:rotateY(0deg)}to{transform:rotateY(360deg)}}
-@keyframes spSparkle{0%,100%{opacity:0.2;transform:scale(0.8)}50%{opacity:1;transform:scale(1.2)}}
-@keyframes spBlink{0%,100%{opacity:0.3}50%{opacity:0.7}}
-@keyframes splashFadeIn{from{opacity:0}to{opacity:1}}
-@keyframes splashLogoIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
-@keyframes tapPulse{0%,100%{opacity:0.5}50%{opacity:1}}
-@keyframes particleRise{0%{opacity:0.7}100%{transform:translateY(-100vh);opacity:0}}
-.splash-particle{display:none;}
+
 body.light-mode{--navy:#f0f2f7;--navy-mid:#ffffff;--navy-card:#f8f9fc;--navy-border:#d0d7e6;--white:#1a2236;--muted:#6b7a99;}
 body.light-mode .sidebar{background:#fff;border-right-color:#d0d7e6;}
 body.light-mode .topbar{background:#fff;border-bottom-color:#d0d7e6;}
@@ -668,136 +559,49 @@ function _showRulesHint() {
   if(document.getElementById('rules-hint-toast')) return;
   const div = document.createElement('div');
   div.id = 'rules-hint-toast';
-  div.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);'+
-    'background:#162035;border:1.5px solid #e08a30;border-radius:12px;padding:16px 20px;'+
-    'z-index:99998;max-width:430px;width:92vw;box-shadow:0 8px 32px rgba(0,0,0,0.5);';
-  div.innerHTML =
-    '<div style="font-weight:700;color:#e08a30;font-size:13px;margin-bottom:8px;">⚠️ I-update ang Firestore Rules</div>'+
-    '<div style="font-size:11.5px;color:#cdd3dc;line-height:1.7;">'+
-    'Pumunta sa <strong style="color:#c9a84c;">Firebase Console → Firestore Database → Rules</strong> tab, '+
-    'i-replace lahat ng laman ng rules ng ganito:</div>'+
-    '<pre style="margin:10px 0;padding:10px;background:#0f1b2d;border-radius:7px;font-size:10px;color:#2ecc8a;overflow-x:auto;">'+
-    'rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
-    }
-  }
-}</pre>'+
-    '<div style="font-size:11px;color:#8a95a8;">Tapos i-click ang <strong style="color:#c9a84c;">Publish</strong> button. One-time lang ito.</div>'+
-    '<button onclick="document.getElementById('rules-hint-toast').remove()" '+
-    'style="margin-top:12px;background:#e08a30;border:none;border-radius:6px;padding:6px 18px;color:#0f1b2d;font-weight:700;font-size:12px;cursor:pointer;">✕ Close</button>';
+  div.style.cssText = [
+    'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);',
+    'background:#162035;border:1.5px solid #e08a30;border-radius:12px;',
+    'padding:16px 20px;z-index:99998;max-width:440px;width:92vw;',
+    'box-shadow:0 8px 32px rgba(0,0,0,0.5);'
+  ].join('');
+  const rulesCode = [
+    "rules_version = '2';",
+    "service cloud.firestore {",
+    "  match /databases/{database}/documents {",
+    "    match /{document=**} {",
+    "      allow read, write: if true;",
+    "    }",
+    "  }",
+    "}"
+  ].join("\n");
+  div.innerHTML = [
+    '<div style="font-weight:700;color:#e08a30;font-size:13px;margin-bottom:8px;">',
+    '⚠️ I-update ang Firestore Rules</div>',
+    '<div style="font-size:11.5px;color:#cdd3dc;line-height:1.7;margin-bottom:8px;">',
+    'Pumunta sa <strong style="color:#c9a84c;">Firebase Console → Firestore → Rules</strong> ',
+    'tab tapos i-replace lahat ng laman ng ganito:</div>',
+    '<pre style="margin:8px 0;padding:10px;background:#0f1b2d;border-radius:7px;',
+    'font-size:10px;color:#2ecc8a;overflow-x:auto;white-space:pre;">',
+    rulesCode,
+    '</pre>',
+    '<div style="font-size:11px;color:#8a95a8;margin-bottom:10px;">',
+    'Tapos i-click ang <strong style="color:#c9a84c;">Publish</strong>. One-time lang ito.</div>',
+    '<button id="rules-hint-close" style="background:#e08a30;border:none;border-radius:6px;',
+    'padding:6px 18px;color:#0f1b2d;font-weight:700;font-size:12px;cursor:pointer;">',
+    'Got it ✓</button>'
+  ].join('');
   document.body.appendChild(div);
-  setTimeout(()=>{ if(div.parentNode) div.remove(); window._rulesHintShown=false; }, 60000);
+  document.getElementById('rules-hint-close').onclick = function(){
+    div.remove(); window._rulesHintShown = false;
+  };
+  setTimeout(function(){ if(div.parentNode){ div.remove(); window._rulesHintShown=false; } }, 60000);
 }
 </script>
 
 </head>
 <body>
-<!-- ============ SPLASH SCREEN ============ -->
-<div id="splash-screen" onclick="dismissSplash()">
 
-  <!-- Background glow -->
-  <div class="sp-glow"></div>
-
-  <!-- Animated diamond -->
-  <div class="sp-diamond-wrap">
-    <svg class="sp-diamond-svg" viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="dg1" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%"   stop-color="#f5e27a"/>
-          <stop offset="40%"  stop-color="#c9a84c"/>
-          <stop offset="100%" stop-color="#7a5c18"/>
-        </linearGradient>
-        <linearGradient id="dg2" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%"   stop-color="#fef0a0"/>
-          <stop offset="100%" stop-color="#c9a84c"/>
-        </linearGradient>
-        <linearGradient id="dg3" x1="100%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%"   stop-color="#e8d080"/>
-          <stop offset="100%" stop-color="#9c7a2e"/>
-        </linearGradient>
-        <filter id="df">
-          <feGaussianBlur stdDeviation="3" result="b"/>
-          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-        </filter>
-      </defs>
-
-      <!-- Orbit ring -->
-      <circle cx="80" cy="80" r="72" fill="none" stroke="rgba(201,168,76,0.18)" stroke-width="1" stroke-dasharray="6 5"/>
-
-      <!-- Main diamond shape: crown top + pavilion bottom -->
-      <g filter="url(#df)" transform="translate(80,80)">
-        <!-- Crown facets (top half) -->
-        <polygon points="0,-44  28,-18  -28,-18"             fill="url(#dg2)" opacity="0.95"/>
-        <polygon points="0,-44  28,-18   44,2"               fill="url(#dg1)" opacity="0.85"/>
-        <polygon points="0,-44 -28,-18  -44,2"               fill="url(#dg3)" opacity="0.85"/>
-        <polygon points="28,-18  44,2    0, 6"               fill="url(#dg2)" opacity="0.7"/>
-        <polygon points="-28,-18 -44,2   0, 6"              fill="url(#dg1)" opacity="0.7"/>
-        <!-- Table (top flat face) -->
-        <polygon points="0,-44  28,-18  0,-8  -28,-18"       fill="#fef8c0" opacity="0.6"/>
-
-        <!-- Girdle line -->
-        <line x1="-44" y1="2" x2="44" y2="2" stroke="rgba(201,168,76,0.6)" stroke-width="0.8"/>
-
-        <!-- Pavilion facets (bottom half) -->
-        <polygon points="-44,2  -28,-18  0,44"              fill="url(#dg3)" opacity="0.9"/>
-        <polygon points=" 44,2   28,-18  0,44"              fill="url(#dg1)" opacity="0.9"/>
-        <polygon points="-44,2    0,6    0,44"              fill="url(#dg2)" opacity="0.75"/>
-        <polygon points=" 44,2    0,6    0,44"              fill="url(#dg3)" opacity="0.75"/>
-
-        <!-- Outline -->
-        <polygon points="0,-44  44,2  0,44  -44,2"
-                 fill="none" stroke="url(#dg1)" stroke-width="1.2" opacity="0.8"/>
-        <!-- Inner lines -->
-        <line x1="0"  y1="-44" x2="0"   y2="44"  stroke="rgba(201,168,76,0.35)" stroke-width="0.7"/>
-        <line x1="-44" y1="2"  x2="44"  y2="2"   stroke="rgba(201,168,76,0.35)" stroke-width="0.7"/>
-        <line x1="0"  y1="-44" x2="-44" y2="2"   stroke="rgba(255,240,140,0.3)" stroke-width="0.6"/>
-        <line x1="0"  y1="-44" x2=" 44" y2="2"   stroke="rgba(255,240,140,0.3)" stroke-width="0.6"/>
-      </g>
-
-      <!-- Sparkle stars (4-point) at corners -->
-      <!-- top -->
-      <g class="sp-sparkle" style="animation-delay:0s">
-        <line x1="80" y1="4"  x2="80" y2="16" stroke="#fef0a0" stroke-width="2" stroke-linecap="round"/>
-        <line x1="74" y1="10" x2="86" y2="10" stroke="#fef0a0" stroke-width="1" stroke-linecap="round"/>
-      </g>
-      <!-- right -->
-      <g class="sp-sparkle" style="animation-delay:0.5s">
-        <line x1="144" y1="80" x2="156" y2="80" stroke="#fef0a0" stroke-width="2" stroke-linecap="round"/>
-        <line x1="150" y1="74" x2="150" y2="86" stroke="#fef0a0" stroke-width="1" stroke-linecap="round"/>
-      </g>
-      <!-- bottom -->
-      <g class="sp-sparkle" style="animation-delay:1s">
-        <line x1="80" y1="144" x2="80" y2="156" stroke="#fef0a0" stroke-width="2" stroke-linecap="round"/>
-        <line x1="74" y1="150" x2="86" y2="150" stroke="#fef0a0" stroke-width="1" stroke-linecap="round"/>
-      </g>
-      <!-- left -->
-      <g class="sp-sparkle" style="animation-delay:1.5s">
-        <line x1="4"  y1="80" x2="16"  y2="80" stroke="#fef0a0" stroke-width="2" stroke-linecap="round"/>
-        <line x1="10" y1="74" x2="10"  y2="86" stroke="#fef0a0" stroke-width="1" stroke-linecap="round"/>
-      </g>
-    </svg>
-
-    <!-- Reflection shimmer under diamond -->
-    <div class="sp-reflection"></div>
-  </div>
-
-  <!-- Text block -->
-  <div class="sp-text-wrap">
-    <div class="sp-brand">Goldchelle</div>
-    <div class="sp-divider"><span></span><span class="sp-div-diamond">◆</span><span></span></div>
-    <div class="sp-sub">ONLINE ENTERPRISES</div>
-    <div class="sp-tagline">Logistics System v4</div>
-  </div>
-
-  <!-- Tap cue -->
-  <div class="sp-tap">tap anywhere to continue</div>
-
-  <!-- Corner watermark -->
-  <div class="sp-corner">GOE · 2026</div>
-</div>
 
 <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebarOverlay()"></div>
 
@@ -2350,16 +2154,6 @@ if(S.orders) S.orders.forEach(o=>{ if(STATUS_MAP[o.status]) o.status=STATUS_MAP[
 
 // Auth globals
 let currentUser = null;
-// ── Splash Screen dismiss ─────────────────────────────────────────
-function dismissSplash(){
-  const sp = document.getElementById('splash-screen');
-  if(!sp) return;
-  sp.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
-  sp.style.opacity = '0';
-  sp.style.transform = 'scale(1.04)';
-  sp.style.pointerEvents = 'none';
-  setTimeout(()=>{ sp.style.display='none'; }, 620);
-}
 
 let currentRole = null;
 
