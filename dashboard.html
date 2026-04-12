@@ -8,6 +8,116 @@
 <style>
 :root{--gold:#c9a84c;--gold-light:#e8d08a;--gold-dark:#9c7a2e;--navy:#0f1b2d;--navy-mid:#162035;--navy-card:#1c2a40;--navy-border:#263554;--white:#f8f6f0;--muted:#8a95a8;--green:#2ecc8a;--red:#e05555;--orange:#e08a30;--blue:#4a90d9;--purple:#9b6fd9;--fh:'Playfair Display',serif;--fb:'DM Sans',sans-serif;}
 /* ── LIGHT MODE ── */
+/* ── SPLASH SCREEN ── */
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&display=swap');
+#splash-screen{
+  position:fixed;inset:0;z-index:99999!important;
+  background:#06101e;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  cursor:pointer;overflow:hidden;
+  animation:spIn 0.9s cubic-bezier(0.16,1,0.3,1) both;
+}
+/* background glow blob */
+.sp-glow{
+  position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-55%);
+  width:500px;height:500px;border-radius:50%;
+  background:radial-gradient(ellipse,rgba(201,168,76,0.13) 0%,transparent 68%);
+  animation:spGlow 4s ease-in-out infinite;pointer-events:none;
+}
+/* diamond wrapper */
+.sp-diamond-wrap{
+  position:relative;
+  animation:spDrop 1s cubic-bezier(0.16,1,0.3,1) 0.15s both;
+}
+.sp-diamond-svg{
+  width:clamp(120px,22vw,180px);
+  height:clamp(120px,22vw,180px);
+  filter:drop-shadow(0 0 28px rgba(201,168,76,0.55));
+  animation:spSpin 12s linear infinite, spFloat 3.5s ease-in-out infinite;
+}
+/* sparkle stars on diamond */
+.sp-sparkle{
+  animation:spSparkle 2s ease-in-out infinite;
+  transform-origin:center;
+}
+/* reflection under diamond */
+.sp-reflection{
+  width:80px;height:12px;margin:-4px auto 0;
+  background:radial-gradient(ellipse,rgba(201,168,76,0.35) 0%,transparent 70%);
+  animation:spFloat 3.5s ease-in-out infinite reverse;
+  filter:blur(4px);
+}
+/* text block */
+.sp-text-wrap{
+  margin-top:28px;text-align:center;
+  animation:spRise 1s cubic-bezier(0.16,1,0.3,1) 0.4s both;
+}
+.sp-brand{
+  font-family:'Cormorant Garamond','Georgia',serif;
+  font-size:clamp(42px,9vw,76px);
+  font-weight:300;
+  letter-spacing:0.06em;
+  background:linear-gradient(135deg,#f5e27a 0%,#c9a84c 40%,#e8d080 70%,#9c7a2e 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  line-height:1;
+  filter:drop-shadow(0 2px 12px rgba(201,168,76,0.4));
+}
+.sp-divider{
+  display:flex;align-items:center;gap:12px;
+  margin:14px auto 12px;width:260px;
+}
+.sp-divider span:not(.sp-div-diamond){
+  flex:1;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(201,168,76,0.5),transparent);
+}
+.sp-div-diamond{
+  color:#c9a84c;font-size:9px;
+  animation:spSparkle 2.5s ease-in-out infinite;
+}
+.sp-sub{
+  font-family:'DM Sans',sans-serif;
+  font-size:clamp(10px,2vw,12px);
+  letter-spacing:0.35em;
+  color:rgba(201,168,76,0.75);
+  text-transform:uppercase;font-weight:500;
+}
+.sp-tagline{
+  font-family:'DM Sans',sans-serif;
+  font-size:11px;letter-spacing:0.15em;
+  color:rgba(138,149,168,0.6);
+  margin-top:8px;text-transform:uppercase;
+}
+/* tap cue */
+.sp-tap{
+  position:absolute;bottom:48px;left:50%;transform:translateX(-50%);
+  font-family:'DM Sans',sans-serif;
+  font-size:10px;letter-spacing:0.25em;text-transform:uppercase;
+  color:rgba(138,149,168,0.45);
+  animation:spBlink 2.5s ease-in-out infinite;
+  white-space:nowrap;
+}
+/* corner */
+.sp-corner{
+  position:absolute;bottom:20px;right:24px;
+  font-family:'DM Sans',sans-serif;
+  font-size:9px;letter-spacing:0.15em;
+  color:rgba(138,149,168,0.3);
+}
+/* keyframes */
+@keyframes spIn{from{opacity:0}to{opacity:1}}
+@keyframes spDrop{from{opacity:0;transform:translateY(-30px)}to{opacity:1;transform:translateY(0)}}
+@keyframes spRise{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes spGlow{0%,100%{opacity:0.7;transform:translate(-50%,-55%) scale(1)}50%{opacity:1;transform:translate(-50%,-55%) scale(1.1)}}
+@keyframes spFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes spSpin{from{transform:rotateY(0deg)}to{transform:rotateY(360deg)}}
+@keyframes spSparkle{0%,100%{opacity:0.2;transform:scale(0.8)}50%{opacity:1;transform:scale(1.2)}}
+@keyframes spBlink{0%,100%{opacity:0.3}50%{opacity:0.7}}
+@keyframes splashFadeIn{from{opacity:0}to{opacity:1}}
+@keyframes splashLogoIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes tapPulse{0%,100%{opacity:0.5}50%{opacity:1}}
+@keyframes particleRise{0%{opacity:0.7}100%{transform:translateY(-100vh);opacity:0}}
+.splash-particle{display:none;}
 body.light-mode{--navy:#f0f2f7;--navy-mid:#ffffff;--navy-card:#f8f9fc;--navy-border:#d0d7e6;--white:#1a2236;--muted:#6b7a99;}
 body.light-mode .sidebar{background:#fff;border-right-color:#d0d7e6;}
 body.light-mode .topbar{background:#fff;border-bottom-color:#d0d7e6;}
@@ -49,6 +159,8 @@ body{background:var(--navy);color:var(--white);font-family:var(--fb);min-height:
   .sidebar.mobile-open{left:0;}
   .main{margin-left:0!important;}
 }
+.sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99;}
+.sidebar-overlay.show{display:block;}
 .nav-item:hover{color:var(--white);background:rgba(201,168,76,0.07);}
 .nav-item.active{color:var(--gold);background:rgba(201,168,76,0.1);border-left-color:var(--gold);}
 .nav-item svg{width:13px;height:13px;flex-shrink:0;}
@@ -479,7 +591,7 @@ window.syncToFirebase = async function(S) {
    'adminNames','remitLog','cashbondLog','benefitsLog','returnLog'].forEach(k=>{
     fields[k] = _toFS(S[k]||[]);
   });
-  ['govSettings','bizInfo','tabPasswords'].forEach(k=>{
+  ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
     fields[k] = _toFS(S[k]||{});
   });
   fields['adminAccounts'] = _toFS(S.adminAccounts||[]);
@@ -505,37 +617,189 @@ window.syncToFirebase = async function(S) {
 // ── READ from Firestore ───────────────────────────────────────────
 window.loadFromFirebase = async function() {
   const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
+  const _syncEl = ()=>document.getElementById('sync-indicator');
   try {
-    const r = await fetch(url);
+    const r = await fetch(url, {cache:'no-cache'});
+
+    // 404 = fresh database, no data yet — OK
     if(r.status === 404) {
-      // Document doesn't exist yet — fresh database, will be created on first save
-      console.log('Firestore: No data yet — starting fresh');
-      const el = document.getElementById('sync-indicator');
-      if(el){ el.style.color='var(--green)'; el.textContent='☁ Online (New)'; }
+      const el=_syncEl(); if(el){el.style.color='var(--green)';el.textContent='☁ Online';}
       return null;
     }
-    if(!r.ok) return null;
+    // 403 = Firestore rules blocking unauthenticated access
+    if(r.status === 403) {
+      const el=_syncEl(); if(el){el.style.color='var(--orange)';el.textContent='☁ Rules!';}
+      _showRulesHint();
+      return null;
+    }
+    if(!r.ok) {
+      const el=_syncEl(); if(el){el.style.color='var(--orange)';el.textContent='☁ Error '+r.status;}
+      return null;
+    }
     const doc = await r.json();
-    if(!doc.fields) return null;
+    if(!doc.fields) {
+      const el=_syncEl(); if(el){el.style.color='var(--green)';el.textContent='☁ Online';}
+      return null;
+    }
     const data = Object.fromEntries(Object.entries(doc.fields).map(([k,v])=>[k,_fromFS(v)]));
-    if(!data.remitLog)      data.remitLog = [];
-    if(!data.cashbondLog)   data.cashbondLog = [];
-    if(!data.benefitsLog)   data.benefitsLog = [];
-    if(!data.tabPasswords)  data.tabPasswords = {};
-    if(!data.adminAccounts) data.adminAccounts = [];
-    if(!data.returnLog)     data.returnLog = [];
+    if(!data.remitLog)         data.remitLog = [];
+    if(!data.cashbondLog)      data.cashbondLog = [];
+    if(!data.benefitsLog)      data.benefitsLog = [];
+    if(!data.tabPasswords)     data.tabPasswords = {};
+    if(!data.specialPasswords) data.specialPasswords = {remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
+    if(!data.adminAccounts)    data.adminAccounts = [];
+    if(!data.returnLog)        data.returnLog = [];
     const SM={'In Transit':'Preparing','Delivering':'Out for Delivery','For Return':'Update','Returned':'Cancelled'};
     if(data.orders) data.orders.forEach(o=>{ if(SM[o.status]) o.status=SM[o.status]; });
-    // Show Online indicator
-    const el = document.getElementById('sync-indicator');
-    if(el){ el.style.color='var(--green)'; el.textContent='☁ Online'; }
+    const el=_syncEl(); if(el){el.style.color='var(--green)';el.textContent='☁ Online';}
     return data;
-  } catch(e) { console.warn('Firebase load error:', e.message); return null; }
+  } catch(e) {
+    // Network error or CORS — most likely Firestore Rules issue
+    console.warn('Firebase load error:', e.message);
+    const el=_syncEl(); if(el){el.style.color='var(--orange)';el.textContent='☁ Rules!';}
+    _showRulesHint();
+    return null;
+  }
 };
+
+function _showRulesHint() {
+  if(window._rulesHintShown) return;
+  window._rulesHintShown = true;
+  if(document.getElementById('rules-hint-toast')) return;
+  const div = document.createElement('div');
+  div.id = 'rules-hint-toast';
+  div.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);'+
+    'background:#162035;border:1.5px solid #e08a30;border-radius:12px;padding:16px 20px;'+
+    'z-index:99998;max-width:430px;width:92vw;box-shadow:0 8px 32px rgba(0,0,0,0.5);';
+  div.innerHTML =
+    '<div style="font-weight:700;color:#e08a30;font-size:13px;margin-bottom:8px;">⚠️ I-update ang Firestore Rules</div>'+
+    '<div style="font-size:11.5px;color:#cdd3dc;line-height:1.7;">'+
+    'Pumunta sa <strong style="color:#c9a84c;">Firebase Console → Firestore Database → Rules</strong> tab, '+
+    'i-replace lahat ng laman ng rules ng ganito:</div>'+
+    '<pre style="margin:10px 0;padding:10px;background:#0f1b2d;border-radius:7px;font-size:10px;color:#2ecc8a;overflow-x:auto;">'+
+    'rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}</pre>'+
+    '<div style="font-size:11px;color:#8a95a8;">Tapos i-click ang <strong style="color:#c9a84c;">Publish</strong> button. One-time lang ito.</div>'+
+    '<button onclick="document.getElementById('rules-hint-toast').remove()" '+
+    'style="margin-top:12px;background:#e08a30;border:none;border-radius:6px;padding:6px 18px;color:#0f1b2d;font-weight:700;font-size:12px;cursor:pointer;">✕ Close</button>';
+  document.body.appendChild(div);
+  setTimeout(()=>{ if(div.parentNode) div.remove(); window._rulesHintShown=false; }, 60000);
+}
 </script>
 
 </head>
 <body>
+<!-- ============ SPLASH SCREEN ============ -->
+<div id="splash-screen" onclick="dismissSplash()">
+
+  <!-- Background glow -->
+  <div class="sp-glow"></div>
+
+  <!-- Animated diamond -->
+  <div class="sp-diamond-wrap">
+    <svg class="sp-diamond-svg" viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="dg1" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%"   stop-color="#f5e27a"/>
+          <stop offset="40%"  stop-color="#c9a84c"/>
+          <stop offset="100%" stop-color="#7a5c18"/>
+        </linearGradient>
+        <linearGradient id="dg2" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"   stop-color="#fef0a0"/>
+          <stop offset="100%" stop-color="#c9a84c"/>
+        </linearGradient>
+        <linearGradient id="dg3" x1="100%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"   stop-color="#e8d080"/>
+          <stop offset="100%" stop-color="#9c7a2e"/>
+        </linearGradient>
+        <filter id="df">
+          <feGaussianBlur stdDeviation="3" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+
+      <!-- Orbit ring -->
+      <circle cx="80" cy="80" r="72" fill="none" stroke="rgba(201,168,76,0.18)" stroke-width="1" stroke-dasharray="6 5"/>
+
+      <!-- Main diamond shape: crown top + pavilion bottom -->
+      <g filter="url(#df)" transform="translate(80,80)">
+        <!-- Crown facets (top half) -->
+        <polygon points="0,-44  28,-18  -28,-18"             fill="url(#dg2)" opacity="0.95"/>
+        <polygon points="0,-44  28,-18   44,2"               fill="url(#dg1)" opacity="0.85"/>
+        <polygon points="0,-44 -28,-18  -44,2"               fill="url(#dg3)" opacity="0.85"/>
+        <polygon points="28,-18  44,2    0, 6"               fill="url(#dg2)" opacity="0.7"/>
+        <polygon points="-28,-18 -44,2   0, 6"              fill="url(#dg1)" opacity="0.7"/>
+        <!-- Table (top flat face) -->
+        <polygon points="0,-44  28,-18  0,-8  -28,-18"       fill="#fef8c0" opacity="0.6"/>
+
+        <!-- Girdle line -->
+        <line x1="-44" y1="2" x2="44" y2="2" stroke="rgba(201,168,76,0.6)" stroke-width="0.8"/>
+
+        <!-- Pavilion facets (bottom half) -->
+        <polygon points="-44,2  -28,-18  0,44"              fill="url(#dg3)" opacity="0.9"/>
+        <polygon points=" 44,2   28,-18  0,44"              fill="url(#dg1)" opacity="0.9"/>
+        <polygon points="-44,2    0,6    0,44"              fill="url(#dg2)" opacity="0.75"/>
+        <polygon points=" 44,2    0,6    0,44"              fill="url(#dg3)" opacity="0.75"/>
+
+        <!-- Outline -->
+        <polygon points="0,-44  44,2  0,44  -44,2"
+                 fill="none" stroke="url(#dg1)" stroke-width="1.2" opacity="0.8"/>
+        <!-- Inner lines -->
+        <line x1="0"  y1="-44" x2="0"   y2="44"  stroke="rgba(201,168,76,0.35)" stroke-width="0.7"/>
+        <line x1="-44" y1="2"  x2="44"  y2="2"   stroke="rgba(201,168,76,0.35)" stroke-width="0.7"/>
+        <line x1="0"  y1="-44" x2="-44" y2="2"   stroke="rgba(255,240,140,0.3)" stroke-width="0.6"/>
+        <line x1="0"  y1="-44" x2=" 44" y2="2"   stroke="rgba(255,240,140,0.3)" stroke-width="0.6"/>
+      </g>
+
+      <!-- Sparkle stars (4-point) at corners -->
+      <!-- top -->
+      <g class="sp-sparkle" style="animation-delay:0s">
+        <line x1="80" y1="4"  x2="80" y2="16" stroke="#fef0a0" stroke-width="2" stroke-linecap="round"/>
+        <line x1="74" y1="10" x2="86" y2="10" stroke="#fef0a0" stroke-width="1" stroke-linecap="round"/>
+      </g>
+      <!-- right -->
+      <g class="sp-sparkle" style="animation-delay:0.5s">
+        <line x1="144" y1="80" x2="156" y2="80" stroke="#fef0a0" stroke-width="2" stroke-linecap="round"/>
+        <line x1="150" y1="74" x2="150" y2="86" stroke="#fef0a0" stroke-width="1" stroke-linecap="round"/>
+      </g>
+      <!-- bottom -->
+      <g class="sp-sparkle" style="animation-delay:1s">
+        <line x1="80" y1="144" x2="80" y2="156" stroke="#fef0a0" stroke-width="2" stroke-linecap="round"/>
+        <line x1="74" y1="150" x2="86" y2="150" stroke="#fef0a0" stroke-width="1" stroke-linecap="round"/>
+      </g>
+      <!-- left -->
+      <g class="sp-sparkle" style="animation-delay:1.5s">
+        <line x1="4"  y1="80" x2="16"  y2="80" stroke="#fef0a0" stroke-width="2" stroke-linecap="round"/>
+        <line x1="10" y1="74" x2="10"  y2="86" stroke="#fef0a0" stroke-width="1" stroke-linecap="round"/>
+      </g>
+    </svg>
+
+    <!-- Reflection shimmer under diamond -->
+    <div class="sp-reflection"></div>
+  </div>
+
+  <!-- Text block -->
+  <div class="sp-text-wrap">
+    <div class="sp-brand">Goldchelle</div>
+    <div class="sp-divider"><span></span><span class="sp-div-diamond">◆</span><span></span></div>
+    <div class="sp-sub">ONLINE ENTERPRISES</div>
+    <div class="sp-tagline">Logistics System v4</div>
+  </div>
+
+  <!-- Tap cue -->
+  <div class="sp-tap">tap anywhere to continue</div>
+
+  <!-- Corner watermark -->
+  <div class="sp-corner">GOE · 2026</div>
+</div>
+
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebarOverlay()"></div>
 
 <!-- SIDEBAR -->
 
@@ -1915,7 +2179,6 @@ window.loadFromFirebase = async function() {
     <div class="form-grid">
       <div class="form-group"><label>Employee/Rider *</label><div id="cb-person-wrapper"><input class="form-control" id="cb-person" placeholder="Name"></div></div>
       <div class="form-group"><label>Type</label><select class="form-control" id="cb-type"><option value="rider">Rider</option><option value="staff">Staff</option></select></div>
-      <div class="form-group"><label>Date *</label><input type="date" class="form-control" id="cb-date"></div>
       <div class="form-group"><label>Amount (₱)</label><input type="number" class="form-control" id="cb-amount" value="100" min="0"></div>
       <div class="form-group" style="grid-column:1/-1"><label>Notes</label><input class="form-control" id="cb-notes" placeholder="e.g. Weekly deduction"></div>
     </div>
@@ -2087,6 +2350,17 @@ if(S.orders) S.orders.forEach(o=>{ if(STATUS_MAP[o.status]) o.status=STATUS_MAP[
 
 // Auth globals
 let currentUser = null;
+// ── Splash Screen dismiss ─────────────────────────────────────────
+function dismissSplash(){
+  const sp = document.getElementById('splash-screen');
+  if(!sp) return;
+  sp.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+  sp.style.opacity = '0';
+  sp.style.transform = 'scale(1.04)';
+  sp.style.pointerEvents = 'none';
+  setTimeout(()=>{ sp.style.display='none'; }, 620);
+}
+
 let currentRole = null;
 
 // No seed data — app starts clean
@@ -2124,11 +2398,17 @@ function toggleTheme(){
 })();
 function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
-document.getElementById('topbar-date').textContent=new Date().toLocaleDateString('en-PH',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+(function updateTopbarDate(){
+  const el = document.getElementById('topbar-date');
+  if(el) el.textContent = new Date().toLocaleDateString('en-PH',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  setTimeout(updateTopbarDate, 60000); // refresh every minute
+})();
 
 // ============ NAVIGATION ============
 const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales Calendar',orders:'Admin Encode',checker:'Checker Verify',tracking:'Parcel Tracking',riders:'Riders by Location',dailyparcels:'Daily Parcels',sorting:'Parcel Sorting',returns:'Return / Cancel',dailysales:'Daily Sales Record',payroll:'Payroll',expenses:'Expenses',pnl:'P&L Report',inventory:'Inventory',adminsheets:'Per-Admin Order Sheets',settings:'Settings',ridersremit:'Riders Remit',cashbond:'Cashbond Tracker',benefits:'Benefits (SSS / PhilHealth / Pag-IBIG)'};
+let _activePage = 'dashboard';
 function gotoPage(name){
+  _activePage = name;
   // Reset LBC checker lock when navigating away from checker
   if(typeof _lbcCheckerUnlocked !== 'undefined' && name !== 'checker') {
     _lbcCheckerUnlocked = false;
@@ -3206,7 +3486,16 @@ function renderReturnOrders() {
   const df  = document.getElementById('ret-orders-date')?.value||'';
   const el  = document.getElementById('ret-cancelled-orders-content'); if(!el) return;
   const rows = S.orders.map((o,i)=>({...o,idx:i}))
-    .filter(o=>o.status==='Cancelled' && (!df||o.date===df));
+    .filter(o=>{
+      if(o.status!=='Cancelled') return false;
+      if(df && o.date!==df) return false;
+      // Hide if every cancelled item already has a returnLog entry
+      const iS = o.itemStatuses||{};
+      const cancelledItems = o.items.map((_,ii)=>ii).filter(ii=>iS[ii]==='Cancelled'||(o.itemCancelQty||{})[ii]>0);
+      if(cancelledItems.length===0) return true;
+      const allLogged = cancelledItems.every(ii=>(S.returnLog||[]).some(r=>r.orderNum===onum(o.idx)&&r.itemIdx===ii));
+      return !allLogged;
+    });
 
   if(!rows.length){
     el.innerHTML=`<p style="color:var(--muted);padding:24px;text-align:center;">Walang cancelled orders${df?' para sa petsang ito':''}.</p>`;
@@ -3399,7 +3688,7 @@ function openReturnLogModal(orderNum='', itemIdx=null) {
   document.getElementById('ret-reason').value = 'Customer changed mind';
   document.getElementById('ret-condition').value = 'Good — can re-sell';
   document.getElementById('ret-value').value = '0';
-  document.getElementById('ret-restore-inv').value = 'no';
+  document.getElementById('ret-restore-inv').value = 'yes';
   document.getElementById('ret-received-by').value = '';
   document.getElementById('ret-notes').value = '';
   document.getElementById('ret-log-edit-idx').value = '';
@@ -4179,11 +4468,12 @@ function renderInv(tab){
       const isFix = it.itemType==='fixprice';
       const stockDisplay = isFix
         ? `<span style="font-weight:700;color:${it.qty<=2?'var(--red)':it.qty<=5?'var(--orange)':'var(--green)'};">${it.qty} pcs ${it.qty<=2?'⚠️':''}</span>`
-        : `<span style="font-weight:700;color:var(--blue);">${it.grams}g</span>`;
-      const priceInfo = isFix ? `₱${(it.fixPrice||0).toFixed(2)}/pc` : `${it.pergram?'₱'+(it.pergram||0).toFixed(2)+'/g':'—'}`;
+        : `<span style="font-weight:700;color:var(--blue);">${+parseFloat(it.grams||0).toFixed(2)}g</span>`;
+      const _f2=v=>+parseFloat(v||0).toFixed(2);
+      const priceInfo = isFix ? `₱${_f2(it.fixPrice)}/pc` : `${it.pergram?'₱'+_f2(it.pergram)+'/g':'—'}`;
       const capitalInfo = isFix
-        ? (it.capitalPerUnit ? `₱${(it.capitalPerUnit||0).toFixed(2)}/pc` : '—')
-        : (it.capitalPerGram ? `₱${(it.capitalPerGram||0).toFixed(2)}/g` : '—');
+        ? (it.capitalPerUnit ? `₱${_f2(it.capitalPerUnit)}/pc` : '—')
+        : (it.capitalPerGram ? `₱${_f2(it.capitalPerGram)}/g` : '—');
       const stockVal = isFix ? (it.fixPrice||0)*(it.qty||0) : (it.grams||0)*(it.pergram||0);
       const profitPerUnit = isFix
         ? (it.fixPrice||0) - (it.capitalPerUnit||0)
@@ -4197,7 +4487,7 @@ function renderInv(tab){
         <td style="font-size:11.5px;">${priceInfo}</td>
         <td style="font-size:11.5px;color:var(--orange);">${capitalInfo}</td>
         <td style="color:var(--green);font-weight:600;">${p(stockVal)}</td>
-        <td style="font-size:11.5px;font-weight:700;color:${profitColor};">${profitPerUnit>0?'+':''}₱${profitPerUnit.toFixed(2)}${isFix?'/pc':'/g'}</td>
+        <td style="font-size:11.5px;font-weight:700;color:${profitColor};">${profitPerUnit>0?'+':''}₱${+parseFloat(profitPerUnit).toFixed(2)}${isFix?'/pc':'/g'}</td>
         <td style="display:flex;gap:3px;">
           <button class="btn btn-outline btn-sm" onclick="openEditInv(${i})">✏️</button>
           ${isFix?`<button class="btn btn-green btn-sm" onclick="openStockModal('in',${i})">↑ In</button>
@@ -4217,8 +4507,8 @@ function renderInv(tab){
       const unit = prod?.itemType==='fixprice' ? 'pcs' : 'g';
       return `<tr><td>${l.date}</td><td style="font-weight:500;">${prod?prod.desc:l.productCode}</td>
         <td><span class="${l.type==='in'?'stock-in':l.type==='return'?'stock-in':'stock-out'}">${l.type==='in'?'↑ IN':l.type==='return'?'↩ RETURN':'↓ OUT'}</span></td>
-        <td style="font-weight:700;">${l.qty}${unit}</td><td style="color:var(--muted);">${l.before}</td>
-        <td style="color:var(--gold);font-weight:600;">${l.after}</td>
+        <td style="font-weight:700;">${parseFloat(l.qty||0).toFixed(2)}${unit}</td><td style="color:var(--muted);">${parseFloat(l.before||0).toFixed(2)}</td>
+        <td style="color:var(--gold);font-weight:600;">${parseFloat(l.after||0).toFixed(2)}</td>
         <td style="font-size:11px;">${l.notes||'—'}</td>
         <td><button class="btn btn-red btn-sm" onclick="delStockLog(${gi})">🗑️</button></td></tr>`;
     }).join(''):'<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:26px;">No transactions</td></tr>'}
@@ -4241,9 +4531,9 @@ function renderInv(tab){
       return `<tr><td>${l.date}</td><td style="font-weight:500;">${prod?prod.desc:l.productCode}</td>
         <td style="font-family:monospace;font-size:10px;color:var(--gold);">${l.productCode}</td>
         <td><span class="${clsMap[l.type]||''}">${typeMap[l.type]||l.type}</span></td>
-        <td style="font-weight:700;">${l.qty}${unit}</td>
-        <td style="color:var(--muted);">${l.before}</td>
-        <td style="color:var(--gold);font-weight:600;">${l.after}</td>
+        <td style="font-weight:700;">${+parseFloat(l.qty||0).toFixed(2)}${unit}</td>
+        <td style="color:var(--muted);">${+parseFloat(l.before||0).toFixed(2)}</td>
+        <td style="color:var(--gold);font-weight:600;">${+parseFloat(l.after||0).toFixed(2)}</td>
         <td style="font-size:11px;">${l.notes||'—'}</td>
         <td><button class="btn btn-red btn-sm" onclick="delStockLog(${gi})">🗑️</button></td></tr>`;
     }).join(''):'<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:26px;">No transactions</td></tr>'}
@@ -4519,7 +4809,6 @@ function renderAdminSheets(){
     </tr>`).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px;">No orders found</td></tr>'}
     </tbody></table></div></div>`;
 }
-function setAdminTab(admin){ renderAdminSheets(); } // kept for compat — does nothing now
 function printAdminSheet(){
   const df=document.getElementById('as-date-from').value;
   const dt=document.getElementById('as-date-to').value;
@@ -5398,8 +5687,18 @@ function renderRiderParcels() {
   const filt = document.getElementById('rider-status-filter')?.value || '';
   const q = (document.getElementById('rider-parcel-search')?.value||'').toLowerCase();
   // Get all orders assigned to this rider
-  const myOrders = S.orders.map((o,i) => ({...o, idx:i}))
+  const allMyOrders = S.orders.map((o,i) => ({...o, idx:i}))
     .filter(o => o.assignedRider === currentRider.name);
+  // Hide orders that have been fully remitted (status Delivered + in remitLog)
+  const remittedDates = new Set(
+    (S.remitLog||[])
+      .filter(r => r.riderName === currentRider.name && r.remitStatus === 'Remitted')
+      .map(r => r.date)
+  );
+  const myOrders = allMyOrders.filter(o => {
+    if(o.status === 'Delivered' && remittedDates.has(o.date)) return false;
+    return true;
+  });
   let filtered = filt ? myOrders.filter(o => o.status === filt) : myOrders;
   if(q) filtered = filtered.filter(o =>
     o.name.toLowerCase().includes(q) || (o.contact||'').includes(q) || onum(o.idx).includes(q));
@@ -6264,6 +6563,7 @@ function saveTabPasswords() {
   if(rp) S.specialPasswords.remitter = rp;
   if(sp) S.specialPasswords.sorter = sp;
   if(cp) S.specialPasswords.checker = cp;
+  save(); // ensure specialPasswords pushed to Firebase
   save();
   document.getElementById('tab-pw-status').style.color = 'var(--green)';
   document.getElementById('tab-pw-status').textContent = '✅ All passwords saved!';
@@ -6575,9 +6875,8 @@ function openCashbondFromRemit() {
       if(opt) sel.value = opt.value;
     }
     document.getElementById('cb-type').value = 'rider';
-    document.getElementById('cb-date').value = remitDate;
     document.getElementById('cb-amount').value = 100;
-    document.getElementById('cb-notes').value = `Cashbond — ${riderName} (${remitDate})`;
+    if(document.getElementById('cb-notes')) document.getElementById('cb-notes').value = `Cashbond — ${riderName} (${remitDate})`;
   }, 100);
 }
 
@@ -6791,7 +7090,6 @@ function openCashbondModal(editIdx=null) {
     });
   }
   
-  document.getElementById('cb-date').value = today();
   document.getElementById('cb-amount').value = '100';
   document.getElementById('cb-notes').value = '';
   document.getElementById('cb-edit-idx').value = editIdx !== null ? editIdx : '';
@@ -6802,7 +7100,6 @@ function openCashbondModal(editIdx=null) {
     const manual = document.getElementById('cb-person-manual');
     if(manual) { manual.value = e.person; if(sel&&sel.value==='__custom__') manual.style.display=''; }
     document.getElementById('cb-type').value = e.type;
-    document.getElementById('cb-date').value = e.date;
     document.getElementById('cb-amount').value = e.amount;
     document.getElementById('cb-notes').value = e.notes||'';
   }
@@ -6817,7 +7114,7 @@ function saveCashbond() {
   if(!person) { toast('⚠️ Select or enter a name'); return; }
   const entry = {
     person, type: document.getElementById('cb-type').value,
-    date: document.getElementById('cb-date').value || today(),
+    date: today(),
     amount: parseFloat(document.getElementById('cb-amount').value)||0,
     notes: document.getElementById('cb-notes').value
   };
@@ -7032,7 +7329,6 @@ async function initApp(){
   setVal('stock-date', today());
   setVal('remit-date', today());
   setVal('ret-date', today());
-  setVal('cb-date', today());
   setVal('ben-date', today());
   const now = new Date();
   const mStart = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-01';
@@ -7041,6 +7337,9 @@ async function initApp(){
   const invBtn = document.getElementById('inv-action-btn');
   if(invBtn) invBtn.innerHTML=`<button class="btn btn-gold" onclick="openAddInvModal()">+ Add Product</button>`;
 
+  // Update topbar date to current system date
+  const _tbd = document.getElementById('topbar-date');
+  if(_tbd) _tbd.textContent = new Date().toLocaleDateString('en-PH',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   renderDash();
   startAutoRefresh();
 }
@@ -7054,17 +7353,23 @@ async function initApp(){
 function toggleSidebar(){
   const sb = document.querySelector('.sidebar');
   const main = document.querySelector('.main');
+  const ov = document.getElementById('sidebar-overlay');
   if(window.innerWidth <= 768){
-    sb.classList.toggle('mobile-open');
+    const open = sb.classList.toggle('mobile-open');
+    if(ov) ov.classList.toggle('show', open);
   } else {
     const collapsed = sb.classList.toggle('collapsed');
     if(main) main.classList.toggle('expanded', collapsed);
   }
 }
+function closeSidebarOverlay(){
+  document.querySelector('.sidebar')?.classList.remove('mobile-open');
+  document.getElementById('sidebar-overlay')?.classList.remove('show');
+}
 // Close sidebar on mobile when nav item clicked
 document.querySelectorAll('.nav-item').forEach(el=>{
   el.addEventListener('click', ()=>{
-    if(window.innerWidth<=768) document.querySelector('.sidebar')?.classList.remove('mobile-open');
+    if(window.innerWidth<=768) closeSidebarOverlay();
   });
 });
 
@@ -7084,8 +7389,31 @@ function startAutoRefresh(){
       keys.forEach(k=>{ if(fbData[k]!==undefined) S[k]=fbData[k]; });
       if(!S.govSettings) S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
       persist();
-      // Silently re-render current page
-      if(typeof renderDash==='function') try{renderDash();}catch(e){}
+      // Silently re-render current active page
+      const renderMap = {
+        dashboard: ()=>renderDash?.(),
+        orders: ()=>renderOrders?.(),
+        checker: ()=>renderChecker?.(),
+        tracking: ()=>renderTracking?.(),
+        riders: ()=>renderRiders?.(),
+        dailyparcels: ()=>renderDailyParcels?.(),
+        sorting: ()=>renderSorting?.(),
+        returns: ()=>renderReturnOrders?.(),
+        dailysales: ()=>renderDailySales?.(),
+        payroll: ()=>renderPayroll?.(),
+        expenses: ()=>renderExpenses?.(),
+        pnl: ()=>renderPnl?.(),
+        inventory: ()=>renderInventory?.(),
+        adminsheets: ()=>renderAdminSheets?.(),
+        ridersremit: ()=>renderRemitPage?.(),
+        cashbond: ()=>renderCashbondPage?.(),
+        benefits: ()=>renderBenefitsPage?.(),
+        riderdash: ()=>renderRiderDash?.(),
+        calendar: ()=>renderCalendar?.(),
+      };
+      try { renderMap[_activePage]?.(); } catch(e){}
+      // If rider, always refresh their parcels too
+      if(currentRole==='rider') try{renderRiderParcels();}catch(e){}
     } catch(e){ console.warn('Auto-refresh error:',e.message); }
   }, 30000); // every 30 seconds
 }
