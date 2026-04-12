@@ -212,6 +212,11 @@ select.form-control{cursor:pointer;}
 .sort-col-stats{font-size:10.5px;color:var(--muted);margin-top:2px;}
 .sort-col-body{padding:8px;min-height:200px;display:flex;flex-direction:column;gap:6px;}
 .sort-col-body.drag-over{background:rgba(201,168,76,0.08);border-radius:0 0 10px 10px;outline:2px dashed var(--gold);}
+.sort-card-locked{
+  opacity:0.72;cursor:not-allowed;
+  border-color:rgba(224,138,48,0.35)!important;
+  background:rgba(224,138,48,0.04)!important;
+}
 .sort-card{background:var(--navy);border:1px solid var(--navy-border);border-radius:7px;padding:8px 10px;cursor:grab;transition:box-shadow 0.15s,transform 0.15s;user-select:none;}
 .sort-card:active{cursor:grabbing;}
 .sort-card.dragging{opacity:0.5;transform:scale(0.97);box-shadow:0 4px 20px rgba(0,0,0,0.5);}
@@ -1548,8 +1553,10 @@ function _showRulesHint() {
       <div class="card-header">
         <span class="card-title">My Assigned Parcels</span>
         <div style="display:flex;gap:7px;flex-wrap:wrap;">
-          <input class="form-control" style="width:160px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / CP#" id="rider-parcel-search" oninput="renderRiderParcels()">
-          <select class="form-control" style="width:130px;font-size:11px;padding:4px 8px;" id="rider-status-filter" onchange="renderRiderParcels()">
+          <input type="date" class="form-control" style="width:148px;font-size:11px;padding:4px 8px;" id="rider-date-filter" oninput="renderRiderParcels()" title="Filter by date">
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('rider-date-filter').value='';renderRiderParcels()" title="Show all dates">All</button>
+          <input class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / CP#" id="rider-parcel-search" oninput="renderRiderParcels()">
+          <select class="form-control" style="width:120px;font-size:11px;padding:4px 8px;" id="rider-status-filter" onchange="renderRiderParcels()">
             <option value="">All Status</option>
             <option>Preparing</option><option>Ready</option><option>Out for Delivery</option><option>Delivered</option>
             <option>Cancelled</option><option>Update</option>
@@ -2803,7 +2810,8 @@ function renderChecker(){
         <span class="checker-tag ${o.checkerStatus==='Verified'?'verified':'pending'}" style="margin-bottom:4px;display:block;">${o.checkerStatus}</span>
       </td>
       <td style="display:flex;gap:3px;flex-wrap:wrap;">
-        <button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>
+        ${!['Ready','Out for Delivery','Delivered','Cancelled','Update'].includes(o.status)
+          ? `<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>` : ''}
         ${o.checkerStatus!=='Verified'
           ? `<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`
           : `<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`}
@@ -2817,48 +2825,72 @@ function renderChecker(){
     const PAYMENT_STATUSES = ['No Payment','Partial','Fully Paid'];
     const VERIF_STATUSES = ['Not Verified','Verified'];
     const payColor = s => s==='Fully Paid'?'var(--green)':s==='Partial'?'var(--orange)':'var(--red)';
-    document.getElementById('checker-lbc-tbody').innerHTML = list.length ? list.map(({o,i}) => {
-      const pymSt = o.paymentStatus||'No Payment';
-      const verifSt = o.verificationStatus||'Not Verified';
-      const canVerify = pymSt === 'Fully Paid'; // can only verify once fully paid
-      return `<tr>
-        <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
-        <td style="font-weight:500;">${o.name}</td>
-        <td style="font-size:11px;">${o.contact||'—'}</td>
-        <td>${o.admin}</td><td>${o.date}</td>
-        <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
-        <td>
-          <select class="form-control" style="width:130px;font-size:10.5px;padding:3px 5px;border-color:${payColor(pymSt)};"
-            onchange="updatePaymentStatus(${i},this.value)">
-            ${PAYMENT_STATUSES.map(s=>`<option${pymSt===s?' selected':''}>${s}</option>`).join('')}
-          </select>
-          ${pymSt==='Partial'?`<div style="margin-top:4px;">
-            <input class="form-control" style="font-size:10px;padding:2px 5px;" placeholder="Payment notes..."
-              value="${o.paymentNotes||''}" onblur="updatePaymentNotes(${i},this.value)">
-          </div>`:''}
-          ${pymSt==='Fully Paid'?'<div style="font-size:9.5px;color:var(--green);margin-top:2px;">✅ Bayad na</div>':''}
-        </td>
-        <td>
-          <select class="form-control" style="width:130px;font-size:10.5px;padding:3px 5px;${!canVerify?'opacity:0.5;cursor:not-allowed;':''}"
-            ${!canVerify?'disabled title="Need Fully Paid first"':''}
-            onchange="updateVerifStatus(${i},this.value)">
-            ${VERIF_STATUSES.map(s=>`<option${verifSt===s?' selected':''}>${s}</option>`).join('')}
-          </select>
-          ${!canVerify?'<div style="font-size:9px;color:var(--orange);margin-top:2px;">⚠️ Fully Paid muna</div>':''}
-        </td>
-        <td style="display:flex;gap:3px;flex-wrap:wrap;">
-          <button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>
-          ${canVerify && verifSt==='Verified'
-            ? `<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verified</button>`
-            : canVerify
-            ? `<button class="btn btn-blue btn-sm" onclick="verifyOrder(${i})">✔ Mark Verified</button>`
-            : ''}
-          <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
-          <button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>
-        </td>
-      </tr>`;
-    }).join('') :
-    `<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:26px;">No ${checkerTab} orders found</td></tr>`;
+    // Group LBC/INTL orders by admin
+    const adminGroups = {};
+    list.forEach(({o,i}) => {
+      const adm = o.admin || '(No Admin)';
+      if(!adminGroups[adm]) adminGroups[adm] = [];
+      adminGroups[adm].push({o,i});
+    });
+    if(!list.length) {
+      document.getElementById('checker-lbc-tbody').innerHTML =
+        `<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:26px;">No ${checkerTab} orders found</td></tr>`;
+    } else {
+      let rows = '';
+      Object.keys(adminGroups).sort().forEach(adm => {
+        rows += `<tr style="background:rgba(201,168,76,0.08);">
+          <td colspan="12" style="padding:7px 12px;font-weight:700;font-size:11px;color:var(--gold);
+            text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--navy-border);">
+            👤 ${adm}
+            <span style="color:var(--muted);font-weight:400;font-size:10px;margin-left:6px;">
+              ${adminGroups[adm].length} order${adminGroups[adm].length>1?'s':''}
+            </span>
+          </td></tr>`;
+        adminGroups[adm].forEach(({o,i}) => {
+          const pymSt = o.paymentStatus||'No Payment';
+          const verifSt = o.verificationStatus||'Not Verified';
+          const canVerify = pymSt === 'Fully Paid';
+          const isLocked = ['Ready','Out for Delivery','Delivered','Cancelled','Update'].includes(o.status);
+          rows += `<tr>
+            <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
+            <td style="font-weight:500;">${o.name}</td>
+            <td style="font-size:11px;">${o.contact||'—'}</td>
+            <td>${o.date}</td>
+            <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
+            <td>
+              <select class="form-control" style="width:130px;font-size:10.5px;padding:3px 5px;border-color:${payColor(pymSt)};"
+                onchange="updatePaymentStatus(${i},this.value)">
+                ${PAYMENT_STATUSES.map(s=>`<option${pymSt===s?' selected':''}>${s}</option>`).join('')}
+              </select>
+              ${pymSt==='Partial'?`<div style="margin-top:4px;"><input class="form-control"
+                style="font-size:10px;padding:2px 5px;" placeholder="Payment notes..."
+                value="${o.paymentNotes||''}" onblur="updatePaymentNotes(${i},this.value)"></div>`:''}
+              ${pymSt==='Fully Paid'?'<div style="font-size:9.5px;color:var(--green);margin-top:2px;">✅ Bayad na</div>':''}
+            </td>
+            <td>
+              <select class="form-control"
+                style="width:130px;font-size:10.5px;padding:3px 5px;${!canVerify?'opacity:0.5;cursor:not-allowed;':''}"
+                ${!canVerify?'disabled title="Need Fully Paid first"':''}
+                onchange="updateVerifStatus(${i},this.value)">
+                ${VERIF_STATUSES.map(s=>`<option${verifSt===s?' selected':''}>${s}</option>`).join('')}
+              </select>
+              ${!canVerify?'<div style="font-size:9px;color:var(--orange);margin-top:2px;">⚠️ Fully Paid muna</div>':''}
+            </td>
+            <td style="display:flex;gap:3px;flex-wrap:wrap;">
+              ${!isLocked?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>`:''}
+              ${canVerify && verifSt==='Verified'
+                ?`<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verified</button>`
+                :canVerify
+                ?`<button class="btn btn-blue btn-sm" onclick="verifyOrder(${i})">✔ Mark Verified</button>`
+                :''}
+              <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
+              <button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>
+            </td>
+          </tr>`;
+        });
+      });
+      document.getElementById('checker-lbc-tbody').innerHTML = rows;
+    }
   }
 }
 
@@ -3743,12 +3775,14 @@ function renderSorting() {
     // Encode riderName safely for data attribute (handles apostrophes, spaces)
     const safeRider = encodeURIComponent(riderName);
 
-    const cards = parcels.length ? parcels.map(o=>`
-      <div class="sort-card${isUnassigned?' sort-unassigned':''}"
-        draggable="true"
+    const cards = parcels.length ? parcels.map(o=>{
+      // Lock card if rider already set it Out for Delivery
+      const isOFD = o.status === 'Out for Delivery';
+      return `
+      <div class="sort-card${isUnassigned?' sort-unassigned':''}${isOFD?' sort-card-locked':''}"
+        draggable="${isOFD?'false':'true'}"
         data-order-idx="${o.idx}"
-        ondragstart="sortDragStart(event,${o.idx})"
-        ondragend="sortDragEnd(event)">
+        ${isOFD?'':'ondragstart="sortDragStart(event,'+o.idx+')" ondragend="sortDragEnd(event)"'}>
         <div style="display:flex;justify-content:space-between;align-items:flex-start;">
           <div>
             <div class="sort-card-order">${onum(o.idx)}</div>
@@ -3762,14 +3796,20 @@ function renderSorting() {
           <span class="sort-card-total">${p(o.grandTotal)}</span>
         </div>
         <div style="margin-top:5px;">
-          <select style="width:100%;font-size:10px;padding:2px 5px;border-radius:5px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);"
-            onchange="sortReassign(${o.idx},this.value)" onclick="event.stopPropagation()">
-            <option value="">🔀 Move to rider...</option>
-            ${S.riders.map(r=>`<option value="${encodeURIComponent(r.name)}"${r.name===o.assignedRider?' selected':''}>${r.name} (📍${r.location||'?'})</option>`).join('')}
-            <option value="__unassigned__"${!o.assignedRider?' selected':''}>— Unassigned —</option>
-          </select>
+          ${isOFD
+            ? `<div style="font-size:10px;color:var(--orange);background:rgba(224,138,48,0.1);
+                border:1px solid rgba(224,138,48,0.3);border-radius:5px;padding:4px 8px;text-align:center;">
+                🔒 On the way — hindi na maaari i-edit
+               </div>`
+            : `<select style="width:100%;font-size:10px;padding:2px 5px;border-radius:5px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);"
+                onchange="sortReassign(${o.idx},this.value)" onclick="event.stopPropagation()">
+                <option value="">🔀 Move to rider...</option>
+                ${S.riders.map(r=>`<option value="${encodeURIComponent(r.name)}"${r.name===o.assignedRider?' selected':''}>${r.name} (📍${r.location||'?'})</option>`).join('')}
+                <option value="__unassigned__"${!o.assignedRider?' selected':''}>— Unassigned —</option>
+              </select>`
+          }
         </div>
-      </div>`).join('')
+      </div>`; }).join('')
     : `<div style="padding:20px;text-align:center;color:var(--muted);font-size:11.5px;">
         Drop parcels here<br><span style="font-size:10px;">or use the dropdown</span>
       </div>`;
@@ -3826,6 +3866,11 @@ function sortDrop(e, colEl) {
   const riderName = decodeURIComponent(encodedRider);
   const idx = _sortDragIdx !== null ? _sortDragIdx : parseInt(e.dataTransfer.getData('text/plain'));
   if(isNaN(idx) || !S.orders[idx]) return;
+  // Block if already Out for Delivery
+  if(S.orders[idx].status === 'Out for Delivery') {
+    toast('🔒 Hindi na maaari i-move — naka-Out for Delivery na ang parcel na ito.');
+    return;
+  }
   const newRider = riderName === '__unassigned__' ? '' : riderName;
   const prevRider = S.orders[idx].assignedRider || '—';
   if(S.orders[idx].assignedRider === newRider) return; // no change
@@ -3838,6 +3883,10 @@ function sortDrop(e, colEl) {
 // ── Dropdown reassign ──
 function sortReassign(orderIdx, encodedRider) {
   if(!S.orders[orderIdx]) return;
+  if(S.orders[orderIdx].status === 'Out for Delivery') {
+    toast('🔒 Hindi na maaari i-move — naka-Out for Delivery na ang parcel na ito.');
+    return;
+  }
   const newRider = encodedRider === '__unassigned__' ? '' : decodeURIComponent(encodedRider);
   const prev = S.orders[orderIdx].assignedRider || '—';
   if(S.orders[orderIdx].assignedRider === newRider) return; // no change
@@ -5135,6 +5184,8 @@ function doLogin(){
       const d=document.getElementById('rider-dash-content'); if(d)d.style.display='block';
       const n=document.getElementById('rider-dash-name'); if(n)n.textContent=currentRider.name;
       const l=document.getElementById('rider-dash-location'); if(l)l.textContent=currentRider.location||'—';
+      const rdf = document.getElementById('rider-date-filter');
+      if(rdf && !rdf.value) rdf.value = today();
       renderRiderParcels();
     });
   } else if(currentRole==='remitter'){
@@ -5480,20 +5531,23 @@ function renderRiderParcels() {
   if(!currentRider) return;
   const filt = document.getElementById('rider-status-filter')?.value || '';
   const q = (document.getElementById('rider-parcel-search')?.value||'').toLowerCase();
+  const df = document.getElementById('rider-date-filter')?.value || '';
   // Get all orders assigned to this rider
   const allMyOrders = S.orders.map((o,i) => ({...o, idx:i}))
     .filter(o => o.assignedRider === currentRider.name);
-  // Hide orders that have been fully remitted (status Delivered + in remitLog)
-  const remittedDates = new Set(
+  // Hide orders that have been fully remitted (Delivered + in remitLog as Remitted)
+  const remittedKeys = new Set(
     (S.remitLog||[])
       .filter(r => r.riderName === currentRider.name && r.remitStatus === 'Remitted')
       .map(r => r.date)
   );
   const myOrders = allMyOrders.filter(o => {
-    if(o.status === 'Delivered' && remittedDates.has(o.date)) return false;
+    if(o.status === 'Delivered' && remittedKeys.has(o.date)) return false;
     return true;
   });
-  let filtered = filt ? myOrders.filter(o => o.status === filt) : myOrders;
+  // Apply date filter (default = today)
+  let filtered = df ? myOrders.filter(o => o.date === df) : myOrders.filter(o => o.date === today());
+  if(filt) filtered = filtered.filter(o => o.status === filt);
   if(q) filtered = filtered.filter(o =>
     o.name.toLowerCase().includes(q) || (o.contact||'').includes(q) || onum(o.idx).includes(q));
 
@@ -7114,9 +7168,9 @@ async function initApp(){
   setVal('ret-orders-date', today());
   setVal('ret-update-date', today());
   setVal('remit-page-date', today());
-  setVal('cashbond-page-date', today());
   setVal('my-order-date', today());
-  setVal('order-date-filter', today());
+  setVal('order-date-filter', tomorrow());
+  setVal('rider-date-filter', today());
   setVal('enc-date', tomorrow());
   setVal('pay-date', today());
   setVal('exp-date', today());
