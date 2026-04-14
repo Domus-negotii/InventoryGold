@@ -245,17 +245,17 @@ select.form-control{cursor:pointer;}
   .modal-overlay.open{display:flex!important;position:fixed;inset:0;background:white!important;z-index:9999;}
   .modal-overlay.open .modal{max-height:none!important;overflow:visible!important;border:none!important;box-shadow:none!important;background:white!important;padding:0!important;max-width:100%!important;width:80mm!important;}
   .modal-overlay.open .no-print{display:none!important;}
-  /* Invoice print styles — 80mm, B&W, no outer border */
-  #inv-print-wrap{max-width:74mm!important;padding:2mm 3mm!important;border:none!important;font-size:8.5px!important;}
-  #inv-print-wrap div[style*="font-size:26px"]{font-size:15px!important;}
-  #inv-print-wrap div[style*="letter-spacing:2.5px"]{font-size:7px!important;}
-  #inv-print-wrap div[style*="font-size:11.5px"]{font-size:9px!important;}
-  #inv-print-wrap div[style*="font-size:10.5px"]{font-size:8.5px!important;}
-  #inv-print-wrap div[style*="font-size:11px"]{font-size:9px!important;}
-  #inv-print-wrap th,#inv-print-wrap td{font-size:8px!important;padding:2px 2px!important;}
-  #inv-print-wrap div[style*="font-size:13px"]{font-size:10px!important;}
-  #inv-print-wrap div[style*="height:36px"]{height:20px!important;}
-  #inv-print-wrap div[style*="font-size:11.5px;font-weight:700"]{font-size:8.5px!important;}
+  /* Invoice print styles — 80mm, readable 12px minimum */
+  #inv-print-wrap{max-width:74mm!important;padding:2mm 3mm!important;border:none!important;font-size:12px!important;}
+  #inv-print-wrap div[style*="font-size:26px"]{font-size:18px!important;}
+  #inv-print-wrap div[style*="letter-spacing:2.5px"]{font-size:11px!important;}
+  #inv-print-wrap div[style*="font-size:11.5px"]{font-size:12px!important;}
+  #inv-print-wrap div[style*="font-size:10.5px"]{font-size:12px!important;}
+  #inv-print-wrap div[style*="font-size:11px"]{font-size:12px!important;}
+  #inv-print-wrap th,#inv-print-wrap td{font-size:12px!important;padding:3px 3px!important;}
+  #inv-print-wrap div[style*="font-size:13px"]{font-size:13px!important;}
+  #inv-print-wrap div[style*="height:36px"]{height:24px!important;}
+  #inv-print-wrap div[style*="font-size:11.5px;font-weight:700"]{font-size:12px!important;}
 }
 /* Invoice */
 .inv-wrap{background:white;color:#1a1a1a;font-family:Arial,sans-serif;max-width:720px;margin:0 auto;}
@@ -289,7 +289,7 @@ select.form-control{cursor:pointer;}
 .inv-sig-line{border-bottom:1px solid #333;margin-bottom:4px;height:26px;}
 .inv-sig p{font-size:10px;color:#555;margin:1px 0;}
 /* P&L Print */
-.print-pnl-wrap{background:white;color:#1a1a1a;font-family:Arial,sans-serif;max-width:640px;margin:0 auto;padding:18px;}
+.print-pnl-wrap{background:white;color:#1a1a1a;font-family:Arial,sans-serif;font-size:12px;max-width:640px;margin:0 auto;padding:18px;}
 .print-pnl-header{text-align:center;border-bottom:2px solid #c9a84c;padding-bottom:9px;margin-bottom:14px;}
 .print-pnl-header h2{font-family:Georgia,serif;color:#9c7a2e;font-size:19px;}
 .pnl-section{margin-bottom:12px;}
@@ -299,7 +299,7 @@ select.form-control{cursor:pointer;}
 .pnl-item.net{background:#e8f5ee;font-weight:700;font-size:13px;border:2px solid #2ecc8a;}
 .pnl-item.net-loss{background:#fde8e8;font-weight:700;font-size:13px;border:2px solid #e05555;}
 /* Payslip print */
-.print-payroll-wrap{background:white;color:#1a1a1a;font-family:Arial,sans-serif;max-width:740px;margin:0 auto;padding:16px;}
+.print-payroll-wrap{background:white;color:#1a1a1a;font-family:Arial,sans-serif;font-size:12px;max-width:740px;margin:0 auto;padding:16px;}
 .payslip-box{border:1.5px solid #d4b870;border-radius:6px;padding:13px;margin-bottom:13px;page-break-inside:avoid;}
 .payslip-name{font-size:15px;font-weight:700;color:#9c7a2e;}
 .payslip-role{font-size:10.5px;color:#666;margin-bottom:10px;}
@@ -307,13 +307,13 @@ select.form-control{cursor:pointer;}
 .payslip-row:last-child{border-bottom:none;}
 .payslip-row.total{font-weight:700;font-size:13px;border-top:2px solid #c9a84c;padding-top:6px;margin-top:3px;}
 /* Daily sales print */
-.print-daily-wrap{background:white;color:#1a1a1a;font-family:Arial,sans-serif;max-width:840px;margin:0 auto;padding:15px;}
+.print-daily-wrap{background:white;color:#1a1a1a;font-family:Arial,sans-serif;font-size:12px;max-width:840px;margin:0 auto;padding:15px;}
 .print-daily-header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #c9a84c;padding-bottom:9px;margin-bottom:12px;}
-.print-section-title{font-size:11.5px;font-weight:700;color:#7a5c1e;text-transform:uppercase;background:#f5edd8;padding:4px 8px;border:1px solid #d4b870;margin:11px 0 5px;}
+.print-section-title{font-size:12px;font-weight:700;color:#7a5c1e;text-transform:uppercase;background:#f5edd8;padding:4px 8px;border:1px solid #d4b870;margin:11px 0 5px;}
 .print-two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:11px;}
 .print-box{border:1px solid #d4b870;border-radius:4px;}
-.print-box-title{background:#f5edd8;color:#7a5c1e;font-size:10.5px;font-weight:700;padding:4px 8px;text-transform:uppercase;}
-.print-row{display:flex;justify-content:space-between;padding:4px 8px;font-size:11px;border-bottom:1px solid #eee;}
+.print-box-title{background:#f5edd8;color:#7a5c1e;font-size:12px;font-weight:700;padding:4px 8px;text-transform:uppercase;}
+.print-row{display:flex;justify-content:space-between;padding:4px 8px;font-size:12px;border-bottom:1px solid #eee;}
 .print-row:last-child{border-bottom:none;}
 .print-row.total-row{background:#fff8e8;font-weight:700;}
 .print-table{width:100%;border-collapse:collapse;font-size:10.5px;}
@@ -597,7 +597,8 @@ function _showRulesHint() {
     'Got it ✓</button>'
   ].join('');
   document.body.appendChild(div);
-  document.getElementById('rules-hint-close').onclick = function(){
+  const _rhc = document.getElementById('rules-hint-close');
+  if(_rhc) _rhc.onclick = function(){
     div.remove(); window._rulesHintShown = false;
   };
   setTimeout(function(){ if(div.parentNode){ div.remove(); window._rulesHintShown=false; } }, 60000);
@@ -968,15 +969,14 @@ function _showRulesHint() {
       </div>
       <div id="checker-table-area">
         <div class="table-wrap" id="checker-cod-table"><table><thead><tr>
-          <th>Order #</th><th>Customer</th><th>CP #</th><th>Admin</th><th>Date</th>
+          <th>Order #</th><th>Customer</th><th>CP #</th><th>Date</th>
           <th>Items Total</th><th>SF</th><th>Grand Total</th><th>Assign Rider</th>
           <th>Checker Status</th><th>Actions</th>
         </tr></thead><tbody id="checker-tbody"></tbody></table></div>
         <div id="checker-lbc-table" style="display:none;"><table><thead><tr>
-          <th>Order #</th><th>Customer</th><th>CP #</th><th>Admin</th><th>Date</th>
-          <th>Items Total</th><th>SF</th><th>Grand Total</th>
-          <th>💳 Payment Status</th><th>Payment Notes</th>
-          <th>✅ Verification Status</th><th>Checker Actions</th>
+          <th>Order #</th><th>Customer</th><th>CP #</th><th>Date</th>
+          <th>Grand Total</th><th>💳 Payment Status</th>
+          <th>✅ Verification</th><th>Actions</th>
         </tr></thead><tbody id="checker-lbc-tbody"></tbody></table></div>
       </div>
     </div>
@@ -2808,7 +2808,7 @@ function renderChecker(){
     });
     if(!list.length) {
       document.getElementById('checker-tbody').innerHTML =
-        `<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">No COD orders found</td></tr>`;
+        `<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No COD orders found</td></tr>`;
     } else {
       let codRows = '';
       Object.keys(codAdminGroups).sort().forEach(adm => {
@@ -2866,7 +2866,7 @@ function renderChecker(){
     });
     if(!list.length) {
       document.getElementById('checker-lbc-tbody').innerHTML =
-        `<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:26px;">No ${checkerTab} orders found</td></tr>`;
+        `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:26px;">No ${checkerTab} orders found</td></tr>`;
     } else {
       let rows = '';
       Object.keys(adminGroups).sort().forEach(adm => {
@@ -3288,7 +3288,7 @@ function renderDailyParcels(){
   document.getElementById('daily-summary').textContent=`${filtered.length} parcels | Total: ${p(filtered.reduce((s,o)=>s+o.grandTotal,0))}`;
   document.getElementById('daily-tbody').innerHTML=filtered.length?S.orders.map((o,i)=>{
     if(o.date!==d)return '';
-    return `<tr><td style="color:var(--gold);">${onum(i)}</td><td style="font-weight:500;">${o.name}</td><td>${o.contact}</td><td>${o.city||'—'}</td><td>${o.admin}</td><td>${o.date}</td><td>${p(o.itemsTotal)}</td><td>${p(o.shipping)}</td><td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td><td><span class="status ${sclass(o.status)}">${o.status}</span></td></tr>`;
+    return `<tr><td style="color:var(--gold);">${onum(i)}</td><td style="font-weight:500;">${o.name}</td><td>${o.contact}</td><td>${o.city||'—'}</td><td>${o.date}</td><td>${p(o.itemsTotal)}</td><td>${p(o.shipping)}</td><td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td><td><span class="status ${sclass(o.status)}">${o.status}</span></td></tr>`;
   }).join(''):'<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No parcels on this date</td></tr>';
 }
 
@@ -5096,7 +5096,7 @@ function renderDash(){
   const adminDel={};S.orders.filter(o=>o.status==='Delivered').forEach(o=>{if(o.admin)adminDel[o.admin]=(adminDel[o.admin]||0)+1;});
   const aList=Object.entries(adminDel).sort((a,b)=>b[1]-a[1]);
   document.getElementById('dash-admins').innerHTML=aList.length?`<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:rgba(201,168,76,0.08);"><th style="padding:5px 7px;color:var(--gold);font-size:9px;">Admin</th><th style="padding:5px 7px;color:var(--gold);font-size:9px;">Delivered</th><th style="padding:5px 7px;color:var(--gold);font-size:9px;">Incentive</th></tr></thead><tbody>${aList.map(([a,c])=>`<tr><td style="padding:6px 7px;font-weight:500;">${a}</td><td style="padding:6px 7px;color:var(--blue);">${c}</td><td style="padding:6px 7px;color:var(--green);font-weight:700;">${p(c*25)}</td></tr>`).join('')}</tbody></table>`:'<p style="color:var(--muted);font-size:12px;padding:8px 0;">No delivered parcels yet</p>';
-  document.getElementById('dash-recent').innerHTML=`<table><thead><tr><th>Order #</th><th>Customer</th><th>Admin</th><th>Date</th><th>Total</th><th>Status</th></tr></thead><tbody>${[...S.orders].slice(-7).reverse().map(o=>{const i=S.orders.indexOf(o);return `<tr><td style="color:var(--gold);">${onum(i)}</td><td style="font-weight:500;">${o.name}</td><td>${o.admin}</td><td>${o.date}</td><td style="color:var(--green);">${p(o.grandTotal)}</td><td><span class="status ${sclass(o.status)}">${o.status}</span></td></tr>`;}).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px;">No orders</td></tr>'}</tbody></table>`;
+  document.getElementById('dash-recent').innerHTML=`<table><thead><tr><th>Order #</th><th>Customer</th><th>Admin</th><th>Date</th><th>Total</th><th>Status</th></tr></thead><tbody>${[...S.orders].slice(-7).reverse().map(o=>{const i=S.orders.indexOf(o);return `<tr><td style="color:var(--gold);">${onum(i)}</td><td style="font-weight:500;">${o.name}</td><td>${o.date}</td><td style="color:var(--green);">${p(o.grandTotal)}</td><td><span class="status ${sclass(o.status)}">${o.status}</span></td></tr>`;}).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px;">No orders</td></tr>'}</tbody></table>`;
 }
 
 
@@ -5567,14 +5567,16 @@ function renderRiderParcels() {
   // Get all orders assigned to this rider
   const allMyOrders = S.orders.map((o,i) => ({...o, idx:i}))
     .filter(o => o.assignedRider === currentRider.name);
-  // Hide orders that have been fully remitted (Delivered + in remitLog as Remitted)
-  const remittedKeys = new Set(
+  // Hide Delivered orders that have already been remitted
+  // A remit entry covers all Delivered orders for that rider on that remit date
+  const remittedDates = new Set(
     (S.remitLog||[])
       .filter(r => r.riderName === currentRider.name && r.remitStatus === 'Remitted')
       .map(r => r.date)
   );
   const myOrders = allMyOrders.filter(o => {
-    if(o.status === 'Delivered' && remittedKeys.has(o.date)) return false;
+    // Hide if Delivered AND the order's date matches a remitted date
+    if(o.status === 'Delivered' && remittedDates.has(o.date)) return false;
     return true;
   });
   // Apply date filter (default = today)
@@ -6235,7 +6237,7 @@ function renderTrackingLbc() {
       <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
       <td style="font-weight:500;">${o.name}</td>
       <td style="font-size:11px;">${o.contact||'—'}</td>
-      <td>${o.admin}</td><td>${o.date}</td>
+      <td>${o.date}</td>
       <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
       <td style="font-size:11px;font-weight:600;color:${payColor(o.paymentStatus||'No Payment')};">
         ${o.paymentStatus||'No Payment'}
@@ -6272,7 +6274,7 @@ function renderTrackingIntl() {
       <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
       <td style="font-weight:500;">${o.name}</td>
       <td style="font-size:11px;">${o.contact||'—'}</td>
-      <td>${o.admin}</td><td>${o.date}</td>
+      <td>${o.date}</td>
       <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
       <td style="font-size:11px;font-weight:600;color:${payColor(o.paymentStatus||'No Payment')};">
         ${o.paymentStatus||'No Payment'}
