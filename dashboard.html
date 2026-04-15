@@ -976,7 +976,7 @@ function _showRulesHint() {
         <div id="checker-lbc-table" style="display:none;"><table><thead><tr>
           <th>Order #</th><th>Customer</th><th>CP #</th><th>Date</th>
           <th>Grand Total</th><th>💳 Payment Status</th>
-          <th>✅ Verification</th><th>Actions</th>
+          <th>✅ Verification</th><th>📦 Parcel Status</th><th>Actions</th>
         </tr></thead><tbody id="checker-lbc-tbody"></tbody></table></div>
       </div>
     </div>
@@ -1035,7 +1035,7 @@ function _showRulesHint() {
             <input class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" placeholder="Search..." id="track-lbc-search" oninput="renderTrackingLbc()">
             <select class="form-control" style="width:175px;font-size:11px;padding:4px 8px;" id="track-lbc-filter" onchange="renderTrackingLbc()">
               <option value="">All Parcel Status</option>
-              <option>Preparing</option><option>Ready to Pick-up</option><option>Drop off at LBC</option><option>Delivered</option>
+              <option>Ready to Pick-up</option><option>Drop off at LBC</option><option>Delivered</option>
             </select>
             <input type="date" class="form-control" style="width:150px;font-size:11px;" id="track-lbc-date" oninput="renderTrackingLbc()" title="Filter by date">
           </div>
@@ -1056,7 +1056,7 @@ function _showRulesHint() {
             <input class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" placeholder="Search..." id="track-intl-search" oninput="renderTrackingIntl()">
             <select class="form-control" style="width:175px;font-size:11px;padding:4px 8px;" id="track-intl-filter" onchange="renderTrackingIntl()">
               <option value="">All Parcel Status</option>
-              <option>Preparing</option><option>Ready to Pick-up</option><option>Drop off at Courier</option><option>Delivered</option>
+              <option>Ready to Pick-up</option><option>Drop off at EMS</option><option>Delivered</option>
             </select>
             <input type="date" class="form-control" style="width:150px;font-size:11px;" id="track-intl-date" oninput="renderTrackingIntl()" title="Filter by date">
           </div>
@@ -2522,7 +2522,8 @@ function renderMyOrders() {
   if(statsEl && loggedAdmin) {
     statsEl.innerHTML = `<div class="stats-grid" style="margin-bottom:13px;">
       <div class="stat-card gold"><div class="stat-label">My Total Orders</div><div class="stat-value">${list.length}</div></div>
-      <div class="stat-card blue"><div class="stat-label">In Transit</div><div class="stat-value">${list.filter(({o})=>['Preparing','Ready','Out for Delivery'].includes(o.status)).length}</div></div><div class="stat-value">${p(del.length*25)}</div><div class="stat-sub">${del.length}×₱25</div></div>
+      <div class="stat-card blue"><div class="stat-label">In Transit</div><div class="stat-value">${list.filter(({o})=>['Preparing','Ready','Out for Delivery'].includes(o.status)).length}</div></div>
+      <div class="stat-card green"><div class="stat-label">Incentive</div><div class="stat-value">${p(del.length*25)}</div><div class="stat-sub">${del.length}×₱25</div></div>
       <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${list.filter(({o})=>['Cancelled','Update'].includes(o.status)).length}</div></div>
       <div class="stat-card purple"><div class="stat-label">Pending Checker</div><div class="stat-value">${list.filter(({o})=>o.checkerStatus==='Pending').length}</div></div>
     </div>`;
@@ -2866,12 +2867,12 @@ function renderChecker(){
     });
     if(!list.length) {
       document.getElementById('checker-lbc-tbody').innerHTML =
-        `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:26px;">No ${checkerTab} orders found</td></tr>`;
+        `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:26px;">No ${checkerTab} orders found</td></tr>`;
     } else {
       let rows = '';
       Object.keys(adminGroups).sort().forEach(adm => {
         rows += `<tr style="background:rgba(201,168,76,0.08);">
-          <td colspan="12" style="padding:7px 12px;font-weight:700;font-size:11px;color:var(--gold);
+          <td colspan="9" style="padding:7px 12px;font-weight:700;font-size:11px;color:var(--gold);
             text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--navy-border);">
             👤 ${adm}
             <span style="color:var(--muted);font-weight:400;font-size:10px;margin-left:6px;">
@@ -2883,6 +2884,7 @@ function renderChecker(){
           const verifSt = o.verificationStatus||'Not Verified';
           const canVerify = pymSt === 'Fully Paid';
           const isLocked = ['Ready','Out for Delivery','Delivered','Cancelled','Update'].includes(o.status);
+          const isDroppedOff = ['Drop off at LBC','Drop off at EMS','Drop off at Courier'].includes(o.lbcStatus||'');
           rows += `<tr>
             <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
             <td style="font-weight:500;">${o.name}</td>
@@ -2908,15 +2910,27 @@ function renderChecker(){
               </select>
               ${!canVerify?'<div style="font-size:9px;color:var(--orange);margin-top:2px;">⚠️ Fully Paid muna</div>':''}
             </td>
+            <td>
+              ${(canVerify && verifSt === 'Verified') ? `
+                <select class="form-control" style="width:150px;font-size:10.5px;padding:3px 5px;"
+                  onchange="updateLbcStatus(${i},this.value)">
+                  <option${(!o.lbcStatus||o.lbcStatus==='Preparing'||o.lbcStatus==='Ready to Pick-up')?' selected':''}>Ready to Pick-up</option>
+                  <option${o.lbcStatus==='Drop off at LBC'?' selected':''}>Drop off at LBC</option>
+                </select>
+              ` : `<span style="font-size:9.5px;color:var(--muted);">—</span>`}
+            </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
-              ${!isLocked?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>`:''}
-              ${canVerify && verifSt==='Verified'
-                ?`<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verified</button>`
-                :canVerify
-                ?`<button class="btn btn-blue btn-sm" onclick="verifyOrder(${i})">✔ Mark Verified</button>`
-                :''}
-              <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
-              <button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>
+              ${isDroppedOff
+                ? '<span style="font-size:9.5px;color:var(--blue);padding:2px 6px;background:rgba(74,144,217,0.1);border-radius:4px;">🔒 Dropped Off</span>'
+                : ((!isLocked ? '<button class="btn btn-outline btn-sm" onclick="openEditOrder('+i+')">✏️</button>' : '')
+                  + (canVerify && verifSt==='Verified'
+                    ? '<button class="btn btn-green btn-sm" onclick="verifyOrder('+i+')">✔ Verified</button>'
+                    : canVerify
+                    ? '<button class="btn btn-blue btn-sm" onclick="verifyOrder('+i+')">✔ Mark Verified</button>'
+                    : '')
+                  + '<button class="btn btn-print btn-sm" onclick="openInvoice('+i+')">🖨️</button>'
+                  + '<button class="btn btn-red btn-sm" onclick="delOrder('+i+')">🗑️</button>')
+              }
             </td>
           </tr>`;
         });
@@ -3566,7 +3580,9 @@ function openReturnLogModal(orderNum='', itemIdx=null) {
         document.getElementById('ret-item-desc').value = `${it.code||''} — ${it.desc||''}`;
         document.getElementById('ret-qty-grams').value = retQty;
         document.getElementById('ret-unit').value = isGrams ? 'grams' : 'pcs';
-        document.getElementById('ret-value').value = it.total||0;
+        // Default item value: use actual total if set, otherwise fallback to items.length × 5000
+        const defaultValue = (it.total && it.total > 0) ? it.total : (o.items.length * 5000);
+        document.getElementById('ret-value').value = defaultValue;
         // Auto-fill rider and cancel reason from order
         const itemRemark = (o.itemRemarks||{})[itemIdx] || '';
         if(itemRemark) document.getElementById('ret-reason').value = itemRemark;
@@ -4126,7 +4142,8 @@ function openAddRider(){
   document.getElementById('rider-edit-idx').value='';
   const cnt=document.getElementById('rider-contact-count');if(cnt)cnt.textContent='0/11';
   populateLocationDropdown();
-  if(curLocation&&curLocation!=='ALL'){const sel=document.getElementById('rider-location');if(sel)sel.value=curLocation;}
+  // Location always starts blank when adding new rider (no auto-fill from active tab)
+  const locSel=document.getElementById('rider-location');if(locSel)locSel.value='';
   openModal('modal-rider');
 }
 
@@ -5276,6 +5293,8 @@ function applyRoleUI(){
       if(lockEl) lockEl.classList.add('unlocked');
     } else if(currentRole==='checker' && page==='checker'){
       if(lockEl) lockEl.classList.add('unlocked');
+    } else if(currentRole==='sorter' && page==='tracking'){
+      if(lockEl) lockEl.classList.add('unlocked');
     } else {
       if(lockEl) lockEl.classList.remove('unlocked');
     }
@@ -6218,8 +6237,8 @@ function renderTracking() {
   refreshUpdateBadge();
 }
 
-const LBC_PARCEL_STATUSES = ['Preparing','Ready to Pick-up','Drop off at LBC','Delivered'];
-const INTL_PARCEL_STATUSES = ['Preparing','Ready to Pick-up','Drop off at Courier','Delivered'];
+const LBC_PARCEL_STATUSES = ['Ready to Pick-up','Drop off at LBC','Delivered'];
+const INTL_PARCEL_STATUSES = ['Ready to Pick-up','Drop off at EMS','Delivered'];
 
 function renderTrackingLbc() {
   const q = (document.getElementById('track-lbc-search')?.value||'').toLowerCase();
@@ -6229,7 +6248,8 @@ function renderTrackingLbc() {
   const lbcStatusColor = s => s==='Delivered'?'var(--green)':s==='Drop off at LBC'?'var(--blue)':s==='Ready to Pick-up'?'var(--gold)':'var(--muted)';
   document.getElementById('tracking-lbc-tbody').innerHTML = S.orders.map((o,i) => {
     if((o.paymentMethod||'COD') !== 'LBC') return '';
-    const lbcSt = o.lbcStatus || 'Preparing';
+    // Migrate old 'Preparing' to 'Ready to Pick-up' for display
+    const lbcSt = (!o.lbcStatus || o.lbcStatus === 'Preparing') ? 'Ready to Pick-up' : o.lbcStatus;
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q) && !(o.contact||'').includes(q)) return '';
     if(filt && lbcSt !== filt) return '';
     if(df && o.date !== df) return '';
@@ -6261,12 +6281,13 @@ function renderTrackingIntl() {
   const filt = document.getElementById('track-intl-filter')?.value||'';
   const df = document.getElementById('track-intl-date')?.value||'';
   const payColor = s => s==='Fully Paid'?'var(--green)':s==='Partial'?'var(--orange)':'var(--red)';
-  const stColor = s => s==='Delivered'?'var(--green)':s==='Drop off at Courier'?'var(--blue)':s==='Ready to Pick-up'?'var(--gold)':'var(--muted)';
+  const stColor = s => s==='Delivered'?'var(--green)':s==='Drop off at EMS'?'var(--blue)':s==='Ready to Pick-up'?'var(--gold)':'var(--muted)';
   document.getElementById('tracking-intl-tbody').innerHTML = S.orders.map((o,i) => {
     if((o.paymentMethod||'COD') !== 'INTERNATIONAL') return '';
-    // Migrate old "Drop off at LBC" to "Drop off at Courier" for intl orders
-    if(o.lbcStatus === 'Drop off at LBC') o.lbcStatus = 'Drop off at Courier';
-    const lbcSt = o.lbcStatus || 'Preparing';
+    // Migrate old values to new naming
+    if(o.lbcStatus === 'Drop off at LBC' || o.lbcStatus === 'Drop off at Courier') o.lbcStatus = 'Drop off at EMS';
+    // Migrate old 'Preparing' to 'Ready to Pick-up' for display
+    const lbcSt = (!o.lbcStatus || o.lbcStatus === 'Preparing') ? 'Ready to Pick-up' : o.lbcStatus;
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q) && !(o.contact||'').includes(q)) return '';
     if(filt && lbcSt !== filt) return '';
     if(df && o.date !== df) return '';
@@ -6909,7 +6930,7 @@ function renderRemitPage() {
               <td style="font-weight:600;color:${statusColor(st)};">${statusIcon(st)} ${st}</td>
               <td style="display:flex;gap:4px;">
                 <button class="btn btn-outline btn-sm" onclick="openRemitModal(${e.idx})">✏️</button>
-                <button class="btn btn-red btn-sm" onclick="delRemit(${e.idx})">🗑️</button>
+                ${st !== 'Remitted' ? `<button class="btn btn-red btn-sm" onclick="delRemit(${e.idx})">🗑️</button>` : ''}
               </td>
             </tr>
             ${hasCancels ? `<tr style="background:rgba(224,85,85,0.02);">
