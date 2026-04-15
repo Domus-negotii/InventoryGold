@@ -814,6 +814,7 @@ function _showRulesHint() {
       <div class="nav-item" onclick="gotoPage('orders')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>Admin Encode</div>
       <div class="nav-item" onclick="gotoPage('checker')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Checker Verify</div>
       <div class="nav-item" onclick="gotoPage('tracking')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>Parcel Tracking</div>
+      <div class="nav-item" onclick="gotoPage('ordermgmt')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><path d="M9 3h6v4H9z"/><path d="M9 12h6M9 16h4"/></svg>Order Management</div>
     </div>
     <div class="nav-section">
       <div class="nav-label">Operations</div>
@@ -1110,7 +1111,7 @@ function _showRulesHint() {
     <!-- Rider table per location -->
     <div class="card">
       <div class="card-header"><span class="card-title" id="rider-loc-label">All Riders</span><span id="rider-loc-count" style="font-size:11px;color:var(--muted);"></span></div>
-      <div class="table-wrap"><table><thead><tr><th>Rider Name</th><th>Location</th><th>Type</th><th>Contact</th><th>Total Remit (₱)</th><th>SF (₱)</th><th>Total Parcel (₱)</th><th>Deductions (₱)</th><th>Net Cash (₱)</th><th>Actions</th></tr></thead><tbody id="riders-tbody"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>Rider Name</th><th>Location</th><th>Type</th><th>Contact</th><th>Password</th><th>Parcels</th><th>Delivered</th><th>Cancelled</th><th>SF (Delivered)</th><th>COD Collected</th><th>Deductions</th><th>Net to Remit</th><th>Actions</th></tr></thead><tbody id="riders-tbody"></tbody></table></div>
     </div>
   </div>
 
@@ -1658,6 +1659,25 @@ function _showRulesHint() {
   <div id="benefits-page-content"></div>
 </div>
 
+  <!-- ORDER MANAGEMENT (LBC + INTERNATIONAL) -->
+  <div class="page" id="page-ordermgmt">
+    <div class="action-row no-print" style="flex-wrap:wrap;gap:10px;">
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
+        <div class="section-tabs" style="margin:0;" id="ordermgmt-tabs">
+          <button class="tab-btn active" onclick="setOmTab('lbc')">📦 LBC</button>
+          <button class="tab-btn" onclick="setOmTab('intl')">✈️ INTERNATIONAL</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
+        <input class="form-control" style="width:180px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / order# / tracking" id="om-search" oninput="renderOrderMgmt()">
+        <input type="date" class="form-control" style="width:148px;font-size:11px;" id="om-date" oninput="renderOrderMgmt()" title="Filter by date">
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('om-date').value='';renderOrderMgmt()">All Dates</button>
+      </div>
+    </div>
+    <div class="stats-grid" id="om-stats" style="margin-bottom:13px;"></div>
+    <div id="om-content"></div>
+  </div>
+
 </div><!-- /main -->
 
 <!-- ===================== MODALS ===================== -->
@@ -1682,7 +1702,18 @@ function _showRulesHint() {
       <div class="form-group" style="grid-column:1/-1"><label>Complete Address *</label><input class="form-control enc-tab" id="enc-address" placeholder="House/Unit, Barangay, City, Province" onkeydown="encNextField(event,this)" oninput="autoAssignRider()"></div>
       <input type="hidden" id="enc-city" value="">
       <div class="form-group"><label>Landmark / Pakuha sa</label><input class="form-control enc-tab" id="enc-landmark" placeholder="Near church, beside sari-sari..." onkeydown="encNextField(event,this)"></div>
-      <div class="form-group"><label>Date of Purchase <span style="font-size:10px;color:var(--muted);">(default: tomorrow — delivery date)</span></label><input type="date" class="form-control enc-tab" id="enc-date" onkeydown="encNextField(event,this)"></div>
+      <div class="form-group" id="enc-date-purchase-group">
+        <label>Date of Purchase <span style="font-size:10px;color:var(--muted);" id="enc-date-hint">(default: tomorrow — delivery date)</span></label>
+        <input type="date" class="form-control enc-tab" id="enc-date" onkeydown="encNextField(event,this)">
+      </div>
+      <div class="form-group" id="enc-date-payment-group" style="display:none;">
+        <label>Date of Payment <span style="font-size:10px;color:var(--muted);">(editable)</span></label>
+        <input type="date" class="form-control enc-tab" id="enc-date-payment" onkeydown="encNextField(event,this)">
+      </div>
+      <div class="form-group" id="enc-date-dropoff-group" style="display:none;">
+        <label>Date of Drop-off <span style="font-size:10px;color:var(--muted);">(editable)</span></label>
+        <input type="date" class="form-control enc-tab" id="enc-date-dropoff" onkeydown="encNextField(event,this)">
+      </div>
       <div class="form-group"><label>Admin Name *</label>
         <div id="enc-admin-wrapper">
           <!-- Populated by populateAdminDropdown() based on role -->
@@ -1693,11 +1724,18 @@ function _showRulesHint() {
       </div>
       <div class="form-group"><label>Shipping Fee (₱)</label><input type="number" class="form-control enc-tab" id="enc-shipping" value="0" min="0" oninput="calcEnc()" onfocus="this.select()" onkeydown="encNextField(event,this)"></div>
       <div class="form-group"><label>Shipping Method *</label>
-        <select class="form-control enc-tab" id="enc-payment-method" onkeydown="encNextField(event,this)">
+        <select class="form-control enc-tab" id="enc-payment-method" onkeydown="encNextField(event,this)" onchange="onPaymentMethodChange()">
           <option value="COD">🏍️ COD – Own Rider, Cash on Delivery</option>
           <option value="LBC">📦 LBC – Payment First, LBC Delivers</option>
           <option value="INTERNATIONAL">✈️ INTERNATIONAL – FedEx/DHL/EMS</option>
         </select>
+      </div>
+      <div class="form-group" id="enc-tracking-group" style="display:none;">
+        <label>LBC Tracking Number <span id="enc-tracking-label-hint" style="font-size:10px;color:var(--muted);">(12 digits)</span></label>
+        <input class="form-control enc-tab" id="enc-tracking-number" placeholder="000000000000" maxlength="22"
+          oninput="this.value=this.value.replace(/\D/g,'');validateTrackingNum(this)"
+          onkeydown="encNextField(event,this)">
+        <div id="enc-tracking-err" style="font-size:10.5px;color:var(--red);min-height:14px;margin-top:2px;"></div>
       </div>
       <input type="hidden" id="enc-rider" value="">
       <div id="enc-rider-info" style="display:none;font-size:10.5px;color:var(--muted);margin-top:4px;">
@@ -1932,7 +1970,7 @@ function _showRulesHint() {
     </div>
     <!-- Summary computation -->
     <div style="background:var(--navy);border-radius:8px;padding:12px;font-size:12.5px;" id="remit-calc">
-      <div class="info-row"><span style="color:var(--muted);">📦 Total SF (All Parcels)</span><span id="remit-gross-sf" style="color:var(--gold);font-weight:600;">₱0.00</span></div>
+      <div class="info-row"><span style="color:var(--muted);">📦 Delivered SF (Gross)</span><span id="remit-gross-sf" style="color:var(--gold);font-weight:600;">₱0.00</span></div>
       <div class="info-row"><span style="color:var(--muted);">💰 Subtotal (Delivered + SF)</span><span id="remit-subtotal" style="color:var(--blue);font-weight:600;">₱0.00</span></div>
       <div class="info-row"><span style="color:var(--red);">Less: SF 10% (Company)</span><span id="remit-sf-10" style="color:var(--red);">-₱0.00</span></div>
       <div class="info-row"><span style="color:var(--red);">Less: Cashbond (₱100)</span><span id="remit-cashbond-display" style="color:var(--red);">-₱100.00</span></div>
@@ -1947,7 +1985,7 @@ function _showRulesHint() {
           <span id="remit-benefits-cut" style="display:none;">-₱0.00</span>
         </div>
       </div>
-      <div class="info-row" style="border-bottom:1px solid var(--navy-border);padding-bottom:8px;"><span style="color:var(--muted);">= Net SF (Rider Share after deductions)</span><span id="remit-sf-rider-share" style="color:var(--blue);font-weight:700;">₱0.00</span></div>
+      <div class="info-row" style="border-bottom:1px solid var(--navy-border);padding-bottom:8px;"><span style="color:var(--muted);">= Rider SF Share (90% keeps)</span><span id="remit-sf-rider-share" style="color:var(--blue);font-weight:700;">₱0.00</span></div>
       <div class="info-row" style="border-bottom:none;font-size:14px;background:rgba(46,204,138,0.07);padding:8px;border-radius:7px;margin-top:6px;">
         <strong>🏦 Net Total to Remit</strong>
         <strong id="remit-net-earn" style="color:var(--green);font-size:16px;">₱0.00</strong>
@@ -2206,7 +2244,7 @@ function closeModal(id){document.getElementById(id).classList.remove('open');}
 })();
 
 // ============ NAVIGATION ============
-const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales Calendar',orders:'Admin Encode',checker:'Checker Verify',tracking:'Parcel Tracking',riders:'Riders by Location',dailyparcels:'Daily Parcels',sorting:'Parcel Sorting',returns:'Return / Cancel',dailysales:'Daily Sales Record',payroll:'Payroll',expenses:'Expenses',pnl:'P&L Report',inventory:'Inventory',adminsheets:'Per-Admin Order Sheets',settings:'Settings',ridersremit:'Riders Remit',cashbond:'Cashbond Tracker',benefits:'Benefits (SSS / PhilHealth / Pag-IBIG)'};
+const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales Calendar',orders:'Admin Encode',checker:'Checker Verify',tracking:'Parcel Tracking',ordermgmt:'Order Management',riders:'Riders by Location',dailyparcels:'Daily Parcels',sorting:'Parcel Sorting',returns:'Return / Cancel',dailysales:'Daily Sales Record',payroll:'Payroll',expenses:'Expenses',pnl:'P&L Report',inventory:'Inventory',adminsheets:'Per-Admin Order Sheets',settings:'Settings',ridersremit:'Riders Remit',cashbond:'Cashbond Tracker',benefits:'Benefits (SSS / PhilHealth / Pag-IBIG)'};
 let _activePage = 'dashboard';
 function gotoPage(name){
   _activePage = name;
@@ -2235,7 +2273,7 @@ function gotoPage(name){
 function renderPage(n){
   ({dashboard:()=>{applyDashCeoLock();if(currentRole==='owner')renderDash();},
     riderdash:()=>{},calendar:()=>{if(currentRole==='owner')renderCalendar();else{const p2=document.getElementById('page-calendar');if(p2)p2.innerHTML='<div style="text-align:center;padding:60px;"><div style="font-size:48px;">🔐</div><div style="font-family:var(--fh);font-size:20px;color:var(--gold);margin:10px 0;">CEO Only</div><p style="color:var(--muted);">Sales Calendar is restricted to CEO access.</p></div>';}},
-    orders:initOrdersPage,checker:renderChecker,tracking:()=>{renderTracking();refreshUpdateBadge();},
+    orders:initOrdersPage,checker:renderChecker,tracking:()=>{renderTracking();refreshUpdateBadge();},ordermgmt:renderOrderMgmt,
     riders:renderRiders,dailyparcels:renderDailyParcels,sorting:renderSorting,returns:renderReturns,
     dailysales:renderDailySales,payroll:()=>renderPayroll(payTab),expenses:renderExpenses,
     pnl:renderPnl,inventory:()=>renderInv(invTab),adminsheets:renderAdminSheets,settings:renderSettings,
@@ -2293,20 +2331,33 @@ function autoFillFromCode(codeInput) {
 
   if(descInput && !descInput.value) descInput.value = inv.desc;
 
+  // ── PRICE LOCK: if the row already has a price/total (editing existing order),
+  // do NOT overwrite with the current live inventory price ──────────────────────
+  const existingPg = parseFloat(pgInput?.value) || 0;
+  const existingTotal = parseFloat(totalInput?.value) || 0;
+  const hasExistingPrice = existingPg > 0 || existingTotal > 0;
+
   if(inv.itemType === 'fixprice') {
-    if(qgInput) { qgInput.value = 1; qgInput.placeholder = 'Qty'; }
-    if(pgInput) { pgInput.value = 0; }
-    const fixVal = inv.fixPrice || 0;
-    // Store unit price on row so calcEnc can multiply by qty
-    row.dataset.unitPrice = fixVal;
-    const discVal = parseFloat(discountInput?.value)||0;
-    const subtotal = fixVal * 1; // qty=1
-    if(subtotalInput) subtotalInput.value = subtotal.toFixed(2);
-    if(totalInput) totalInput.value = Math.max(0, subtotal - discVal).toFixed(2);
+    if(qgInput && !parseFloat(qgInput.value)) { qgInput.value = 1; qgInput.placeholder = 'Qty'; }
+    if(!hasExistingPrice) {
+      // New row — fill from live inventory price
+      if(pgInput) pgInput.value = 0;
+      const fixVal = inv.fixPrice || 0;
+      row.dataset.unitPrice = fixVal;
+      const discVal = parseFloat(discountInput?.value)||0;
+      const subtotal = fixVal * (parseFloat(qgInput?.value)||1);
+      if(subtotalInput) subtotalInput.value = subtotal.toFixed(2);
+      if(totalInput) totalInput.value = Math.max(0, subtotal - discVal).toFixed(2);
+    }
+    // else: existing price — keep it as-is (price lock)
   } else {
-    delete row.dataset.unitPrice;
-    if(pgInput) pgInput.value = inv.pergram || 0;
-    if(qgInput && !parseFloat(qgInput.value)) qgInput.value = 0;
+    if(!hasExistingPrice) {
+      // New row — fill from live inventory price
+      delete row.dataset.unitPrice;
+      if(pgInput) pgInput.value = inv.pergram || 0;
+      if(qgInput && !parseFloat(qgInput.value)) qgInput.value = 0;
+    }
+    // else: existing price — keep stored pergram (price lock)
   }
   window.calcEnc?.();
 }
@@ -2429,6 +2480,13 @@ function openEditOrder(i){
   document.getElementById('enc-city').value=o.city||'';
   document.getElementById('enc-landmark').value=o.landmark||'';
   document.getElementById('enc-date').value=o.date;
+  // Restore LBC/INTL extra dates and show/hide their groups
+  const editIsLbc = (o.paymentMethod==='LBC'||o.paymentMethod==='INTERNATIONAL');
+  const pmtGrp2=document.getElementById('enc-date-payment-group'); if(pmtGrp2) pmtGrp2.style.display=editIsLbc?'':'none';
+  const dofGrp2=document.getElementById('enc-date-dropoff-group'); if(dofGrp2) dofGrp2.style.display=editIsLbc?'':'none';
+  const pmtInp3=document.getElementById('enc-date-payment'); if(pmtInp3) pmtInp3.value=o.dateOfPayment||'';
+  const dofInp3=document.getElementById('enc-date-dropoff'); if(dofInp3) dofInp3.value=o.dateOfDropoff||'';
+  const hint2=document.getElementById('enc-date-hint'); if(hint2) hint2.textContent=editIsLbc?'(auto: today)':'(default: tomorrow — delivery date)';
   populateAdminDropdown();
   // For owner: set the dropdown to the order's admin.
   // For admin: populateAdminDropdown already locked it to their name — don't override.
@@ -2439,6 +2497,10 @@ function openEditOrder(i){
   document.getElementById('enc-shipping').value=o.shipping;
   document.getElementById('enc-edit-idx').value=i;
   const pm=document.getElementById('enc-payment-method'); if(pm) pm.value=o.paymentMethod||'COD';
+  // Restore tracking number + show/hide tracking field
+  const tnInp=document.getElementById('enc-tracking-number'); if(tnInp) tnInp.value=o.trackingNumber||'';
+  const tnGrp=document.getElementById('enc-tracking-group'); if(tnGrp) tnGrp.style.display=(o.paymentMethod==='LBC'||o.paymentMethod==='INTERNATIONAL')?'':'none';
+  const tnLbl=document.querySelector('#enc-tracking-group label'); if(tnLbl) tnLbl.firstChild.textContent=o.paymentMethod==='LBC'?'LBC Tracking Number ':'Courier Tracking Number ';
   document.getElementById('enc-rider').value=o.assignedRider||'';
   populateInvQuickPick();
   document.getElementById('enc-items-tbody').innerHTML='';
@@ -2814,7 +2876,7 @@ function renderChecker(){
       let codRows = '';
       Object.keys(codAdminGroups).sort().forEach(adm => {
         codRows += `<tr style="background:rgba(201,168,76,0.08);">
-          <td colspan="11" style="padding:7px 12px;font-weight:700;font-size:11px;color:var(--gold);
+          <td colspan="10" style="padding:7px 12px;font-weight:700;font-size:11px;color:var(--gold);
             text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--navy-border);">
             👤 ${adm}
             <span style="color:var(--muted);font-weight:400;font-size:10px;margin-left:6px;">
@@ -2914,8 +2976,8 @@ function renderChecker(){
               ${(canVerify && verifSt === 'Verified') ? `
                 <select class="form-control" style="width:150px;font-size:10.5px;padding:3px 5px;"
                   onchange="updateLbcStatus(${i},this.value)">
-                  <option${(!o.lbcStatus||o.lbcStatus==='Preparing'||o.lbcStatus==='Ready to Pick-up')?' selected':''}>Ready to Pick-up</option>
-                  <option${o.lbcStatus==='Drop off at LBC'?' selected':''}>Drop off at LBC</option>
+                  <option${(!o.lbcStatus||o.lbcStatus==='Preparing')?' selected':''}>Preparing</option>
+                  <option${o.lbcStatus==='Ready to Pick-up'?' selected':''}>Ready to Pick-up</option>
                 </select>
               ` : `<span style="font-size:9.5px;color:var(--muted);">—</span>`}
             </td>
@@ -3042,6 +3104,9 @@ function openInvoice(i){
     ${fld('Admin:',adminName)}
     ${fld('Date:',o.date)}
     ${fld('Method:',o.paymentMethod||'COD')}
+  ${o.trackingNumber?fld('Tracking #:',o.trackingNumber):''}
+  ${o.dateOfPayment?fld('Date of Payment:',o.dateOfPayment):''}
+  ${o.dateOfDropoff?fld('Date of Drop-off:',o.dateOfDropoff):''}
   </table>
 
   ${DASH_LINE}
@@ -4770,9 +4835,17 @@ function applyGovToAll(){
   if(!confirm(`Apply current gov settings to ALL ${S.payroll.length} payroll records? This will update SSS, PhilHealth, Pag-IBIG, Tax, and Other deductions for every existing entry. Continue?`))return;
   const g=S.govSettings;
   S.payroll=S.payroll.map(item=>{
-    const totalDeduct=(g.sss||0)+(g.philhealth||0)+(g.pagibig||0)+(g.tax||0)+(g.other||0);
-    const totalSalary=(item.basePay||0)+(item.parcelInc||0)+(item.otherInc||0)-totalDeduct;
-    return {...item,sss:g.sss||0,philhealth:g.philhealth||0,pagibig:g.pagibig||0,withholdingTax:g.tax||0,otherDeduct:g.other||0,totalDeduct,totalSalary};
+    const govDeduct=(g.sss||0)+(g.philhealth||0)+(g.pagibig||0)+(g.tax||0)+(g.other||0);
+    // Include ALL earnings (same as savePay formula)
+    const totalEarnings=(item.basePay||0)+(item.parcelInc||0)+(item.otherInc||0)
+      +(item.tip||0)+(item.cod||0)+(item.lbc||0)+(item.incentives5||0);
+    // Include ALL extra deductions
+    const extraDeduct=(item.benefits||0)+(item.cashbond||0)+(item.utang||0)+(item.maynilad||0);
+    const totalDeduct=govDeduct+extraDeduct;
+    const totalSalary=totalEarnings-totalDeduct;
+    return {...item,sss:g.sss||0,philhealth:g.philhealth||0,pagibig:g.pagibig||0,
+      withholdingTax:g.tax||0,otherDeduct:g.other||0,
+      govDeduct,extraDeduct,totalDeduct,totalEarnings,totalSalary};
   });
   save();toast('✅ Applied to all '+S.payroll.length+' payroll records!');
 }
@@ -4962,7 +5035,8 @@ function renderPnl(){
   const totalAdminIncentives=Object.values(adminDel).reduce((s,v)=>s+v*25,0);
 
   // === TOTALS ===
-  const totalCosts=returnLoss+payNetTotal+totalExpenses;
+  // Admin incentives (₱25 per delivered parcel) are a real operating cost
+  const totalCosts=returnLoss+payNetTotal+totalExpenses+totalAdminIncentives;
   const grossProfit=totalIncome-returnLoss;
   const netProfit=totalIncome-totalCosts;
   const margin=totalIncome?((netProfit/totalIncome)*100).toFixed(1):'0.0';
@@ -4994,6 +5068,7 @@ function renderPnl(){
     ${row('Other Incentives',p(payOtherInc),'var(--green)',true)}
     ${row('Gov\'t Deductions (SSS/PhilHealth/Pag-IBIG/Tax)','-'+p(payGovDeduct),'var(--red)',true)}
     ${row('Net Payroll (Total Salaries Paid)',p(payNetTotal),'var(--orange)',false,true)}
+    ${row('Admin Incentives (₱25 × '+deliveredOrders.length+' delivered)','-'+p(totalAdminIncentives),'var(--red)',true)}
     ${dividerRow}
     ${sectionHead('OPERATING EXPENSES')}
     ${Object.entries(catMap).length?Object.entries(catMap).map(([c,a])=>row(c,'-'+p(a),'var(--red)',true)).join(''):row('No expenses recorded','₱0.00','var(--muted)',true)}
@@ -5054,7 +5129,9 @@ function printPnl(){
   const payGov=fP.reduce((s,i)=>s+(i.totalDeduct||0),0);
   const payNet=fP.reduce((s,i)=>s+i.totalSalary,0);
   const totalInc=grossRev+sfInc;
-  const totalCosts=retLoss+payNet+expTotal;
+  const adminDel2={};del.forEach(o=>{if(o.admin)adminDel2[o.admin]=(adminDel2[o.admin]||0)+1;});
+  const adminInc2=Object.values(adminDel2).reduce((s,v)=>s+v*25,0);
+  const totalCosts=retLoss+payNet+expTotal+adminInc2;
   const net=totalInc-totalCosts;
   const pw=document.getElementById('pnl-print');  const _printHTML = `<div class="print-pnl-wrap"><div class="print-pnl-header">
     <h2>${S.bizInfo?.name||'Goldchelle Online Enterprises'}</h2>
@@ -5075,6 +5152,10 @@ function printPnl(){
     <div class="pnl-item"><span>Parcel Incentives</span><span>(${p(payInc)})</span></div>
     <div class="pnl-item"><span>Gov't Remittances (SSS/PhilHealth/Pag-IBIG/Tax)</span><span>${p(payGov)}</span></div>
     <div class="pnl-item subtotal"><span>NET PAYROLL</span><span style="color:#c0392b;">(${p(payNet)})</span></div>
+  </div>
+  <div class="pnl-section"><div class="pnl-section-label">ADMIN INCENTIVES</div>
+    <div class="pnl-item"><span>₱25 × ${del.length} delivered parcels</span><span style="color:#c0392b;">(${p(adminInc2)})</span></div>
+    <div class="pnl-item subtotal"><span>TOTAL ADMIN INCENTIVES</span><span style="color:#c0392b;">(${p(adminInc2)})</span></div>
   </div>
   <div class="pnl-section"><div class="pnl-section-label">OPERATING EXPENSES</div>
     ${Object.entries(catMap).map(([c,a])=>`<div class="pnl-item"><span>${c}</span><span style="color:#c0392b;">(${p(a)})</span></div>`).join('')}
@@ -5267,7 +5348,7 @@ function applyRoleUI(){
   const rolePages = {
     rider:    ['riderdash'],
     remitter: ['ridersremit','cashbond','benefits','sorting','returns'],
-    sorter:   ['sorting','tracking'],
+    sorter:   ['sorting','tracking','ordermgmt'],
     checker:  ['checker'],
   };
   const allowed = rolePages[currentRole] || null;
@@ -5621,8 +5702,8 @@ function renderRiderParcels() {
   const RIDER_STATUSES = ['Ready for Pick-up','Out for Delivery','Delivered','Cancelled','For Update'];
   const tbody = document.getElementById('rider-parcels-tbody');
 
-  // Compute what rider will remit per order (cancelled = auto 0, delivered = grandTotal)
-  const totalToRemit = filtered.filter(o=>o.status==='Delivered').reduce((s,o)=>s+o.grandTotal,0);
+  // Total to Remit = ALL non-remitted delivered orders (not just today's view)
+  const totalToRemit = myOrders.filter(o=>o.status==='Delivered').reduce((s,o)=>s+o.grandTotal,0);
   const cancelledCount = filtered.filter(o=>o.status==='Cancelled').length;
 
   tbody.innerHTML = filtered.length ? filtered.map(o => {
@@ -5904,6 +5985,9 @@ function saveOrder() {
   const totalDiscount = items.reduce((s,it) => s+(it.discount||0), 0);
   const editIdx = document.getElementById('enc-edit-idx').value;
   const isLbcMethod = paymentMethod === 'LBC' || paymentMethod === 'INTERNATIONAL';
+  const trackingNumber = (paymentMethod === 'LBC' || paymentMethod === 'INTERNATIONAL') ? (document.getElementById('enc-tracking-number')?.value.trim()||'') : '';
+  const dateOfPayment = isLbcMethod ? (document.getElementById('enc-date-payment')?.value||'') : '';
+  const dateOfDropoff = isLbcMethod ? (document.getElementById('enc-date-dropoff')?.value||'') : '';
   const o = {
     name, contact, backupContact, address,
     city: document.getElementById('enc-city').value,
@@ -5911,6 +5995,7 @@ function saveOrder() {
     date: date || today(),
     admin, assignedRider, paymentMethod,
     shipping: sf2, items, itemsTotal: iT, totalDiscount, grandTotal: iT + sf2,
+    trackingNumber, dateOfPayment, dateOfDropoff,
     status: 'Preparing', checkerStatus: 'Pending',
     paymentStatus: isLbcMethod ? 'No Payment' : 'COD',
     paymentNotes: '',
@@ -5929,6 +6014,11 @@ function saveOrder() {
     o.verificationStatus = orig.verificationStatus || 'Not Verified';
     o.lbcStatus = orig.lbcStatus || o.lbcStatus;
     if(!assignedRider && orig.assignedRider) o.assignedRider = orig.assignedRider;
+    // Keep tracking number from the form (may have been edited) or fallback to orig
+    if(!o.trackingNumber && orig.trackingNumber) o.trackingNumber = orig.trackingNumber;
+    // Preserve extra LBC dates if not re-entered
+    if(!o.dateOfPayment && orig.dateOfPayment) o.dateOfPayment = orig.dateOfPayment;
+    if(!o.dateOfDropoff && orig.dateOfDropoff) o.dateOfDropoff = orig.dateOfDropoff;
 
     // ── RESTORE old inventory, then deduct new items ──────────────
     // Step 1: reverse original items' stock deductions
@@ -6025,6 +6115,16 @@ function openEncodeModal() {
   document.getElementById('enc-edit-idx').value = '';
   document.getElementById('enc-rider').value = '';
   const pm = document.getElementById('enc-payment-method'); if(pm) pm.value = 'COD';
+  // Reset tracking number field (COD = hidden)
+  const tnInp2=document.getElementById('enc-tracking-number'); if(tnInp2) tnInp2.value='';
+  const tnGrp2=document.getElementById('enc-tracking-group'); if(tnGrp2) tnGrp2.style.display='none';
+  const tnErr2=document.getElementById('enc-tracking-err'); if(tnErr2) tnErr2.textContent='';
+  // Reset extra LBC/INTL date fields (hidden for new COD orders)
+  const pmtGrp3=document.getElementById('enc-date-payment-group'); if(pmtGrp3) pmtGrp3.style.display='none';
+  const dofGrp3=document.getElementById('enc-date-dropoff-group'); if(dofGrp3) dofGrp3.style.display='none';
+  const pmtInp4=document.getElementById('enc-date-payment'); if(pmtInp4) pmtInp4.value='';
+  const dofInp4=document.getElementById('enc-date-dropoff'); if(dofInp4) dofInp4.value='';
+  const hint3=document.getElementById('enc-date-hint'); if(hint3) hint3.textContent='(default: tomorrow — delivery date)';
   populateAdminDropdown();
   populateInvQuickPick();
   addItemRow('enc-items-tbody','calcEnc'); calcEnc();
@@ -6316,13 +6416,21 @@ function renderTrackingIntl() {
 
 function updateLbcStatus(orderIdx, newStatus) {
   S.orders[orderIdx].lbcStatus = newStatus;
+  // Sync main status so P&L, Daily Parcels, Dashboard reflect correctly
+  if(newStatus === 'Delivered') {
+    S.orders[orderIdx].status = 'Delivered';
+  } else {
+    // Any non-Delivered status means parcel is still in transit
+    S.orders[orderIdx].status = 'Preparing';
+  }
   save();
-  toast(`📦 Parcel Status → ${newStatus}`);
+  toast(`📦 Parcel Status → ${newStatus}${newStatus==='Delivered'?' ✅ Naka-reflect na sa P&L & Daily Parcels':''}`);
   // Re-render whichever tab is active
   const lbc = document.getElementById('tracking-tab-lbc');
   const intl = document.getElementById('tracking-tab-intl');
   if(lbc && lbc.style.display !== 'none') renderTrackingLbc();
   else if(intl && intl.style.display !== 'none') renderTrackingIntl();
+  if(currentRole==='owner') renderDash();
 }
 
 // Highlight for-update count badge on tab btn
@@ -6350,17 +6458,17 @@ function renderRiders() {
     const myOrders = S.orders.map((o,i)=>({...o,idx:i})).filter(o => o.assignedRider === r.name);
     const delivered = myOrders.filter(o => o.status==='Delivered');
     const cancelled = myOrders.filter(o => o.status==='Cancelled');
-    const totalSF = myOrders.reduce((s,o)=>s+(o.shipping||0),0);
-    const sf10 = totalSF * 0.10;           // 10% of total SF → company
-    const sfRiderShare = totalSF * 0.90;   // 90% rider keeps
-    const cbDeduct = 100;               // cashbond
+    // Use DELIVERED-only SF for accurate calculations
+    const totalSF = delivered.reduce((s,o)=>s+(o.shipping||0),0);
+    const sf10 = totalSF * 0.10;           // 10% of delivered SF → company
+    const sfRider90 = totalSF * 0.90;      // 90% delivered SF → rider keeps
+    const cbDeduct = 100;                  // cashbond fixed ₱100
     const benDeduct = (S.benefitsLog||[]).filter(b=>b.person.toUpperCase()===r.name.toUpperCase()).reduce((s,b)=>s+(b.sss||0)+(b.philhealth||0)+(b.pagibig||0)+(b.other||0),0);
-    // Subtotal = total COD collected from delivered orders
+    // Subtotal = total collected from customers (grandTotal = items + SF) for delivered orders
     const subtotal = delivered.reduce((s,o)=>s+o.grandTotal,0);
-    // Deductions from the rider's SF share (not from COD subtotal)
-    const totalDeductions = sf10 + cbDeduct + benDeduct;
-    // Net Total: COD subtotal + SF rider share - deductions
-    const netTotal = Math.max(0, subtotal - totalDeductions);
+    // CORRECT: Net to Remit = collected - rider keeps (SF90%) - deductions
+    const totalDeductions = sf10 + cbDeduct + benDeduct; // display only
+    const netTotal = Math.max(0, subtotal - sfRider90 - cbDeduct - benDeduct);
     html += `<tr style="background:rgba(201,168,76,0.04);cursor:pointer;" onclick="toggleRiderParcels(${ri})">
       <td style="font-weight:700;color:var(--gold);">▶ ${r.name}</td>
       <td><span style="font-size:10px;padding:2px 7px;border-radius:20px;background:rgba(201,168,76,0.15);color:var(--gold);">📍 ${r.location||'—'}</span></td>
@@ -6372,7 +6480,7 @@ function renderRiders() {
       <td style="color:var(--red);">${cancelled.length}</td>
       <td style="color:var(--gold);font-weight:600;">${p(totalSF)}</td>
       <td style="color:var(--green);font-weight:700;">${p(subtotal)}</td>
-      <td style="color:var(--red);font-size:11px;">-${p(totalDeductions)}<br><span style="font-size:9px;color:var(--muted);">SF10%+CB₱100+Ben</span></td>
+      <td style="color:var(--red);font-size:11px;">-${p(sfRider90+cbDeduct+benDeduct)}<br><span style="font-size:9px;color:var(--muted);">SF90%+CB+Ben</span></td>
       <td style="color:var(--gold);font-weight:700;font-size:13px;">${p(netTotal)}</td>
       <td><button class="btn btn-red btn-sm" onclick="event.stopPropagation();delRider(${ri})">🗑️</button></td></tr>`;
     // Parcel detail rows (collapsed by default)
@@ -6426,7 +6534,7 @@ function updateTrackingTableHeader() {
 function updateRidersTableHeader() {
   const th = document.querySelector('#page-riders thead tr');
   if(th) {
-    th.innerHTML = '<th>Rider Name</th><th>Location</th><th>Type</th><th>Contact</th><th>Password</th><th>Parcels</th><th>Delivered</th><th>Cancelled</th><th>Gross SF</th><th>Subtotal (COD)</th><th>Deductions</th><th>Net Total</th><th>Actions</th>';
+    th.innerHTML = '<th>Rider Name</th><th>Location</th><th>Type</th><th>Contact</th><th>Password</th><th>Parcels</th><th>Delivered</th><th>Cancelled</th><th>SF (Delivered)</th><th>COD Collected</th><th>Deductions</th><th>Net to Remit</th><th>Actions</th>';
   }
 }
 
@@ -6537,17 +6645,24 @@ function populateRemitParcels() {
     .filter(o=>o.assignedRider===rider.name && (!df || o.date===df));
   const delivered = myOrders.filter(o=>o.status==='Delivered');
   const cancelled = myOrders.filter(o=>['Cancelled','Update'].includes(o.status));
-  const totalSF = myOrders.reduce((s,o)=>s+(o.shipping||0),0);
-  const sf10 = totalSF * 0.10;
-  const sfNetRider = totalSF * 0.90;
+  // Use DELIVERED-only SF for accurate deduction calculation
+  const deliveredSF = delivered.reduce((s,o)=>s+(o.shipping||0),0);
+  const totalSF = myOrders.reduce((s,o)=>s+(o.shipping||0),0); // gross SF display
+  const sf10 = deliveredSF * 0.10;           // 10% of delivered SF → company
+  const sfRider90 = deliveredSF * 0.90;      // 90% of delivered SF → rider keeps
   const cashbond = 100;
   // Benefits: read from manual input (default 0)
   const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
-  // Subtotal = all delivered grandTotal
+  // Subtotal = sum of grandTotal (items + SF) from Delivered orders
   const codSubtotal = delivered.reduce((s,o)=>s+o.grandTotal,0);
-  // Net SF = SF rider share - cashbond - manual benefits
-  const netSF = Math.max(0, sfNetRider - cashbond - manualBenefits);
-  const netTotal = Math.max(0, codSubtotal - netSF);
+  // CORRECT FORMULA:
+  // Rider collected: codSubtotal (from customers)
+  // Rider keeps: sfRider90 (their SF share)
+  // Rider pays deductions: cashbond + manualBenefits
+  // Net to Remit = codSubtotal - sfRider90 - cashbond - manualBenefits
+  const sfNetRider = sfRider90; // kept for dataset compatibility
+  const netSF = sfRider90; // rider's SF share (what they keep, shown as label)
+  const netTotal = Math.max(0, codSubtotal - sfRider90 - cashbond - manualBenefits);
 
   // Build parcel rows — shows whole-order cancels AND per-item partial cancels
   const rows = myOrders.map((o,pi)=>{
@@ -6637,7 +6752,7 @@ function populateRemitParcels() {
     ${cancelled.length ? `<div style="margin-top:7px;padding:7px 10px;background:rgba(224,85,85,0.08);border:1px solid rgba(224,85,85,0.25);border-radius:6px;font-size:11px;">
       ⚠️ <strong style="color:var(--red);">${cancelled.length} Cancelled/Update order(s)</strong> —
       Original amount: <span style="text-decoration:line-through;color:var(--muted);">${p(cancelled.reduce((s,o)=>s+o.grandTotal,0))}</span>
-      → Excluded (₱0.00 remit). Delivery SF still counted.
+      → Excluded (₱0.00 remit from order total).
     </div>` : ''}
     ${partialCancelOrders.length ? `<div style="margin-top:7px;padding:7px 10px;background:rgba(255,165,0,0.08);border:1px solid rgba(255,165,0,0.25);border-radius:6px;font-size:11px;">
       ⚠️ <strong style="color:var(--orange);">${partialCancelOrders.length} order(s) with partially cancelled items</strong> —
@@ -6645,7 +6760,7 @@ function populateRemitParcels() {
     </div>` : ''}`;
 
   // Update calc display
-  document.getElementById('remit-gross-sf').textContent = p(totalSF);
+  document.getElementById('remit-gross-sf').textContent = p(deliveredSF);
   document.getElementById('remit-subtotal').textContent = p(codSubtotal);
   document.getElementById('remit-sf-10').textContent = '-'+p(sf10);
   document.getElementById('remit-sf-rider-share').textContent = p(netSF);
@@ -6656,10 +6771,10 @@ function populateRemitParcels() {
   const dcEl = document.getElementById('remit-delivered-count'); if(dcEl) dcEl.value = delivered.length;
   const cbEl = document.getElementById('remit-cashbond-cut'); if(cbEl) cbEl.value = 100;
   const hint = document.getElementById('remit-formula-hint');
-  if(hint) hint.textContent = `Net Total = ${p(codSubtotal)} − ${p(netSF)} (Net SF) = ${p(netTotal)}`;
+  if(hint) hint.textContent = `Net = ${p(codSubtotal)} − ${p(sfRider90)} (SF 90%) − ₱${cashbond} (CB) − ${p(manualBenefits)} (Ben) = ${p(netTotal)}`;
   // Store for saveRemit and recalc access
   const riderEl = document.getElementById('remit-rider');
-  riderEl.dataset.totalSF = totalSF;
+  riderEl.dataset.totalSF = deliveredSF;  // deliveredSF for formula accuracy
   riderEl.dataset.sf10 = sf10;
   riderEl.dataset.sfNetRider = sfNetRider;
   riderEl.dataset.cashbond = cashbond;
@@ -6675,13 +6790,13 @@ function populateRemitParcels() {
 function recalcRemitNet() {
   const riderEl = document.getElementById('remit-rider');
   if(!riderEl || !riderEl.dataset.sfNetRider) return;
-  const sfNetRider = parseFloat(riderEl.dataset.sfNetRider)||0;
+  const sfRider90 = parseFloat(riderEl.dataset.sfNetRider)||0; // stored as sfNetRider for compat
   const cashbond = parseFloat(riderEl.dataset.cashbond)||100;
   const codSubtotal = parseFloat(riderEl.dataset.codSubtotal)||0;
   const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
-  const sf10 = parseFloat(riderEl.dataset.sf10)||0;
-  const netSF = Math.max(0, sfNetRider - cashbond - manualBenefits);
-  const netTotal = Math.max(0, codSubtotal - netSF);
+  // CORRECT: Net to Remit = collected - rider keeps (SF90%) - deductions
+  const netSF = sfRider90; // what rider keeps (displayed as SF rider share)
+  const netTotal = Math.max(0, codSubtotal - sfRider90 - cashbond - manualBenefits);
   riderEl.dataset.netSF = netSF;
   riderEl.dataset.netTotal = netTotal;
   document.getElementById('remit-sf-rider-share').textContent = p(netSF);
@@ -6689,7 +6804,7 @@ function recalcRemitNet() {
   netEl.textContent = p(netTotal);
   netEl.dataset.netEarn = netTotal;
   const hint = document.getElementById('remit-formula-hint');
-  if(hint) hint.textContent = `Net Total = ${p(codSubtotal)} − ${p(netSF)} (Net SF) = ${p(netTotal)}`;
+  if(hint) hint.textContent = `Net = ${p(codSubtotal)} − ${p(sfRider90)} (SF 90%) − ₱${cashbond} (CB) − ${p(manualBenefits)} (Ben) = ${p(netTotal)}`;
 }
 
 function calcRemit() { populateRemitParcels(); }
@@ -6908,8 +7023,8 @@ function renderRemitPage() {
           <th style="color:var(--red);">Cancelled</th>
           <th>Total SF</th><th>−SF 10%</th><th>−Benefits</th>
           <th style="color:var(--blue);">COD Subtotal</th>
-          <th style="color:var(--muted);">Net SF Deduct</th>
-          <th style="color:var(--gold);">Net Total Remit</th>
+          <th style="color:var(--blue);">SF 90% (Rider Keeps)</th>
+          <th style="color:var(--gold);">Net Total to Remit</th>
           <th>Status</th><th>Actions</th>
         </tr></thead>
         <tbody>
@@ -7313,6 +7428,7 @@ function startAutoRefresh(){
         benefits: ()=>renderBenefitsPage?.(),
         riderdash: ()=>renderRiderDash?.(),
         calendar: ()=>renderCalendar?.(),
+        ordermgmt: ()=>renderOrderMgmt?.(),
       };
       try { renderMap[_activePage]?.(); } catch(e){}
       // If rider, always refresh their parcels too
@@ -7320,6 +7436,178 @@ function startAutoRefresh(){
     } catch(e){ console.warn('Auto-refresh error:',e.message); }
   }, 30000); // every 30 seconds
 }
+
+// ============================================================
+// ORDER MANAGEMENT PAGE — LBC & INTERNATIONAL
+// ============================================================
+let omTab = 'lbc';
+
+function setOmTab(tab) {
+  omTab = tab;
+  document.querySelectorAll('#ordermgmt-tabs .tab-btn').forEach((b,i) =>
+    b.classList.toggle('active', ['lbc','intl'][i] === tab));
+  renderOrderMgmt();
+}
+
+function renderOrderMgmt() {
+  const q  = (document.getElementById('om-search')?.value||'').toLowerCase();
+  const df = document.getElementById('om-date')?.value||'';
+  const method = omTab === 'lbc' ? 'LBC' : 'INTERNATIONAL';
+  const icon   = omTab === 'lbc' ? '📦' : '✈️';
+
+  const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
+    if((o.paymentMethod||'COD') !== method) return false;
+    if(df && o.date !== df) return false;
+    if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q)
+       && !(o.contact||'').includes(q) && !(o.trackingNumber||'').includes(q)) return false;
+    return true;
+  });
+
+  // Stats
+  const del  = list.filter(({o})=>o.status==='Delivered');
+  const pend = list.filter(({o})=>['Preparing','Ready to Pick-up'].includes(o.lbcStatus||o.status));
+  const drop = list.filter(({o})=>['Drop off at LBC','Drop off at EMS','Drop off at Courier'].includes(o.lbcStatus||''));
+  const statsEl = document.getElementById('om-stats');
+  if(statsEl) statsEl.innerHTML = `
+    <div class="stat-card gold"><div class="stat-label">Total ${method}</div><div class="stat-value">${list.length}</div></div>
+    <div class="stat-card blue"><div class="stat-label">Preparing / Ready</div><div class="stat-value">${pend.length}</div></div>
+    <div class="stat-card orange"><div class="stat-label">Dropped Off</div><div class="stat-value">${drop.length}</div></div>
+    <div class="stat-card green"><div class="stat-label">Delivered</div><div class="stat-value">${del.length}</div><div class="stat-sub">${p(del.reduce((s,{o})=>s+o.grandTotal,0))}</div></div>`;
+
+  const payColor = s => s==='Fully Paid'?'var(--green)':s==='Partial'?'var(--orange)':'var(--red)';
+  const lbcColor = s => s==='Delivered'?'var(--green)':(['Drop off at LBC','Drop off at EMS'].includes(s))?'var(--blue)':s==='Ready to Pick-up'?'var(--gold)':'var(--muted)';
+  const OM_STATUSES = omTab==='lbc'
+    ? ['Preparing','Ready to Pick-up','Drop off at LBC','Delivered']
+    : ['Preparing','Ready to Pick-up','Drop off at EMS','Delivered'];
+
+  const rows = list.map(({o,i}) => {
+    // Migrate 'Preparing' to 'Ready to Pick-up' for display consistency with Parcel Tracking
+    const lbcSt = (!o.lbcStatus || o.lbcStatus === 'Preparing') ? 'Ready to Pick-up' : o.lbcStatus;
+    const trackNum = o.trackingNumber || '—';
+    return `<tr>
+      <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
+      <td style="font-weight:500;">${o.name}</td>
+      <td style="font-size:11px;">${o.contact||'—'}</td>
+      <td style="font-size:11px;">${o.admin||'—'}</td>
+      <td>${o.date}</td>
+      <td style="font-family:monospace;font-size:11px;color:var(--blue);">${trackNum}</td>
+      <td style="font-size:11px;font-weight:600;color:${payColor(o.paymentStatus||'No Payment')};">${o.paymentStatus||'No Payment'}</td>
+      <td style="font-size:11px;color:var(--muted);">${o.dateOfPayment||'—'}</td>
+      <td style="font-size:11px;color:var(--muted);">${o.dateOfDropoff||'—'}</td>
+      <td><span class="checker-tag ${o.verificationStatus==='Verified'?'verified':'pending'}">${o.verificationStatus||'Not Verified'}</span></td>
+      <td style="font-weight:600;color:${lbcColor(lbcSt)};">${icon} ${lbcSt}</td>
+      <td>
+        <select class="form-control" style="width:165px;font-size:10.5px;padding:3px 5px;" onchange="omUpdateStatus(${i},this.value)">
+          ${OM_STATUSES.map(s=>`<option${lbcSt===s?' selected':''}>${s}</option>`).join('')}
+        </select>
+      </td>
+      <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
+      <td style="display:flex;gap:3px;flex-wrap:wrap;">
+        <button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>
+        <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('om-content').innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">${icon} ${method} Parcels</span>
+        <span style="font-size:11px;color:var(--muted);">${list.length} order(s)</span>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Order #</th><th>Customer</th><th>CP #</th><th>Admin</th><th>Date</th>
+          <th>Tracking #</th><th>💳 Payment</th><th>📅 Date Paid</th><th>📦 Date Drop-off</th><th>✅ Verification</th>
+          <th>📦 Parcel Status</th><th>Update Status</th><th>Total</th><th>Actions</th>
+        </tr></thead>
+        <tbody>${rows || '<tr><td colspan="14" style="text-align:center;color:var(--muted);padding:26px;">No '+method+' orders found</td></tr>'}</tbody>
+      </table></div>
+    </div>`;
+}
+
+function omUpdateStatus(orderIdx, newStatus) {
+  S.orders[orderIdx].lbcStatus = newStatus;
+  // Sync main status field so P&L, Daily Parcels, Dashboard reflect correctly
+  if(newStatus === 'Delivered') {
+    S.orders[orderIdx].status = 'Delivered';
+  } else {
+    // Any non-Delivered lbcStatus means order is still in progress
+    S.orders[orderIdx].status = 'Preparing';
+  }
+  save();
+  toast(`📦 Parcel Status → ${newStatus}${newStatus==='Delivered'?' ✅ Naka-reflect na sa P&L & Daily Parcels':''}`);
+  renderOrderMgmt();
+  if(currentRole==='owner') renderDash();
+}
+
+// ── Tracking Number helpers ──────────────────────────────────
+function onPaymentMethodChange() {
+  const method = document.getElementById('enc-payment-method')?.value || 'COD';
+  const isLbc = method === 'LBC' || method === 'INTERNATIONAL';
+
+  // Tracking number — for LBC & INTERNATIONAL
+  const grp = document.getElementById('enc-tracking-group');
+  if(grp) grp.style.display = isLbc ? '' : 'none';
+  // Update label dynamically based on method
+  const tnLabel = document.querySelector('#enc-tracking-group label');
+  if(tnLabel) tnLabel.firstChild.textContent = method === 'LBC'
+    ? 'LBC Tracking Number '
+    : 'Courier Tracking Number ';
+  if(!isLbc) {
+    const inp = document.getElementById('enc-tracking-number');
+    if(inp) inp.value = '';
+    const err = document.getElementById('enc-tracking-err');
+    if(err) err.textContent = '';
+  }
+
+  // Extra date fields — show for LBC & INTERNATIONAL only
+  const pmtGrp = document.getElementById('enc-date-payment-group');
+  const dofGrp = document.getElementById('enc-date-dropoff-group');
+  if(pmtGrp) pmtGrp.style.display = isLbc ? '' : 'none';
+  if(dofGrp) dofGrp.style.display = isLbc ? '' : 'none';
+
+  // Date of Purchase hint + default value
+  const hint = document.getElementById('enc-date-hint');
+  const dateEl = document.getElementById('enc-date');
+  if(isLbc) {
+    if(hint) hint.textContent = '(auto: today)';
+    if(dateEl && !dateEl.value) dateEl.value = today();
+  } else {
+    if(hint) hint.textContent = '(default: tomorrow — delivery date)';
+    if(dateEl && !dateEl.value) dateEl.value = tomorrow();
+  }
+
+  // Clear extra date fields if switching back to COD
+  if(!isLbc) {
+    const pmtInp = document.getElementById('enc-date-payment'); if(pmtInp) pmtInp.value = '';
+    const dofInp = document.getElementById('enc-date-dropoff'); if(dofInp) dofInp.value = '';
+  }
+
+  autoAssignRider();
+}
+
+function validateTrackingNum(input) {
+  const err = document.getElementById('enc-tracking-err');
+  const v = input.value;
+  const method = document.getElementById('enc-payment-method')?.value || 'LBC';
+  if(method === 'LBC') {
+    // LBC: exactly 12 digits
+    if(v && v.length !== 12) {
+      if(err) err.textContent = `⚠️ LBC tracking: exactly 12 digits (${v.length} entered)`;
+    } else {
+      if(err) err.textContent = '';
+    }
+  } else {
+    // INTERNATIONAL: 10–22 digits (FedEx/DHL/EMS vary)
+    if(v && (v.length < 10 || v.length > 22)) {
+      if(err) err.textContent = `⚠️ Courier tracking: 10–22 digits (${v.length} entered)`;
+    } else {
+      if(err) err.textContent = '';
+    }
+  }
+}
+
 // Show login screen on load (login screen is visible by default)
 // initApp() is called after successful doLogin()
 </script>
