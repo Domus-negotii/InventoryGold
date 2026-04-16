@@ -6594,7 +6594,21 @@ function populateRemitParcels() {
   // Benefits: read from manual input (default 0)
   const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
   // Subtotal = sum of grandTotal (items + SF) from Delivered orders
-  const codSubtotal = delivered.reduce((s,o)=>s+o.grandTotal,0);
+  // Subtotal = actual collected amount per delivered order (net of cancelled items)
+  const codSubtotal = delivered.reduce((s,o)=>{
+    const iS = o.itemStatuses||{}, iCQ = o.itemCancelQty||{};
+    const hasCancels = o.items.some((_,ii)=>iS[ii]==='Cancelled'||(iCQ[ii]||0)>0);
+    if(!hasCancels) return s + o.grandTotal;
+    // Subtract cancelled item amounts
+    let cxAmt = 0;
+    o.items.forEach((it,ii)=>{
+      const tQty = it.grams||it.qty||1;
+      const ppu = it.total/Math.max(1,tQty);
+      if(iS[ii]==='Cancelled') cxAmt += it.total;
+      else if((iCQ[ii]||0)>0) cxAmt += (iCQ[ii])*ppu;
+    });
+    return s + Math.max(0, o.grandTotal - cxAmt);
+  },0);
   // CORRECT FORMULA:
   // Rider collected: codSubtotal (from customers)
   // Rider keeps: sfRider90 (their SF share)
@@ -6647,11 +6661,28 @@ function populateRemitParcels() {
       itemStatuses[ii]==='Cancelled' || (itemCancelQty[ii]||0) > 0
     );
 
+    // Compute total cancelled amount from individual items
+    let totalCancelledAmt = 0;
+    if(!isWholeOrderCancelled && hasAnyCancelledItems) {
+      o.items.forEach((it,ii) => {
+        const isCx = itemStatuses[ii] === 'Cancelled';
+        const cxQty = itemCancelQty[ii] || 0;
+        const tQty = it.grams || it.qty || 1;
+        const ppu = it.total / Math.max(1, tQty);
+        if(isCx) totalCancelledAmt += it.total;
+        else if(cxQty > 0) totalCancelledAmt += cxQty * ppu;
+      });
+    }
+    const netRemitAmt = isWholeOrderCancelled ? 0 : Math.max(0, o.grandTotal - totalCancelledAmt);
+
     const remitAmtDisplay = isWholeOrderCancelled
       ? `<span style="color:var(--red);font-weight:700;">₱0.00</span>
          <div style="font-size:9px;color:var(--muted);text-decoration:line-through;">${p(o.grandTotal)} (orig)</div>`
-      : `<span style="color:var(--green);font-weight:700;">${p(o.grandTotal)}</span>
-         ${hasAnyCancelledItems ? `<div style="font-size:9px;color:var(--orange);">⚠️ May cancelled items</div>` : ''}`;
+      : hasAnyCancelledItems
+        ? `<span style="color:var(--green);font-weight:700;">${p(netRemitAmt)}</span>
+           <div style="font-size:9px;color:var(--orange);">Orig: <span style="text-decoration:line-through;">${p(o.grandTotal)}</span></div>
+           <div style="font-size:9px;color:var(--red);">❌ Cancel: -${p(totalCancelledAmt)}</div>`
+        : `<span style="color:var(--green);font-weight:700;">${p(o.grandTotal)}</span>`;
 
     const rowBg = isWholeOrderCancelled
       ? 'background:rgba(224,85,85,0.06);'
