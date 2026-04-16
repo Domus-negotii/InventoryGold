@@ -813,7 +813,7 @@ function _showRulesHint() {
       <div class="nav-label">Orders</div>
       <div class="nav-item" onclick="gotoPage('orders')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>Admin Encode</div>
       <div class="nav-item" onclick="gotoPage('checker')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Checker Verify</div>
-      <div class="nav-item" onclick="gotoPage('tracking')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>Parcel Tracking</div>
+      <div class="nav-item" onclick="gotoPage('tracking')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>COD Tracking</div>
       <div class="nav-item" onclick="gotoPage('ordermgmt')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><path d="M9 3h6v4H9z"/><path d="M9 12h6M9 16h4"/></svg>Order Management</div>
     </div>
     <div class="nav-section">
@@ -989,8 +989,8 @@ function _showRulesHint() {
   <div class="finance-lock unlocked" id="lock-tracking">
     <div class="lock-box">
       <div class="lock-icon">🔐</div>
-      <div class="lock-title">Parcel Tracking Access</div>
-      <div class="lock-sub">Enter the Parcel Tracking password to continue.</div>
+      <div class="lock-title">COD Tracking Access</div>
+      <div class="lock-sub">Enter the COD Tracking password to continue.</div>
       <input type="password" class="form-control" id="lock-pw-tracking" placeholder="Enter password" style="text-align:center;letter-spacing:3px;margin-bottom:8px;" onkeydown="if(event.key==='Enter')unlockPage('tracking')">
       <div class="lock-err" id="lock-err-tracking"></div>
       <div style="display:flex;gap:8px;justify-content:center;margin-top:10px;">
@@ -1003,8 +1003,6 @@ function _showRulesHint() {
     <!-- Tracking sub-tabs -->
     <div class="section-tabs no-print" style="margin-bottom:13px;" id="tracking-tabs">
       <button class="tab-btn active" onclick="setTrackingTab('cod')">🏍️ COD</button>
-      <button class="tab-btn" onclick="setTrackingTab('lbc')">📦 LBC</button>
-      <button class="tab-btn" onclick="setTrackingTab('intl')">✈️ INTERNATIONAL</button>
       <button class="tab-btn" onclick="setTrackingTab('update')" id="tracking-tab-update-btn">🔔 For Update</button>
     </div>
 
@@ -1025,48 +1023,6 @@ function _showRulesHint() {
           <th>Order #</th><th>Customer</th><th>Address</th><th>Admin</th><th>Rider</th>
           <th>Date</th><th>Total</th><th>Status</th><th>Update Status</th><th>Rider Remarks</th>
         </tr></thead><tbody id="tracking-tbody"></tbody></table></div>
-      </div>
-    </div>
-
-    <!-- LBC Tab -->
-    <div id="tracking-tab-lbc" style="display:none;">
-      <div class="card">
-        <div class="card-header"><span class="card-title">📦 LBC Parcels</span>
-          <div style="display:flex;gap:7px;" class="no-print">
-            <input class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" placeholder="Search..." id="track-lbc-search" oninput="renderTrackingLbc()">
-            <select class="form-control" style="width:175px;font-size:11px;padding:4px 8px;" id="track-lbc-filter" onchange="renderTrackingLbc()">
-              <option value="">All Parcel Status</option>
-              <option>Ready to Pick-up</option><option>Drop off at LBC</option><option>Delivered</option>
-            </select>
-            <input type="date" class="form-control" style="width:150px;font-size:11px;" id="track-lbc-date" oninput="renderTrackingLbc()" title="Filter by date">
-          </div>
-        </div>
-        <div class="table-wrap"><table><thead><tr>
-          <th>Order #</th><th>Customer</th><th>CP #</th><th>Admin</th><th>Date</th>
-          <th>Total</th><th>💳 Payment Status</th><th>✅ Verif. Status</th>
-          <th>📦 Parcel Status</th><th>Update Parcel Status</th>
-        </tr></thead><tbody id="tracking-lbc-tbody"></tbody></table></div>
-      </div>
-    </div>
-
-    <!-- INTERNATIONAL Tab -->
-    <div id="tracking-tab-intl" style="display:none;">
-      <div class="card">
-        <div class="card-header"><span class="card-title">✈️ INTERNATIONAL Parcels</span>
-          <div style="display:flex;gap:7px;" class="no-print">
-            <input class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" placeholder="Search..." id="track-intl-search" oninput="renderTrackingIntl()">
-            <select class="form-control" style="width:175px;font-size:11px;padding:4px 8px;" id="track-intl-filter" onchange="renderTrackingIntl()">
-              <option value="">All Parcel Status</option>
-              <option>Ready to Pick-up</option><option>Drop off at EMS</option><option>Delivered</option>
-            </select>
-            <input type="date" class="form-control" style="width:150px;font-size:11px;" id="track-intl-date" oninput="renderTrackingIntl()" title="Filter by date">
-          </div>
-        </div>
-        <div class="table-wrap"><table><thead><tr>
-          <th>Order #</th><th>Customer</th><th>CP #</th><th>Admin</th><th>Date</th>
-          <th>Total</th><th>💳 Payment Status</th><th>✅ Verif. Status</th>
-          <th>✈️ Parcel Status</th><th>Update Parcel Status</th>
-        </tr></thead><tbody id="tracking-intl-tbody"></tbody></table></div>
       </div>
     </div>
 
@@ -1974,6 +1930,7 @@ function _showRulesHint() {
       <div class="info-row"><span style="color:var(--muted);">💰 Subtotal (Delivered + SF)</span><span id="remit-subtotal" style="color:var(--blue);font-weight:600;">₱0.00</span></div>
       <div class="info-row"><span style="color:var(--red);">Less: SF 10% (Company)</span><span id="remit-sf-10" style="color:var(--red);">-₱0.00</span></div>
       <div class="info-row"><span style="color:var(--red);">Less: Cashbond (₱100)</span><span id="remit-cashbond-display" style="color:var(--red);">-₱100.00</span></div>
+      <div class="info-row"><span style="color:var(--red);">Less: Parcel Fee (₱10/parcel)</span><span id="remit-parcel-fee-display" style="color:var(--red);">-₱0.00</span></div>
       <div class="info-row" style="align-items:center;">
         <span style="color:var(--red);">Less: Benefits</span>
         <div style="display:flex;align-items:center;gap:6px;">
@@ -1985,7 +1942,7 @@ function _showRulesHint() {
           <span id="remit-benefits-cut" style="display:none;">-₱0.00</span>
         </div>
       </div>
-      <div class="info-row" style="border-bottom:1px solid var(--navy-border);padding-bottom:8px;"><span style="color:var(--muted);">= Rider SF Share (90% keeps)</span><span id="remit-sf-rider-share" style="color:var(--blue);font-weight:700;">₱0.00</span></div>
+      <div class="info-row" style="border-bottom:1px solid var(--navy-border);padding-bottom:8px;"><span style="color:var(--gold);font-weight:600;">= Rider's Net SF</span><span id="remit-sf-rider-share" style="color:var(--gold);font-weight:700;">₱0.00</span></div>
       <div class="info-row" style="border-bottom:none;font-size:14px;background:rgba(46,204,138,0.07);padding:8px;border-radius:7px;margin-top:6px;">
         <strong>🏦 Net Total to Remit</strong>
         <strong id="remit-net-earn" style="color:var(--green);font-size:16px;">₱0.00</strong>
@@ -2065,7 +2022,7 @@ function _showRulesHint() {
     <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Set independent passwords for each locked tab. Leave blank to use the main owner password.</p>
     <div style="display:flex;flex-direction:column;gap:10px;">
       <div class="form-group"><label>Checker Verify Password</label><input type="password" class="form-control" id="tab-pw-checker" placeholder="Leave blank = use owner password"></div>
-      <div class="form-group"><label>Parcel Tracking Password</label><input type="password" class="form-control" id="tab-pw-tracking" placeholder="Leave blank = use owner password"></div>
+      <div class="form-group"><label>COD Tracking Password</label><input type="password" class="form-control" id="tab-pw-tracking" placeholder="Leave blank = use owner password"></div>
       <div class="form-group"><label>Riders by Location Password</label><input type="password" class="form-control" id="tab-pw-riders" placeholder="Leave blank = use owner password"></div>
       <div class="form-group"><label>Riders Remit Password</label><input type="password" class="form-control" id="tab-pw-ridersremit" placeholder="Leave blank = use owner password"></div>
       <div class="form-group"><label>Cashbond Password</label><input type="password" class="form-control" id="tab-pw-cashbond" placeholder="Leave blank = use owner password"></div>
@@ -2244,7 +2201,7 @@ function closeModal(id){document.getElementById(id).classList.remove('open');}
 })();
 
 // ============ NAVIGATION ============
-const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales Calendar',orders:'Admin Encode',checker:'Checker Verify',tracking:'Parcel Tracking',ordermgmt:'Order Management',riders:'Riders by Location',dailyparcels:'Daily Parcels',sorting:'Parcel Sorting',returns:'Return / Cancel',dailysales:'Daily Sales Record',payroll:'Payroll',expenses:'Expenses',pnl:'P&L Report',inventory:'Inventory',adminsheets:'Per-Admin Order Sheets',settings:'Settings',ridersremit:'Riders Remit',cashbond:'Cashbond Tracker',benefits:'Benefits (SSS / PhilHealth / Pag-IBIG)'};
+const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales Calendar',orders:'Admin Encode',checker:'Checker Verify',tracking:'COD Tracking',ordermgmt:'Order Management',riders:'Riders by Location',dailyparcels:'Daily Parcels',sorting:'Parcel Sorting',returns:'Return / Cancel',dailysales:'Daily Sales Record',payroll:'Payroll',expenses:'Expenses',pnl:'P&L Report',inventory:'Inventory',adminsheets:'Per-Admin Order Sheets',settings:'Settings',ridersremit:'Riders Remit',cashbond:'Cashbond Tracker',benefits:'Benefits (SSS / PhilHealth / Pag-IBIG)'};
 let _activePage = 'dashboard';
 function gotoPage(name){
   _activePage = name;
@@ -2908,7 +2865,7 @@ function renderChecker(){
                 ?`<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`
                 :`<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`}
               <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
-              <button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>
+              ${!isLocked?`<button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>`:''}
             </td>
           </tr>`;
         });
@@ -3259,7 +3216,8 @@ function updateStatus(i,v){
 }
 
 function renderForUpdateTab() {
-  const list = S.orders.map((o,i)=>({...o,idx:i})).filter(o=>o.status==='Update');
+  // COD Tracking page — only show COD orders for update
+  const list = S.orders.map((o,i)=>({...o,idx:i})).filter(o=>o.status==='Update' && (o.paymentMethod||'COD')==='COD');
   const el = document.getElementById('for-update-list');
   if(!el) return;
   el.innerHTML = list.length ? `<div class="table-wrap"><table><thead><tr>
@@ -3645,8 +3603,9 @@ function openReturnLogModal(orderNum='', itemIdx=null) {
         document.getElementById('ret-item-desc').value = `${it.code||''} — ${it.desc||''}`;
         document.getElementById('ret-qty-grams').value = retQty;
         document.getElementById('ret-unit').value = isGrams ? 'grams' : 'pcs';
-        // Default item value: use actual total if set, otherwise fallback to items.length × 5000
-        const defaultValue = (it.total && it.total > 0) ? it.total : (o.items.length * 5000);
+        // Default item value: always ₱5,000 per item in the order (items.length × ₱5,000)
+        // e.g. 1 item = ₱5,000 default; 3 items = ₱15,000 default
+        const defaultValue = o.items.length * 5000;
         document.getElementById('ret-value').value = defaultValue;
         // Auto-fill rider and cancel reason from order
         const itemRemark = (o.itemRemarks||{})[itemIdx] || '';
@@ -6282,14 +6241,10 @@ function pf(n) {
 // ============================================================
 function setTrackingTab(tab) {
   document.querySelectorAll('#tracking-tabs .tab-btn').forEach((b,i)=>
-    b.classList.toggle('active',['cod','lbc','intl','update'][i]===tab));
-  document.getElementById('tracking-tab-cod').style.display  = tab==='cod'    ? '' : 'none';
-  document.getElementById('tracking-tab-lbc').style.display  = tab==='lbc'    ? '' : 'none';
-  document.getElementById('tracking-tab-intl').style.display = tab==='intl'   ? '' : 'none';
-  document.getElementById('tracking-tab-update').style.display = tab==='update'? '' : 'none';
-  if(tab==='cod')    renderTracking();
-  else if(tab==='lbc')  renderTrackingLbc();
-  else if(tab==='intl') renderTrackingIntl();
+    b.classList.toggle('active',['cod','update'][i]===tab));
+  document.getElementById('tracking-tab-cod').style.display    = tab==='cod'    ? '' : 'none';
+  document.getElementById('tracking-tab-update').style.display = tab==='update' ? '' : 'none';
+  if(tab==='cod') renderTracking();
   else renderForUpdateTab();
 }
 
@@ -6297,9 +6252,9 @@ function renderTracking() {
   const TRACK_STATUSES = ['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'];
   const COD_UPDATE_STATUSES = ['Preparing','Ready for Pick-up'];
   const colors = {'Preparing':'orange','Ready':'blue','Out for Delivery':'gold','Delivered':'green','Cancelled':'red','Update':'purple'};
-  // Stats — all methods combined
+  // Stats — COD only (LBC/INTL tracked in Order Management)
   document.getElementById('tracking-stats').innerHTML = TRACK_STATUSES.map(s =>
-    `<div class="stat-card ${colors[s]||'gold'}"><div class="stat-label">${s}</div><div class="stat-value">${S.orders.filter(o=>o.status===s).length}</div></div>`
+    `<div class="stat-card ${colors[s]||'gold'}"><div class="stat-label">${s}</div><div class="stat-value">${S.orders.filter(o=>o.status===s&&(o.paymentMethod||'COD')==='COD').length}</div></div>`
   ).join('');
   const q = (document.getElementById('track-search')?.value||'').toLowerCase();
   const filt = document.getElementById('track-filter')?.value||'';
@@ -6337,82 +6292,7 @@ function renderTracking() {
   refreshUpdateBadge();
 }
 
-const LBC_PARCEL_STATUSES = ['Ready to Pick-up','Drop off at LBC','Delivered'];
-const INTL_PARCEL_STATUSES = ['Ready to Pick-up','Drop off at EMS','Delivered'];
 
-function renderTrackingLbc() {
-  const q = (document.getElementById('track-lbc-search')?.value||'').toLowerCase();
-  const filt = document.getElementById('track-lbc-filter')?.value||'';
-  const df = document.getElementById('track-lbc-date')?.value||'';
-  const payColor = s => s==='Fully Paid'?'var(--green)':s==='Partial'?'var(--orange)':'var(--red)';
-  const lbcStatusColor = s => s==='Delivered'?'var(--green)':s==='Drop off at LBC'?'var(--blue)':s==='Ready to Pick-up'?'var(--gold)':'var(--muted)';
-  document.getElementById('tracking-lbc-tbody').innerHTML = S.orders.map((o,i) => {
-    if((o.paymentMethod||'COD') !== 'LBC') return '';
-    // Migrate old 'Preparing' to 'Ready to Pick-up' for display
-    const lbcSt = (!o.lbcStatus || o.lbcStatus === 'Preparing') ? 'Ready to Pick-up' : o.lbcStatus;
-    if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q) && !(o.contact||'').includes(q)) return '';
-    if(filt && lbcSt !== filt) return '';
-    if(df && o.date !== df) return '';
-    return `<tr>
-      <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
-      <td style="font-weight:500;">${o.name}</td>
-      <td style="font-size:11px;">${o.contact||'—'}</td>
-      <td>${o.date}</td>
-      <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
-      <td style="font-size:11px;font-weight:600;color:${payColor(o.paymentStatus||'No Payment')};">
-        ${o.paymentStatus||'No Payment'}
-        ${o.paymentNotes?`<div style="font-size:9.5px;color:var(--muted);">${o.paymentNotes}</div>`:''}
-      </td>
-      <td>
-        <span class="checker-tag ${o.verificationStatus==='Verified'?'verified':'pending'}">${o.verificationStatus||'Not Verified'}</span>
-      </td>
-      <td style="font-size:11px;font-weight:600;color:${lbcStatusColor(lbcSt)};">📦 ${lbcSt}</td>
-      <td>
-        <select class="form-control" style="width:165px;font-size:10.5px;padding:3px 6px;" onchange="updateLbcStatus(${i},this.value)">
-          ${LBC_PARCEL_STATUSES.map(s=>`<option${lbcSt===s?' selected':''}>${s}</option>`).join('')}
-        </select>
-      </td>
-    </tr>`;
-  }).join('') || '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No LBC parcels</td></tr>';
-}
-
-function renderTrackingIntl() {
-  const q = (document.getElementById('track-intl-search')?.value||'').toLowerCase();
-  const filt = document.getElementById('track-intl-filter')?.value||'';
-  const df = document.getElementById('track-intl-date')?.value||'';
-  const payColor = s => s==='Fully Paid'?'var(--green)':s==='Partial'?'var(--orange)':'var(--red)';
-  const stColor = s => s==='Delivered'?'var(--green)':s==='Drop off at EMS'?'var(--blue)':s==='Ready to Pick-up'?'var(--gold)':'var(--muted)';
-  document.getElementById('tracking-intl-tbody').innerHTML = S.orders.map((o,i) => {
-    if((o.paymentMethod||'COD') !== 'INTERNATIONAL') return '';
-    // Migrate old values to new naming
-    if(o.lbcStatus === 'Drop off at LBC' || o.lbcStatus === 'Drop off at Courier') o.lbcStatus = 'Drop off at EMS';
-    // Migrate old 'Preparing' to 'Ready to Pick-up' for display
-    const lbcSt = (!o.lbcStatus || o.lbcStatus === 'Preparing') ? 'Ready to Pick-up' : o.lbcStatus;
-    if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q) && !(o.contact||'').includes(q)) return '';
-    if(filt && lbcSt !== filt) return '';
-    if(df && o.date !== df) return '';
-    return `<tr>
-      <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
-      <td style="font-weight:500;">${o.name}</td>
-      <td style="font-size:11px;">${o.contact||'—'}</td>
-      <td>${o.date}</td>
-      <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
-      <td style="font-size:11px;font-weight:600;color:${payColor(o.paymentStatus||'No Payment')};">
-        ${o.paymentStatus||'No Payment'}
-        ${o.paymentNotes?`<div style="font-size:9.5px;color:var(--muted);">${o.paymentNotes}</div>`:''}
-      </td>
-      <td>
-        <span class="checker-tag ${o.verificationStatus==='Verified'?'verified':'pending'}">${o.verificationStatus||'Not Verified'}</span>
-      </td>
-      <td style="font-size:11px;font-weight:600;color:${stColor(lbcSt)};">✈️ ${lbcSt}</td>
-      <td>
-        <select class="form-control" style="width:175px;font-size:10.5px;padding:3px 6px;" onchange="updateLbcStatus(${i},this.value)">
-          ${INTL_PARCEL_STATUSES.map(s=>`<option${lbcSt===s?' selected':''}>${s}</option>`).join('')}
-        </select>
-      </td>
-    </tr>`;
-  }).join('') || '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No INTERNATIONAL parcels</td></tr>';
-}
 
 function updateLbcStatus(orderIdx, newStatus) {
   S.orders[orderIdx].lbcStatus = newStatus;
@@ -6425,17 +6305,14 @@ function updateLbcStatus(orderIdx, newStatus) {
   }
   save();
   toast(`📦 Parcel Status → ${newStatus}${newStatus==='Delivered'?' ✅ Naka-reflect na sa P&L & Daily Parcels':''}`);
-  // Re-render whichever tab is active
-  const lbc = document.getElementById('tracking-tab-lbc');
-  const intl = document.getElementById('tracking-tab-intl');
-  if(lbc && lbc.style.display !== 'none') renderTrackingLbc();
-  else if(intl && intl.style.display !== 'none') renderTrackingIntl();
+  // LBC/INTL now managed via Order Management page
   if(currentRole==='owner') renderDash();
 }
 
 // Highlight for-update count badge on tab btn
 function refreshUpdateBadge() {
-  const count = S.orders.filter(o=>o.status==='Update').length;
+  // Only count COD 'For Update' orders (LBC/INTL managed in Order Management)
+  const count = S.orders.filter(o=>o.status==='Update' && (o.paymentMethod||'COD')==='COD').length;
   const btn = document.getElementById('tracking-tab-update-btn');
   if(btn) btn.textContent = count > 0 ? `🔔 For Update (${count})` : '🔔 For Update';
 }
@@ -6651,6 +6528,8 @@ function populateRemitParcels() {
   const sf10 = deliveredSF * 0.10;           // 10% of delivered SF → company
   const sfRider90 = deliveredSF * 0.90;      // 90% of delivered SF → rider keeps
   const cashbond = 100;
+  // ₱10 per delivered parcel fee
+  const parcelFee = delivered.length * 10;
   // Benefits: read from manual input (default 0)
   const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
   // Subtotal = sum of grandTotal (items + SF) from Delivered orders
@@ -6658,11 +6537,13 @@ function populateRemitParcels() {
   // CORRECT FORMULA:
   // Rider collected: codSubtotal (from customers)
   // Rider keeps: sfRider90 (their SF share)
-  // Rider pays deductions: cashbond + manualBenefits
-  // Net to Remit = codSubtotal - sfRider90 - cashbond - manualBenefits
+  // Rider pays: cashbond + parcelFee (₱10/parcel) + manualBenefits
+  // Net to Remit = codSubtotal - sfRider90 - cashbond - parcelFee - manualBenefits
   const sfNetRider = sfRider90; // kept for dataset compatibility
-  const netSF = sfRider90; // rider's SF share (what they keep, shown as label)
-  const netTotal = Math.max(0, codSubtotal - sfRider90 - cashbond - manualBenefits);
+  // Rider's Net SF = All SF minus ALL deductions (what rider actually nets from SF)
+  const netSF = Math.max(0, sfRider90 - cashbond - parcelFee - manualBenefits);
+  // Net Total to Remit = COD collected - sfRider90 - cashbond - parcelFee - benefits
+  const netTotal = Math.max(0, codSubtotal - sfRider90 - cashbond - parcelFee - manualBenefits);
 
   // Build parcel rows — shows whole-order cancels AND per-item partial cancels
   const rows = myOrders.map((o,pi)=>{
@@ -6763,6 +6644,7 @@ function populateRemitParcels() {
   document.getElementById('remit-gross-sf').textContent = p(deliveredSF);
   document.getElementById('remit-subtotal').textContent = p(codSubtotal);
   document.getElementById('remit-sf-10').textContent = '-'+p(sf10);
+  const pfEl = document.getElementById('remit-parcel-fee-display'); if(pfEl) pfEl.textContent = '-'+p(parcelFee);
   document.getElementById('remit-sf-rider-share').textContent = p(netSF);
   const netEl = document.getElementById('remit-net-earn');
   netEl.textContent = p(netTotal);
@@ -6771,13 +6653,14 @@ function populateRemitParcels() {
   const dcEl = document.getElementById('remit-delivered-count'); if(dcEl) dcEl.value = delivered.length;
   const cbEl = document.getElementById('remit-cashbond-cut'); if(cbEl) cbEl.value = 100;
   const hint = document.getElementById('remit-formula-hint');
-  if(hint) hint.textContent = `Net = ${p(codSubtotal)} − ${p(sfRider90)} (SF 90%) − ₱${cashbond} (CB) − ${p(manualBenefits)} (Ben) = ${p(netTotal)}`;
+  if(hint) hint.textContent = `Net = ${p(codSubtotal)} − ${p(sfRider90)} (SF90%) − ₱${cashbond} (CB) − ₱${parcelFee} (₱10×${delivered.length} parcels) − ${p(manualBenefits)} (Ben) = ${p(netTotal)}`;
   // Store for saveRemit and recalc access
   const riderEl = document.getElementById('remit-rider');
   riderEl.dataset.totalSF = deliveredSF;  // deliveredSF for formula accuracy
   riderEl.dataset.sf10 = sf10;
   riderEl.dataset.sfNetRider = sfNetRider;
   riderEl.dataset.cashbond = cashbond;
+  riderEl.dataset.parcelFee = parcelFee;
   riderEl.dataset.codSubtotal = codSubtotal;
   riderEl.dataset.netSF = netSF;
   riderEl.dataset.netTotal = netTotal;
@@ -6792,11 +6675,14 @@ function recalcRemitNet() {
   if(!riderEl || !riderEl.dataset.sfNetRider) return;
   const sfRider90 = parseFloat(riderEl.dataset.sfNetRider)||0; // stored as sfNetRider for compat
   const cashbond = parseFloat(riderEl.dataset.cashbond)||100;
+  const parcelFee = parseFloat(riderEl.dataset.parcelFee)||0;
   const codSubtotal = parseFloat(riderEl.dataset.codSubtotal)||0;
+  const deliveredCount = parseInt(riderEl.dataset.deliveredCount)||0;
   const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
-  // CORRECT: Net to Remit = collected - rider keeps (SF90%) - deductions
-  const netSF = sfRider90; // what rider keeps (displayed as SF rider share)
-  const netTotal = Math.max(0, codSubtotal - sfRider90 - cashbond - manualBenefits);
+  // Rider's Net SF = SF90% minus all deductions (net SF the rider keeps)
+  const netSF = Math.max(0, sfRider90 - cashbond - parcelFee - manualBenefits);
+  // Net Total to Remit = COD collected minus SF rider share minus all deductions
+  const netTotal = Math.max(0, codSubtotal - sfRider90 - cashbond - parcelFee - manualBenefits);
   riderEl.dataset.netSF = netSF;
   riderEl.dataset.netTotal = netTotal;
   document.getElementById('remit-sf-rider-share').textContent = p(netSF);
@@ -6804,7 +6690,7 @@ function recalcRemitNet() {
   netEl.textContent = p(netTotal);
   netEl.dataset.netEarn = netTotal;
   const hint = document.getElementById('remit-formula-hint');
-  if(hint) hint.textContent = `Net = ${p(codSubtotal)} − ${p(sfRider90)} (SF 90%) − ₱${cashbond} (CB) − ${p(manualBenefits)} (Ben) = ${p(netTotal)}`;
+  if(hint) hint.textContent = `Net = ${p(codSubtotal)} − ${p(sfRider90)} (SF90%) − ₱${cashbond} (CB) − ₱${parcelFee} (₱10×${deliveredCount}) − ${p(manualBenefits)} (Ben) = ${p(netTotal)}`;
 }
 
 function calcRemit() { populateRemitParcels(); }
@@ -6822,6 +6708,7 @@ function saveRemit() {
   const sf10 = parseFloat(riderEl.dataset.sf10)||0;
   const sfNetRider = parseFloat(riderEl.dataset.sfNetRider)||0;
   const cashbond = parseFloat(riderEl.dataset.cashbond)||100;
+  const parcelFee = parseFloat(riderEl.dataset.parcelFee)||0;
   const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
   const codSubtotal = parseFloat(riderEl.dataset.codSubtotal)||0;
   const netSF = parseFloat(riderEl.dataset.netSF)||0;
@@ -6836,6 +6723,7 @@ function saveRemit() {
     remitStatus,
     parcelCount, totalSF, sf10, sfNetRider,
     cashbondDeduct: cashbond,
+    parcelFeeDeduct: parcelFee,
     manualBenefits,
     totalBenefits: manualBenefits, // for backwards compat display
     codSubtotal, netSF, netTotal,
@@ -7023,7 +6911,7 @@ function renderRemitPage() {
           <th style="color:var(--red);">Cancelled</th>
           <th>Total SF</th><th>−SF 10%</th><th>−Benefits</th>
           <th style="color:var(--blue);">COD Subtotal</th>
-          <th style="color:var(--blue);">SF 90% (Rider Keeps)</th>
+          <th style="color:var(--gold);">Rider's Net SF</th>
           <th style="color:var(--gold);">Net Total to Remit</th>
           <th>Status</th><th>Actions</th>
         </tr></thead>
@@ -7332,8 +7220,6 @@ async function initApp(){
   setVal('daily-date', today());
   setVal('checker-date', today());
   setVal('track-date', today());
-  setVal('track-lbc-date', today());
-  setVal('track-intl-date', today());
   setVal('sort-date', today());
   setVal('ret-orders-date', today());
   setVal('ret-update-date', today());
@@ -7497,9 +7383,14 @@ function renderOrderMgmt() {
       <td><span class="checker-tag ${o.verificationStatus==='Verified'?'verified':'pending'}">${o.verificationStatus||'Not Verified'}</span></td>
       <td style="font-weight:600;color:${lbcColor(lbcSt)};">${icon} ${lbcSt}</td>
       <td>
-        <select class="form-control" style="width:165px;font-size:10.5px;padding:3px 5px;" onchange="omUpdateStatus(${i},this.value)">
-          ${OM_STATUSES.map(s=>`<option${lbcSt===s?' selected':''}>${s}</option>`).join('')}
-        </select>
+        ${o.verificationStatus === 'Verified'
+          ? `<select class="form-control" style="width:165px;font-size:10.5px;padding:3px 5px;" onchange="omUpdateStatus(${i},this.value)">
+              ${OM_STATUSES.map(s=>`<option${lbcSt===s?' selected':''}>${s}</option>`).join('')}
+             </select>`
+          : `<span style="font-size:10px;color:var(--orange);padding:3px 7px;background:rgba(224,138,48,0.1);border-radius:5px;display:inline-block;">
+               🔒 Not Verified Yet
+             </span>`
+        }
       </td>
       <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
       <td style="display:flex;gap:3px;flex-wrap:wrap;">
@@ -7527,6 +7418,12 @@ function renderOrderMgmt() {
 }
 
 function omUpdateStatus(orderIdx, newStatus) {
+  // Guard: only allow if order is verified
+  if((S.orders[orderIdx]?.verificationStatus||'Not Verified') !== 'Verified') {
+    toast('⚠️ Hindi pa na-verify ang payment. I-verify muna sa Checker Verify.');
+    renderOrderMgmt();
+    return;
+  }
   S.orders[orderIdx].lbcStatus = newStatus;
   // Sync main status field so P&L, Daily Parcels, Dashboard reflect correctly
   if(newStatus === 'Delivered') {
