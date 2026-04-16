@@ -3292,7 +3292,11 @@ let curLocation='ALL';
 function renderLocTabs(){
   const tabsEl=document.getElementById('loc-tabs');
   tabsEl.innerHTML=`<button class="loc-tab ${curLocation==='ALL'?'active':''}" onclick="setLocTab('ALL')">All Riders</button>`
-    +S.locations.map(l=>`<button class="loc-tab ${curLocation===l?'active':''}" onclick="setLocTab('${l.replace(/'/g,"\\'")}')">📍 ${l}</button>`).join('');
+    +S.locations.map((l,li)=>`
+      <span style="display:inline-flex;align-items:center;gap:2px;">
+        <button class="loc-tab ${curLocation===l?'active':''}" onclick="setLocTab('${l.replace(/'/g,"\\'")}')">📍 ${l}</button>
+        <button onclick="delLocation(${li})" title="Delete location" style="background:rgba(224,85,85,0.15);border:1px solid rgba(224,85,85,0.4);border-radius:20px;color:var(--red);cursor:pointer;font-size:10px;padding:2px 6px;line-height:1;font-family:var(--fb);">✕</button>
+      </span>`).join('');
 }
 function setLocTab(loc){curLocation=loc;renderRiders();}
 function addLocation(){
@@ -3301,6 +3305,21 @@ function addLocation(){
   if(S.locations.includes(name)){toast('Location already exists');return;}
   S.locations.push(name);save();closeModal('modal-add-location');document.getElementById('new-location-name').value='';
   toast('📍 Location added!');renderRiders();
+}
+function delLocation(idx){
+  const loc = S.locations[idx];
+  if(!loc) return;
+  // Check if any riders are assigned to this location
+  const ridersHere = S.riders.filter(r=>r.location===loc);
+  if(ridersHere.length > 0){
+    toast(`⚠️ Hindi mabura — may ${ridersHere.length} rider(s) pa sa "${loc}". I-reassign muna ang mga rider.`);
+    return;
+  }
+  _confirmDel(`Delete location "${loc}"?`, ()=>{
+    S.locations.splice(idx, 1);
+    if(curLocation === loc) curLocation = 'ALL';
+    save(); renderRiders(); toast('🗑️ Location deleted');
+  });
 }
 // renderRiders() — replaced above with password + 10% columns
 
@@ -5363,7 +5382,7 @@ function applyRoleUI(){
     rider:    ['riderdash'],
     remitter: ['ridersremit','cashbond','benefits','sorting','returns'],
     sorter:   ['sorting','tracking','ordermgmt'],
-    checker:  ['checker'],
+    checker:  ['checker','sorting'],
   };
   const allowed = rolePages[currentRole] || null;
   document.querySelectorAll('.nav-item').forEach(el=>{
@@ -5762,12 +5781,15 @@ function renderRiderParcels() {
         <td style="font-size:10.5px;">${valDisplay}</td>
         <td colspan="2" style="font-size:10px;">
           <div style="display:flex;flex-direction:column;gap:3px;">
-            <select class="form-control" style="width:130px;font-size:10px;padding:2px 5px;background:var(--navy);${isCancelledItem?'border-color:var(--red);':''}"
-              onchange="riderItemStatus(${o.idx},${ii},this.value)">
-              <option${itemSt==='Pending'?' selected':''}>Pending</option>
-              <option${itemSt==='Delivered'?' selected':''}>Delivered</option>
-              <option${itemSt==='Cancelled'?' selected':''}>Cancelled (All)</option>
-            </select>
+            ${o.status === 'Preparing'
+              ? `<span style="font-size:9.5px;color:var(--orange);padding:2px 6px;background:rgba(224,138,48,0.1);border-radius:4px;">⏳ Preparing</span>`
+              : `<select class="form-control" style="width:130px;font-size:10px;padding:2px 5px;background:var(--navy);${isCancelledItem?'border-color:var(--red);':''}"
+                onchange="riderItemStatus(${o.idx},${ii},this.value)">
+                <option${itemSt==='Pending'?' selected':''}>Pending</option>
+                <option${itemSt==='Delivered'?' selected':''}>Delivered</option>
+                <option${itemSt==='Cancelled'?' selected':''}>Cancelled (All)</option>
+              </select>`
+            }
             ${!isCancelledItem && totalQty > 1 ? `
             <div style="display:flex;align-items:center;gap:3px;margin-top:2px;">
               <span style="font-size:9px;color:var(--muted);">Cancel qty:</span>
@@ -5804,9 +5826,12 @@ function renderRiderParcels() {
       </td>
       <td><span class="status ${sclass(o.status)}">${o.status}</span></td>
       <td>
-        <select class="form-control" style="width:145px;font-size:10.5px;padding:3px 6px;" onchange="riderUpdateStatus(${o.idx}, this.value)">
-          ${RIDER_STATUSES.map(s=>{const stored=s==='For Update'?'Update':s==='Ready for Pick-up'?'Ready':s;return `<option value="${s}"${o.status===stored?' selected':''}>${s}</option>`;}).join('')}
-        </select>
+        ${o.status === 'Preparing'
+          ? `<span style="font-size:10px;color:var(--orange);padding:3px 8px;background:rgba(224,138,48,0.1);border-radius:5px;display:inline-block;">⏳ Preparing</span>`
+          : `<select class="form-control" style="width:145px;font-size:10.5px;padding:3px 6px;" onchange="riderUpdateStatus(${o.idx}, this.value)">
+              ${RIDER_STATUSES.map(s=>{const stored=s==='For Update'?'Update':s==='Ready for Pick-up'?'Ready':s;return `<option value="${s}"${o.status===stored?' selected':''}>${s}</option>`;}).join('')}
+             </select>`
+        }
       </td>
       <td>
         <input class="form-control" style="width:140px;font-size:10.5px;padding:3px 6px;"
@@ -5853,6 +5878,12 @@ function renderRiderParcels() {
 }
 
 function riderUpdateStatus(orderIdx, newStatus) {
+  // Guard: only allow if parcel is Ready (not Preparing)
+  if(S.orders[orderIdx]?.status === 'Preparing') {
+    toast('⏳ Hindi pa Ready ang parcel. Hintayin maging "Ready for Pick-up" sa COD Tracking.');
+    renderRiderParcels();
+    return;
+  }
   // Map display label to stored value
   const statusMap = {
     'For Update': 'Update',
@@ -5879,6 +5910,12 @@ function riderSaveItemRemark(orderIdx, itemIdx, remark) {
 function riderItemStatus(orderIdx, itemIdx, newStatus) {
   const order = S.orders[orderIdx];
   if(!order) return;
+  // Guard: only allow if parcel is Ready (not Preparing)
+  if(order.status === 'Preparing') {
+    toast('⏳ Hindi pa Ready ang parcel. Hintayin maging "Ready for Pick-up" sa COD Tracking.');
+    renderRiderParcels();
+    return;
+  }
   if(!order.itemStatuses) order.itemStatuses = {};
 
   // Normalize status value ("Cancelled (All)" → "Cancelled")
@@ -5914,6 +5951,11 @@ function riderItemStatus(orderIdx, itemIdx, newStatus) {
 function riderItemPartialCancel(orderIdx, itemIdx, cancelQtyStr, totalQty, isGrams) {
   const order = S.orders[orderIdx];
   if(!order) return;
+  if(order.status === 'Preparing') {
+    toast('⏳ Hindi pa Ready ang parcel. Hintayin maging "Ready for Pick-up" sa COD Tracking.');
+    renderRiderParcels();
+    return;
+  }
   const cancelQty = parseFloat(cancelQtyStr) || 0;
   if(!order.itemCancelQty) order.itemCancelQty = {};
   const prevCancelQty = order.itemCancelQty[itemIdx] || 0;
@@ -6307,46 +6349,86 @@ function renderTracking() {
   const TRACK_STATUSES = ['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'];
   const COD_UPDATE_STATUSES = ['Preparing','Ready for Pick-up'];
   const colors = {'Preparing':'orange','Ready':'blue','Out for Delivery':'gold','Delivered':'green','Cancelled':'red','Update':'purple'};
-  // Stats — COD only (LBC/INTL tracked in Order Management)
+  // Stats — COD only
   document.getElementById('tracking-stats').innerHTML = TRACK_STATUSES.map(s =>
     `<div class="stat-card ${colors[s]||'gold'}"><div class="stat-label">${s}</div><div class="stat-value">${S.orders.filter(o=>o.status===s&&(o.paymentMethod||'COD')==='COD').length}</div></div>`
   ).join('');
   const q = (document.getElementById('track-search')?.value||'').toLowerCase();
   const filt = document.getElementById('track-filter')?.value||'';
   const df = document.getElementById('track-date')?.value||'';
-  // COD only
-  document.getElementById('tracking-tbody').innerHTML = S.orders.map((o,i) => {
-    if((o.paymentMethod||'COD') !== 'COD') return '';
-    if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q) && !(o.contact||'').includes(q)) return '';
-    if(filt && o.status!==filt) return '';
-    if(df && o.date!==df) return '';
-    // Locked if status not in editable range OR if not yet verified by checker
-    const isLocked = !['Preparing','Ready'].includes(o.status);
-    const isCheckerPending = (o.checkerStatus||'Pending') !== 'Verified';
-    return `<tr>
-      <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
-      <td style="font-weight:500;">${o.name}</td>
-      <td style="font-size:11px;color:var(--muted);">${o.address}</td>
-      <td>${o.admin}</td>
-      <td style="font-size:11px;color:var(--blue);">🏍️ ${o.assignedRider||'—'}</td>
-      <td>${o.date}</td>
-      <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
-      <td><span class="status ${sclass(o.status)}">${o.status||'—'}</span></td>
-      <td>${isLocked
-        ? `<span style="font-size:10px;color:var(--muted);padding:3px 8px;border:1px solid var(--navy-border);border-radius:5px;">🔒 ${o.status}</span>`
-        : isCheckerPending
-          ? `<span style="font-size:10px;color:var(--orange);padding:3px 8px;background:rgba(224,138,48,0.1);border-radius:5px;">⏳ Pending Checker</span>`
-          : `<select class="form-control" style="width:160px;font-size:10.5px;padding:3px 6px;" onchange="updateStatus(${i},this.value)">
-              ${COD_UPDATE_STATUSES.map(s=>{const stored=s==='Ready for Pick-up'?'Ready':s==='For Update'?'Update':s;return `<option value="${s}"${o.status===stored?' selected':''}>${s}</option>`;}).join('')}
-            </select>`
-      }</td>
-      <td style="font-size:10.5px;color:var(--muted);max-width:150px;">
-        ${o.riderRemarks ? `<div>${o.riderRemarks}</div>` : ''}
-        ${o.itemRemarks && Object.keys(o.itemRemarks).length ? Object.entries(o.itemRemarks).map(([ii,r])=>r?`<div style="color:var(--orange);font-size:9.5px;">💬 ${o.items[+ii]?.code||'Item '+(+ii+1)}: ${r}</div>`:'').join('') : ''}
-        ${!o.riderRemarks && !(o.itemRemarks && Object.values(o.itemRemarks).some(r=>r)) ? '—' : ''}
-      </td>
-    </tr>`;
-  }).join('') || '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No COD parcels</td></tr>';
+
+  // Filter COD orders
+  const filtered = S.orders.map((o,i)=>({o,i})).filter(({o}) => {
+    if((o.paymentMethod||'COD') !== 'COD') return false;
+    if(q && !o.name.toLowerCase().includes(q) && !onum(S.orders.indexOf(o)).includes(q) && !(o.contact||'').includes(q)) return false;
+    if(filt && o.status!==filt) return false;
+    if(df && o.date!==df) return false;
+    return true;
+  });
+
+  // Group by assigned rider
+  const riderGroups = {};
+  filtered.forEach(({o,i}) => {
+    const key = o.assignedRider || '⚠️ Unassigned';
+    if(!riderGroups[key]) riderGroups[key] = [];
+    riderGroups[key].push({o,i});
+  });
+
+  // Sort: Unassigned last, riders alphabetically
+  const riderKeys = Object.keys(riderGroups).sort((a,b) => {
+    if(a==='⚠️ Unassigned') return 1;
+    if(b==='⚠️ Unassigned') return -1;
+    return a.localeCompare(b);
+  });
+
+  let html = '';
+  if(riderKeys.length === 0) {
+    html = '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No COD parcels</td></tr>';
+  } else {
+    riderKeys.forEach(riderName => {
+      const parcels = riderGroups[riderName];
+      const isUnassigned = riderName === '⚠️ Unassigned';
+      const riderInfo = S.riders.find(r=>r.name===riderName);
+      const riderTotal = parcels.filter(({o})=>o.status==='Delivered').reduce((s,{o})=>s+o.grandTotal,0);
+      // Rider section header row
+      html += `<tr style="background:rgba(201,168,76,0.07);">
+        <td colspan="10" style="padding:7px 12px;font-weight:700;font-size:11.5px;color:${isUnassigned?'var(--orange)':'var(--gold)'};border-bottom:1px solid var(--navy-border);">
+          ${isUnassigned ? '⚠️ Unassigned' : `🏍️ ${riderName}`}
+          ${riderInfo?.location ? `<span style="font-size:10px;color:var(--muted);font-weight:400;margin-left:8px;">📍 ${riderInfo.location}</span>` : ''}
+          <span style="font-size:10px;color:var(--muted);font-weight:400;margin-left:8px;">${parcels.length} parcel${parcels.length!==1?'s':''}</span>
+          ${riderTotal>0?`<span style="font-size:10px;color:var(--green);font-weight:600;margin-left:8px;">✅ ₱${riderTotal.toLocaleString('en-PH',{minimumFractionDigits:2})}</span>`:''}
+        </td></tr>`;
+      // Parcel rows for this rider
+      parcels.forEach(({o,i}) => {
+        const isLocked = !['Preparing','Ready'].includes(o.status);
+        const isCheckerPending = (o.checkerStatus||'Pending') !== 'Verified';
+        html += `<tr>
+          <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
+          <td style="font-weight:500;">${o.name}</td>
+          <td style="font-size:11px;color:var(--muted);">${o.address}</td>
+          <td>${o.admin}</td>
+          <td style="font-size:11px;color:var(--blue);">🏍️ ${o.assignedRider||'—'}</td>
+          <td>${o.date}</td>
+          <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
+          <td><span class="status ${sclass(o.status)}">${o.status||'—'}</span></td>
+          <td>${isLocked
+            ? `<span style="font-size:10px;color:var(--muted);padding:3px 8px;border:1px solid var(--navy-border);border-radius:5px;">🔒 ${o.status}</span>`
+            : isCheckerPending
+              ? `<span style="font-size:10px;color:var(--orange);padding:3px 8px;background:rgba(224,138,48,0.1);border-radius:5px;">⏳ Pending Checker</span>`
+              : `<select class="form-control" style="width:160px;font-size:10.5px;padding:3px 6px;" onchange="updateStatus(${i},this.value)">
+                  ${COD_UPDATE_STATUSES.map(s=>{const stored=s==='Ready for Pick-up'?'Ready':s==='For Update'?'Update':s;return `<option value="${s}"${o.status===stored?' selected':''}>${s}</option>`;}).join('')}
+                </select>`
+          }</td>
+          <td style="font-size:10.5px;color:var(--muted);max-width:150px;">
+            ${o.riderRemarks ? `<div>${o.riderRemarks}</div>` : ''}
+            ${o.itemRemarks && Object.keys(o.itemRemarks).length ? Object.entries(o.itemRemarks).map(([ii,r])=>r?`<div style="color:var(--orange);font-size:9.5px;">💬 ${o.items[+ii]?.code||'Item '+(+ii+1)}: ${r}</div>`:'').join('') : ''}
+            ${!o.riderRemarks && !(o.itemRemarks && Object.values(o.itemRemarks).some(r=>r)) ? '—' : ''}
+          </td>
+        </tr>`;
+      });
+    });
+  }
+  document.getElementById('tracking-tbody').innerHTML = html;
   refreshUpdateBadge();
 }
 
@@ -6736,6 +6818,7 @@ function populateRemitParcels() {
   document.getElementById('remit-gross-sf').textContent = p(deliveredSF);
   document.getElementById('remit-subtotal').textContent = p(codSubtotal);
   document.getElementById('remit-sf-10').textContent = '-'+p(sf10);
+  const cbDisplayEl = document.getElementById('remit-cashbond-display'); if(cbDisplayEl) cbDisplayEl.textContent = '-'+p(cashbond);
   const pfEl = document.getElementById('remit-parcel-fee-display'); if(pfEl) pfEl.textContent = '-'+p(parcelFee);
   document.getElementById('remit-sf-rider-share').textContent = p(netSF);
   const netEl = document.getElementById('remit-net-earn');
