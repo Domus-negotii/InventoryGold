@@ -1641,21 +1641,16 @@ function _showRulesHint() {
     <div class="action-row no-print" style="flex-wrap:wrap;gap:10px;">
       <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
         <div class="section-tabs" style="margin:0;" id="lbcdelivery-tabs">
-          <button class="tab-btn active" onclick="setLbcDeliveryTab('lbc')">📦 LBC</button>
-          <button class="tab-btn" onclick="setLbcDeliveryTab('intl')">✈️ INTERNATIONAL</button>
+          <button class="tab-btn active" onclick="setLbcDeliveryTab('odz')">⚠️ ODZ/Incomplete</button>
+          <button class="tab-btn" onclick="setLbcDeliveryTab('ofd')">🚚 Out for Delivery</button>
+          <button class="tab-btn" onclick="setLbcDeliveryTab('rto')">↩️ RTO</button>
+          <button class="tab-btn" onclick="setLbcDeliveryTab('delivered')">✅ Delivered</button>
         </div>
       </div>
       <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
         <input class="form-control" style="width:200px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / order# / tracking" id="lbcd-search" oninput="renderLbcDelivery()">
         <input type="date" class="form-control" style="width:148px;font-size:11px;" id="lbcd-date" oninput="renderLbcDelivery()" title="Filter by date">
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('lbcd-date').value='';renderLbcDelivery()">All Dates</button>
-        <select class="form-control" style="width:200px;font-size:11px;padding:4px 8px;" id="lbcd-status-filter" onchange="renderLbcDelivery()">
-          <option value="">All Statuses</option>
-          <option value="ODZ/Incomplete Details">ODZ/Incomplete Details</option>
-          <option value="Out for Delivery">Out for Delivery</option>
-          <option value="RTO">RTO</option>
-          <option value="Delivered">Delivered</option>
-        </select>
       </div>
     </div>
     <div class="stats-grid" id="lbcd-stats" style="margin-bottom:13px;"></div>
@@ -2978,23 +2973,29 @@ function renderChecker(){
             <td>${o.date}</td>
             <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
             <td>
-              <select class="form-control" style="width:130px;font-size:10.5px;padding:3px 5px;border-color:${payColor(pymSt)};"
-                onchange="updatePaymentStatus(${i},this.value)">
-                ${PAYMENT_STATUSES.map(s=>`<option${pymSt===s?' selected':''}>${s}</option>`).join('')}
-              </select>
-              ${pymSt==='Partial'?`<div style="margin-top:4px;"><input class="form-control"
-                style="font-size:10px;padding:2px 5px;" placeholder="Payment notes..."
-                value="${o.paymentNotes||''}" onblur="updatePaymentNotes(${i},this.value)"></div>`:''}
-              ${pymSt==='Fully Paid'?'<div style="font-size:9.5px;color:var(--green);margin-top:2px;">✅ Bayad na</div>':''}
+              ${isDroppedOff
+                ? `<span style="font-size:10px;font-weight:700;color:${payColor(pymSt)};padding:3px 8px;background:rgba(74,144,217,0.08);border-radius:5px;display:inline-block;">🔒 ${pymSt}</span>`
+                : `<select class="form-control" style="width:130px;font-size:10.5px;padding:3px 5px;border-color:${payColor(pymSt)};"
+                    onchange="updatePaymentStatus(${i},this.value)">
+                    ${PAYMENT_STATUSES.map(s=>`<option${pymSt===s?' selected':''}>${s}</option>`).join('')}
+                  </select>
+                  ${pymSt==='Partial'?`<div style="margin-top:4px;"><input class="form-control"
+                    style="font-size:10px;padding:2px 5px;" placeholder="Payment notes..."
+                    value="${o.paymentNotes||''}" onblur="updatePaymentNotes(${i},this.value)"></div>`:''}
+                  ${pymSt==='Fully Paid'?'<div style="font-size:9.5px;color:var(--green);margin-top:2px;">✅ Bayad na</div>':''}`
+              }
             </td>
             <td>
-              <select class="form-control"
-                style="width:130px;font-size:10.5px;padding:3px 5px;${!canVerify?'opacity:0.5;cursor:not-allowed;':''}"
-                ${!canVerify?'disabled title="Need Fully Paid first"':''}
-                onchange="updateVerifStatus(${i},this.value)">
-                ${VERIF_STATUSES.map(s=>`<option${verifSt===s?' selected':''}>${s}</option>`).join('')}
-              </select>
-              ${!canVerify?'<div style="font-size:9px;color:var(--orange);margin-top:2px;">⚠️ Fully Paid muna</div>':''}
+              ${isDroppedOff
+                ? `<span style="font-size:10px;font-weight:700;color:${verifSt==='Verified'?'var(--green)':'var(--orange)'};padding:3px 8px;background:rgba(74,144,217,0.08);border-radius:5px;display:inline-block;">🔒 ${verifSt}</span>`
+                : `<select class="form-control"
+                    style="width:130px;font-size:10.5px;padding:3px 5px;${!canVerify?'opacity:0.5;cursor:not-allowed;':''}"
+                    ${!canVerify?'disabled title="Need Fully Paid first"':''}
+                    onchange="updateVerifStatus(${i},this.value)">
+                    ${VERIF_STATUSES.map(s=>`<option${verifSt===s?' selected':''}>${s}</option>`).join('')}
+                  </select>
+                  ${!canVerify?'<div style="font-size:9px;color:var(--orange);margin-top:2px;">⚠️ Fully Paid muna</div>':''}`
+              }
             </td>
             <td>
               ${(canVerify && verifSt === 'Verified')
@@ -5460,7 +5461,7 @@ function applyRoleUI(){
   const rolePages = {
     rider:    ['riderdash'],
     remitter: ['ridersremit','cashbond','benefits','sorting','returns'],
-    sorter:   ['sorting','tracking','ordermgmt'],
+    sorter:   ['sorting','tracking','ordermgmt','lbcdelivery'],
     checker:  ['checker','sorting'],
   };
   const allowed = rolePages[currentRole] || null;
@@ -7656,8 +7657,7 @@ function renderOrderMgmt() {
         }
       </td>
       <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
-      <td style="display:flex;gap:3px;flex-wrap:wrap;">
-        <button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>
+      <td>
         <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
       </td>
     </tr>`;
@@ -7872,49 +7872,78 @@ function openDailyDetail(orderIdx) {
 // ============================================================
 // LBC DELIVERY PAGE
 // ============================================================
-let lbcDeliveryTab = 'lbc';
+let lbcDeliveryTab = 'odz';
 
 function setLbcDeliveryTab(tab) {
   lbcDeliveryTab = tab;
   document.querySelectorAll('#lbcdelivery-tabs .tab-btn').forEach((b,i) =>
-    b.classList.toggle('active', ['lbc','intl'][i] === tab));
+    b.classList.toggle('active', ['odz','ofd','rto','delivered'][i] === tab));
   renderLbcDelivery();
 }
 
 function renderLbcDelivery() {
-  const method = lbcDeliveryTab === 'lbc' ? 'LBC' : 'INTERNATIONAL';
-  const icon   = lbcDeliveryTab === 'lbc' ? '📦' : '✈️';
+  // Map tab key to lbcStatus value
+  const TAB_STATUS = {
+    odz: 'ODZ/Incomplete Details',
+    ofd: 'Out for Delivery',
+    rto: 'RTO',
+    delivered: 'Delivered'
+  };
+  const TAB_LABEL = {
+    odz: '⚠️ ODZ / Incomplete Details',
+    ofd: '🚚 Out for Delivery',
+    rto: '↩️ Return to Origin (RTO)',
+    delivered: '✅ Delivered'
+  };
+  const TAB_COLOR = {
+    odz: 'var(--orange)', ofd: 'var(--gold)', rto: 'var(--red)', delivered: 'var(--green)'
+  };
+
+  const activeStatus = TAB_STATUS[lbcDeliveryTab] || 'ODZ/Incomplete Details';
+  const activeLabel  = TAB_LABEL[lbcDeliveryTab]  || activeStatus;
+  const activeColor  = TAB_COLOR[lbcDeliveryTab]  || 'var(--muted)';
+
   const q  = (document.getElementById('lbcd-search')?.value||'').toLowerCase();
   const df = document.getElementById('lbcd-date')?.value||'';
-  const sf = document.getElementById('lbcd-status-filter')?.value||'';
 
-  // Show orders that are in active delivery statuses
-  const DELIVERY_STATUSES = ['ODZ/Incomplete Details','Out for Delivery','RTO','Delivered'];
-
+  // All LBC/INTL orders with the matching lbcStatus
   const list = S.orders.map((o,i)=>({o,i})).filter(({o}) => {
-    if((o.paymentMethod||'COD') !== method) return false;
-    const lst = o.lbcStatus||'';
-    if(!DELIVERY_STATUSES.includes(lst)) return false;
-    if(sf && lst !== sf) return false;
+    const pm = o.paymentMethod||'COD';
+    if(pm !== 'LBC' && pm !== 'INTERNATIONAL') return false;
+    if((o.lbcStatus||'') !== activeStatus) return false;
     if(df && o.date !== df) return false;
-    if(q && !o.name.toLowerCase().includes(q) && !onum(S.orders.indexOf(o)).includes(q)
+    if(q && !o.name.toLowerCase().includes(q) && !onum(o.idx||i).includes(q)
        && !(o.contact||'').includes(q) && !(o.trackingNumber||'').includes(q)) return false;
     return true;
   });
 
-  // Stats
-  const odz  = list.filter(({o})=>(o.lbcStatus||'')==='ODZ/Incomplete Details').length;
-  const ofd  = list.filter(({o})=>(o.lbcStatus||'')==='Out for Delivery').length;
-  const rto  = list.filter(({o})=>(o.lbcStatus||'')==='RTO').length;
-  const del  = list.filter(({o})=>(o.lbcStatus||'')==='Delivered'||(o.status||'')==='Delivered');
-  const delCount = del.length;
+  // Stats — all 4 statuses across all LBC/INTL orders
+  const allLbcIntl = S.orders.filter(o=>o.paymentMethod==='LBC'||o.paymentMethod==='INTERNATIONAL');
   const statsEl = document.getElementById('lbcd-stats');
   if(statsEl) statsEl.innerHTML = `
-    <div class="stat-card orange"><div class="stat-label">ODZ / Incomplete</div><div class="stat-value">${odz}</div></div>
-    <div class="stat-card gold"><div class="stat-label">Out for Delivery</div><div class="stat-value">${ofd}</div></div>
-    <div class="stat-card red"><div class="stat-label">RTO</div><div class="stat-value">${rto}</div></div>
-    <div class="stat-card green"><div class="stat-label">Delivered</div><div class="stat-value">${delCount}</div><div class="stat-sub">${p(del.reduce((s,{o})=>s+o.grandTotal,0))}</div></div>
-    <div class="stat-card blue"><div class="stat-label">Total</div><div class="stat-value">${list.length}</div></div>`;
+    <div class="stat-card orange" style="cursor:pointer;" onclick="setLbcDeliveryTab('odz')">
+      <div class="stat-label">ODZ / Incomplete</div>
+      <div class="stat-value">${allLbcIntl.filter(o=>o.lbcStatus==='ODZ/Incomplete Details').length}</div>
+    </div>
+    <div class="stat-card gold" style="cursor:pointer;" onclick="setLbcDeliveryTab('ofd')">
+      <div class="stat-label">Out for Delivery</div>
+      <div class="stat-value">${allLbcIntl.filter(o=>o.lbcStatus==='Out for Delivery').length}</div>
+    </div>
+    <div class="stat-card red" style="cursor:pointer;" onclick="setLbcDeliveryTab('rto')">
+      <div class="stat-label">RTO</div>
+      <div class="stat-value">${allLbcIntl.filter(o=>o.lbcStatus==='RTO').length}</div>
+    </div>
+    <div class="stat-card green" style="cursor:pointer;" onclick="setLbcDeliveryTab('delivered')">
+      <div class="stat-label">Delivered</div>
+      <div class="stat-value">${allLbcIntl.filter(o=>o.lbcStatus==='Delivered'||o.status==='Delivered').length}</div>
+      <div class="stat-sub">${p(allLbcIntl.filter(o=>o.lbcStatus==='Delivered'||o.status==='Delivered').reduce((s,o)=>s+o.grandTotal,0))}</div>
+    </div>`;
+
+  const pmIcon = o => o.paymentMethod === 'INTERNATIONAL' ? '✈️' : '📦';
+
+  // Update dropdown choices per method
+  const UPDATE_STATUSES_LBC  = ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
+  const UPDATE_STATUSES_INTL = ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
 
   const stColor = s => {
     if(s==='Delivered') return 'var(--green)';
@@ -7924,18 +7953,14 @@ function renderLbcDelivery() {
     return 'var(--muted)';
   };
 
-  // Build new statuses for Update dropdown (re-dispatch options)
-  const UPDATE_STATUSES = lbcDeliveryTab === 'lbc'
-    ? ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO']
-    : ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
-
   const rows = list.map(({o,i}) => {
-    const lst = o.lbcStatus || 'ODZ/Incomplete Details';
+    const lst = o.lbcStatus || activeStatus;
     const tn  = o.trackingNumber || '—';
     const isRTO = lst === 'RTO';
     const isDelivered = lst === 'Delivered' || o.status === 'Delivered';
+    const isODZ = lst === 'ODZ/Incomplete Details';
+    const UPDATE_STATUSES = o.paymentMethod === 'INTERNATIONAL' ? UPDATE_STATUSES_INTL : UPDATE_STATUSES_LBC;
 
-    // Item checklist
     const itemStatuses = o.itemStatuses || {};
     const itemList = o.items.map((it,ii) => {
       const isCancelled = itemStatuses[ii] === 'Cancelled';
@@ -7946,28 +7971,25 @@ function renderLbcDelivery() {
       </div>`;
     }).join('');
 
-    return `<tr style="${isRTO?'background:rgba(224,85,85,0.05);':isDelivered?'background:rgba(46,204,138,0.04);':''}">
+    return `<tr style="${isRTO?'background:rgba(224,85,85,0.05);':isDelivered?'background:rgba(46,204,138,0.04);':isODZ?'background:rgba(224,138,48,0.04);':''}">
       <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
       <td style="font-weight:500;">${o.name}<br><span style="font-size:9.5px;color:var(--muted);">${o.contact||'—'}</span></td>
       <td style="font-size:10.5px;max-width:180px;">${o.address||'—'}${o.landmark?'<br><span style="color:var(--muted);font-size:9.5px;">🏠 '+o.landmark+'</span>':''}</td>
-      <td style="font-size:11px;">${o.admin||'—'}</td>
+      <td style="font-size:11px;">${o.admin||'—'}<br><span style="font-size:9.5px;color:var(--blue);">${pmIcon(o)} ${o.paymentMethod}</span></td>
       <td style="font-family:monospace;font-size:11px;color:var(--blue);">${tn}</td>
       <td>${o.date}</td>
       <td style="font-size:10px;">${itemList}</td>
       <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
-      <td><span style="font-size:10px;font-weight:700;color:${stColor(lst)};padding:3px 8px;background:rgba(201,168,76,0.08);border-radius:5px;">${icon} ${lst}</span></td>
+      <td><span style="font-size:10px;font-weight:700;color:${stColor(lst)};padding:3px 8px;background:rgba(201,168,76,0.08);border-radius:5px;">${lst}</span></td>
       <td>
         <div style="display:flex;flex-direction:column;gap:4px;">
           <select class="form-control" style="width:175px;font-size:10.5px;padding:3px 5px;" onchange="lbcdUpdateStatus(${i},this.value)">
             ${UPDATE_STATUSES.map(s=>`<option${lst===s?' selected':''}>${s}</option>`).join('')}
           </select>
-          ${(isRTO||lst==='ODZ/Incomplete Details')?`
-          <button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" style="width:175px;font-size:10.5px;">
-            ✏️ Edit Details / Re-dispatch
-          </button>`:''}
+          ${(isRTO||isODZ)?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" style="width:175px;font-size:10.5px;">✏️ Edit / Re-dispatch</button>`:''}
         </div>
       </td>
-      <td style="display:flex;gap:3px;flex-wrap:wrap;">
+      <td>
         <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
       </td>
     </tr>`;
@@ -7976,16 +7998,16 @@ function renderLbcDelivery() {
   document.getElementById('lbcd-content').innerHTML = `
     <div class="card">
       <div class="card-header">
-        <span class="card-title">${icon} ${method} Delivery Tracker</span>
+        <span class="card-title" style="color:${activeColor};">${activeLabel}</span>
         <span style="font-size:11px;color:var(--muted);">${list.length} parcel(s)</span>
       </div>
       <div class="table-wrap"><table>
         <thead><tr>
-          <th>Order #</th><th>Customer</th><th>Address / Landmark</th><th>Admin</th>
+          <th>Order #</th><th>Customer</th><th>Address / Landmark</th><th>Admin / Method</th>
           <th>Tracking #</th><th>Date</th><th>Items</th><th>Total</th>
           <th>Parcel Status</th><th>Update Status</th><th>Actions</th>
         </tr></thead>
-        <tbody>${rows||'<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">No parcels in delivery tracker</td></tr>'}</tbody>
+        <tbody>${rows||'<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">No '+activeStatus+' parcels</td></tr>'}</tbody>
       </table></div>
     </div>`;
 }
