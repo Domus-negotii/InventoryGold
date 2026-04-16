@@ -825,7 +825,7 @@ function _showRulesHint() {
       <div class="nav-item" onclick="gotoPage('returns')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>Return / Cancel</div>
       <div class="nav-item" onclick="gotoPage('ridersremit')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Riders Remit</div>
       <div class="nav-item" onclick="gotoPage('cashbond')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>Cashbond</div>
-      <div class="nav-item owner-only" onclick="gotoPage('benefits')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>Benefits (SSS/PH/PI)</div>
+      <div class="nav-item" onclick="gotoPage('benefits')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>Benefits (SSS/PH/PI)</div>
     </div>
     <div class="nav-section">
       <div class="nav-label">Finance</div>
@@ -1090,6 +1090,7 @@ function _showRulesHint() {
     <div class="action-row no-print" style="flex-wrap:wrap;gap:10px;">
       <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
         <span style="font-size:12px;color:var(--muted);">🔀 Drag parcels between riders to reassign.</span>
+        <input class="form-control" id="sort-search" style="width:200px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / CP#" oninput="renderSorting()">
         <input type="date" class="form-control" id="sort-date" style="width:148px;font-size:11px;" oninput="renderSorting()" title="Filter by date">
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('sort-date').value='';renderSorting()">All Dates</button>
         <select class="form-control" id="sort-status-filter" style="width:160px;font-size:11px;" onchange="renderSorting()">
@@ -1635,6 +1636,17 @@ function _showRulesHint() {
   </div>
 
 </div><!-- /main -->
+
+<!-- Daily Parcels — Customer Order History Modal -->
+<div class="modal-overlay" id="modal-daily-detail">
+  <div class="modal" style="max-width:760px;">
+    <div class="modal-header">
+      <span class="modal-title" id="daily-detail-title">📦 Parcel History</span>
+      <button class="modal-close" onclick="closeModal('modal-daily-detail')">✕</button>
+    </div>
+    <div id="daily-detail-content"></div>
+  </div>
+</div>
 
 <!-- ===================== MODALS ===================== -->
 
@@ -2214,8 +2226,8 @@ function gotoPage(name){
     toast('🔐 Dashboard & Calendar are CEO-only'); return;
   }
   // Owner-only pages
-  if(['benefits'].includes(name) && currentRole !== 'owner') {
-    toast('🔐 This section is CEO/Owner only'); return;
+  if(['benefits'].includes(name) && currentRole !== 'owner' && currentRole !== 'remitter') {
+    toast('🔐 This section is CEO/Owner and Remitter only'); return;
   }
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
@@ -2863,7 +2875,9 @@ function renderChecker(){
               ${!isLocked?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>`:''}
               ${o.checkerStatus!=='Verified'
                 ?`<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`
-                :`<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`}
+                :(o.status!=='Delivered'
+                  ?`<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`
+                  :`<span style="font-size:9.5px;color:var(--muted);padding:2px 6px;">🔒 Delivered</span>`)}
               <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
               ${!isLocked?`<button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>`:''}
             </td>
@@ -2998,6 +3012,22 @@ function verifyOrder(i){
   save(); toast('✅ Verified!'); renderChecker();
 }
 function unverifyOrder(i){
+  const o = S.orders[i];
+  // Block unverify if order is Delivered
+  if(o.status === 'Delivered') {
+    toast('🔒 Hindi na maaaring i-unverify — na-Delivered na ang parcel.');
+    return;
+  }
+  // Block unverify if rider has already remitted this order
+  const orderDate = o.date;
+  const riderName = o.assignedRider || '';
+  const isRemitted = riderName && (S.remitLog||[]).some(r =>
+    r.riderName === riderName && r.date === orderDate && r.remitStatus === 'Remitted'
+  );
+  if(isRemitted) {
+    toast('🔒 Hindi na maaaring i-unverify — na-Remit na ni rider ang parcel na ito.');
+    return;
+  }
   S.orders[i].checkerStatus='Pending';
   S.orders[i].verificationStatus='Not Verified';
   save(); toast('↩ Set back to Pending'); renderChecker();
@@ -3204,6 +3234,12 @@ ${html}
 // renderTracking() — replaced above with rider column
 
 function updateStatus(i,v){
+  // Guard: block if checker hasn't verified yet
+  if((S.orders[i]?.checkerStatus||'Pending') !== 'Verified') {
+    toast('⏳ Hindi pa na-verify ng Checker ang parcel na ito.');
+    renderTracking();
+    return;
+  }
   // Map display label to stored value
   const map = {'Ready for Pick-up':'Ready','For Update':'Update'};
   const stored = map[v] || v;
@@ -3325,7 +3361,18 @@ function renderDailyParcels(){
   document.getElementById('daily-summary').textContent=`${filtered.length} parcels | Total: ${p(filtered.reduce((s,o)=>s+o.grandTotal,0))}`;
   document.getElementById('daily-tbody').innerHTML=filtered.length?S.orders.map((o,i)=>{
     if(o.date!==d)return '';
-    return `<tr><td style="color:var(--gold);">${onum(i)}</td><td style="font-weight:500;">${o.name}</td><td>${o.contact}</td><td>${o.city||'—'}</td><td>${o.date}</td><td>${p(o.itemsTotal)}</td><td>${p(o.shipping)}</td><td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td><td><span class="status ${sclass(o.status)}">${o.status}</span></td></tr>`;
+    return `<tr onclick="openDailyDetail(${i})" style="cursor:pointer;" title="Click to view order details">
+      <td style="color:var(--gold);">${onum(i)}</td>
+      <td style="font-weight:500;">${o.name}</td>
+      <td>${o.contact}</td>
+      <td>${o.city||'—'}</td>
+      <td>${o.admin||'—'}</td>
+      <td>${o.date}</td>
+      <td>${p(o.itemsTotal)}</td>
+      <td>${p(o.shipping)}</td>
+      <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
+      <td><span class="status ${sclass(o.status)}">${o.status}</span></td>
+    </tr>`;
   }).join(''):'<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No parcels on this date</td></tr>';
 }
 
@@ -3797,11 +3844,18 @@ function renderSorting() {
 
   const df = dateEl?.value || '';
   const sf = document.getElementById('sort-status-filter')?.value || '';
+  const sq = (document.getElementById('sort-search')?.value||'').toLowerCase().trim();
 
   // Filter orders
   let orders = S.orders.map((o,i)=>({...o,idx:i}));
   if(df) orders = orders.filter(o=>o.date===df);
   if(sf) orders = orders.filter(o=>o.status===sf);
+  // Search filter — name or contact number
+  if(sq) orders = orders.filter(o=>
+    o.name.toLowerCase().includes(sq) ||
+    (o.contact||'').includes(sq) ||
+    onum(o.idx).toLowerCase().includes(sq)
+  );
   // Only show active parcels by default (unless status filtered)
   const activeStatuses = ['Preparing','Ready','Out for Delivery'];
   if(!sf) orders = orders.filter(o=>activeStatuses.includes(o.status));
@@ -3814,10 +3868,11 @@ function renderSorting() {
     byRider[key].push(o);
   });
 
-  // Include all system riders (even without parcels today)
-  S.riders.forEach(r=>{ if(!byRider[r.name]) byRider[r.name] = []; });
-  // Extra slots Tito Alex added
-  _extraRiderSlots.forEach(name=>{ if(!byRider[name]) byRider[name] = []; });
+  // Include all system riders (even without parcels today) — but only if not searching
+  if(!sq) {
+    S.riders.forEach(r=>{ if(!byRider[r.name]) byRider[r.name] = []; });
+    _extraRiderSlots.forEach(name=>{ if(!byRider[name]) byRider[name] = []; });
+  }
 
   // Stats
   const totalParcels = orders.length;
@@ -6265,8 +6320,9 @@ function renderTracking() {
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q) && !(o.contact||'').includes(q)) return '';
     if(filt && o.status!==filt) return '';
     if(df && o.date!==df) return '';
-    // Only Preparing and Ready can be updated — all others are locked
+    // Locked if status not in editable range OR if not yet verified by checker
     const isLocked = !['Preparing','Ready'].includes(o.status);
+    const isCheckerPending = (o.checkerStatus||'Pending') !== 'Verified';
     return `<tr>
       <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
       <td style="font-weight:500;">${o.name}</td>
@@ -6278,9 +6334,11 @@ function renderTracking() {
       <td><span class="status ${sclass(o.status)}">${o.status||'—'}</span></td>
       <td>${isLocked
         ? `<span style="font-size:10px;color:var(--muted);padding:3px 8px;border:1px solid var(--navy-border);border-radius:5px;">🔒 ${o.status}</span>`
-        : `<select class="form-control" style="width:160px;font-size:10.5px;padding:3px 6px;" onchange="updateStatus(${i},this.value)">
-            ${COD_UPDATE_STATUSES.map(s=>{const stored=s==='Ready for Pick-up'?'Ready':s==='For Update'?'Update':s;return `<option value="${s}"${o.status===stored?' selected':''}>${s}</option>`;}).join('')}
-          </select>`
+        : isCheckerPending
+          ? `<span style="font-size:10px;color:var(--orange);padding:3px 8px;background:rgba(224,138,48,0.1);border-radius:5px;">⏳ Pending Checker</span>`
+          : `<select class="form-control" style="width:160px;font-size:10.5px;padding:3px 6px;" onchange="updateStatus(${i},this.value)">
+              ${COD_UPDATE_STATUSES.map(s=>{const stored=s==='Ready for Pick-up'?'Ready':s==='For Update'?'Update':s;return `<option value="${s}"${o.status===stored?' selected':''}>${s}</option>`;}).join('')}
+            </select>`
       }</td>
       <td style="font-size:10.5px;color:var(--muted);max-width:150px;">
         ${o.riderRemarks ? `<div>${o.riderRemarks}</div>` : ''}
@@ -6344,8 +6402,11 @@ function renderRiders() {
     // Subtotal = total collected from customers (grandTotal = items + SF) for delivered orders
     const subtotal = delivered.reduce((s,o)=>s+o.grandTotal,0);
     // CORRECT: Net to Remit = collected - rider keeps (SF90%) - deductions
-    const totalDeductions = sf10 + cbDeduct + benDeduct; // display only
-    const netTotal = Math.max(0, subtotal - sfRider90 - cbDeduct - benDeduct);
+    // Rider's Net SF = sfRider90 - deductions (consistent with Remit modal)
+    const riderNetSF = Math.max(0, sfRider90 - cbDeduct - benDeduct);
+    // Net to Remit = COD Subtotal - Rider's Net SF
+    const netTotal = Math.max(0, subtotal - riderNetSF);
+    const totalDeductions = sfRider90 - riderNetSF + cbDeduct + benDeduct; // for display
     html += `<tr style="background:rgba(201,168,76,0.04);cursor:pointer;" onclick="toggleRiderParcels(${ri})">
       <td style="font-weight:700;color:var(--gold);">▶ ${r.name}</td>
       <td><span style="font-size:10px;padding:2px 7px;border-radius:20px;background:rgba(201,168,76,0.15);color:var(--gold);">📍 ${r.location||'—'}</span></td>
@@ -6542,8 +6603,8 @@ function populateRemitParcels() {
   const sfNetRider = sfRider90; // kept for dataset compatibility
   // Rider's Net SF = All SF minus ALL deductions (what rider actually nets from SF)
   const netSF = Math.max(0, sfRider90 - cashbond - parcelFee - manualBenefits);
-  // Net Total to Remit = COD collected - sfRider90 - cashbond - parcelFee - benefits
-  const netTotal = Math.max(0, codSubtotal - sfRider90 - cashbond - parcelFee - manualBenefits);
+  // Net Total to Remit = Subtotal (Delivered+SF) minus Rider's Net SF
+  const netTotal = Math.max(0, codSubtotal - netSF);
 
   // Build parcel rows — shows whole-order cancels AND per-item partial cancels
   const rows = myOrders.map((o,pi)=>{
@@ -6653,7 +6714,7 @@ function populateRemitParcels() {
   const dcEl = document.getElementById('remit-delivered-count'); if(dcEl) dcEl.value = delivered.length;
   const cbEl = document.getElementById('remit-cashbond-cut'); if(cbEl) cbEl.value = 100;
   const hint = document.getElementById('remit-formula-hint');
-  if(hint) hint.textContent = `Net = ${p(codSubtotal)} − ${p(sfRider90)} (SF90%) − ₱${cashbond} (CB) − ₱${parcelFee} (₱10×${delivered.length} parcels) − ${p(manualBenefits)} (Ben) = ${p(netTotal)}`;
+  if(hint) hint.textContent = `Net = ${p(codSubtotal)} − ${p(netSF)} (Rider's Net SF) = ${p(netTotal)}`;
   // Store for saveRemit and recalc access
   const riderEl = document.getElementById('remit-rider');
   riderEl.dataset.totalSF = deliveredSF;  // deliveredSF for formula accuracy
@@ -6681,8 +6742,8 @@ function recalcRemitNet() {
   const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
   // Rider's Net SF = SF90% minus all deductions (net SF the rider keeps)
   const netSF = Math.max(0, sfRider90 - cashbond - parcelFee - manualBenefits);
-  // Net Total to Remit = COD collected minus SF rider share minus all deductions
-  const netTotal = Math.max(0, codSubtotal - sfRider90 - cashbond - parcelFee - manualBenefits);
+  // Net Total to Remit = Subtotal (Delivered+SF) minus Rider's Net SF
+  const netTotal = Math.max(0, codSubtotal - netSF);
   riderEl.dataset.netSF = netSF;
   riderEl.dataset.netTotal = netTotal;
   document.getElementById('remit-sf-rider-share').textContent = p(netSF);
@@ -6690,7 +6751,7 @@ function recalcRemitNet() {
   netEl.textContent = p(netTotal);
   netEl.dataset.netEarn = netTotal;
   const hint = document.getElementById('remit-formula-hint');
-  if(hint) hint.textContent = `Net = ${p(codSubtotal)} − ${p(sfRider90)} (SF90%) − ₱${cashbond} (CB) − ₱${parcelFee} (₱10×${deliveredCount}) − ${p(manualBenefits)} (Ben) = ${p(netTotal)}`;
+  if(hint) hint.textContent = `Net = ${p(codSubtotal)} − ${p(netSF)} (Rider's Net SF) = ${p(netTotal)}`;
 }
 
 function calcRemit() { populateRemitParcels(); }
@@ -7503,6 +7564,98 @@ function validateTrackingNum(input) {
       if(err) err.textContent = '';
     }
   }
+}
+
+
+// ── Daily Parcels — Customer Order History Detail ─────────────────────────
+function openDailyDetail(orderIdx) {
+  const o = S.orders[orderIdx];
+  if(!o) return;
+  const itemStatuses = o.itemStatuses || {};
+  const itemCancelQty = o.itemCancelQty || {};
+  const itemRemarks = o.itemRemarks || {};
+
+  // Build items table
+  const itemRows = o.items.map((it, ii) => {
+    const st = itemStatuses[ii] || 'Active';
+    const cancelQty = itemCancelQty[ii] || 0;
+    const isCancelled = st === 'Cancelled';
+    const hasPartial = cancelQty > 0 && !isCancelled;
+    const isGrams = it.grams > 0;
+    const qtyStr = isGrams ? `${it.grams}g` : `×${it.qty||1}`;
+    const rateStr = isGrams ? `@ ₱${Number(it.pergram).toFixed(2)}/g` : '';
+    const remark = itemRemarks[ii] || '';
+    const stColor = isCancelled ? 'var(--red)' : hasPartial ? 'var(--orange)' : 'var(--green)';
+    const stLabel = isCancelled ? '❌ Cancelled' : hasPartial ? `⚠️ Partial (${cancelQty} cancelled)` : '✅ Active';
+
+    return `<tr style="${isCancelled ? 'opacity:0.65;' : ''}">
+      <td style="font-family:monospace;font-size:11px;color:var(--gold);">${it.code||'—'}</td>
+      <td style="font-size:11.5px;">${it.desc||'—'}</td>
+      <td style="text-align:center;">${qtyStr}<br><span style="font-size:9.5px;color:var(--muted);">${rateStr}</span></td>
+      <td style="text-align:right;color:${isCancelled?'var(--muted)':'var(--green)'};font-weight:600;${isCancelled?'text-decoration:line-through;':''}">₱${Number(it.total||0).toFixed(2)}</td>
+      <td><span style="font-size:9.5px;font-weight:700;color:${stColor};">${stLabel}</span></td>
+      <td style="font-size:10px;color:var(--orange);">${remark||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  // Order-level cancel/remark info
+  const isOrderCancelled = o.status === 'Cancelled';
+  const cancelledItemCount = o.items.filter((_,ii) => itemStatuses[ii] === 'Cancelled').length;
+  const partialItems = o.items.filter((_,ii) => (itemCancelQty[ii]||0) > 0 && itemStatuses[ii] !== 'Cancelled').length;
+
+  document.getElementById('daily-detail-title').textContent = `📦 ${onum(orderIdx)} — ${o.name}`;
+  document.getElementById('daily-detail-content').innerHTML = `
+    <!-- Order Summary -->
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;font-size:12px;">
+      <div style="background:var(--navy);border-radius:8px;padding:10px 14px;flex:1;min-width:180px;">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;">Customer</div>
+        <div style="font-weight:700;">${o.name}</div>
+        <div style="color:var(--muted);">${o.contact||'—'}${o.backupContact?' / '+o.backupContact:''}</div>
+        <div style="font-size:10.5px;margin-top:4px;">${o.address||'—'}${o.landmark?' — '+o.landmark:''}</div>
+      </div>
+      <div style="background:var(--navy);border-radius:8px;padding:10px 14px;flex:1;min-width:180px;">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;">Order Info</div>
+        <div>📅 ${o.date}</div>
+        <div>👤 Admin: <strong>${o.admin||'—'}</strong></div>
+        <div>🏍️ Rider: <strong style="color:var(--blue);">${o.assignedRider||'Unassigned'}</strong></div>
+        <div>💳 Method: <strong>${o.paymentMethod||'COD'}</strong></div>
+      </div>
+      <div style="background:var(--navy);border-radius:8px;padding:10px 14px;flex:1;min-width:150px;">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;">Amounts</div>
+        <div>Items: <strong>₱${Number(o.itemsTotal||0).toFixed(2)}</strong></div>
+        <div>SF: <strong>₱${Number(o.shipping||0).toFixed(2)}</strong></div>
+        <div style="font-size:14px;margin-top:4px;">Total: <strong style="color:var(--green);">₱${Number(o.grandTotal||0).toFixed(2)}</strong></div>
+      </div>
+      <div style="background:var(--navy);border-radius:8px;padding:10px 14px;flex:1;min-width:130px;">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;">Status</div>
+        <div><span class="status ${sclass(o.status)}" style="font-size:12px;">${o.status}</span></div>
+        <div style="margin-top:6px;"><span class="checker-tag ${o.checkerStatus==='Verified'?'verified':'pending'}">${o.checkerStatus||'Pending'}</span></div>
+        ${o.riderRemarks ? `<div style="margin-top:6px;font-size:10.5px;color:var(--orange);">⚠️ ${o.riderRemarks}</div>` : ''}
+      </div>
+    </div>
+
+    <!-- Cancel summary if any -->
+    ${isOrderCancelled ? `<div style="background:rgba(224,85,85,0.1);border:1px solid rgba(224,85,85,0.3);border-radius:7px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--red);">
+      ❌ <strong>Whole Order Cancelled</strong> — Grand Total: <span style="text-decoration:line-through;">₱${Number(o.grandTotal||0).toFixed(2)}</span> → ₱0.00
+    </div>` : ''}
+    ${(!isOrderCancelled && (cancelledItemCount > 0 || partialItems > 0)) ? `<div style="background:rgba(224,138,48,0.08);border:1px solid rgba(224,138,48,0.3);border-radius:7px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--orange);">
+      ⚠️ ${cancelledItemCount} item(s) fully cancelled, ${partialItems} item(s) partially cancelled
+    </div>` : ''}
+
+    <!-- Items Table -->
+    <div style="font-size:10px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Order Items</div>
+    <div class="table-wrap">
+      <table style="font-size:11.5px;">
+        <thead><tr style="background:rgba(201,168,76,0.08);">
+          <th>Code</th><th>Description</th><th>Qty / Grams</th><th>Total</th><th>Item Status</th><th>Rider Remark</th>
+        </tr></thead>
+        <tbody>${itemRows}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:10px;padding:8px 14px;background:var(--navy);border-radius:7px;font-size:11px;color:var(--muted);text-align:center;">
+      👁️ View Only — No edits allowed in Daily Parcels
+    </div>`;
+  openModal('modal-daily-detail');
 }
 
 // Show login screen on load (login screen is visible by default)
