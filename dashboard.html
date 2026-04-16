@@ -815,6 +815,7 @@ function _showRulesHint() {
       <div class="nav-item" onclick="gotoPage('checker')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Checker Verify</div>
       <div class="nav-item" onclick="gotoPage('tracking')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>COD Tracking</div>
       <div class="nav-item" onclick="gotoPage('ordermgmt')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><path d="M9 3h6v4H9z"/><path d="M9 12h6M9 16h4"/></svg>Order Management</div>
+      <div class="nav-item" onclick="gotoPage('lbcdelivery')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 4v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>LBC Delivery</div>
     </div>
     <div class="nav-section">
       <div class="nav-label">Operations</div>
@@ -1635,6 +1636,32 @@ function _showRulesHint() {
     <div id="om-content"></div>
   </div>
 
+  <!-- LBC DELIVERY PAGE -->
+  <div class="page" id="page-lbcdelivery">
+    <div class="action-row no-print" style="flex-wrap:wrap;gap:10px;">
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
+        <div class="section-tabs" style="margin:0;" id="lbcdelivery-tabs">
+          <button class="tab-btn active" onclick="setLbcDeliveryTab('lbc')">📦 LBC</button>
+          <button class="tab-btn" onclick="setLbcDeliveryTab('intl')">✈️ INTERNATIONAL</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
+        <input class="form-control" style="width:200px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / order# / tracking" id="lbcd-search" oninput="renderLbcDelivery()">
+        <input type="date" class="form-control" style="width:148px;font-size:11px;" id="lbcd-date" oninput="renderLbcDelivery()" title="Filter by date">
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('lbcd-date').value='';renderLbcDelivery()">All Dates</button>
+        <select class="form-control" style="width:200px;font-size:11px;padding:4px 8px;" id="lbcd-status-filter" onchange="renderLbcDelivery()">
+          <option value="">All Statuses</option>
+          <option value="ODZ/Incomplete Details">ODZ/Incomplete Details</option>
+          <option value="Out for Delivery">Out for Delivery</option>
+          <option value="RTO">RTO</option>
+          <option value="Delivered">Delivered</option>
+        </select>
+      </div>
+    </div>
+    <div class="stats-grid" id="lbcd-stats" style="margin-bottom:13px;"></div>
+    <div id="lbcd-content"></div>
+  </div>
+
 </div><!-- /main -->
 
 <!-- Daily Parcels — Customer Order History Modal -->
@@ -1695,12 +1722,12 @@ function _showRulesHint() {
         <select class="form-control enc-tab" id="enc-payment-method" onkeydown="encNextField(event,this)" onchange="onPaymentMethodChange()">
           <option value="COD">🏍️ COD – Own Rider, Cash on Delivery</option>
           <option value="LBC">📦 LBC – Payment First, LBC Delivers</option>
-          <option value="INTERNATIONAL">✈️ INTERNATIONAL – FedEx/DHL/EMS</option>
+          <option value="INTERNATIONAL">✈️ INTERNATIONAL – FedEx / EMS</option>
         </select>
       </div>
       <div class="form-group" id="enc-tracking-group" style="display:none;">
         <label>LBC Tracking Number <span id="enc-tracking-label-hint" style="font-size:10px;color:var(--muted);">(12 digits)</span></label>
-        <input class="form-control enc-tab" id="enc-tracking-number" placeholder="000000000000" maxlength="22"
+        <input class="form-control enc-tab" id="enc-tracking-number" placeholder="000000000000" maxlength="14"
           oninput="this.value=this.value.replace(/\D/g,'');validateTrackingNum(this)"
           onkeydown="encNextField(event,this)">
         <div id="enc-tracking-err" style="font-size:10.5px;color:var(--red);min-height:14px;margin-top:2px;"></div>
@@ -2213,7 +2240,7 @@ function closeModal(id){document.getElementById(id).classList.remove('open');}
 })();
 
 // ============ NAVIGATION ============
-const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales Calendar',orders:'Admin Encode',checker:'Checker Verify',tracking:'COD Tracking',ordermgmt:'Order Management',riders:'Riders by Location',dailyparcels:'Daily Parcels',sorting:'Parcel Sorting',returns:'Return / Cancel',dailysales:'Daily Sales Record',payroll:'Payroll',expenses:'Expenses',pnl:'P&L Report',inventory:'Inventory',adminsheets:'Per-Admin Order Sheets',settings:'Settings',ridersremit:'Riders Remit',cashbond:'Cashbond Tracker',benefits:'Benefits (SSS / PhilHealth / Pag-IBIG)'};
+const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales Calendar',orders:'Admin Encode',checker:'Checker Verify',tracking:'COD Tracking',ordermgmt:'Order Management',lbcdelivery:'LBC Delivery',riders:'Riders by Location',dailyparcels:'Daily Parcels',sorting:'Parcel Sorting',returns:'Return / Cancel',dailysales:'Daily Sales Record',payroll:'Payroll',expenses:'Expenses',pnl:'P&L Report',inventory:'Inventory',adminsheets:'Per-Admin Order Sheets',settings:'Settings',ridersremit:'Riders Remit',cashbond:'Cashbond Tracker',benefits:'Benefits (SSS / PhilHealth / Pag-IBIG)'};
 let _activePage = 'dashboard';
 function gotoPage(name){
   _activePage = name;
@@ -2242,7 +2269,7 @@ function gotoPage(name){
 function renderPage(n){
   ({dashboard:()=>{applyDashCeoLock();if(currentRole==='owner')renderDash();},
     riderdash:()=>{},calendar:()=>{if(currentRole==='owner')renderCalendar();else{const p2=document.getElementById('page-calendar');if(p2)p2.innerHTML='<div style="text-align:center;padding:60px;"><div style="font-size:48px;">🔐</div><div style="font-family:var(--fh);font-size:20px;color:var(--gold);margin:10px 0;">CEO Only</div><p style="color:var(--muted);">Sales Calendar is restricted to CEO access.</p></div>';}},
-    orders:initOrdersPage,checker:renderChecker,tracking:()=>{renderTracking();refreshUpdateBadge();},ordermgmt:renderOrderMgmt,
+    orders:initOrdersPage,checker:renderChecker,tracking:()=>{renderTracking();refreshUpdateBadge();},ordermgmt:renderOrderMgmt,lbcdelivery:renderLbcDelivery,
     riders:renderRiders,dailyparcels:renderDailyParcels,sorting:renderSorting,returns:renderReturns,
     dailysales:renderDailySales,payroll:()=>renderPayroll(payTab),expenses:renderExpenses,
     pnl:renderPnl,inventory:()=>renderInv(invTab),adminsheets:renderAdminSheets,settings:renderSettings,
@@ -2563,7 +2590,12 @@ function renderMyOrders() {
   const countEl = document.getElementById('my-orders-count');
   if(countEl) countEl.textContent = list.length + ' order(s)';
 
-  tbody.innerHTML = list.length ? list.map(({o,i}) => `<tr>
+  // Group: LBC first, then INTERNATIONAL, then COD
+  const methodOrder = ['LBC','INTERNATIONAL','COD'];
+  const grouped = {};
+  methodOrder.forEach(m => { grouped[m] = list.filter(({o}) => (o.paymentMethod||'COD') === m); });
+
+  const rowOf = ({o,i}) => `<tr>
     <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
     <td style="font-weight:500;">${o.name}</td>
     <td>${o.contact||'—'}</td>
@@ -2583,8 +2615,29 @@ function renderMyOrders() {
       ${o.checkerStatus!=='Verified'
         ? `<button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>`
         : ''}
-    </td></tr>`).join('')
-  : `<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:26px;">${loggedAdmin?'No orders by '+loggedAdmin+' yet. Click + New Order to encode.':'No orders found.'}</td></tr>`;
+    </td></tr>`;
+
+  const methodLabels = {LBC:'📦 LBC Orders', INTERNATIONAL:'✈️ INTERNATIONAL Orders', COD:'🏍️ COD Orders'};
+  const methodColors = {LBC:'var(--blue)', INTERNATIONAL:'var(--green)', COD:'var(--gold)'};
+
+  let html = '';
+  if(list.length) {
+    methodOrder.forEach(m => {
+      const group = grouped[m];
+      if(!group.length) return;
+      // Section header
+      html += `<tr style="background:rgba(201,168,76,0.07);">
+        <td colspan="12" style="padding:7px 12px;font-weight:700;font-size:11.5px;color:${methodColors[m]};border-bottom:1px solid var(--navy-border);">
+          ${methodLabels[m]}
+          <span style="font-size:10px;color:var(--muted);font-weight:400;margin-left:8px;">${group.length} order${group.length!==1?'s':''}</span>
+          <span style="font-size:10px;color:var(--green);font-weight:600;margin-left:8px;">${p(group.reduce((s,{o})=>s+o.grandTotal,0))}</span>
+        </td></tr>`;
+      html += group.map(rowOf).join('');
+    });
+  } else {
+    html = `<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:26px;">${loggedAdmin?'No orders by '+loggedAdmin+' yet. Click + New Order to encode.':'No orders found.'}</td></tr>`;
+  }
+  tbody.innerHTML = html;
 }
 
 // ── OWNER/ALL VIEW: All admins with filter tabs ─────────────────
@@ -2917,7 +2970,7 @@ function renderChecker(){
           const verifSt = o.verificationStatus||'Not Verified';
           const canVerify = pymSt === 'Fully Paid';
           const isLocked = ['Ready','Out for Delivery','Delivered','Cancelled','Update'].includes(o.status);
-          const isDroppedOff = ['Drop off at LBC','Drop off at EMS','Drop off at Courier'].includes(o.lbcStatus||'');
+          const isDroppedOff = ['Drop off at LBC','Drop off at EMS','Drop off at Courier','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'].includes(o.lbcStatus||'');
           rows += `<tr>
             <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
             <td style="font-weight:500;">${o.name}</td>
@@ -2944,13 +2997,16 @@ function renderChecker(){
               ${!canVerify?'<div style="font-size:9px;color:var(--orange);margin-top:2px;">⚠️ Fully Paid muna</div>':''}
             </td>
             <td>
-              ${(canVerify && verifSt === 'Verified') ? `
-                <select class="form-control" style="width:150px;font-size:10.5px;padding:3px 5px;"
-                  onchange="updateLbcStatus(${i},this.value)">
-                  <option${(!o.lbcStatus||o.lbcStatus==='Preparing')?' selected':''}>Preparing</option>
-                  <option${o.lbcStatus==='Ready to Pick-up'?' selected':''}>Ready to Pick-up</option>
-                </select>
-              ` : `<span style="font-size:9.5px;color:var(--muted);">—</span>`}
+              ${(canVerify && verifSt === 'Verified')
+                ? isDroppedOff
+                  ? `<span style="font-size:9.5px;color:var(--blue);padding:2px 8px;background:rgba(74,144,217,0.1);border-radius:4px;">🔒 ${o.lbcStatus}</span>`
+                  : `<select class="form-control" style="width:150px;font-size:10.5px;padding:3px 5px;"
+                      onchange="updateLbcStatus(${i},this.value)">
+                      <option${(!o.lbcStatus||o.lbcStatus==='Preparing')?' selected':''}>Preparing</option>
+                      <option${o.lbcStatus==='Ready to Pick-up'?' selected':''}>Ready to Pick-up</option>
+                    </select>`
+                : `<span style="font-size:9.5px;color:var(--muted);">—</span>`
+              }
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
               ${isDroppedOff
@@ -3007,6 +3063,12 @@ function assignRiderFromChecker(orderIdx, riderName) {
   renderChecker();
 }
 function verifyOrder(i){
+  const o = S.orders[i];
+  // For LBC orders: tracking number required before verification
+  if((o.paymentMethod==='LBC') && !o.trackingNumber) {
+    toast('⚠️ Kailangan ng LBC Tracking Number bago i-verify. I-edit muna ang order at lagyan ng tracking #.');
+    return;
+  }
   S.orders[i].checkerStatus='Verified';
   S.orders[i].verificationStatus='Verified';
   save(); toast('✅ Verified!'); renderChecker();
@@ -5043,9 +5105,20 @@ function renderPnl(){
   }
 
   // === INCOME ===
-  const deliveredOrders=fO.filter(o=>o.status==='Delivered');
-  const grossRevenue=deliveredOrders.reduce((s,o)=>s+o.itemsTotal,0);
-  const shippingIncome=deliveredOrders.reduce((s,o)=>s+o.shipping,0);
+  // COD: counted when Delivered
+  // LBC/INTL: counted when Fully Paid + Verified + Ready to Pick-up (payment-first model)
+  const lbcIntlPaidOrders = fO.filter(o =>
+    (o.paymentMethod==='LBC' || o.paymentMethod==='INTERNATIONAL') &&
+    o.paymentStatus === 'Fully Paid' &&
+    o.verificationStatus === 'Verified' &&
+    (o.lbcStatus === 'Ready to Pick-up' || o.lbcStatus === 'Drop off at LBC' ||
+     o.lbcStatus === 'Drop off at EMS' || o.lbcStatus === 'Out for Delivery' ||
+     o.lbcStatus === 'Delivered' || o.status === 'Delivered')
+  );
+  const deliveredOrders = fO.filter(o => o.status==='Delivered' && (o.paymentMethod||'COD')==='COD');
+  const incomeOrders = [...deliveredOrders, ...lbcIntlPaidOrders];
+  const grossRevenue=incomeOrders.reduce((s,o)=>s+o.itemsTotal,0);
+  const shippingIncome=incomeOrders.reduce((s,o)=>s+o.shipping,0);
   const totalIncome=grossRevenue+shippingIncome;
 
   // === COST OF GOODS (Cancelled/Update losses) ===
@@ -5064,7 +5137,7 @@ function renderPnl(){
   const totalExpenses=Object.values(catMap).reduce((s,v)=>s+v,0);
 
   // === ADMIN INCENTIVES ===
-  const adminDel={};deliveredOrders.forEach(o=>{if(o.admin)adminDel[o.admin]=(adminDel[o.admin]||0)+1;});
+  const adminDel={};incomeOrders.forEach(o=>{if(o.admin)adminDel[o.admin]=(adminDel[o.admin]||0)+1;});
   const totalAdminIncentives=Object.values(adminDel).reduce((s,v)=>s+v*25,0);
 
   // === TOTALS ===
@@ -5151,7 +5224,13 @@ function printPnl(){
   if(pnlTab==='daily'){const d=document.getElementById('pnl-date').value;fO=S.orders.filter(o=>o.date===d);fE=S.expenses.filter(e=>e.date===d);fP=S.payroll.filter(i=>i.date===d);label=d;}
   else if(pnlTab==='weekly'){const wS=new Date(now);wS.setDate(now.getDate()-now.getDay());const wSStr=wS.toISOString().split('T')[0];fO=S.orders.filter(o=>o.date>=wSStr);fE=S.expenses.filter(e=>e.date>=wSStr);fP=S.payroll.filter(i=>i.date>=wSStr);label='This Week';}
   else{fO=S.orders.filter(o=>o.date?.startsWith(ym));fE=S.expenses.filter(e=>e.date?.startsWith(ym));fP=S.payroll.filter(i=>i.date?.startsWith(ym));label=now.toLocaleString('en-PH',{month:'long',year:'numeric'});}
-  const del=fO.filter(o=>o.status==='Delivered');
+  const codDel=fO.filter(o=>o.status==='Delivered'&&(o.paymentMethod||'COD')==='COD');
+  const lbcIntlPaid=fO.filter(o=>
+    (o.paymentMethod==='LBC'||o.paymentMethod==='INTERNATIONAL')&&
+    o.paymentStatus==='Fully Paid'&&o.verificationStatus==='Verified'&&
+    ['Ready to Pick-up','Drop off at LBC','Drop off at EMS','Out for Delivery','Delivered'].includes(o.lbcStatus||o.status)
+  );
+  const del=[...codDel,...lbcIntlPaid];
   const grossRev=del.reduce((s,o)=>s+o.itemsTotal,0);
   const sfInc=del.reduce((s,o)=>s+o.shipping,0);
   const retLoss=fO.filter(o=>['Cancelled','Update'].includes(o.status)).reduce((s,o)=>s+o.itemsTotal,0);
@@ -7490,6 +7569,7 @@ function startAutoRefresh(){
         riderdash: ()=>renderRiderDash?.(),
         calendar: ()=>renderCalendar?.(),
         ordermgmt: ()=>renderOrderMgmt?.(),
+        lbcdelivery: ()=>renderLbcDelivery?.(),
       };
       try { renderMap[_activePage]?.(); } catch(e){}
       // If rider, always refresh their parcels too
@@ -7536,10 +7616,18 @@ function renderOrderMgmt() {
     <div class="stat-card green"><div class="stat-label">Delivered</div><div class="stat-value">${del.length}</div><div class="stat-sub">${p(del.reduce((s,{o})=>s+o.grandTotal,0))}</div></div>`;
 
   const payColor = s => s==='Fully Paid'?'var(--green)':s==='Partial'?'var(--orange)':'var(--red)';
-  const lbcColor = s => s==='Delivered'?'var(--green)':(['Drop off at LBC','Drop off at EMS'].includes(s))?'var(--blue)':s==='Ready to Pick-up'?'var(--gold)':'var(--muted)';
+  const lbcColor = s => {
+    if(s==='Delivered') return 'var(--green)';
+    if(['Drop off at LBC','Drop off at EMS'].includes(s)) return 'var(--blue)';
+    if(s==='Ready to Pick-up') return 'var(--gold)';
+    if(s==='ODZ/Incomplete Details') return 'var(--orange)';
+    if(s==='RTO') return 'var(--red)';
+    if(s==='Out for Delivery') return 'var(--gold)';
+    return 'var(--muted)';
+  };
   const OM_STATUSES = omTab==='lbc'
-    ? ['Preparing','Ready to Pick-up','Drop off at LBC','Delivered']
-    : ['Preparing','Ready to Pick-up','Drop off at EMS','Delivered'];
+    ? ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO']
+    : ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
 
   const rows = list.map(({o,i}) => {
     // Migrate 'Preparing' to 'Ready to Pick-up' for display consistency with Parcel Tracking
@@ -7603,8 +7691,10 @@ function omUpdateStatus(orderIdx, newStatus) {
   // Sync main status field so P&L, Daily Parcels, Dashboard reflect correctly
   if(newStatus === 'Delivered') {
     S.orders[orderIdx].status = 'Delivered';
+  } else if(newStatus === 'RTO') {
+    S.orders[orderIdx].status = 'Cancelled'; // RTO = Return to Origin = treat as cancelled
   } else {
-    // Any non-Delivered lbcStatus means order is still in progress
+    // Any other status means order is still in progress
     S.orders[orderIdx].status = 'Preparing';
   }
   save();
@@ -7625,7 +7715,12 @@ function onPaymentMethodChange() {
   const tnLabel = document.querySelector('#enc-tracking-group label');
   if(tnLabel) tnLabel.firstChild.textContent = method === 'LBC'
     ? 'LBC Tracking Number '
-    : 'Courier Tracking Number ';
+    : 'Courier Tracking Number (FedEx/EMS) ';
+  // Update maxlength per method and label hint
+  const tnInpML = document.getElementById('enc-tracking-number');
+  if(tnInpML) tnInpML.maxLength = method === 'LBC' ? 12 : 14;
+  const tnHint = document.getElementById('enc-tracking-label-hint');
+  if(tnHint) tnHint.textContent = method === 'LBC' ? '(12 digits, optional until verified)' : '(12–14 digits, optional)';
   if(!isLbc) {
     const inp = document.getElementById('enc-tracking-number');
     if(inp) inp.value = '';
@@ -7663,17 +7758,18 @@ function validateTrackingNum(input) {
   const err = document.getElementById('enc-tracking-err');
   const v = input.value;
   const method = document.getElementById('enc-payment-method')?.value || 'LBC';
+  if(!v) { if(err) err.textContent = ''; return; } // not required — skip if empty
   if(method === 'LBC') {
     // LBC: exactly 12 digits
-    if(v && v.length !== 12) {
+    if(v.length !== 12) {
       if(err) err.textContent = `⚠️ LBC tracking: exactly 12 digits (${v.length} entered)`;
     } else {
       if(err) err.textContent = '';
     }
   } else {
-    // INTERNATIONAL: 10–22 digits (FedEx/DHL/EMS vary)
-    if(v && (v.length < 10 || v.length > 22)) {
-      if(err) err.textContent = `⚠️ Courier tracking: 10–22 digits (${v.length} entered)`;
+    // INTERNATIONAL: FedEx = 12 digits, EMS = 13 digits; allow 12–14
+    if(v.length < 12 || v.length > 14) {
+      if(err) err.textContent = `⚠️ FedEx/EMS tracking: 12–14 digits (${v.length} entered)`;
     } else {
       if(err) err.textContent = '';
     }
@@ -7770,6 +7866,144 @@ function openDailyDetail(orderIdx) {
       👁️ View Only — No edits allowed in Daily Parcels
     </div>`;
   openModal('modal-daily-detail');
+}
+
+
+// ============================================================
+// LBC DELIVERY PAGE
+// ============================================================
+let lbcDeliveryTab = 'lbc';
+
+function setLbcDeliveryTab(tab) {
+  lbcDeliveryTab = tab;
+  document.querySelectorAll('#lbcdelivery-tabs .tab-btn').forEach((b,i) =>
+    b.classList.toggle('active', ['lbc','intl'][i] === tab));
+  renderLbcDelivery();
+}
+
+function renderLbcDelivery() {
+  const method = lbcDeliveryTab === 'lbc' ? 'LBC' : 'INTERNATIONAL';
+  const icon   = lbcDeliveryTab === 'lbc' ? '📦' : '✈️';
+  const q  = (document.getElementById('lbcd-search')?.value||'').toLowerCase();
+  const df = document.getElementById('lbcd-date')?.value||'';
+  const sf = document.getElementById('lbcd-status-filter')?.value||'';
+
+  // Show orders that are in active delivery statuses
+  const DELIVERY_STATUSES = ['ODZ/Incomplete Details','Out for Delivery','RTO','Delivered'];
+
+  const list = S.orders.map((o,i)=>({o,i})).filter(({o}) => {
+    if((o.paymentMethod||'COD') !== method) return false;
+    const lst = o.lbcStatus||'';
+    if(!DELIVERY_STATUSES.includes(lst)) return false;
+    if(sf && lst !== sf) return false;
+    if(df && o.date !== df) return false;
+    if(q && !o.name.toLowerCase().includes(q) && !onum(S.orders.indexOf(o)).includes(q)
+       && !(o.contact||'').includes(q) && !(o.trackingNumber||'').includes(q)) return false;
+    return true;
+  });
+
+  // Stats
+  const odz  = list.filter(({o})=>(o.lbcStatus||'')==='ODZ/Incomplete Details').length;
+  const ofd  = list.filter(({o})=>(o.lbcStatus||'')==='Out for Delivery').length;
+  const rto  = list.filter(({o})=>(o.lbcStatus||'')==='RTO').length;
+  const del  = list.filter(({o})=>(o.lbcStatus||'')==='Delivered'||(o.status||'')==='Delivered');
+  const delCount = del.length;
+  const statsEl = document.getElementById('lbcd-stats');
+  if(statsEl) statsEl.innerHTML = `
+    <div class="stat-card orange"><div class="stat-label">ODZ / Incomplete</div><div class="stat-value">${odz}</div></div>
+    <div class="stat-card gold"><div class="stat-label">Out for Delivery</div><div class="stat-value">${ofd}</div></div>
+    <div class="stat-card red"><div class="stat-label">RTO</div><div class="stat-value">${rto}</div></div>
+    <div class="stat-card green"><div class="stat-label">Delivered</div><div class="stat-value">${delCount}</div><div class="stat-sub">${p(del.reduce((s,{o})=>s+o.grandTotal,0))}</div></div>
+    <div class="stat-card blue"><div class="stat-label">Total</div><div class="stat-value">${list.length}</div></div>`;
+
+  const stColor = s => {
+    if(s==='Delivered') return 'var(--green)';
+    if(s==='ODZ/Incomplete Details') return 'var(--orange)';
+    if(s==='RTO') return 'var(--red)';
+    if(s==='Out for Delivery') return 'var(--gold)';
+    return 'var(--muted)';
+  };
+
+  // Build new statuses for Update dropdown (re-dispatch options)
+  const UPDATE_STATUSES = lbcDeliveryTab === 'lbc'
+    ? ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO']
+    : ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
+
+  const rows = list.map(({o,i}) => {
+    const lst = o.lbcStatus || 'ODZ/Incomplete Details';
+    const tn  = o.trackingNumber || '—';
+    const isRTO = lst === 'RTO';
+    const isDelivered = lst === 'Delivered' || o.status === 'Delivered';
+
+    // Item checklist
+    const itemStatuses = o.itemStatuses || {};
+    const itemList = o.items.map((it,ii) => {
+      const isCancelled = itemStatuses[ii] === 'Cancelled';
+      const isGrams = it.grams > 0;
+      const qtyStr = isGrams ? `${it.grams}g` : `×${it.qty||1}`;
+      return `<div style="font-size:10px;${isCancelled?'text-decoration:line-through;color:var(--muted);':''}">
+        ${isCancelled?'❌':'🔹'} <strong>${it.code||'—'}</strong> ${it.desc||''} (${qtyStr}) = ${p(it.total)}
+      </div>`;
+    }).join('');
+
+    return `<tr style="${isRTO?'background:rgba(224,85,85,0.05);':isDelivered?'background:rgba(46,204,138,0.04);':''}">
+      <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
+      <td style="font-weight:500;">${o.name}<br><span style="font-size:9.5px;color:var(--muted);">${o.contact||'—'}</span></td>
+      <td style="font-size:10.5px;max-width:180px;">${o.address||'—'}${o.landmark?'<br><span style="color:var(--muted);font-size:9.5px;">🏠 '+o.landmark+'</span>':''}</td>
+      <td style="font-size:11px;">${o.admin||'—'}</td>
+      <td style="font-family:monospace;font-size:11px;color:var(--blue);">${tn}</td>
+      <td>${o.date}</td>
+      <td style="font-size:10px;">${itemList}</td>
+      <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
+      <td><span style="font-size:10px;font-weight:700;color:${stColor(lst)};padding:3px 8px;background:rgba(201,168,76,0.08);border-radius:5px;">${icon} ${lst}</span></td>
+      <td>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <select class="form-control" style="width:175px;font-size:10.5px;padding:3px 5px;" onchange="lbcdUpdateStatus(${i},this.value)">
+            ${UPDATE_STATUSES.map(s=>`<option${lst===s?' selected':''}>${s}</option>`).join('')}
+          </select>
+          ${(isRTO||lst==='ODZ/Incomplete Details')?`
+          <button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" style="width:175px;font-size:10.5px;">
+            ✏️ Edit Details / Re-dispatch
+          </button>`:''}
+        </div>
+      </td>
+      <td style="display:flex;gap:3px;flex-wrap:wrap;">
+        <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('lbcd-content').innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">${icon} ${method} Delivery Tracker</span>
+        <span style="font-size:11px;color:var(--muted);">${list.length} parcel(s)</span>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Order #</th><th>Customer</th><th>Address / Landmark</th><th>Admin</th>
+          <th>Tracking #</th><th>Date</th><th>Items</th><th>Total</th>
+          <th>Parcel Status</th><th>Update Status</th><th>Actions</th>
+        </tr></thead>
+        <tbody>${rows||'<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">No parcels in delivery tracker</td></tr>'}</tbody>
+      </table></div>
+    </div>`;
+}
+
+function lbcdUpdateStatus(orderIdx, newStatus) {
+  S.orders[orderIdx].lbcStatus = newStatus;
+  // Sync main status
+  if(newStatus === 'Delivered') {
+    S.orders[orderIdx].status = 'Delivered';
+  } else if(newStatus === 'RTO') {
+    S.orders[orderIdx].status = 'Cancelled';
+  } else {
+    S.orders[orderIdx].status = 'Preparing';
+  }
+  save();
+  toast(`📦 Status → ${newStatus}`);
+  renderLbcDelivery();
+  if(currentRole==='owner') renderDash();
 }
 
 // Show login screen on load (login screen is visible by default)
