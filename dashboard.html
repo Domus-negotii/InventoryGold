@@ -950,6 +950,7 @@ function _showRulesHint() {
       <button class="tab-btn active" onclick="setCheckerTab('COD')">🏍️ COD</button>
       <button class="tab-btn" onclick="setCheckerTab('LBC')">📦 LBC</button>
       <button class="tab-btn" onclick="setCheckerTab('INTERNATIONAL')">✈️ INTERNATIONAL</button>
+      <button class="tab-btn" onclick="setCheckerTab('UPDATE')" id="checker-tab-update-btn">🔔 For Update</button>
       <button class="tab-btn" onclick="setCheckerTab('DELETED')" id="checker-tab-deleted-btn">🗑️ Recently Deleted</button>
     </div>
     <div class="card no-print">
@@ -986,6 +987,17 @@ function _showRulesHint() {
         </tr></thead><tbody id="checker-lbc-tbody"></tbody></table></div>
       </div>
     </div>
+    <!-- For Update panel — shown when UPDATE tab is active -->
+    <div id="checker-update-panel" style="display:none;">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🔔 For Update — COD Parcels</span>
+          <span style="font-size:11px;color:var(--muted);">Parcels that need action: re-schedule or cancel</span>
+        </div>
+        <div id="checker-update-list"></div>
+      </div>
+    </div>
+
     <!-- Recently Deleted panel — shown when DELETED tab is active -->
     <div id="checker-deleted-panel" style="display:none;">
       <div class="card">
@@ -1036,7 +1048,7 @@ function _showRulesHint() {
     <!-- Tracking sub-tabs -->
     <div class="section-tabs no-print" style="margin-bottom:13px;" id="tracking-tabs">
       <button class="tab-btn active" onclick="setTrackingTab('cod')">🏍️ COD</button>
-      <button class="tab-btn" onclick="setTrackingTab('update')" id="tracking-tab-update-btn">🔔 For Update</button>
+      
     </div>
 
     <!-- COD Tab -->
@@ -1059,16 +1071,6 @@ function _showRulesHint() {
       </div>
     </div>
 
-    <!-- For Update tab -->
-    <div id="tracking-tab-update" style="display:none;">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">🔔 Parcels For Update</span>
-          <span style="font-size:11px;color:var(--muted);">These need action: re-schedule or cancel</span>
-        </div>
-        <div id="for-update-list"></div>
-      </div>
-    </div>
   </div>
 
   <!-- RIDERS BY LOCATION -->
@@ -2966,15 +2968,18 @@ function unlockLbcChecker() {
 function setCheckerTab(tab) {
   checkerTab = tab;
   document.querySelectorAll('#checker-tabs .tab-btn').forEach((b,i) =>
-    b.classList.toggle('active', ['COD','LBC','INTERNATIONAL','DELETED'][i] === tab));
-  const labels = {COD:'🏍️ COD – Checker Queue', LBC:'📦 LBC – Checker Queue', INTERNATIONAL:'✈️ INTERNATIONAL – Checker Queue', DELETED:'🗑️ Recently Deleted / Cancelled'};
+    b.classList.toggle('active', ['COD','LBC','INTERNATIONAL','UPDATE','DELETED'][i] === tab));
+  const labels = {COD:'🏍️ COD – Checker Queue', LBC:'📦 LBC – Checker Queue', INTERNATIONAL:'✈️ INTERNATIONAL – Checker Queue', UPDATE:'🔔 For Update – COD Parcels', DELETED:'🗑️ Recently Deleted / Cancelled'};
   // Show/hide the right panel
   const tableArea = document.getElementById('checker-table-area');
+  const updatePanel = document.getElementById('checker-update-panel');
   const deletedPanel = document.getElementById('checker-deleted-panel');
-  if(tableArea) tableArea.style.display = tab === 'DELETED' ? 'none' : '';
+  if(tableArea) tableArea.style.display = (tab === 'DELETED' || tab === 'UPDATE') ? 'none' : '';
+  if(updatePanel) updatePanel.style.display = tab === 'UPDATE' ? '' : 'none';
   if(deletedPanel) deletedPanel.style.display = tab === 'DELETED' ? '' : 'none';
   const el = document.getElementById('checker-tab-label'); if(el) el.textContent = labels[tab]||tab;
   if(tab === 'DELETED') { renderCheckerDeleted(); return; }
+  if(tab === 'UPDATE') { renderCheckerForUpdate(); return; }
   // Show LBC lock if not yet unlocked
   const isLbc = tab === 'LBC' || tab === 'INTERNATIONAL';
   if(isLbc && !_lbcCheckerUnlocked) {
@@ -2996,6 +3001,10 @@ function renderChecker(){
   const df = document.getElementById('checker-date')?.value||'';
   const pending = S.orders.filter(o=>o.checkerStatus==='Pending').length;
   document.getElementById('checker-pending-count').textContent = pending ? `⚠️ ${pending} pending` : '✅ All verified';
+  // Update For Update tab badge
+  const updateCount = S.orders.filter(o=>o.status==='Update'&&(o.paymentMethod||'COD')==='COD').length;
+  const updateBtn = document.getElementById('checker-tab-update-btn');
+  if(updateBtn) updateBtn.textContent = updateCount > 0 ? `🔔 For Update (${updateCount})` : '🔔 For Update';
   // Update Recently Deleted tab badge
   const delCount = (S.deletedOrders||[]).length;
   const delBtn = document.getElementById('checker-tab-deleted-btn');
@@ -3450,7 +3459,11 @@ function updateStatus(i,v){
 }
 
 function renderForUpdateTab() {
-  // COD Tracking page — only show COD orders for update
+  // Legacy shim — For Update tab moved to Checker Verify
+  renderCheckerForUpdate();
+}
+
+function _renderForUpdateTab_orig() {
   const list = S.orders.map((o,i)=>({...o,idx:i})).filter(o=>o.status==='Update' && (o.paymentMethod||'COD')==='COD');
   const el = document.getElementById('for-update-list');
   if(!el) return;
@@ -3477,7 +3490,8 @@ function renderForUpdateTab() {
 function resolveUpdate(orderIdx, newStatus) {
   S.orders[orderIdx].status = newStatus;
   save(); toast('✅ Status → '+newStatus);
-  renderForUpdateTab(); refreshUpdateBadge();
+  // For Update tab moved to Checker Verify
+  renderCheckerForUpdate(); refreshUpdateBadge();
   // Also refresh returns page if visible
   if(returnTab==='update') renderUpdateOrders();
   else if(returnTab==='orders') renderReturnOrders();
@@ -5933,25 +5947,60 @@ function renderRiderParcels() {
   if(q) filtered = filtered.filter(o =>
     o.name.toLowerCase().includes(q) || (o.contact||'').includes(q) || onum(o.idx).includes(q));
 
-  // Stats - 10% deduction is based on Shipping Fee, not grandTotal
+  // ── Earnings Summary — mirrors Riders Remit formula exactly ──
   const del = myOrders.filter(o => o.status === 'Delivered');
-  const delSF = del.reduce((s,o) => s + (o.shipping||0), 0);
-  const delRevenue = del.reduce((s,o) => s + o.grandTotal, 0);
-  const deduction10 = delSF * 0.10;   // 10% of SF goes to company
-  const netEarnings = delSF - deduction10;  // rider keeps 90% of SF
+
+  // 1. Delivered SF (Gross) — SF from delivered orders only
+  const deliveredSF_dash = del.reduce((s,o) => s + (o.shipping||0), 0);
+
+  // 2. Subtotal (Delivered + SF) — net of any cancelled items
+  const codSubtotal_dash = del.reduce((s,o) => {
+    const iS = o.itemStatuses||{}, iCQ = o.itemCancelQty||{};
+    const hasCancels = o.items.some((_,ii)=>iS[ii]==='Cancelled'||(iCQ[ii]||0)>0);
+    if(!hasCancels) return s + o.grandTotal;
+    let cxAmt = 0;
+    o.items.forEach((it,ii)=>{
+      const tQty = it.grams||it.qty||1;
+      const ppu = it.total/Math.max(1,tQty);
+      if(iS[ii]==='Cancelled') cxAmt += it.total;
+      else if((iCQ[ii]||0)>0) cxAmt += (iCQ[ii])*ppu;
+    });
+    return s + Math.max(0, o.grandTotal - cxAmt);
+  }, 0);
+
+  // 3. Less: SF 10% (Company)
+  const sf10_dash = deliveredSF_dash * 0.10;
+  // 4. SF 90% (Rider portion before deductions)
+  const sfRider90_dash = deliveredSF_dash * 0.90;
+
+  // 5. Less: Parcel Fee (₱10 per delivered parcel)
+  const parcelFee_dash = del.length * 10;
+
+  // 6. Less: Benefits — sum from benefitsLog for this rider
+  const riderBenefits_dash = (S.benefitsLog||[])
+    .filter(b => b.person === currentRider?.name)
+    .reduce((s,b) => s + (parseFloat(b.other)||0) + (parseFloat(b.sss)||0) +
+      (parseFloat(b.philhealth)||0) + (parseFloat(b.pagibig)||0), 0);
+
+  // 7. Rider's Net SF = SF90% − Cashbond − Parcel Fee − Benefits
+  const cashbond_dash = 100;
+  const netSF_dash = Math.max(0, sfRider90_dash - cashbond_dash - parcelFee_dash - riderBenefits_dash);
+
+  // 8. Net Total to Remit = Subtotal − Rider's Net SF
+  const netTotal_dash = Math.max(0, codSubtotal_dash - netSF_dash);
   document.getElementById('rider-dash-stats').innerHTML = `
     <div class="stat-card blue"><div class="stat-label">Total Assigned</div><div class="stat-value">${myOrders.length}</div></div>
     <div class="stat-card green"><div class="stat-label">Delivered</div><div class="stat-value">${del.length}</div></div>
-    <div class="stat-card red"><div class="stat-label">10% Company Cut (SF)</div><div class="stat-value">${p(deduction10)}</div><div class="stat-sub">from shipping fees</div></div>
-    <div class="stat-card gold"><div class="stat-label">Rider SF Share (90%)</div><div class="stat-value">${p(netEarnings)}</div></div>
+    <div class="stat-card red"><div class="stat-label">10% Company Cut</div><div class="stat-value">${p(sf10_dash)}</div><div class="stat-sub">from SF only</div></div>
+    <div class="stat-card gold"><div class="stat-label">Rider's Net SF</div><div class="stat-value">${p(netSF_dash)}</div></div>
     <div class="stat-card orange"><div class="stat-label">Out for Delivery</div><div class="stat-value">${myOrders.filter(o=>o.status==='Out for Delivery').length}</div></div>
     <div class="stat-card purple"><div class="stat-label">For Update</div><div class="stat-value">${myOrders.filter(o=>o.status==='Update').length}</div></div>`;
 
   const RIDER_STATUSES = ['Ready for Pick-up','Out for Delivery','Delivered','Cancelled','For Update'];
   const tbody = document.getElementById('rider-parcels-tbody');
 
-  // Total to Remit = ALL non-remitted delivered orders (not just today's view)
-  const totalToRemit = myOrders.filter(o=>o.status==='Delivered').reduce((s,o)=>s+o.grandTotal,0);
+  // Total to Remit uses correct formula (mirrors Remit modal)
+  const totalToRemit = netTotal_dash;
   const cancelledCount = filtered.filter(o=>o.status==='Cancelled').length;
 
   tbody.innerHTML = filtered.length ? filtered.map(o => {
@@ -6072,23 +6121,50 @@ function renderRiderParcels() {
 
   // Earnings summary
   document.getElementById('rider-earnings-summary').innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;">
-      <div>
-        <div class="info-row"><span style="color:var(--muted);">Total Deliveries</span><strong>${del.length} parcels</strong></div>
-        <div class="info-row"><span style="color:var(--muted);">Total Gross SF</span><strong style="color:var(--blue);">${p(delSF)}</strong></div>
-        <div class="info-row"><span style="color:var(--muted);">10% Company Cut (SF)</span><strong style="color:var(--red);">-${p(deduction10)}</strong></div>
-        <div class="info-row"><span style="color:var(--muted);">Rider SF Earnings (90%)</span><strong style="color:var(--gold);">${p(netEarnings)}</strong></div>
-        <div class="info-row" style="border-bottom:none;font-size:14px;background:rgba(46,204,138,0.07);padding:8px;border-radius:7px;margin-top:4px;">
-          <strong>💰 Total to Remit</strong><strong style="color:var(--green);">${p(totalToRemit)}</strong>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:12.5px;">
+
+      <!-- LEFT: Earnings breakdown mirroring Remit modal -->
+      <div style="background:var(--navy);border-radius:8px;padding:12px;">
+        <div style="font-size:10px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">💰 Earnings Breakdown</div>
+
+        <div class="info-row"><span style="color:var(--muted);">Total Deliveries</span><strong>${del.length} parcel${del.length!==1?'s':''}</strong></div>
+        <div class="info-row"><span style="color:var(--muted);">📦 Delivered SF (Gross)</span><strong style="color:var(--gold);">${p(deliveredSF_dash)}</strong></div>
+        <div class="info-row"><span style="color:var(--muted);">💰 Subtotal (Delivered + SF)</span><strong style="color:var(--blue);">${p(codSubtotal_dash)}</strong></div>
+
+        <div style="border-top:1px solid var(--navy-border);margin:6px 0;"></div>
+
+        <div class="info-row"><span style="color:var(--red);">Less: SF 10% (Company)</span><strong style="color:var(--red);">-${p(sf10_dash)}</strong></div>
+        <div class="info-row"><span style="color:var(--red);">Less: Cashbond (₱100)</span><strong style="color:var(--red);">-${p(cashbond_dash)}</strong></div>
+        <div class="info-row"><span style="color:var(--red);">Less: Parcel Fee (₱10 × ${del.length})</span><strong style="color:var(--red);">-${p(parcelFee_dash)}</strong></div>
+        <div class="info-row"><span style="color:var(--red);">Less: Benefits</span><strong style="color:var(--red);">-${p(riderBenefits_dash)}</strong></div>
+
+        <div style="border-top:1px solid var(--navy-border);margin:6px 0;"></div>
+
+        <div class="info-row" style="padding:6px 0;">
+          <span style="color:var(--gold);font-weight:700;">= Rider's Net SF</span>
+          <strong style="color:var(--gold);font-size:14px;">${p(netSF_dash)}</strong>
+        </div>
+
+        <div class="info-row" style="border-bottom:none;font-size:14px;background:rgba(46,204,138,0.08);padding:10px;border-radius:7px;margin-top:6px;">
+          <strong>🏦 Net Total to Remit</strong>
+          <strong style="color:var(--green);font-size:16px;">${p(totalToRemit)}</strong>
+        </div>
+        <div style="font-size:9.5px;color:var(--muted);text-align:right;margin-top:3px;">
+          Net = ${p(codSubtotal_dash)} − ${p(netSF_dash)} (Net SF) = ${p(totalToRemit)}
         </div>
       </div>
-      <div>
-        <div class="info-row"><span style="color:var(--muted);">Preparing</span><span>${myOrders.filter(o=>o.status==='Preparing').length}</span></div>
-        <div class="info-row"><span style="color:var(--muted);">Ready</span><span>${myOrders.filter(o=>o.status==='Ready').length}</span></div>
+
+      <!-- RIGHT: Status summary -->
+      <div style="background:var(--navy);border-radius:8px;padding:12px;">
+        <div style="font-size:10px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">📦 Parcel Status</div>
+        <div class="info-row"><span style="color:var(--muted);">Total Assigned</span><strong>${myOrders.length}</strong></div>
+        <div class="info-row"><span style="color:var(--muted);">Ready for Pick-up</span><span style="color:var(--blue);">${myOrders.filter(o=>o.status==='Ready').length}</span></div>
         <div class="info-row"><span style="color:var(--muted);">Out for Delivery</span><span style="color:var(--orange);">${myOrders.filter(o=>o.status==='Out for Delivery').length}</span></div>
-        <div class="info-row"><span style="color:var(--muted);">Cancelled</span><span style="color:var(--red);">${cancelledCount} — ₱0.00</span></div>
+        <div class="info-row"><span style="color:var(--green);">✅ Delivered</span><span style="color:var(--green);font-weight:700;">${del.length}</span></div>
+        <div class="info-row"><span style="color:var(--red);">❌ Cancelled</span><span style="color:var(--red);">${cancelledCount} — ₱0.00</span></div>
         <div class="info-row" style="border-bottom:none;"><span style="color:var(--muted);">For Update</span><span style="color:var(--purple);">${myOrders.filter(o=>o.status==='Update').length}</span></div>
       </div>
+
     </div>`;
 }
 
@@ -6553,11 +6629,9 @@ function pf(n) {
 // ============================================================
 function setTrackingTab(tab) {
   document.querySelectorAll('#tracking-tabs .tab-btn').forEach((b,i)=>
-    b.classList.toggle('active',['cod','update'][i]===tab));
-  document.getElementById('tracking-tab-cod').style.display    = tab==='cod'    ? '' : 'none';
-  document.getElementById('tracking-tab-update').style.display = tab==='update' ? '' : 'none';
+    b.classList.toggle('active',['cod'][i]===tab));
+  document.getElementById('tracking-tab-cod').style.display = tab==='cod' ? '' : 'none';
   if(tab==='cod') renderTracking();
-  else renderForUpdateTab();
 }
 
 function renderTracking() {
@@ -6668,7 +6742,8 @@ function updateLbcStatus(orderIdx, newStatus) {
 function refreshUpdateBadge() {
   // Only count COD 'For Update' orders (LBC/INTL managed in Order Management)
   const count = S.orders.filter(o=>o.status==='Update' && (o.paymentMethod||'COD')==='COD').length;
-  const btn = document.getElementById('tracking-tab-update-btn');
+  // Update the checker's For Update tab badge (moved from COD Tracking)
+  const btn = document.getElementById('checker-tab-update-btn');
   if(btn) btn.textContent = count > 0 ? `🔔 For Update (${count})` : '🔔 For Update';
 }
 
@@ -8367,11 +8442,39 @@ function confirmCheckerCancel() {
     checkerStatus: o.checkerStatus||'',
     riderRemarks: o.riderRemarks||''
   });
+  // ── Auto-restore inventory for each item in the cancelled order ──
+  (o.items||[]).forEach(item => {
+    if(!item.code) return;
+    const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
+    if(!inv) return;
+    if(inv.itemType === 'fixprice') {
+      const restoreQty = item.qty || 1;
+      const before = inv.qty;
+      inv.qty = before + restoreQty;
+      S.stockLog.push({
+        productCode: inv.code, type: 'return', qty: restoreQty,
+        date: today(),
+        notes: `Auto-restore: Checker cancelled order ${onum(orderIdx)} – ${o.name}`,
+        before, after: inv.qty
+      });
+    } else if((item.grams||0) > 0) {
+      const restoreGrams = item.grams;
+      const before = inv.grams;
+      inv.grams = before + restoreGrams;
+      S.stockLog.push({
+        productCode: inv.code, type: 'return', qty: restoreGrams,
+        date: today(),
+        notes: `Auto-restore: Checker cancelled order ${onum(orderIdx)} – ${o.name}`,
+        before, after: inv.grams
+      });
+    }
+  });
+
   // Remove from active orders
   S.orders.splice(orderIdx, 1);
   save();
   closeModal('modal-checker-cancel');
-  toast(`❌ Order cancelled & moved to Recently Deleted. Reason: ${reason}`);
+  toast(`❌ Order cancelled & inventory restored. Reason: ${reason}`);
   renderChecker();
   if(currentRole==='owner') renderDash();
 }
@@ -8649,6 +8752,56 @@ function renderCheckerDeleted() {
   const tbody = document.getElementById('checker-deleted-tbody');
   if(tbody) tbody.innerHTML = rows ||
     '<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:32px;">No cancelled orders yet. Kapag nagcancel si checker ng LBC/INTL order, makikita dito.</td></tr>';
+}
+
+
+// ── For Update Tab inside Checker Verify ─────────────────────
+function renderCheckerForUpdate() {
+  const list = S.orders.map((o,i)=>({o,i})).filter(({o}) =>
+    o.status === 'Update' && (o.paymentMethod||'COD') === 'COD');
+  const el = document.getElementById('checker-update-list');
+  if(!el) return;
+
+  if(!list.length) {
+    el.innerHTML = '<p style="color:var(--muted);padding:24px;text-align:center;">Walang For Update na COD parcels ngayon.</p>';
+    return;
+  }
+
+  const rows = list.map(({o,i}) => {
+    const itemsHtml = o.items.map((it,ii) => {
+      const isCancelled = (o.itemStatuses||{})[ii] === 'Cancelled';
+      return `<div style="font-size:10px;${isCancelled?'text-decoration:line-through;color:var(--muted);':''}">
+        ${isCancelled?'❌':'🔹'} <strong>${it.code||'—'}</strong> ${it.desc||''} (${it.grams>0?it.grams+'g':'×'+(it.qty||1)}) = ${p(it.total||0)}
+      </div>`;
+    }).join('');
+
+    return `<tr style="background:rgba(224,138,48,0.05);">
+      <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
+      <td style="font-weight:500;">${o.name}<br><span style="font-size:9.5px;color:var(--muted);">${o.contact||'—'}</span></td>
+      <td style="font-size:10.5px;">${o.address||'—'}${o.landmark?'<br>🏠 '+o.landmark:''}</td>
+      <td style="font-size:11px;color:var(--blue);">🏍️ ${o.assignedRider||'Unassigned'}</td>
+      <td style="font-size:11px;">${o.admin||'—'}</td>
+      <td>${o.date}</td>
+      <td style="font-size:10px;">${itemsHtml}</td>
+      <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
+      <td style="font-size:10.5px;color:var(--orange);">${o.riderRemarks||'<span style="color:var(--muted);">No remarks</span>'}</td>
+      <td>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;">
+          <button class="btn btn-green btn-sm" onclick="resolveUpdate(${i},'Out for Delivery')">🔁 Re-Deliver</button>
+          <button class="btn btn-red btn-sm" onclick="resolveUpdate(${i},'Cancelled')">✕ Cancel</button>
+          <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr>
+      <th>Order #</th><th>Customer</th><th>Address</th><th>Rider</th><th>Admin</th>
+      <th>Date</th><th>Items</th><th>Total</th><th>Rider Remarks</th><th>Actions</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
 }
 
 // Show login screen on load (login screen is visible by default)
