@@ -816,6 +816,8 @@ function _showRulesHint() {
       <div class="nav-item" onclick="gotoPage('tracking')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>COD Tracking</div>
       <div class="nav-item" onclick="gotoPage('ordermgmt')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><path d="M9 3h6v4H9z"/><path d="M9 12h6M9 16h4"/></svg>Order Management</div>
       <div class="nav-item" onclick="gotoPage('lbcdelivery')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 4v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>LBC Delivery</div>
+      <div class="nav-item" onclick="gotoPage('emsdelivery')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>EMS Delivery</div>
+      <div class="nav-item" onclick="gotoPage('fedexdelivery')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11a2 2 0 012 2v3"/><rect x="9" y="11" width="14" height="10" rx="2"/><path d="M16 11V9a2 2 0 00-2-2"/></svg>FedEx Delivery</div>
     </div>
     <div class="nav-section">
       <div class="nav-label">Operations</div>
@@ -824,6 +826,7 @@ function _showRulesHint() {
       <div class="nav-item" onclick="gotoPage('dailyparcels')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7H4a2 2 0 00-2 2v10a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>Daily Parcels</div>
       <div class="nav-item" onclick="gotoPage('sorting')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6"/></svg>Parcel Sorting</div>
       <div class="nav-item" onclick="gotoPage('returns')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>Return / Cancel</div>
+      <div class="nav-item" onclick="gotoPage('deletedorders')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>Recently Deleted</div>
       <div class="nav-item" onclick="gotoPage('ridersremit')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Riders Remit</div>
       <div class="nav-item" onclick="gotoPage('cashbond')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>Cashbond</div>
       <div class="nav-item" onclick="gotoPage('benefits')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>Benefits (SSS/PH/PI)</div>
@@ -947,6 +950,7 @@ function _showRulesHint() {
       <button class="tab-btn active" onclick="setCheckerTab('COD')">🏍️ COD</button>
       <button class="tab-btn" onclick="setCheckerTab('LBC')">📦 LBC</button>
       <button class="tab-btn" onclick="setCheckerTab('INTERNATIONAL')">✈️ INTERNATIONAL</button>
+      <button class="tab-btn" onclick="setCheckerTab('DELETED')" id="checker-tab-deleted-btn">🗑️ Recently Deleted</button>
     </div>
     <div class="card no-print">
       <div class="card-header">
@@ -980,6 +984,34 @@ function _showRulesHint() {
           <th>Grand Total</th><th>💳 Payment Status</th>
           <th>✅ Verification</th><th>📦 Parcel Status</th><th>Actions</th>
         </tr></thead><tbody id="checker-lbc-tbody"></tbody></table></div>
+      </div>
+    </div>
+    <!-- Recently Deleted panel — shown when DELETED tab is active -->
+    <div id="checker-deleted-panel" style="display:none;">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title" style="color:var(--red);">🗑️ Recently Deleted / Cancelled Orders</span>
+          <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;" class="no-print">
+            <input class="form-control" style="width:200px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / CP# / order# / reason" id="checker-del-search" oninput="renderCheckerDeleted()">
+            <select class="form-control" style="width:140px;font-size:11px;padding:4px 8px;" id="checker-del-method" onchange="renderCheckerDeleted()">
+              <option value="">All Methods</option>
+              <option value="LBC">📦 LBC</option>
+              <option value="INTERNATIONAL">✈️ INTERNATIONAL</option>
+              <option value="COD">🏍️ COD</option>
+            </select>
+            <input type="date" class="form-control" style="width:148px;font-size:11px;" id="checker-del-date" oninput="renderCheckerDeleted()" title="Filter by cancel date">
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('checker-del-date').value='';renderCheckerDeleted()">All Dates</button>
+          </div>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr>
+            <th>Order #</th><th>Customer</th><th>CP #</th><th>Address</th><th>Admin</th>
+            <th>Method</th><th>Order Date</th><th>Items</th><th>Total</th>
+            <th>Payment Status</th><th style="color:var(--red);">Cancel Reason</th>
+            <th>Cancelled By</th><th>Cancelled At</th>
+          </tr></thead>
+          <tbody id="checker-deleted-tbody"></tbody>
+        </table></div>
       </div>
     </div>
   </div>
@@ -1657,6 +1689,65 @@ function _showRulesHint() {
     <div id="lbcd-content"></div>
   </div>
 
+  <!-- RECENTLY DELETED PAGE -->
+  <div class="page" id="page-deletedorders">
+    <div class="action-row no-print">
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
+        <input class="form-control" style="width:220px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / order# / reason" id="del-search" oninput="renderDeletedOrders()">
+        <select class="form-control" style="width:160px;font-size:11px;padding:4px 8px;" id="del-method" onchange="renderDeletedOrders()">
+          <option value="">All Methods</option>
+          <option value="LBC">📦 LBC</option>
+          <option value="INTERNATIONAL">✈️ INTERNATIONAL</option>
+          <option value="COD">🏍️ COD</option>
+        </select>
+        <input type="date" class="form-control" style="width:148px;font-size:11px;" id="del-date" oninput="renderDeletedOrders()" title="Filter by cancel date">
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('del-date').value='';renderDeletedOrders()">All Dates</button>
+      </div>
+      <span id="del-summary" style="font-size:12px;color:var(--red);font-weight:600;"></span>
+    </div>
+    <div id="del-content"></div>
+  </div>
+
+  <!-- EMS DELIVERY PAGE -->
+  <div class="page" id="page-emsdelivery">
+    <div class="action-row no-print" style="flex-wrap:wrap;gap:10px;">
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
+        <div class="section-tabs" style="margin:0;" id="emsdelivery-tabs">
+          <button class="tab-btn active" onclick="setEmsDeliveryTab('ofd')">🚚 Out for Delivery</button>
+          <button class="tab-btn" onclick="setEmsDeliveryTab('rto')">↩️ RTO</button>
+          <button class="tab-btn" onclick="setEmsDeliveryTab('delivered')">✅ Delivered</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
+        <input class="form-control" style="width:200px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / order# / tracking" id="emsd-search" oninput="renderEmsDelivery()">
+        <input type="date" class="form-control" style="width:148px;font-size:11px;" id="emsd-date" oninput="renderEmsDelivery()" title="Filter by date">
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('emsd-date').value='';renderEmsDelivery()">All Dates</button>
+      </div>
+    </div>
+    <div class="stats-grid" id="emsd-stats" style="margin-bottom:13px;"></div>
+    <div id="emsd-content"></div>
+  </div>
+
+  <!-- FEDEX DELIVERY PAGE -->
+  <div class="page" id="page-fedexdelivery">
+    <div class="action-row no-print" style="flex-wrap:wrap;gap:10px;">
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
+        <div class="section-tabs" style="margin:0;" id="fedexdelivery-tabs">
+          <button class="tab-btn active" onclick="setFedexDeliveryTab('ofd')">🚚 Out for Delivery</button>
+          <button class="tab-btn" onclick="setFedexDeliveryTab('rto')">↩️ RTO</button>
+          <button class="tab-btn" onclick="setFedexDeliveryTab('delivered')">✅ Delivered</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
+        <input class="form-control" style="width:200px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / order# / tracking" id="fedexd-search" oninput="renderFedexDelivery()">
+        <input type="date" class="form-control" style="width:148px;font-size:11px;" id="fedexd-date" oninput="renderFedexDelivery()" title="Filter by date">
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('fedexd-date').value='';renderFedexDelivery()">All Dates</button>
+      </div>
+    </div>
+    <div class="stats-grid" id="fedexd-stats" style="margin-bottom:13px;"></div>
+    <div id="fedexd-content"></div>
+  </div>
+
 </div><!-- /main -->
 
 <!-- Daily Parcels — Customer Order History Modal -->
@@ -1667,6 +1758,39 @@ function _showRulesHint() {
       <button class="modal-close" onclick="closeModal('modal-daily-detail')">✕</button>
     </div>
     <div id="daily-detail-content"></div>
+  </div>
+</div>
+
+<!-- Checker Cancel Order Modal -->
+<div class="modal-overlay" id="modal-checker-cancel">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-header">
+      <span class="modal-title">❌ Cancel LBC/INTL Order</span>
+      <button class="modal-close" onclick="closeModal('modal-checker-cancel')">✕</button>
+    </div>
+    <div style="padding:4px 0 12px;">
+      <div id="checker-cancel-order-info" style="background:var(--navy);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;"></div>
+      <div class="form-group">
+        <label style="color:var(--red);font-weight:700;">⚠️ Reason for Cancellation <span style="color:var(--red);">*</span></label>
+        <select class="form-control" id="checker-cancel-reason-select" onchange="onCancelReasonChange()" style="margin-bottom:8px;">
+          <option value="">-- Select Reason --</option>
+          <option>Customer not responding</option>
+          <option>Wrong address / Undeliverable</option>
+          <option>Customer refused delivery</option>
+          <option>Damaged item</option>
+          <option>Duplicate order</option>
+          <option>Other</option>
+        </select>
+        <textarea class="form-control" id="checker-cancel-reason" placeholder="Required: Describe reason for cancellation..." rows="3"
+          style="resize:vertical;font-size:12px;"></textarea>
+        <div id="checker-cancel-reason-err" style="font-size:10.5px;color:var(--red);min-height:14px;margin-top:3px;"></div>
+      </div>
+      <input type="hidden" id="checker-cancel-order-idx">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-checker-cancel')">Back</button>
+      <button class="btn btn-red" onclick="confirmCheckerCancel()">❌ Confirm Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -2160,8 +2284,9 @@ function _showRulesHint() {
 const KEY='gce_v5';
 // Clear old version keys on load
 ['gce_v3','gce_v4'].forEach(k=>{ try{localStorage.removeItem(k);}catch(e){} });
-let S=JSON.parse(localStorage.getItem(KEY)||'null')||{orders:[],riders:[],locations:[],payroll:[],expenses:[],inventory:[],stockLog:[],remitLog:[],cashbondLog:[],benefitsLog:[],specialPasswords:{remitter:'remit2026',sorter:'sort2026',checker:'check2026'}};
+let S=JSON.parse(localStorage.getItem(KEY)||'null')||{orders:[],riders:[],locations:[],payroll:[],expenses:[],inventory:[],stockLog:[],remitLog:[],cashbondLog:[],benefitsLog:[],deletedOrders:[],specialPasswords:{remitter:'remit2026',sorter:'sort2026',checker:'check2026'}};
 if(!S.locations)S.locations=[];
+if(!S.deletedOrders)S.deletedOrders=[];
 if(!S.stockLog)S.stockLog=[];
 if(!S.remitLog)S.remitLog=[];
 if(!S.cashbondLog)S.cashbondLog=[];
@@ -2235,7 +2360,7 @@ function closeModal(id){document.getElementById(id).classList.remove('open');}
 })();
 
 // ============ NAVIGATION ============
-const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales Calendar',orders:'Admin Encode',checker:'Checker Verify',tracking:'COD Tracking',ordermgmt:'Order Management',lbcdelivery:'LBC Delivery',riders:'Riders by Location',dailyparcels:'Daily Parcels',sorting:'Parcel Sorting',returns:'Return / Cancel',dailysales:'Daily Sales Record',payroll:'Payroll',expenses:'Expenses',pnl:'P&L Report',inventory:'Inventory',adminsheets:'Per-Admin Order Sheets',settings:'Settings',ridersremit:'Riders Remit',cashbond:'Cashbond Tracker',benefits:'Benefits (SSS / PhilHealth / Pag-IBIG)'};
+const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales Calendar',orders:'Admin Encode',checker:'Checker Verify',tracking:'COD Tracking',ordermgmt:'Order Management',lbcdelivery:'LBC Delivery',emsdelivery:'EMS Delivery',fedexdelivery:'FedEx Delivery',riders:'Riders by Location',dailyparcels:'Daily Parcels',sorting:'Parcel Sorting',returns:'Return / Cancel',deletedorders:'Recently Deleted',dailysales:'Daily Sales Record',payroll:'Payroll',expenses:'Expenses',pnl:'P&L Report',inventory:'Inventory',adminsheets:'Per-Admin Order Sheets',settings:'Settings',ridersremit:'Riders Remit',cashbond:'Cashbond Tracker',benefits:'Benefits (SSS / PhilHealth / Pag-IBIG)'};
 let _activePage = 'dashboard';
 function gotoPage(name){
   _activePage = name;
@@ -2264,8 +2389,8 @@ function gotoPage(name){
 function renderPage(n){
   ({dashboard:()=>{applyDashCeoLock();if(currentRole==='owner')renderDash();},
     riderdash:()=>{},calendar:()=>{if(currentRole==='owner')renderCalendar();else{const p2=document.getElementById('page-calendar');if(p2)p2.innerHTML='<div style="text-align:center;padding:60px;"><div style="font-size:48px;">🔐</div><div style="font-family:var(--fh);font-size:20px;color:var(--gold);margin:10px 0;">CEO Only</div><p style="color:var(--muted);">Sales Calendar is restricted to CEO access.</p></div>';}},
-    orders:initOrdersPage,checker:renderChecker,tracking:()=>{renderTracking();refreshUpdateBadge();},ordermgmt:renderOrderMgmt,lbcdelivery:renderLbcDelivery,
-    riders:renderRiders,dailyparcels:renderDailyParcels,sorting:renderSorting,returns:renderReturns,
+    orders:initOrdersPage,checker:renderChecker,tracking:()=>{renderTracking();refreshUpdateBadge();},ordermgmt:renderOrderMgmt,lbcdelivery:renderLbcDelivery,emsdelivery:renderEmsDelivery,fedexdelivery:renderFedexDelivery,deletedorders:renderDeletedOrders,
+    riders:renderRiders,dailyparcels:renderDailyParcels,sorting:renderSorting,returns:renderReturns,deletedorders:renderDeletedOrders,
     dailysales:renderDailySales,payroll:()=>renderPayroll(payTab),expenses:renderExpenses,
     pnl:renderPnl,inventory:()=>renderInv(invTab),adminsheets:renderAdminSheets,settings:renderSettings,
     ridersremit:renderRemitPage,cashbond:renderCashbondPage,benefits:renderBenefitsPage
@@ -2841,9 +2966,15 @@ function unlockLbcChecker() {
 function setCheckerTab(tab) {
   checkerTab = tab;
   document.querySelectorAll('#checker-tabs .tab-btn').forEach((b,i) =>
-    b.classList.toggle('active', ['COD','LBC','INTERNATIONAL'][i] === tab));
-  const labels = {COD:'🏍️ COD – Checker Queue', LBC:'📦 LBC – Checker Queue', INTERNATIONAL:'✈️ INTERNATIONAL – Checker Queue'};
+    b.classList.toggle('active', ['COD','LBC','INTERNATIONAL','DELETED'][i] === tab));
+  const labels = {COD:'🏍️ COD – Checker Queue', LBC:'📦 LBC – Checker Queue', INTERNATIONAL:'✈️ INTERNATIONAL – Checker Queue', DELETED:'🗑️ Recently Deleted / Cancelled'};
+  // Show/hide the right panel
+  const tableArea = document.getElementById('checker-table-area');
+  const deletedPanel = document.getElementById('checker-deleted-panel');
+  if(tableArea) tableArea.style.display = tab === 'DELETED' ? 'none' : '';
+  if(deletedPanel) deletedPanel.style.display = tab === 'DELETED' ? '' : 'none';
   const el = document.getElementById('checker-tab-label'); if(el) el.textContent = labels[tab]||tab;
+  if(tab === 'DELETED') { renderCheckerDeleted(); return; }
   // Show LBC lock if not yet unlocked
   const isLbc = tab === 'LBC' || tab === 'INTERNATIONAL';
   if(isLbc && !_lbcCheckerUnlocked) {
@@ -2865,6 +2996,10 @@ function renderChecker(){
   const df = document.getElementById('checker-date')?.value||'';
   const pending = S.orders.filter(o=>o.checkerStatus==='Pending').length;
   document.getElementById('checker-pending-count').textContent = pending ? `⚠️ ${pending} pending` : '✅ All verified';
+  // Update Recently Deleted tab badge
+  const delCount = (S.deletedOrders||[]).length;
+  const delBtn = document.getElementById('checker-tab-deleted-btn');
+  if(delBtn) delBtn.textContent = delCount > 0 ? `🗑️ Recently Deleted (${delCount})` : '🗑️ Recently Deleted';
   const isCOD = checkerTab === 'COD';
   const isLbc = checkerTab === 'LBC' || checkerTab === 'INTERNATIONAL';
 
@@ -3019,7 +3154,7 @@ function renderChecker(){
                     ? '<button class="btn btn-blue btn-sm" onclick="verifyOrder('+i+')">✔ Mark Verified</button>'
                     : '')
                   + '<button class="btn btn-print btn-sm" onclick="openInvoice('+i+')">🖨️</button>'
-                  + '<button class="btn btn-red btn-sm" onclick="delOrder('+i+')">🗑️</button>')
+                  + '<button class="btn btn-red btn-sm" onclick="checkerCancelOrder('+i+')">❌ Cancel</button>')
               }
             </td>
           </tr>`;
@@ -5461,7 +5596,7 @@ function applyRoleUI(){
   const rolePages = {
     rider:    ['riderdash'],
     remitter: ['ridersremit','cashbond','benefits','sorting','returns'],
-    sorter:   ['sorting','tracking','ordermgmt','lbcdelivery'],
+    sorter:   ['sorting','tracking','ordermgmt','lbcdelivery','emsdelivery','fedexdelivery'],
     checker:  ['checker','sorting'],
   };
   const allowed = rolePages[currentRole] || null;
@@ -7570,7 +7705,10 @@ function startAutoRefresh(){
         riderdash: ()=>renderRiderDash?.(),
         calendar: ()=>renderCalendar?.(),
         ordermgmt: ()=>renderOrderMgmt?.(),
+        deletedorders: ()=>renderDeletedOrders?.(),
         lbcdelivery: ()=>renderLbcDelivery?.(),
+        emsdelivery: ()=>renderEmsDelivery?.(),
+        fedexdelivery: ()=>renderFedexDelivery?.(),
       };
       try { renderMap[_activePage]?.(); } catch(e){}
       // If rider, always refresh their parcels too
@@ -7599,6 +7737,8 @@ function renderOrderMgmt() {
 
   const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
     if((o.paymentMethod||'COD') !== method) return false;
+    // Hide Delivered — they move to LBC Delivery / EMS Delivery page
+    if(o.lbcStatus === 'Delivered' || o.status === 'Delivered') return false;
     if(df && o.date !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q)
        && !(o.contact||'').includes(q) && !(o.trackingNumber||'').includes(q)) return false;
@@ -7907,12 +8047,12 @@ function renderLbcDelivery() {
   const df = document.getElementById('lbcd-date')?.value||'';
 
   // All LBC/INTL orders with the matching lbcStatus
-  const list = S.orders.map((o,i)=>({o,i})).filter(({o}) => {
+  const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
     const pm = o.paymentMethod||'COD';
     if(pm !== 'LBC' && pm !== 'INTERNATIONAL') return false;
     if((o.lbcStatus||'') !== activeStatus) return false;
     if(df && o.date !== df) return false;
-    if(q && !o.name.toLowerCase().includes(q) && !onum(o.idx||i).includes(q)
+    if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q)
        && !(o.contact||'').includes(q) && !(o.trackingNumber||'').includes(q)) return false;
     return true;
   });
@@ -8026,6 +8166,489 @@ function lbcdUpdateStatus(orderIdx, newStatus) {
   toast(`📦 Status → ${newStatus}`);
   renderLbcDelivery();
   if(currentRole==='owner') renderDash();
+}
+
+
+// ============================================================
+// EMS DELIVERY PAGE (INTERNATIONAL only — no ODZ)
+// ============================================================
+let emsDeliveryTab = 'ofd';
+
+function setEmsDeliveryTab(tab) {
+  emsDeliveryTab = tab;
+  document.querySelectorAll('#emsdelivery-tabs .tab-btn').forEach((b,i) =>
+    b.classList.toggle('active', ['ofd','rto','delivered'][i] === tab));
+  renderEmsDelivery();
+}
+
+function renderEmsDelivery() {
+  const TAB_STATUS = { ofd:'Out for Delivery', rto:'RTO', delivered:'Delivered' };
+  const TAB_LABEL  = { ofd:'🚚 Out for Delivery', rto:'↩️ Return to Origin (RTO)', delivered:'✅ Delivered' };
+  const TAB_COLOR  = { ofd:'var(--gold)', rto:'var(--red)', delivered:'var(--green)' };
+
+  const activeStatus = TAB_STATUS[emsDeliveryTab] || 'Out for Delivery';
+  const activeLabel  = TAB_LABEL[emsDeliveryTab]  || activeStatus;
+  const activeColor  = TAB_COLOR[emsDeliveryTab]  || 'var(--muted)';
+
+  const q  = (document.getElementById('emsd-search')?.value||'').toLowerCase();
+  const df = document.getElementById('emsd-date')?.value||'';
+
+  // INTERNATIONAL orders only with matching lbcStatus
+  const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
+    if(o.paymentMethod !== 'INTERNATIONAL') return false;
+    if((o.lbcStatus||'') !== activeStatus) return false;
+    if(df && o.date !== df) return false;
+    if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q)
+       && !(o.contact||'').includes(q) && !(o.trackingNumber||'').includes(q)) return false;
+    return true;
+  });
+
+  // Stats — all 3 statuses across all INTERNATIONAL orders
+  const allIntl = S.orders.filter(o=>o.paymentMethod==='INTERNATIONAL');
+  const statsEl = document.getElementById('emsd-stats');
+  if(statsEl) statsEl.innerHTML = `
+    <div class="stat-card gold" style="cursor:pointer;" onclick="setEmsDeliveryTab('ofd')">
+      <div class="stat-label">Out for Delivery</div>
+      <div class="stat-value">${allIntl.filter(o=>o.lbcStatus==='Out for Delivery').length}</div>
+    </div>
+    <div class="stat-card red" style="cursor:pointer;" onclick="setEmsDeliveryTab('rto')">
+      <div class="stat-label">RTO</div>
+      <div class="stat-value">${allIntl.filter(o=>o.lbcStatus==='RTO').length}</div>
+    </div>
+    <div class="stat-card green" style="cursor:pointer;" onclick="setEmsDeliveryTab('delivered')">
+      <div class="stat-label">Delivered</div>
+      <div class="stat-value">${allIntl.filter(o=>o.lbcStatus==='Delivered'||o.status==='Delivered').length}</div>
+      <div class="stat-sub">${p(allIntl.filter(o=>o.lbcStatus==='Delivered'||o.status==='Delivered').reduce((s,o)=>s+o.grandTotal,0))}</div>
+    </div>`;
+
+  const stColor = s => s==='Delivered'?'var(--green)':s==='RTO'?'var(--red)':s==='Out for Delivery'?'var(--gold)':'var(--muted)';
+
+  const UPDATE_STATUSES = ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
+
+  const rows = list.map(({o,i}) => {
+    const lst = o.lbcStatus || activeStatus;
+    const tn  = o.trackingNumber || '—';
+    const isRTO = lst === 'RTO';
+    const isDelivered = lst === 'Delivered' || o.status === 'Delivered';
+
+    const itemStatuses = o.itemStatuses || {};
+    const itemList = o.items.map((it,ii) => {
+      const isCancelled = itemStatuses[ii] === 'Cancelled';
+      const isGrams = it.grams > 0;
+      const qtyStr = isGrams ? `${it.grams}g` : `×${it.qty||1}`;
+      return `<div style="font-size:10px;${isCancelled?'text-decoration:line-through;color:var(--muted);':''}">
+        ${isCancelled?'❌':'🔹'} <strong>${it.code||'—'}</strong> ${it.desc||''} (${qtyStr}) = ${p(it.total)}
+      </div>`;
+    }).join('');
+
+    return `<tr style="${isRTO?'background:rgba(224,85,85,0.05);':isDelivered?'background:rgba(46,204,138,0.04);':''}">
+      <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
+      <td style="font-weight:500;">${o.name}<br><span style="font-size:9.5px;color:var(--muted);">${o.contact||'—'}</span></td>
+      <td style="font-size:10.5px;max-width:180px;">${o.address||'—'}${o.landmark?'<br><span style="color:var(--muted);font-size:9.5px;">🏠 '+o.landmark+'</span>':''}</td>
+      <td style="font-size:11px;">${o.admin||'—'}</td>
+      <td style="font-family:monospace;font-size:11px;color:var(--blue);">${tn}</td>
+      <td>${o.date}</td>
+      <td style="font-size:10px;">${itemList}</td>
+      <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
+      <td><span style="font-size:10px;font-weight:700;color:${stColor(lst)};padding:3px 8px;background:rgba(201,168,76,0.08);border-radius:5px;">✈️ ${lst}</span></td>
+      <td>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <select class="form-control" style="width:175px;font-size:10.5px;padding:3px 5px;" onchange="emsdUpdateStatus(${i},this.value)">
+            ${UPDATE_STATUSES.map(s=>`<option${lst===s?' selected':''}>${s}</option>`).join('')}
+          </select>
+          ${isRTO?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" style="width:175px;font-size:10.5px;">✏️ Edit / Re-dispatch</button>`:''}
+        </div>
+      </td>
+      <td>
+        <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('emsd-content').innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title" style="color:${activeColor};">${activeLabel}</span>
+        <span style="font-size:11px;color:var(--muted);">${list.length} parcel(s)</span>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Order #</th><th>Customer</th><th>Address / Landmark</th><th>Admin</th>
+          <th>Tracking #</th><th>Date</th><th>Items</th><th>Total</th>
+          <th>Parcel Status</th><th>Update Status</th><th>Actions</th>
+        </tr></thead>
+        <tbody>${rows||'<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">No '+activeStatus+' EMS parcels</td></tr>'}</tbody>
+      </table></div>
+    </div>`;
+}
+
+function emsdUpdateStatus(orderIdx, newStatus) {
+  S.orders[orderIdx].lbcStatus = newStatus;
+  if(newStatus === 'Delivered') {
+    S.orders[orderIdx].status = 'Delivered';
+  } else if(newStatus === 'RTO') {
+    S.orders[orderIdx].status = 'Cancelled';
+  } else {
+    S.orders[orderIdx].status = 'Preparing';
+  }
+  save();
+  toast(`✈️ EMS Status → ${newStatus}`);
+  renderEmsDelivery();
+  if(currentRole==='owner') renderDash();
+}
+
+
+// ── Checker Cancel (LBC/INTL) ──────────────────────────────
+function checkerCancelOrder(orderIdx) {
+  const o = S.orders[orderIdx];
+  if(!o) return;
+  // Pre-fill info
+  document.getElementById('checker-cancel-order-idx').value = orderIdx;
+  document.getElementById('checker-cancel-reason').value = '';
+  document.getElementById('checker-cancel-reason-select').value = '';
+  document.getElementById('checker-cancel-reason-err').textContent = '';
+  document.getElementById('checker-cancel-order-info').innerHTML = `
+    <div style="font-weight:700;color:var(--gold);">${onum(orderIdx)} — ${o.name}</div>
+    <div style="color:var(--muted);font-size:11px;">${o.contact||'—'} | ${o.paymentMethod||'COD'} | ${o.date}</div>
+    <div style="font-size:11px;margin-top:4px;">Items: ${o.items.map(it=>it.code+' '+it.desc).join(', ')}</div>
+    <div style="font-size:11px;color:var(--green);margin-top:2px;">Total: ${p(o.grandTotal)}</div>`;
+  openModal('modal-checker-cancel');
+}
+
+function onCancelReasonChange() {
+  const sel = document.getElementById('checker-cancel-reason-select').value;
+  const txt = document.getElementById('checker-cancel-reason');
+  if(sel && sel !== 'Other') {
+    txt.value = sel;
+  } else if(sel === 'Other') {
+    txt.value = '';
+    txt.focus();
+  }
+}
+
+function confirmCheckerCancel() {
+  const orderIdx = parseInt(document.getElementById('checker-cancel-order-idx').value);
+  const reason = document.getElementById('checker-cancel-reason').value.trim();
+  const errEl = document.getElementById('checker-cancel-reason-err');
+  if(!reason) {
+    errEl.textContent = '⚠️ Required: Maglagay ng reason para sa cancellation.';
+    document.getElementById('checker-cancel-reason').focus();
+    return;
+  }
+  errEl.textContent = '';
+  const o = S.orders[orderIdx];
+  if(!o) return;
+  // Save to deletedOrders log before removing
+  if(!S.deletedOrders) S.deletedOrders = [];
+  S.deletedOrders.push({
+    cancelledAt: new Date().toISOString(),
+    cancelledBy: currentUser?.name || 'Checker',
+    reason,
+    orderNum: onum(orderIdx),
+    // Full order snapshot
+    name: o.name,
+    contact: o.contact||'',
+    backupContact: o.backupContact||'',
+    address: o.address||'',
+    landmark: o.landmark||'',
+    city: o.city||'',
+    admin: o.admin||'',
+    date: o.date,
+    paymentMethod: o.paymentMethod||'COD',
+    paymentStatus: o.paymentStatus||'',
+    verificationStatus: o.verificationStatus||'',
+    trackingNumber: o.trackingNumber||'',
+    grandTotal: o.grandTotal||0,
+    itemsTotal: o.itemsTotal||0,
+    shipping: o.shipping||0,
+    items: o.items||[],
+    status: o.status,
+    lbcStatus: o.lbcStatus||'',
+    checkerStatus: o.checkerStatus||'',
+    riderRemarks: o.riderRemarks||''
+  });
+  // Remove from active orders
+  S.orders.splice(orderIdx, 1);
+  save();
+  closeModal('modal-checker-cancel');
+  toast(`❌ Order cancelled & moved to Recently Deleted. Reason: ${reason}`);
+  renderChecker();
+  if(currentRole==='owner') renderDash();
+}
+
+// ── Recently Deleted Page ──────────────────────────────────
+function renderDeletedOrders() {
+  const q  = (document.getElementById('del-search')?.value||'').toLowerCase();
+  const mf = document.getElementById('del-method')?.value||'';
+  const df = document.getElementById('del-date')?.value||'';
+  if(!S.deletedOrders) S.deletedOrders = [];
+
+  const list = S.deletedOrders.map((d,i)=>({d,i})).filter(({d}) => {
+    if(mf && (d.paymentMethod||'COD') !== mf) return false;
+    if(df && d.cancelledAt && !d.cancelledAt.startsWith(df)) return false;
+    if(q && !d.name.toLowerCase().includes(q) && !(d.contact||'').includes(q)
+       && !(d.orderNum||'').toLowerCase().includes(q) && !(d.reason||'').toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  const sumEl = document.getElementById('del-summary');
+  if(sumEl) sumEl.textContent = `${list.length} cancelled order(s)`;
+
+  const pmIcon = m => m==='INTERNATIONAL'?'✈️':m==='LBC'?'📦':'🏍️';
+  const pmColor = m => m==='INTERNATIONAL'?'var(--green)':m==='LBC'?'var(--blue)':'var(--gold)';
+
+  const rows = list.map(({d,i}) => {
+    const cancelDate = d.cancelledAt ? d.cancelledAt.slice(0,10) : '—';
+    const cancelTime = d.cancelledAt ? new Date(d.cancelledAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}) : '';
+    const itemsHtml = (d.items||[]).map(it => {
+      const isGrams = (it.grams||0) > 0;
+      const qty = isGrams ? `${it.grams}g` : `×${it.qty||1}`;
+      return `<div style="font-size:10px;">🔹 <strong>${it.code||'—'}</strong> ${it.desc||''} (${qty}) = ${p(it.total||0)}</div>`;
+    }).join('');
+    return `<tr style="background:rgba(224,85,85,0.04);">
+      <td style="color:var(--red);font-weight:600;">${d.orderNum||'—'}</td>
+      <td style="font-weight:500;">${d.name}<br><span style="font-size:9.5px;color:var(--muted);">${d.contact||'—'}</span></td>
+      <td style="font-size:10.5px;">${d.address||'—'}${d.landmark?'<br>🏠 '+d.landmark:''}</td>
+      <td style="font-size:11px;">${d.admin||'—'}</td>
+      <td><span style="font-size:9.5px;font-weight:700;color:${pmColor(d.paymentMethod||'COD')}">${pmIcon(d.paymentMethod||'COD')} ${d.paymentMethod||'COD'}</span></td>
+      <td style="font-size:11px;">${d.date}</td>
+      <td style="font-size:10px;">${itemsHtml}</td>
+      <td style="color:var(--green);font-weight:600;">${p(d.grandTotal||0)}</td>
+      <td style="font-size:10px;color:var(--red);max-width:200px;">
+        <strong>${d.reason||'—'}</strong>
+        <div style="font-size:9px;color:var(--muted);margin-top:2px;">By: ${d.cancelledBy||'—'}</div>
+      </td>
+      <td style="font-size:10.5px;color:var(--muted);">
+        ${cancelDate}<br><span style="font-size:9px;">${cancelTime}</span>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('del-content').innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title" style="color:var(--red);">🗑️ Recently Deleted / Cancelled Orders</span>
+        <span style="font-size:11px;color:var(--muted);">${list.length} record(s)</span>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Order #</th><th>Customer</th><th>Address</th><th>Admin</th><th>Method</th>
+          <th>Date</th><th>Items</th><th>Total</th><th>Cancel Reason</th><th>Cancelled At</th>
+        </tr></thead>
+        <tbody>${rows||'<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No cancelled orders yet</td></tr>'}</tbody>
+      </table></div>
+    </div>`;
+}
+
+
+// ============================================================
+// FEDEX DELIVERY PAGE (INTERNATIONAL only — no ODZ)
+// ============================================================
+let fedexDeliveryTab = 'ofd';
+
+function setFedexDeliveryTab(tab) {
+  fedexDeliveryTab = tab;
+  document.querySelectorAll('#fedexdelivery-tabs .tab-btn').forEach((b,i) =>
+    b.classList.toggle('active', ['ofd','rto','delivered'][i] === tab));
+  renderFedexDelivery();
+}
+
+function renderFedexDelivery() {
+  const TAB_STATUS = { ofd:'Out for Delivery', rto:'RTO', delivered:'Delivered' };
+  const TAB_LABEL  = { ofd:'🚚 Out for Delivery', rto:'↩️ Return to Origin (RTO)', delivered:'✅ Delivered' };
+  const TAB_COLOR  = { ofd:'var(--gold)', rto:'var(--red)', delivered:'var(--green)' };
+  const activeStatus = TAB_STATUS[fedexDeliveryTab] || 'Out for Delivery';
+  const activeLabel  = TAB_LABEL[fedexDeliveryTab]  || activeStatus;
+  const activeColor  = TAB_COLOR[fedexDeliveryTab]  || 'var(--muted)';
+
+  const q  = (document.getElementById('fedexd-search')?.value||'').toLowerCase();
+  const df = document.getElementById('fedexd-date')?.value||'';
+
+  const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
+    if(o.paymentMethod !== 'INTERNATIONAL') return false;
+    if((o.lbcStatus||'') !== activeStatus) return false;
+    if(df && o.date !== df) return false;
+    if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q)
+       && !(o.contact||'').includes(q) && !(o.trackingNumber||'').includes(q)) return false;
+    return true;
+  });
+
+  const allFedex = S.orders.filter(o=>o.paymentMethod==='INTERNATIONAL');
+  const statsEl = document.getElementById('fedexd-stats');
+  if(statsEl) statsEl.innerHTML = `
+    <div class="stat-card gold" style="cursor:pointer;" onclick="setFedexDeliveryTab('ofd')">
+      <div class="stat-label">Out for Delivery</div>
+      <div class="stat-value">${allFedex.filter(o=>o.lbcStatus==='Out for Delivery').length}</div>
+    </div>
+    <div class="stat-card red" style="cursor:pointer;" onclick="setFedexDeliveryTab('rto')">
+      <div class="stat-label">RTO</div>
+      <div class="stat-value">${allFedex.filter(o=>o.lbcStatus==='RTO').length}</div>
+    </div>
+    <div class="stat-card green" style="cursor:pointer;" onclick="setFedexDeliveryTab('delivered')">
+      <div class="stat-label">Delivered</div>
+      <div class="stat-value">${allFedex.filter(o=>o.lbcStatus==='Delivered'||o.status==='Delivered').length}</div>
+      <div class="stat-sub">${p(allFedex.filter(o=>o.lbcStatus==='Delivered'||o.status==='Delivered').reduce((s,o)=>s+o.grandTotal,0))}</div>
+    </div>`;
+
+  const stColor = s => s==='Delivered'?'var(--green)':s==='RTO'?'var(--red)':'var(--gold)';
+  const UPDATE_STATUSES = ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
+
+  const rows = list.map(({o,i}) => {
+    const lst = o.lbcStatus || activeStatus;
+    const tn  = o.trackingNumber || '—';
+    const isRTO = lst === 'RTO';
+    const isDelivered = lst === 'Delivered' || o.status === 'Delivered';
+    const itemStatuses = o.itemStatuses || {};
+    const itemList = o.items.map((it,ii) => {
+      const isCancelled = itemStatuses[ii] === 'Cancelled';
+      const isGrams = it.grams > 0;
+      return `<div style="font-size:10px;${isCancelled?'text-decoration:line-through;color:var(--muted);':''}">
+        ${isCancelled?'❌':'🔹'} <strong>${it.code||'—'}</strong> ${it.desc||''} (${isGrams?it.grams+'g':'×'+(it.qty||1)}) = ${p(it.total)}
+      </div>`;
+    }).join('');
+    return `<tr style="${isRTO?'background:rgba(224,85,85,0.05);':isDelivered?'background:rgba(46,204,138,0.04);':''}">
+      <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
+      <td style="font-weight:500;">${o.name}<br><span style="font-size:9.5px;color:var(--muted);">${o.contact||'—'}</span></td>
+      <td style="font-size:10.5px;max-width:180px;">${o.address||'—'}${o.landmark?'<br><span style="color:var(--muted);font-size:9.5px;">🏠 '+o.landmark+'</span>':''}</td>
+      <td style="font-size:11px;">${o.admin||'—'}</td>
+      <td style="font-family:monospace;font-size:11px;color:var(--blue);">${tn}</td>
+      <td>${o.date}</td>
+      <td style="font-size:10px;">${itemList}</td>
+      <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
+      <td><span style="font-size:10px;font-weight:700;color:${stColor(lst)};padding:3px 8px;background:rgba(201,168,76,0.08);border-radius:5px;">📦 ${lst}</span></td>
+      <td>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <select class="form-control" style="width:175px;font-size:10.5px;padding:3px 5px;" onchange="fedexdUpdateStatus(${i},this.value)">
+            ${UPDATE_STATUSES.map(s=>`<option${lst===s?' selected':''}>${s}</option>`).join('')}
+          </select>
+          ${isRTO?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" style="width:175px;font-size:10.5px;">✏️ Edit / Re-dispatch</button>`:''}
+        </div>
+      </td>
+      <td><button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('fedexd-content').innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title" style="color:${activeColor};">${activeLabel}</span>
+        <span style="font-size:11px;color:var(--muted);">${list.length} parcel(s)</span>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Order #</th><th>Customer</th><th>Address / Landmark</th><th>Admin</th>
+          <th>Tracking #</th><th>Date</th><th>Items</th><th>Total</th>
+          <th>Parcel Status</th><th>Update Status</th><th>Actions</th>
+        </tr></thead>
+        <tbody>${rows||'<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">No '+activeStatus+' FedEx parcels</td></tr>'}</tbody>
+      </table></div>
+    </div>`;
+}
+
+function fedexdUpdateStatus(orderIdx, newStatus) {
+  S.orders[orderIdx].lbcStatus = newStatus;
+  if(newStatus === 'Delivered') S.orders[orderIdx].status = 'Delivered';
+  else if(newStatus === 'RTO') S.orders[orderIdx].status = 'Cancelled';
+  else S.orders[orderIdx].status = 'Preparing';
+  save();
+  toast(`📦 FedEx Status → ${newStatus}`);
+  renderFedexDelivery();
+  if(currentRole==='owner') renderDash();
+}
+
+
+// ── Recently Deleted Tab inside Checker Verify ──────────────
+function renderCheckerDeleted() {
+  if(!S.deletedOrders) S.deletedOrders = [];
+  const q  = (document.getElementById('checker-del-search')?.value||'').toLowerCase();
+  const mf = document.getElementById('checker-del-method')?.value||'';
+  const df = document.getElementById('checker-del-date')?.value||'';
+
+  const list = S.deletedOrders.map((d,i)=>({d,i})).filter(({d}) => {
+    if(mf && (d.paymentMethod||'COD') !== mf) return false;
+    if(df && d.cancelledAt && !d.cancelledAt.startsWith(df)) return false;
+    if(q && !d.name.toLowerCase().includes(q)
+       && !(d.contact||'').includes(q)
+       && !(d.orderNum||'').toLowerCase().includes(q)
+       && !(d.reason||'').toLowerCase().includes(q)
+       && !(d.admin||'').toLowerCase().includes(q)) return false;
+    return true;
+  // Show most recent first
+  }).reverse();
+
+  const pmIcon  = m => m==='INTERNATIONAL'?'✈️':m==='LBC'?'📦':'🏍️';
+  const pmColor = m => m==='INTERNATIONAL'?'var(--green)':m==='LBC'?'var(--blue)':'var(--gold)';
+  const payColor = s => s==='Fully Paid'?'var(--green)':s==='Partial'?'var(--orange)':'var(--red)';
+
+  const rows = list.map(({d,i}) => {
+    const cancelDate = d.cancelledAt ? d.cancelledAt.slice(0,10) : '—';
+    const cancelTime = d.cancelledAt
+      ? new Date(d.cancelledAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})
+      : '';
+    const daysSince = d.cancelledAt
+      ? Math.floor((Date.now()-new Date(d.cancelledAt))/86400000)
+      : '—';
+    const daysLabel = typeof daysSince === 'number'
+      ? (daysSince===0 ? 'Today' : daysSince===1 ? 'Yesterday' : `${daysSince}d ago`)
+      : '—';
+
+    const itemsHtml = (d.items||[]).map(it => {
+      const isGrams = (it.grams||0) > 0;
+      const qty = isGrams ? `${it.grams}g` : `×${it.qty||1}`;
+      const rate = isGrams && it.pergram ? ` @ ₱${Number(it.pergram).toFixed(2)}/g` : '';
+      return `<div style="font-size:10px;padding:1px 0;">
+        🔹 <strong style="color:var(--gold);">${it.code||'—'}</strong>
+        <span style="color:var(--muted);">${it.desc||''}</span>
+        <span style="color:var(--blue);font-size:9px;">(${qty}${rate})</span>
+        = <span style="color:var(--green);font-weight:600;">${p(it.total||0)}</span>
+      </div>`;
+    }).join('');
+
+    const paySt = d.paymentStatus || 'No Payment';
+    const verSt = d.verificationStatus || 'Not Verified';
+
+    return `<tr>
+      <td style="color:var(--red);font-weight:700;white-space:nowrap;">${d.orderNum||'—'}</td>
+      <td style="min-width:130px;">
+        <div style="font-weight:600;">${d.name||'—'}</div>
+        <div style="font-size:9.5px;color:var(--muted);">${d.contact||'—'}${d.backupContact?'<br>📱 '+d.backupContact:''}</div>
+      </td>
+      <td style="font-size:10.5px;">${d.contact||'—'}</td>
+      <td style="font-size:10px;max-width:160px;">${d.address||'—'}${d.landmark?'<br><span style="color:var(--muted);">🏠 '+d.landmark+'</span>':''}</td>
+      <td style="font-size:11px;color:var(--blue);">${d.admin||'—'}</td>
+      <td>
+        <span style="font-size:9.5px;font-weight:700;color:${pmColor(d.paymentMethod||'COD')};padding:2px 6px;border-radius:4px;background:rgba(74,144,217,0.08);">
+          ${pmIcon(d.paymentMethod||'COD')} ${d.paymentMethod||'COD'}
+        </span>
+        ${d.trackingNumber?'<div style="font-family:monospace;font-size:9px;color:var(--blue);margin-top:2px;">🔢 '+d.trackingNumber+'</div>':''}
+      </td>
+      <td style="font-size:11px;white-space:nowrap;">${d.date||'—'}</td>
+      <td style="min-width:180px;">${itemsHtml}</td>
+      <td style="color:var(--green);font-weight:700;white-space:nowrap;">${p(d.grandTotal||0)}</td>
+      <td>
+        <span style="font-size:9.5px;font-weight:700;color:${payColor(paySt)};padding:2px 6px;border-radius:4px;background:rgba(46,204,138,0.06);">
+          ${paySt}
+        </span>
+        <div style="font-size:9px;color:var(--muted);margin-top:2px;">${verSt}</div>
+      </td>
+      <td style="min-width:180px;">
+        <div style="font-size:11px;font-weight:700;color:var(--red);">${d.reason||'—'}</div>
+        <div style="font-size:9px;color:var(--muted);margin-top:2px;">
+          ⚠️ Possible fake payment / unverified
+        </div>
+      </td>
+      <td style="font-size:10.5px;color:var(--orange);font-weight:600;">${d.cancelledBy||'—'}</td>
+      <td style="font-size:10.5px;white-space:nowrap;">
+        <div>${cancelDate}</div>
+        <div style="font-size:9px;color:var(--muted);">${cancelTime}</div>
+        <div style="font-size:9px;color:${daysSince===0?'var(--green)':daysSince<=3?'var(--orange)':'var(--muted)'};">${daysLabel}</div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const tbody = document.getElementById('checker-deleted-tbody');
+  if(tbody) tbody.innerHTML = rows ||
+    '<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:32px;">No cancelled orders yet. Kapag nagcancel si checker ng LBC/INTL order, makikita dito.</td></tr>';
 }
 
 // Show login screen on load (login screen is visible by default)
