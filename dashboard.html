@@ -949,7 +949,8 @@ function _showRulesHint() {
     <div class="section-tabs no-print" style="margin-bottom:13px;" id="checker-tabs">
       <button class="tab-btn active" onclick="setCheckerTab('COD')">🏍️ COD</button>
       <button class="tab-btn" onclick="setCheckerTab('LBC')">📦 LBC</button>
-      <button class="tab-btn" onclick="setCheckerTab('INTERNATIONAL')">✈️ INTERNATIONAL</button>
+      <button class="tab-btn" onclick="setCheckerTab('EMS')">✈️ EMS</button>
+      <button class="tab-btn" onclick="setCheckerTab('FedEx')">📦 FedEx</button>
       <button class="tab-btn" onclick="setCheckerTab('UPDATE')" id="checker-tab-update-btn">🔔 For Update</button>
       <button class="tab-btn" onclick="setCheckerTab('DELETED')" id="checker-tab-deleted-btn">🗑️ Recently Deleted</button>
     </div>
@@ -974,7 +975,8 @@ function _showRulesHint() {
         <div id="lbc-checker-err" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px;"></div>
         <button class="btn btn-gold" onclick="unlockLbcChecker()">Unlock LBC Checker</button>
       </div>
-      <div id="checker-table-area">
+      <div id="checker-dup-banner" style="display:none;"></div>
+    <div id="checker-table-area">
         <div class="table-wrap" id="checker-cod-table"><table><thead><tr>
           <th>Order #</th><th>Customer</th><th>CP #</th><th>Date</th>
           <th>Items Total</th><th>SF</th><th>Grand Total</th><th>Assign Rider</th>
@@ -1657,7 +1659,8 @@ function _showRulesHint() {
       <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
         <div class="section-tabs" style="margin:0;" id="ordermgmt-tabs">
           <button class="tab-btn active" onclick="setOmTab('lbc')">📦 LBC</button>
-          <button class="tab-btn" onclick="setOmTab('intl')">✈️ INTERNATIONAL</button>
+          <button class="tab-btn" onclick="setOmTab('ems')">✈️ EMS</button>
+          <button class="tab-btn" onclick="setOmTab('fedex')">📦 FedEx</button>
         </div>
       </div>
       <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
@@ -1763,6 +1766,50 @@ function _showRulesHint() {
   </div>
 </div>
 
+<!-- Merge Orders Modal -->
+<div class="modal-overlay" id="modal-merge-orders">
+  <div class="modal" style="max-width:820px;width:95%;">
+    <div class="modal-header">
+      <span class="modal-title">🔀 Merge Duplicate Orders</span>
+      <button class="modal-close" onclick="closeModal('modal-merge-orders')">✕</button>
+    </div>
+    <div style="padding:4px 0 10px;">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">
+        Ang mga orders na ito ay may parehong customer name, contact number, at petsa.
+        Piliin ang dalawang order na pagsamahin.
+      </div>
+
+      <!-- Duplicate set selector -->
+      <div class="form-group" id="merge-set-selector"></div>
+
+      <!-- Side by side preview -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;" id="merge-preview-grid">
+        <div id="merge-order-a" style="background:var(--navy);border-radius:8px;padding:12px;border:2px solid var(--navy-border);"></div>
+        <div id="merge-order-b" style="background:var(--navy);border-radius:8px;padding:12px;border:2px solid var(--navy-border);"></div>
+      </div>
+
+      <!-- SF selector -->
+      <div class="form-group" style="background:var(--navy);border-radius:8px;padding:12px;margin-bottom:12px;">
+        <label style="color:var(--gold);font-weight:700;margin-bottom:8px;display:block;">💰 Shipping Fee sa Merged Order</label>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <label style="font-size:12px;"><input type="radio" name="merge-sf" value="higher" checked onchange="updateMergePreview()"> Use higher SF</label>
+          <label style="font-size:12px;"><input type="radio" name="merge-sf" value="lower" onchange="updateMergePreview()"> Use lower SF</label>
+          <label style="font-size:12px;"><input type="radio" name="merge-sf" value="custom" onchange="updateMergePreview()"> Custom:
+            <input type="number" id="merge-sf-custom" min="0" value="0" style="width:80px;font-size:11px;padding:2px 6px;margin-left:4px;" oninput="updateMergePreview()">
+          </label>
+        </div>
+      </div>
+
+      <!-- Merged result preview -->
+      <div id="merge-result-preview" style="background:rgba(46,204,138,0.06);border:1.5px solid var(--green);border-radius:8px;padding:12px;margin-bottom:12px;"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-merge-orders')">Cancel</button>
+      <button class="btn btn-gold" onclick="confirmMerge()">🔀 Confirm Merge</button>
+    </div>
+  </div>
+</div>
+
 <!-- Checker Cancel Order Modal -->
 <div class="modal-overlay" id="modal-checker-cancel">
   <div class="modal" style="max-width:480px;">
@@ -1843,7 +1890,8 @@ function _showRulesHint() {
         <select class="form-control enc-tab" id="enc-payment-method" onkeydown="encNextField(event,this)" onchange="onPaymentMethodChange()">
           <option value="COD">🏍️ COD – Own Rider, Cash on Delivery</option>
           <option value="LBC">📦 LBC – Payment First, LBC Delivers</option>
-          <option value="INTERNATIONAL">✈️ INTERNATIONAL – FedEx / EMS</option>
+          <option value="EMS">✈️ EMS – Payment First, EMS Delivers</option>
+          <option value="FedEx">📦 FedEx – Payment First, FedEx Delivers</option>
         </select>
       </div>
       <div class="form-group" id="enc-tracking-group" style="display:none;">
@@ -2286,9 +2334,10 @@ function _showRulesHint() {
 const KEY='gce_v5';
 // Clear old version keys on load
 ['gce_v3','gce_v4'].forEach(k=>{ try{localStorage.removeItem(k);}catch(e){} });
-let S=JSON.parse(localStorage.getItem(KEY)||'null')||{orders:[],riders:[],locations:[],payroll:[],expenses:[],inventory:[],stockLog:[],remitLog:[],cashbondLog:[],benefitsLog:[],deletedOrders:[],specialPasswords:{remitter:'remit2026',sorter:'sort2026',checker:'check2026'}};
+let S=JSON.parse(localStorage.getItem(KEY)||'null')||{orders:[],riders:[],locations:[],payroll:[],expenses:[],inventory:[],stockLog:[],remitLog:[],cashbondLog:[],benefitsLog:[],deletedOrders:[],mergeLog:[],specialPasswords:{remitter:'remit2026',sorter:'sort2026',checker:'check2026'}};
 if(!S.locations)S.locations=[];
 if(!S.deletedOrders)S.deletedOrders=[];
+if(!S.mergeLog)S.mergeLog=[];
 if(!S.stockLog)S.stockLog=[];
 if(!S.remitLog)S.remitLog=[];
 if(!S.cashbondLog)S.cashbondLog=[];
@@ -2309,7 +2358,7 @@ if(S.orders) S.orders.forEach(o=>{
   if(!o.paymentStatus) o.paymentStatus=(o.paymentMethod==='COD')?'COD':'No Payment';
   if(!o.paymentNotes) o.paymentNotes='';
   if(!o.verificationStatus) o.verificationStatus='Not Verified';
-  if(!o.lbcStatus) o.lbcStatus=(o.paymentMethod==='LBC'||o.paymentMethod==='INTERNATIONAL')?'Preparing':'';
+  if(!o.lbcStatus) o.lbcStatus=(o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx')?'Preparing':'';
 });
 // Migrate old statuses to new statuses
 const STATUS_MAP={'In Transit':'Preparing','Delivering':'Out for Delivery','For Return':'Update','Returned':'Cancelled'};
@@ -2599,7 +2648,7 @@ function openEditOrder(i){
   document.getElementById('enc-landmark').value=o.landmark||'';
   document.getElementById('enc-date').value=o.date;
   // Restore LBC/INTL extra dates and show/hide their groups
-  const editIsLbc = (o.paymentMethod==='LBC'||o.paymentMethod==='INTERNATIONAL');
+  const editIsLbc = (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx');
   const pmtGrp2=document.getElementById('enc-date-payment-group'); if(pmtGrp2) pmtGrp2.style.display=editIsLbc?'':'none';
   const dofGrp2=document.getElementById('enc-date-dropoff-group'); if(dofGrp2) dofGrp2.style.display=editIsLbc?'':'none';
   const pmtInp3=document.getElementById('enc-date-payment'); if(pmtInp3) pmtInp3.value=o.dateOfPayment||'';
@@ -2617,8 +2666,8 @@ function openEditOrder(i){
   const pm=document.getElementById('enc-payment-method'); if(pm) pm.value=o.paymentMethod||'COD';
   // Restore tracking number + show/hide tracking field
   const tnInp=document.getElementById('enc-tracking-number'); if(tnInp) tnInp.value=o.trackingNumber||'';
-  const tnGrp=document.getElementById('enc-tracking-group'); if(tnGrp) tnGrp.style.display=(o.paymentMethod==='LBC'||o.paymentMethod==='INTERNATIONAL')?'':'none';
-  const tnLbl=document.querySelector('#enc-tracking-group label'); if(tnLbl) tnLbl.firstChild.textContent=o.paymentMethod==='LBC'?'LBC Tracking Number ':'Courier Tracking Number ';
+  const tnGrp=document.getElementById('enc-tracking-group'); if(tnGrp) tnGrp.style.display=(o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx')?'':'none';
+  const tnLbl=document.querySelector('#enc-tracking-group label'); if(tnLbl) tnLbl.firstChild.textContent=o.paymentMethod==='LBC'?'LBC Tracking Number ':o.paymentMethod==='EMS'?'EMS Tracking Number ':'FedEx Tracking Number ';
   document.getElementById('enc-rider').value=o.assignedRider||'';
   populateInvQuickPick();
   document.getElementById('enc-items-tbody').innerHTML='';
@@ -2686,7 +2735,7 @@ function renderMyOrders() {
   const mf = document.getElementById('my-order-method')?.value||'';
   const df = document.getElementById('my-order-date')?.value||'';
   const tbody = document.getElementById('my-orders-tbody'); if(!tbody) return;
-  const pm2cls = m => m==='INTERNATIONAL'?'green':m==='LBC'?'blue':'delivering';
+  const pm2cls = m => m==='EMS'||m==='FedEx'?'green':m==='LBC'?'blue':'delivering';
 
   const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
     if(loggedAdmin && o.admin.toUpperCase() !== loggedAdmin.toUpperCase()) return false;
@@ -2713,7 +2762,7 @@ function renderMyOrders() {
   if(countEl) countEl.textContent = list.length + ' order(s)';
 
   // Group: LBC first, then INTERNATIONAL, then COD
-  const methodOrder = ['LBC','INTERNATIONAL','COD'];
+  const methodOrder = ['LBC','EMS','FedEx','COD'];
   const grouped = {};
   methodOrder.forEach(m => { grouped[m] = list.filter(({o}) => (o.paymentMethod||'COD') === m); });
 
@@ -2821,7 +2870,7 @@ function renderOrders() {
   const mf = document.getElementById('order-method-filter')?.value||'';
   const df = document.getElementById('order-date-filter')?.value||'';
   const tbody = document.getElementById('orders-tbody'); if(!tbody) return;
-  const pm2cls = m => m==='INTERNATIONAL'?'green':m==='LBC'?'blue':'delivering';
+  const pm2cls = m => m==='EMS'||m==='FedEx'?'green':m==='LBC'?'blue':'delivering';
 
   const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
     if(_ownerAdminTab !== 'ALL' && o.admin.toUpperCase() !== _ownerAdminTab.toUpperCase()) return false;
@@ -2968,8 +3017,8 @@ function unlockLbcChecker() {
 function setCheckerTab(tab) {
   checkerTab = tab;
   document.querySelectorAll('#checker-tabs .tab-btn').forEach((b,i) =>
-    b.classList.toggle('active', ['COD','LBC','INTERNATIONAL','UPDATE','DELETED'][i] === tab));
-  const labels = {COD:'🏍️ COD – Checker Queue', LBC:'📦 LBC – Checker Queue', INTERNATIONAL:'✈️ INTERNATIONAL – Checker Queue', UPDATE:'🔔 For Update – COD Parcels', DELETED:'🗑️ Recently Deleted / Cancelled'};
+    b.classList.toggle('active', ['COD','LBC','EMS','FedEx','UPDATE','DELETED'][i] === tab));
+  const labels = {COD:'🏍️ COD – Checker Queue', LBC:'📦 LBC – Checker Queue', EMS:'✈️ EMS – Checker Queue', FedEx:'📦 FedEx – Checker Queue', UPDATE:'🔔 For Update – COD Parcels', DELETED:'🗑️ Recently Deleted / Cancelled'};
   // Show/hide the right panel
   const tableArea = document.getElementById('checker-table-area');
   const updatePanel = document.getElementById('checker-update-panel');
@@ -2981,7 +3030,7 @@ function setCheckerTab(tab) {
   if(tab === 'DELETED') { renderCheckerDeleted(); return; }
   if(tab === 'UPDATE') { renderCheckerForUpdate(); return; }
   // Show LBC lock if not yet unlocked
-  const isLbc = tab === 'LBC' || tab === 'INTERNATIONAL';
+  const isLbc = tab === 'LBC' || tab === 'EMS' || tab === 'FedEx';
   if(isLbc && !_lbcCheckerUnlocked) {
     document.getElementById('lbc-checker-lock').style.display = '';
     document.getElementById('checker-table-area').style.display = 'none';
@@ -3010,7 +3059,7 @@ function renderChecker(){
   const delBtn = document.getElementById('checker-tab-deleted-btn');
   if(delBtn) delBtn.textContent = delCount > 0 ? `🗑️ Recently Deleted (${delCount})` : '🗑️ Recently Deleted';
   const isCOD = checkerTab === 'COD';
-  const isLbc = checkerTab === 'LBC' || checkerTab === 'INTERNATIONAL';
+  const isLbc = checkerTab === 'LBC' || checkerTab === 'EMS' || checkerTab === 'FedEx';
 
   const list = S.orders.map((o,i)=>({o,i})).filter(({o}) => {
     const method = o.paymentMethod || 'COD';
@@ -3030,6 +3079,32 @@ function renderChecker(){
       if(!codAdminGroups[adm]) codAdminGroups[adm] = [];
       codAdminGroups[adm].push({o,i});
     });
+    // ── Duplicate detection (same name + contact + date) ──
+    const dupGroups = {};
+    list.forEach(({o,i}) => {
+      const key = (o.name||'').toLowerCase().trim() + '|' + (o.contact||'').replace(/\D/g,'') + '|' + (o.date||'');
+      if(!dupGroups[key]) dupGroups[key] = [];
+      dupGroups[key].push({o,i});
+    });
+    const dupSets = Object.values(dupGroups).filter(g => g.length > 1);
+
+    // Show duplicate alert banner
+    const dupBanner = document.getElementById('checker-dup-banner');
+    if(dupBanner) {
+      if(dupSets.length > 0) {
+        const names = dupSets.map(g => g[0].o.name).join(', ');
+        dupBanner.innerHTML = `<div style="background:rgba(224,138,48,0.15);border:1.5px solid var(--orange);border-radius:8px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <div><span style="color:var(--orange);font-weight:700;">⚠️ ${dupSets.length} Possible Duplicate Order(s) Detected!</span>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;">Same name + contact + date: <strong>${names}</strong></div></div>
+          <button class="btn btn-orange btn-sm" onclick="openMergeModal()">🔀 Review & Merge</button>
+        </div>`;
+        dupBanner.style.display = '';
+      } else {
+        dupBanner.innerHTML = '';
+        dupBanner.style.display = 'none';
+      }
+    }
+
     if(!list.length) {
       document.getElementById('checker-tbody').innerHTML =
         `<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No COD orders found</td></tr>`;
@@ -3048,7 +3123,7 @@ function renderChecker(){
           const isLocked = ['Ready','Out for Delivery','Delivered','Cancelled','Update'].includes(o.status);
           codRows += `<tr>
             <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
-            <td style="font-weight:500;">${o.name}</td>
+            <td style="font-weight:500;">${o.name}${o.mergedFrom?`<span style="font-size:9px;background:rgba(201,168,76,0.2);color:var(--gold);padding:1px 5px;border-radius:4px;margin-left:5px;">🔀 Merged</span>`:''}</td>
             <td style="font-size:11px;">${o.contact||'—'}</td>
             <td>${o.date}</td>
             <td>${p(o.itemsTotal)}</td><td>${p(o.shipping)}</td>
@@ -3210,7 +3285,7 @@ function assignRiderFromChecker(orderIdx, riderName) {
 function verifyOrder(i){
   const o = S.orders[i];
   // For LBC orders: tracking number required before verification
-  if((o.paymentMethod==='LBC') && !o.trackingNumber) {
+  if((o.paymentMethod==='LBC' || o.paymentMethod==='EMS' || o.paymentMethod==='FedEx') && !o.trackingNumber) {
     toast('⚠️ Kailangan ng LBC Tracking Number bago i-verify. I-edit muna ang order at lagyan ng tracking #.');
     return;
   }
@@ -3295,7 +3370,7 @@ function openInvoice(i){
     ${fld('Name:',o.name)}
     ${fld('Address:',o.address+(o.landmark?' — '+o.landmark:''))}
     ${fld('Contact:',o.contact+(o.backupContact?' / '+o.backupContact:''))}
-    ${fld('Admin:',adminName)}
+    ${fld('Admin:', o.adminList && o.adminList.length>1 ? o.adminList.join(' / ') : adminName)}
     ${fld('Date:',o.date)}
     ${fld('Method:',o.paymentMethod||'COD')}
   ${o.trackingNumber?fld('Tracking #:',o.trackingNumber):''}
@@ -4292,10 +4367,15 @@ function renderDailySales(){
   const d=document.getElementById('ds-date').value;
   const dayO=S.orders.filter(o=>o.date===d),del=dayO.filter(o=>o.status==='Delivered');
   const remit=del.reduce((s,o)=>s+o.grandTotal,0);
-  const adminDel={};del.forEach(o=>{if(o.admin)adminDel[o.admin]=(adminDel[o.admin]||0)+1;});
+  const adminDel={};
+  del.forEach(o=>{
+    const admins = o.adminList && o.adminList.length > 0 ? o.adminList : (o.admin ? [o.admin] : []);
+    const share = 1 / Math.max(1, admins.length);
+    admins.forEach(a => { if(a) adminDel[a] = (adminDel[a]||0) + share; });
+  });
   const codRemit = del.filter(o=>!o.paymentMethod||o.paymentMethod==='COD').reduce((s,o)=>s+o.grandTotal,0);
   const lbcRemit = del.filter(o=>o.paymentMethod==='LBC').reduce((s,o)=>s+o.grandTotal,0);
-  const intlRemit = del.filter(o=>o.paymentMethod==='INTERNATIONAL').reduce((s,o)=>s+o.grandTotal,0);
+  const intlRemit = del.filter(o=>o.paymentMethod==='EMS'||o.paymentMethod==='FedEx').reduce((s,o)=>s+o.grandTotal,0);
   const bankRemit = del.filter(o=>o.paymentMethod==='Via Bank').reduce((s,o)=>s+o.grandTotal,0);
   const overall = codRemit + lbcRemit + intlRemit + bankRemit;
   document.getElementById('daily-sales-screen').innerHTML=`
@@ -4309,7 +4389,7 @@ function renderDailySales(){
       <div class="card"><div class="card-header"><span class="card-title">Remit Summary</span></div>
         <div class="info-row"><span style="color:var(--muted);">COD (Cash on Delivery)</span><strong>${p(codRemit)}</strong></div>
         <div class="info-row"><span style="color:var(--muted);">LBC</span><strong>${p(lbcRemit)}</strong></div>
-        <div class="info-row"><span style="color:var(--muted);">INTERNATIONAL</span><strong>${p(intlRemit)}</strong></div>
+        <div class="info-row"><span style="color:var(--muted);">EMS + FedEx</span><strong>${p(intlRemit)}</strong></div>
         <div class="info-row"><span style="color:var(--muted);">VIA BANK</span><strong>${p(bankRemit)}</strong></div>
         <div class="info-row"><span style="color:var(--muted);">GCASH</span><strong>₱0.00</strong></div>
         <div class="info-row" style="border-bottom:none;font-size:14px;"><strong>OVERALL</strong><strong style="color:var(--green);">${p(overall)}</strong></div>
@@ -4331,10 +4411,15 @@ function printDailySales(){
   const d=document.getElementById('ds-date').value||today();
   const dayO=S.orders.filter(o=>o.date===d),del=dayO.filter(o=>o.status==='Delivered');
   const remit=del.reduce((s,o)=>s+o.grandTotal,0);
-  const adminDel={};del.forEach(o=>{if(o.admin)adminDel[o.admin]=(adminDel[o.admin]||0)+1;});
+  const adminDel={};
+  del.forEach(o=>{
+    const admins = o.adminList && o.adminList.length > 0 ? o.adminList : (o.admin ? [o.admin] : []);
+    const share = 1 / Math.max(1, admins.length);
+    admins.forEach(a => { if(a) adminDel[a] = (adminDel[a]||0) + share; });
+  });
   const codR = del.filter(o=>!o.paymentMethod||o.paymentMethod==='COD').reduce((s,o)=>s+o.grandTotal,0);
   const lbcR = del.filter(o=>o.paymentMethod==='LBC').reduce((s,o)=>s+o.grandTotal,0);
-  const intlR = del.filter(o=>o.paymentMethod==='INTERNATIONAL').reduce((s,o)=>s+o.grandTotal,0);
+  const intlR = del.filter(o=>o.paymentMethod==='EMS'||o.paymentMethod==='FedEx').reduce((s,o)=>s+o.grandTotal,0);
   const bankR = del.filter(o=>o.paymentMethod==='Via Bank').reduce((s,o)=>s+o.grandTotal,0);
   const overallR = codR + lbcR + intlR + bankR;
   const pw=document.getElementById('daily-sales-print');  const _printHTML = `<div class="print-daily-wrap">
@@ -4952,7 +5037,12 @@ function openDayDetail(dateStr){
   const dayO=S.orders.filter(o=>o.date===dateStr);
   const del=dayO.filter(o=>o.status==='Delivered');
   const revenue=del.reduce((s,o)=>s+o.grandTotal,0);
-  const adminMap={};del.forEach(o=>{if(o.admin)adminMap[o.admin]=(adminMap[o.admin]||0)+1;});
+  const adminMap={};
+  del.forEach(o=>{
+    const admins=o.adminList&&o.adminList.length>0?o.adminList:(o.admin?[o.admin]:[]);
+    const share=1/Math.max(1,admins.length);
+    admins.forEach(a=>{if(a)adminMap[a]=(adminMap[a]||0)+share;});
+  });
   document.getElementById('cal-detail-content').innerHTML=`
     <div style="font-family:var(--fh);font-size:16px;color:var(--gold);margin-bottom:12px;">${dateStr}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
@@ -4984,12 +5074,16 @@ function renderAdminSheets(){
   // Always ALL admins summary view
   const adminMap={};
   orders.forEach(o=>{
-    if(!adminMap[o.admin])adminMap[o.admin]={name:o.admin,total:0,delivered:0,cancelled:0,revenue:0,incentive:0,orders:[]};
-    adminMap[o.admin].total++;
-    adminMap[o.admin].orders.push(o);
-    if(o.status==='Delivered'){adminMap[o.admin].delivered++;adminMap[o.admin].revenue+=o.grandTotal;}
-    if(['Cancelled','Update'].includes(o.status))adminMap[o.admin].cancelled++;
-    adminMap[o.admin].incentive=adminMap[o.admin].delivered*25;
+    const admins = o.adminList && o.adminList.length > 0 ? o.adminList : (o.admin ? [o.admin] : ['(No Admin)']);
+    const share = 1 / Math.max(1, admins.length);
+    admins.forEach(a => {
+      if(!adminMap[a]) adminMap[a]={name:a,total:0,delivered:0,cancelled:0,revenue:0,incentive:0,orders:[]};
+      adminMap[a].total += share;
+      adminMap[a].orders.push(o);
+      if(o.status==='Delivered'){ adminMap[a].delivered += share; adminMap[a].revenue += o.grandTotal * share; }
+      if(['Cancelled','Update'].includes(o.status)) adminMap[a].cancelled += share;
+      adminMap[a].incentive = adminMap[a].delivered * 25;
+    });
   });
   const admList=Object.values(adminMap).sort((a,b)=>b.delivered-a.delivered);
   el.innerHTML=`
@@ -5019,6 +5113,10 @@ function printAdminSheet(){
   if(dt)orders=orders.filter(o=>o.date<=dt);
   const adminOrders=orders;
   const del=adminOrders.filter(o=>o.status==='Delivered');
+  const adminIncentive = del.reduce((s,o)=>{
+    const admins = o.adminList && o.adminList.length > 0 ? o.adminList : (o.admin ? [o.admin] : []);
+    return s + 25 / Math.max(1, admins.length);
+  }, 0);
   const pw=document.getElementById('adminsheet-print');  const _printHTML = `<div style="background:white;color:#1a1a1a;font-family:Arial,sans-serif;max-width:840px;margin:0 auto;padding:16px;">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #c9a84c;padding-bottom:9px;margin-bottom:12px;">
       <div><h2 style="font-family:Georgia,serif;color:#9c7a2e;font-size:17px;margin:0;">${S.bizInfo?.name||'Goldchelle Online Enterprises'}</h2><p style="font-size:10px;color:#555;">Admin Order Sheet</p></div>
@@ -5028,7 +5126,7 @@ function printAdminSheet(){
       <div style="border:1px solid #d4b870;border-radius:4px;padding:8px;text-align:center;"><div style="font-size:9px;color:#777;text-transform:uppercase;">Total Orders</div><div style="font-size:18px;font-weight:700;color:#c9a84c;">${adminOrders.length}</div></div>
       <div style="border:1px solid #d4b870;border-radius:4px;padding:8px;text-align:center;"><div style="font-size:9px;color:#777;text-transform:uppercase;">Delivered</div><div style="font-size:18px;font-weight:700;color:#27ae60;">${del.length}</div></div>
       <div style="border:1px solid #d4b870;border-radius:4px;padding:8px;text-align:center;"><div style="font-size:9px;color:#777;text-transform:uppercase;">Revenue</div><div style="font-size:14px;font-weight:700;color:#27ae60;">${p(del.reduce((s,o)=>s+o.grandTotal,0))}</div></div>
-      <div style="border:1px solid #d4b870;border-radius:4px;padding:8px;text-align:center;"><div style="font-size:9px;color:#777;text-transform:uppercase;">Incentive</div><div style="font-size:14px;font-weight:700;color:#c9a84c;">${p(del.length*25)}</div></div>
+      <div style="border:1px solid #d4b870;border-radius:4px;padding:8px;text-align:center;"><div style="font-size:9px;color:#777;text-transform:uppercase;">Incentive</div><div style="font-size:14px;font-weight:700;color:#c9a84c;">${p(adminIncentive)}</div></div>
     </div>
     <table style="width:100%;border-collapse:collapse;font-size:10.5px;">
       <thead><tr style="background:#f5edd8;"><th style="padding:5px 6px;border:1px solid #d4b870;text-align:left;color:#7a5c1e;">Order #</th><th style="padding:5px 6px;border:1px solid #d4b870;color:#7a5c1e;">Customer</th><th style="padding:5px 6px;border:1px solid #d4b870;color:#7a5c1e;">CP</th><th style="padding:5px 6px;border:1px solid #d4b870;color:#7a5c1e;">City</th><th style="padding:5px 6px;border:1px solid #d4b870;color:#7a5c1e;">Date</th><th style="padding:5px 6px;border:1px solid #d4b870;color:#7a5c1e;">SF</th><th style="padding:5px 6px;border:1px solid #d4b870;color:#7a5c1e;">Total</th><th style="padding:5px 6px;border:1px solid #d4b870;color:#7a5c1e;">Status</th></tr></thead>
@@ -5258,7 +5356,7 @@ function renderPnl(){
   // COD: counted when Delivered
   // LBC/INTL: counted when Fully Paid + Verified + Ready to Pick-up (payment-first model)
   const lbcIntlPaidOrders = fO.filter(o =>
-    (o.paymentMethod==='LBC' || o.paymentMethod==='INTERNATIONAL') &&
+    (o.paymentMethod==='LBC' || o.paymentMethod==='EMS' || o.paymentMethod==='FedEx') &&
     o.paymentStatus === 'Fully Paid' &&
     o.verificationStatus === 'Verified' &&
     (o.lbcStatus === 'Ready to Pick-up' || o.lbcStatus === 'Drop off at LBC' ||
@@ -5287,8 +5385,14 @@ function renderPnl(){
   const totalExpenses=Object.values(catMap).reduce((s,v)=>s+v,0);
 
   // === ADMIN INCENTIVES ===
-  const adminDel={};incomeOrders.forEach(o=>{if(o.admin)adminDel[o.admin]=(adminDel[o.admin]||0)+1;});
-  const totalAdminIncentives=Object.values(adminDel).reduce((s,v)=>s+v*25,0);
+  // Admin incentives — supports merged orders (adminList splits ₱25 per admin)
+  const adminDel={};
+  incomeOrders.forEach(o=>{
+    const admins = o.adminList && o.adminList.length > 0 ? o.adminList : (o.admin ? [o.admin] : []);
+    const share = 25 / Math.max(1, admins.length);
+    admins.forEach(a => { if(a) adminDel[a] = (adminDel[a]||0) + share; });
+  });
+  const totalAdminIncentives=Object.values(adminDel).reduce((s,v)=>s+v,0);
 
   // === TOTALS ===
   // Admin incentives (₱25 per delivered parcel) are a real operating cost
@@ -5376,7 +5480,7 @@ function printPnl(){
   else{fO=S.orders.filter(o=>o.date?.startsWith(ym));fE=S.expenses.filter(e=>e.date?.startsWith(ym));fP=S.payroll.filter(i=>i.date?.startsWith(ym));label=now.toLocaleString('en-PH',{month:'long',year:'numeric'});}
   const codDel=fO.filter(o=>o.status==='Delivered'&&(o.paymentMethod||'COD')==='COD');
   const lbcIntlPaid=fO.filter(o=>
-    (o.paymentMethod==='LBC'||o.paymentMethod==='INTERNATIONAL')&&
+    (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx')&&
     o.paymentStatus==='Fully Paid'&&o.verificationStatus==='Verified'&&
     ['Ready to Pick-up','Drop off at LBC','Drop off at EMS','Out for Delivery','Delivered'].includes(o.lbcStatus||o.status)
   );
@@ -5391,8 +5495,13 @@ function printPnl(){
   const payGov=fP.reduce((s,i)=>s+(i.totalDeduct||0),0);
   const payNet=fP.reduce((s,i)=>s+i.totalSalary,0);
   const totalInc=grossRev+sfInc;
-  const adminDel2={};del.forEach(o=>{if(o.admin)adminDel2[o.admin]=(adminDel2[o.admin]||0)+1;});
-  const adminInc2=Object.values(adminDel2).reduce((s,v)=>s+v*25,0);
+  const adminDel2={};
+  del.forEach(o=>{
+    const admins=o.adminList&&o.adminList.length>0?o.adminList:(o.admin?[o.admin]:[]);
+    const share=25/Math.max(1,admins.length);
+    admins.forEach(a=>{if(a)adminDel2[a]=(adminDel2[a]||0)+share;});
+  });
+  const adminInc2=Object.values(adminDel2).reduce((s,v)=>s+v,0);
   const totalCosts=retLoss+payNet+expTotal+adminInc2;
   const net=totalInc-totalCosts;
   const pw=document.getElementById('pnl-print');  const _printHTML = `<div class="print-pnl-wrap"><div class="print-pnl-header">
@@ -5453,9 +5562,14 @@ function renderDash(){
     const sc = {'Preparing':'orange','Ready':'blue','Out for Delivery':'gold','Delivered':'green','Cancelled':'red','Update':'return'}[s]||'transit';
     return `<div style="margin-bottom:8px;"><div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px;"><span class="status ${sc}">${s}</span><span style="color:var(--muted);">${cnt} (${pct}%)</span></div><div style="background:var(--navy-border);border-radius:3px;height:4px;"><div style="background:var(--gold);width:${pct}%;height:4px;border-radius:3px;"></div></div></div>`;
   }).join('');
-  const adminDel={};S.orders.filter(o=>o.status==='Delivered').forEach(o=>{if(o.admin)adminDel[o.admin]=(adminDel[o.admin]||0)+1;});
+  const adminDel={};
+  S.orders.filter(o=>o.status==='Delivered').forEach(o=>{
+    const admins = o.adminList && o.adminList.length > 0 ? o.adminList : (o.admin ? [o.admin] : []);
+    const share = 1 / Math.max(1, admins.length);
+    admins.forEach(a => { if(a) adminDel[a] = (adminDel[a]||0) + share; });
+  });
   const aList=Object.entries(adminDel).sort((a,b)=>b[1]-a[1]);
-  document.getElementById('dash-admins').innerHTML=aList.length?`<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:rgba(201,168,76,0.08);"><th style="padding:5px 7px;color:var(--gold);font-size:9px;">Admin</th><th style="padding:5px 7px;color:var(--gold);font-size:9px;">Delivered</th><th style="padding:5px 7px;color:var(--gold);font-size:9px;">Incentive</th></tr></thead><tbody>${aList.map(([a,c])=>`<tr><td style="padding:6px 7px;font-weight:500;">${a}</td><td style="padding:6px 7px;color:var(--blue);">${c}</td><td style="padding:6px 7px;color:var(--green);font-weight:700;">${p(c*25)}</td></tr>`).join('')}</tbody></table>`:'<p style="color:var(--muted);font-size:12px;padding:8px 0;">No delivered parcels yet</p>';
+  document.getElementById('dash-admins').innerHTML=aList.length?`<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:rgba(201,168,76,0.08);"><th style="padding:5px 7px;color:var(--gold);font-size:9px;">Admin</th><th style="padding:5px 7px;color:var(--gold);font-size:9px;">Delivered</th><th style="padding:5px 7px;color:var(--gold);font-size:9px;">Incentive</th></tr></thead><tbody>${aList.map(([a,c])=>`<tr><td style="padding:6px 7px;font-weight:500;">${a}</td><td style="padding:6px 7px;color:var(--blue);">${Number(c)%1===0?Number(c):Number(c).toFixed(1)}</td><td style="padding:6px 7px;color:var(--green);font-weight:700;">${p(c*25)}</td></tr>`).join('')}</tbody></table>`:'<p style="color:var(--muted);font-size:12px;padding:8px 0;">No delivered parcels yet</p>';
   document.getElementById('dash-recent').innerHTML=`<table><thead><tr><th>Order #</th><th>Customer</th><th>Admin</th><th>Date</th><th>Total</th><th>Status</th></tr></thead><tbody>${[...S.orders].slice(-7).reverse().map(o=>{const i=S.orders.indexOf(o);return `<tr><td style="color:var(--gold);">${onum(i)}</td><td style="font-weight:500;">${o.name}</td><td>${o.date}</td><td style="color:var(--green);">${p(o.grandTotal)}</td><td><span class="status ${sclass(o.status)}">${o.status}</span></td></tr>`;}).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px;">No orders</td></tr>'}</tbody></table>`;
 }
 
@@ -5828,8 +5942,8 @@ function autoAssignRider() {
   const hiddenRider = document.getElementById('enc-rider');
   if(!hiddenRider) return;
 
-  // For LBC/INTERNATIONAL — clear hidden rider (LBC/courier handles delivery)
-  if(method === 'LBC' || method === 'INTERNATIONAL') {
+  // For LBC/EMS/FedEx — clear hidden rider (courier handles delivery)
+  if(method === 'LBC' || method === 'EMS' || method === 'FedEx') {
     hiddenRider.value = '';
     return;
   }
@@ -6331,8 +6445,8 @@ function saveOrder() {
   const iT = items.reduce((s,it) => s+it.total, 0);
   const totalDiscount = items.reduce((s,it) => s+(it.discount||0), 0);
   const editIdx = document.getElementById('enc-edit-idx').value;
-  const isLbcMethod = paymentMethod === 'LBC' || paymentMethod === 'INTERNATIONAL';
-  const trackingNumber = (paymentMethod === 'LBC' || paymentMethod === 'INTERNATIONAL') ? (document.getElementById('enc-tracking-number')?.value.trim()||'') : '';
+  const isLbcMethod = paymentMethod === 'LBC' || paymentMethod === 'EMS' || paymentMethod === 'FedEx';
+  const trackingNumber = (paymentMethod === 'LBC' || paymentMethod === 'EMS' || paymentMethod === 'FedEx') ? (document.getElementById('enc-tracking-number')?.value.trim()||'') : '';
   const dateOfPayment = isLbcMethod ? (document.getElementById('enc-date-payment')?.value||'') : '';
   const dateOfDropoff = isLbcMethod ? (document.getElementById('enc-date-dropoff')?.value||'') : '';
   const o = {
@@ -7800,15 +7914,15 @@ let omTab = 'lbc';
 function setOmTab(tab) {
   omTab = tab;
   document.querySelectorAll('#ordermgmt-tabs .tab-btn').forEach((b,i) =>
-    b.classList.toggle('active', ['lbc','intl'][i] === tab));
+    b.classList.toggle('active', ['lbc','ems','fedex'][i] === tab));
   renderOrderMgmt();
 }
 
 function renderOrderMgmt() {
   const q  = (document.getElementById('om-search')?.value||'').toLowerCase();
   const df = document.getElementById('om-date')?.value||'';
-  const method = omTab === 'lbc' ? 'LBC' : 'INTERNATIONAL';
-  const icon   = omTab === 'lbc' ? '📦' : '✈️';
+  const method = omTab === 'lbc' ? 'LBC' : omTab === 'ems' ? 'EMS' : 'FedEx';
+  const icon   = omTab === 'lbc' ? '📦' : omTab === 'ems' ? '✈️' : '📦';
 
   const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
     if((o.paymentMethod||'COD') !== method) return false;
@@ -7843,7 +7957,9 @@ function renderOrderMgmt() {
   };
   const OM_STATUSES = omTab==='lbc'
     ? ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO']
-    : ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
+    : omTab==='ems'
+    ? ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO']
+    : ['Ready to Pick-up','Drop off at FedEx','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
 
   const rows = list.map(({o,i}) => {
     // Migrate 'Preparing' to 'Ready to Pick-up' for display consistency with Parcel Tracking
@@ -7921,7 +8037,7 @@ function omUpdateStatus(orderIdx, newStatus) {
 // ── Tracking Number helpers ──────────────────────────────────
 function onPaymentMethodChange() {
   const method = document.getElementById('enc-payment-method')?.value || 'COD';
-  const isLbc = method === 'LBC' || method === 'INTERNATIONAL';
+  const isLbc = method === 'LBC' || method === 'EMS' || method === 'FedEx';
 
   // Tracking number — for LBC & INTERNATIONAL
   const grp = document.getElementById('enc-tracking-group');
@@ -7975,19 +8091,17 @@ function validateTrackingNum(input) {
   const method = document.getElementById('enc-payment-method')?.value || 'LBC';
   if(!v) { if(err) err.textContent = ''; return; } // not required — skip if empty
   if(method === 'LBC') {
-    // LBC: exactly 12 digits
     if(v.length !== 12) {
       if(err) err.textContent = `⚠️ LBC tracking: exactly 12 digits (${v.length} entered)`;
-    } else {
-      if(err) err.textContent = '';
-    }
-  } else {
-    // INTERNATIONAL: FedEx = 12 digits, EMS = 13 digits; allow 12–14
+    } else { if(err) err.textContent = ''; }
+  } else if(method === 'EMS') {
+    if(v.length < 11 || v.length > 13) {
+      if(err) err.textContent = `⚠️ EMS tracking: 11–13 digits (${v.length} entered)`;
+    } else { if(err) err.textContent = ''; }
+  } else if(method === 'FedEx') {
     if(v.length < 12 || v.length > 14) {
-      if(err) err.textContent = `⚠️ FedEx/EMS tracking: 12–14 digits (${v.length} entered)`;
-    } else {
-      if(err) err.textContent = '';
-    }
+      if(err) err.textContent = `⚠️ FedEx tracking: 12–14 digits (${v.length} entered)`;
+    } else { if(err) err.textContent = ''; }
   }
 }
 
@@ -8124,7 +8238,7 @@ function renderLbcDelivery() {
   // All LBC/INTL orders with the matching lbcStatus
   const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
     const pm = o.paymentMethod||'COD';
-    if(pm !== 'LBC' && pm !== 'INTERNATIONAL') return false;
+    if(pm !== 'LBC' && pm !== 'EMS' && pm !== 'FedEx') return false;
     if((o.lbcStatus||'') !== activeStatus) return false;
     if(df && o.date !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q)
@@ -8133,7 +8247,7 @@ function renderLbcDelivery() {
   });
 
   // Stats — all 4 statuses across all LBC/INTL orders
-  const allLbcIntl = S.orders.filter(o=>o.paymentMethod==='LBC'||o.paymentMethod==='INTERNATIONAL');
+  const allLbcIntl = S.orders.filter(o=>o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx');
   const statsEl = document.getElementById('lbcd-stats');
   if(statsEl) statsEl.innerHTML = `
     <div class="stat-card orange" style="cursor:pointer;" onclick="setLbcDeliveryTab('odz')">
@@ -8154,7 +8268,7 @@ function renderLbcDelivery() {
       <div class="stat-sub">${p(allLbcIntl.filter(o=>o.lbcStatus==='Delivered'||o.status==='Delivered').reduce((s,o)=>s+o.grandTotal,0))}</div>
     </div>`;
 
-  const pmIcon = o => o.paymentMethod === 'INTERNATIONAL' ? '✈️' : '📦';
+  const pmIcon = o => o.paymentMethod === 'EMS' ? '✈️' : '📦';
 
   // Update dropdown choices per method
   const UPDATE_STATUSES_LBC  = ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
@@ -8174,7 +8288,7 @@ function renderLbcDelivery() {
     const isRTO = lst === 'RTO';
     const isDelivered = lst === 'Delivered' || o.status === 'Delivered';
     const isODZ = lst === 'ODZ/Incomplete Details';
-    const UPDATE_STATUSES = o.paymentMethod === 'INTERNATIONAL' ? UPDATE_STATUSES_INTL : UPDATE_STATUSES_LBC;
+    const UPDATE_STATUSES = o.paymentMethod === 'EMS' ? UPDATE_STATUSES_INTL : o.paymentMethod === 'FedEx' ? UPDATE_STATUSES_INTL : UPDATE_STATUSES_LBC;
 
     const itemStatuses = o.itemStatuses || {};
     const itemList = o.items.map((it,ii) => {
@@ -8192,7 +8306,13 @@ function renderLbcDelivery() {
       <td style="font-size:10.5px;max-width:180px;">${o.address||'—'}${o.landmark?'<br><span style="color:var(--muted);font-size:9.5px;">🏠 '+o.landmark+'</span>':''}</td>
       <td style="font-size:11px;">${o.admin||'—'}<br><span style="font-size:9.5px;color:var(--blue);">${pmIcon(o)} ${o.paymentMethod}</span></td>
       <td style="font-family:monospace;font-size:11px;color:var(--blue);">${tn}</td>
-      <td>${o.date}</td>
+      <td style="font-size:11px;">${o.date}</td>
+      <td style="font-size:11px;color:${o.dateOfPayment?'var(--green)':'var(--muted)'};">
+        ${o.dateOfPayment||'<span style="color:var(--red);font-size:10px;">—</span>'}
+      </td>
+      <td style="font-size:11px;color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">
+        ${o.dateOfDropoff||'<span style="color:var(--muted);font-size:10px;">—</span>'}
+      </td>
       <td style="font-size:10px;">${itemList}</td>
       <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
       <td><span style="font-size:10px;font-weight:700;color:${stColor(lst)};padding:3px 8px;background:rgba(201,168,76,0.08);border-radius:5px;">${lst}</span></td>
@@ -8219,10 +8339,11 @@ function renderLbcDelivery() {
       <div class="table-wrap"><table>
         <thead><tr>
           <th>Order #</th><th>Customer</th><th>Address / Landmark</th><th>Admin / Method</th>
-          <th>Tracking #</th><th>Date</th><th>Items</th><th>Total</th>
+          <th>Tracking #</th><th>📅 Date</th><th>💳 Date Paid</th><th>📦 Date Drop-off</th>
+          <th>Items</th><th>Total</th>
           <th>Parcel Status</th><th>Update Status</th><th>Actions</th>
         </tr></thead>
-        <tbody>${rows||'<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">No '+activeStatus+' parcels</td></tr>'}</tbody>
+        <tbody>${rows||'<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:26px;">No '+activeStatus+' parcels</td></tr>'}</tbody>
       </table></div>
     </div>`;
 }
@@ -8270,7 +8391,7 @@ function renderEmsDelivery() {
 
   // INTERNATIONAL orders only with matching lbcStatus
   const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
-    if(o.paymentMethod !== 'INTERNATIONAL') return false;
+    if(o.paymentMethod !== 'EMS') return false;
     if((o.lbcStatus||'') !== activeStatus) return false;
     if(df && o.date !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q)
@@ -8279,7 +8400,7 @@ function renderEmsDelivery() {
   });
 
   // Stats — all 3 statuses across all INTERNATIONAL orders
-  const allIntl = S.orders.filter(o=>o.paymentMethod==='INTERNATIONAL');
+  const allIntl = S.orders.filter(o=>o.paymentMethod==='EMS');
   const statsEl = document.getElementById('emsd-stats');
   if(statsEl) statsEl.innerHTML = `
     <div class="stat-card gold" style="cursor:pointer;" onclick="setEmsDeliveryTab('ofd')">
@@ -8497,8 +8618,8 @@ function renderDeletedOrders() {
   const sumEl = document.getElementById('del-summary');
   if(sumEl) sumEl.textContent = `${list.length} cancelled order(s)`;
 
-  const pmIcon = m => m==='INTERNATIONAL'?'✈️':m==='LBC'?'📦':'🏍️';
-  const pmColor = m => m==='INTERNATIONAL'?'var(--green)':m==='LBC'?'var(--blue)':'var(--gold)';
+  const pmIcon = m => m==='EMS'?'✈️':m==='FedEx'?'📦✈️':m==='LBC'?'📦':'🏍️';
+  const pmColor = m => m==='EMS'||m==='FedEx'?'var(--green)':m==='LBC'?'var(--blue)':'var(--gold)';
 
   const rows = list.map(({d,i}) => {
     const cancelDate = d.cancelledAt ? d.cancelledAt.slice(0,10) : '—';
@@ -8568,7 +8689,7 @@ function renderFedexDelivery() {
   const df = document.getElementById('fedexd-date')?.value||'';
 
   const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
-    if(o.paymentMethod !== 'INTERNATIONAL') return false;
+    if(o.paymentMethod !== 'FedEx') return false;
     if((o.lbcStatus||'') !== activeStatus) return false;
     if(df && o.date !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q)
@@ -8576,7 +8697,7 @@ function renderFedexDelivery() {
     return true;
   });
 
-  const allFedex = S.orders.filter(o=>o.paymentMethod==='INTERNATIONAL');
+  const allFedex = S.orders.filter(o=>o.paymentMethod==='FedEx');
   const statsEl = document.getElementById('fedexd-stats');
   if(statsEl) statsEl.innerHTML = `
     <div class="stat-card gold" style="cursor:pointer;" onclick="setFedexDeliveryTab('ofd')">
@@ -8679,8 +8800,8 @@ function renderCheckerDeleted() {
   // Show most recent first
   }).reverse();
 
-  const pmIcon  = m => m==='INTERNATIONAL'?'✈️':m==='LBC'?'📦':'🏍️';
-  const pmColor = m => m==='INTERNATIONAL'?'var(--green)':m==='LBC'?'var(--blue)':'var(--gold)';
+  const pmIcon  = m => m==='EMS'?'✈️':m==='FedEx'?'📦✈️':m==='LBC'?'📦':'🏍️';
+  const pmColor = m => m==='EMS'||m==='FedEx'?'var(--green)':m==='LBC'?'var(--blue)':'var(--gold)';
   const payColor = s => s==='Fully Paid'?'var(--green)':s==='Partial'?'var(--orange)':'var(--red)';
 
   const rows = list.map(({d,i}) => {
@@ -8802,6 +8923,216 @@ function renderCheckerForUpdate() {
     </tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;
+}
+
+
+// ============================================================
+// ORDER MERGE SYSTEM
+// ============================================================
+let _mergeDupSets = [];    // all dup groups detected
+let _mergeSetIdx  = 0;     // which dup group is selected
+let _mergeIdxA    = -1;    // S.orders index of order A
+let _mergeIdxB    = -1;    // S.orders index of order B
+
+function openMergeModal() {
+  // Re-detect duplicates from current COD orders
+  const codOrders = S.orders.map((o,i)=>({o,i})).filter(({o}) => (o.paymentMethod||'COD')==='COD');
+  const dupGroups = {};
+  codOrders.forEach(({o,i}) => {
+    const key = (o.name||'').toLowerCase().trim() + '|' + (o.contact||'').replace(/\D/g,'') + '|' + (o.date||'');
+    if(!dupGroups[key]) dupGroups[key] = [];
+    dupGroups[key].push({o,i});
+  });
+  _mergeDupSets = Object.values(dupGroups).filter(g => g.length > 1);
+
+  if(!_mergeDupSets.length) { toast('⚠️ Walang duplicate orders na nadetect.'); return; }
+
+  _mergeSetIdx = 0;
+  renderMergeSetSelector();
+  selectMergeSet(0);
+  openModal('modal-merge-orders');
+}
+
+function renderMergeSetSelector() {
+  const sel = document.getElementById('merge-set-selector');
+  if(!sel) return;
+  if(_mergeDupSets.length === 1) { sel.style.display = 'none'; return; }
+  sel.style.display = '';
+  sel.innerHTML = `<label style="font-weight:600;margin-bottom:6px;display:block;">Piliin ang group ng duplicates:</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      ${_mergeDupSets.map((g,gi) =>
+        `<button class="btn ${gi===_mergeSetIdx?'btn-gold':'btn-outline'} btn-sm" onclick="selectMergeSet(${gi})">
+          ${g[0].o.name} (${g.length} orders)
+        </button>`
+      ).join('')}
+    </div>`;
+}
+
+function selectMergeSet(gi) {
+  _mergeSetIdx = gi;
+  const group = _mergeDupSets[gi];
+  // Default: first two orders in the group
+  _mergeIdxA = group[0].i;
+  _mergeIdxB = group[1].i;
+  renderMergeSetSelector();
+  renderMergeOrderCards();
+  updateMergePreview();
+}
+
+function renderMergeOrderCards() {
+  const oA = S.orders[_mergeIdxA];
+  const oB = S.orders[_mergeIdxB];
+  if(!oA || !oB) return;
+
+  function orderCard(o, idx, label, colorVar) {
+    const itemsHtml = o.items.map(it => {
+      const isGrams = it.grams > 0;
+      const qty = isGrams ? `${it.grams}g` : `×${it.qty||1}`;
+      return `<div style="font-size:10.5px;">🔹 <strong>${it.code||'—'}</strong> ${it.desc||''} (${qty}) = ${p(it.total||0)}</div>`;
+    }).join('');
+    return `<div>
+      <div style="font-size:10px;font-weight:700;color:${colorVar};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">${label}</div>
+      <div style="font-weight:700;font-size:13px;">${onum(idx)} — ${o.name}</div>
+      <div style="font-size:11px;color:var(--muted);">${o.contact||'—'} | ${o.date}</div>
+      <div style="font-size:11px;margin-top:6px;color:var(--blue);">👤 Admin: <strong>${o.admin||'—'}</strong></div>
+      <div style="margin-top:6px;">${itemsHtml}</div>
+      <div style="margin-top:6px;display:flex;justify-content:space-between;font-size:11.5px;">
+        <span style="color:var(--muted);">SF: <strong>${p(o.shipping||0)}</strong></span>
+        <span style="color:var(--green);font-weight:700;">Total: ${p(o.grandTotal||0)}</span>
+      </div>
+    </div>`;
+  }
+
+  const elA = document.getElementById('merge-order-a');
+  const elB = document.getElementById('merge-order-b');
+  if(elA) { elA.innerHTML = orderCard(oA, _mergeIdxA, '📋 Order A', 'var(--blue)'); elA.style.borderColor = 'var(--blue)'; }
+  if(elB) { elB.innerHTML = orderCard(oB, _mergeIdxB, '📋 Order B', 'var(--orange)'); elB.style.borderColor = 'var(--orange)'; }
+}
+
+function updateMergePreview() {
+  const oA = S.orders[_mergeIdxA];
+  const oB = S.orders[_mergeIdxB];
+  if(!oA || !oB) return;
+
+  // SF decision
+  const sfChoice = document.querySelector('input[name="merge-sf"]:checked')?.value || 'higher';
+  let mergedSF;
+  if(sfChoice === 'higher') mergedSF = Math.max(oA.shipping||0, oB.shipping||0);
+  else if(sfChoice === 'lower') mergedSF = Math.min(oA.shipping||0, oB.shipping||0);
+  else mergedSF = parseFloat(document.getElementById('merge-sf-custom')?.value)||0;
+
+  // Merged items
+  const mergedItems = [...oA.items, ...oB.items];
+  const mergedItemsTotal = mergedItems.reduce((s,it) => s + (it.total||0), 0);
+  const mergedGrandTotal = mergedItemsTotal + mergedSF;
+
+  // Admins
+  const adminA = oA.admin || '';
+  const adminB = oB.admin || '';
+  const adminList = [...new Set([adminA, adminB].filter(Boolean))];
+  const adminDisplay = adminList.join(' / ');
+  const incentiveEach = adminList.length > 0 ? (25 / adminList.length).toFixed(2) : '25.00';
+
+  const el = document.getElementById('merge-result-preview');
+  if(!el) return;
+  const itemsHtml = mergedItems.map(it => {
+    const qty = it.grams > 0 ? `${it.grams}g` : `×${it.qty||1}`;
+    return `<div style="font-size:10.5px;">🔹 <strong>${it.code||'—'}</strong> ${it.desc||''} (${qty}) = ${p(it.total||0)}</div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">✅ Merged Order Preview</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px;">
+      <div>
+        <div><strong>${oA.name}</strong></div>
+        <div style="color:var(--muted);font-size:11px;">${oA.contact||'—'} | ${oA.date}</div>
+        <div style="color:var(--blue);font-size:11px;margin-top:4px;">👤 Admins: <strong>${adminDisplay}</strong></div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:2px;">
+          Incentive: ₱25 ÷ ${adminList.length} = <strong style="color:var(--gold);">₱${incentiveEach} each</strong>
+        </div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:2px;">
+          Rider parcel fee: <strong style="color:var(--gold);">₱10</strong> (1 parcel lang)
+        </div>
+      </div>
+      <div>
+        <div style="margin-bottom:4px;">${itemsHtml}</div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;padding-top:4px;border-top:1px solid var(--navy-border);">
+          <span>Items Total: <strong>${p(mergedItemsTotal)}</strong></span>
+          <span>SF: <strong>${p(mergedSF)}</strong></span>
+        </div>
+        <div style="font-size:14px;font-weight:700;color:var(--green);margin-top:4px;text-align:right;">
+          Grand Total: ${p(mergedGrandTotal)}
+        </div>
+      </div>
+    </div>`;
+}
+
+function confirmMerge() {
+  const oA = S.orders[_mergeIdxA];
+  const oB = S.orders[_mergeIdxB];
+  if(!oA || !oB) return;
+
+  const sfChoice = document.querySelector('input[name="merge-sf"]:checked')?.value || 'higher';
+  let mergedSF;
+  if(sfChoice === 'higher') mergedSF = Math.max(oA.shipping||0, oB.shipping||0);
+  else if(sfChoice === 'lower') mergedSF = Math.min(oA.shipping||0, oB.shipping||0);
+  else mergedSF = parseFloat(document.getElementById('merge-sf-custom')?.value)||0;
+
+  const mergedItems = [...oA.items, ...oB.items];
+  const mergedItemsTotal = mergedItems.reduce((s,it) => s + (it.total||0), 0);
+  const mergedGrandTotal = mergedItemsTotal + mergedSF;
+
+  const adminA = oA.admin || '';
+  const adminB = oB.admin || '';
+  const adminList = [...new Set([adminA, adminB].filter(Boolean))];
+  const adminDisplay = adminList.join(' / ');
+
+  // Determine which index survives (lower index = keep as main)
+  const keepIdx   = Math.min(_mergeIdxA, _mergeIdxB);
+  const removeIdx = Math.max(_mergeIdxA, _mergeIdxB);
+  const oKeep   = S.orders[keepIdx];
+  const oRemove = S.orders[removeIdx];
+
+  // Save merge log before modifying
+  if(!S.mergeLog) S.mergeLog = [];
+  S.mergeLog.push({
+    mergedAt: new Date().toISOString(),
+    mergedBy: currentUser?.name || 'Checker',
+    survivingOrderNum: onum(keepIdx),
+    absorbedOrderNum: onum(removeIdx),
+    customerName: oA.name,
+    contact: oA.contact||'',
+    date: oA.date,
+    adminA, adminB, adminList,
+    sfA: oA.shipping||0, sfB: oB.shipping||0, mergedSF,
+    itemsA: oA.items.length, itemsB: oB.items.length,
+    mergedGrandTotal
+  });
+
+  // Apply merge to surviving order
+  S.orders[keepIdx] = {
+    ...oKeep,
+    items: mergedItems,
+    itemsTotal: mergedItemsTotal,
+    shipping: mergedSF,
+    grandTotal: mergedGrandTotal,
+    admin: adminDisplay,
+    adminList: adminList,
+    // Reset checker status so checker re-verifies the merged order
+    checkerStatus: 'Pending',
+    verificationStatus: 'Not Verified',
+    mergedFrom: [onum(keepIdx), onum(removeIdx)],
+    mergedAt: new Date().toISOString()
+  };
+
+  // Remove the absorbed order (higher index first to preserve indices)
+  S.orders.splice(removeIdx, 1);
+
+  save();
+  closeModal('modal-merge-orders');
+  toast(`✅ Orders merged! ${onum(keepIdx)} ← absorbed ${onum(removeIdx)}. Admin incentive: ₱${(25/adminList.length).toFixed(2)} each.`);
+  renderChecker();
+  if(currentRole==='owner') renderDash();
 }
 
 // Show login screen on load (login screen is visible by default)
