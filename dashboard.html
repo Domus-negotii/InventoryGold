@@ -3044,6 +3044,18 @@ function setCheckerTab(tab) {
   }
 }
 
+
+function getMissingFieldsWarning(o, verifSt) {
+  const isCourier = o.paymentMethod==='LBC' || o.paymentMethod==='EMS' || o.paymentMethod==='FedEx';
+  if(!isCourier || verifSt==='Verified') return '';
+  const miss = [];
+  if(!o.trackingNumber) miss.push('Tracking #');
+  if(!o.dateOfPayment)  miss.push('Date Paid');
+  if(!o.dateOfDropoff)  miss.push('Date Drop-off');
+  if(!miss.length) return '';
+  return '<div style="font-size:9px;color:var(--red);font-weight:600;margin-top:2px;">⚠️ Required: ' + miss.join(', ') + '</div>';
+}
+
 function renderChecker(){
   const filt = document.getElementById('checker-filter')?.value||'';
   const q = (document.getElementById('checker-search')?.value||'').toLowerCase();
@@ -3079,14 +3091,8 @@ function renderChecker(){
       if(!codAdminGroups[adm]) codAdminGroups[adm] = [];
       codAdminGroups[adm].push({o,i});
     });
-    // ── Duplicate detection (same name + contact + date) ──
-    const dupGroups = {};
-    list.forEach(({o,i}) => {
-      const key = (o.name||'').toLowerCase().trim() + '|' + (o.contact||'').replace(/\D/g,'') + '|' + (o.date||'');
-      if(!dupGroups[key]) dupGroups[key] = [];
-      dupGroups[key].push({o,i});
-    });
-    const dupSets = Object.values(dupGroups).filter(g => g.length > 1);
+    // ── Duplicate detection (fuzzy name, same contact, or same address + date) ──
+    const dupSets = detectDuplicates(list);
 
     // Show duplicate alert banner
     const dupBanner = document.getElementById('checker-dup-banner');
@@ -3095,7 +3101,7 @@ function renderChecker(){
         const names = dupSets.map(g => g[0].o.name).join(', ');
         dupBanner.innerHTML = `<div style="background:rgba(224,138,48,0.15);border:1.5px solid var(--orange);border-radius:8px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
           <div><span style="color:var(--orange);font-weight:700;">⚠️ ${dupSets.length} Possible Duplicate Order(s) Detected!</span>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px;">Same name + contact + date: <strong>${names}</strong></div></div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;">Similar name / contact / address on same date: <strong>${names}</strong></div></div>
           <button class="btn btn-orange btn-sm" onclick="openMergeModal()">🔀 Review & Merge</button>
         </div>`;
         dupBanner.style.display = '';
@@ -3213,7 +3219,7 @@ function renderChecker(){
                     onchange="updateVerifStatus(${i},this.value)">
                     ${VERIF_STATUSES.map(s=>`<option${verifSt===s?' selected':''}>${s}</option>`).join('')}
                   </select>
-                  ${!canVerify?'<div style="font-size:9px;color:var(--orange);margin-top:2px;">⚠️ Fully Paid muna</div>':''}`
+                  ${!canVerify ? '<div style="font-size:9px;color:var(--orange);margin-top:2px;">⚠️ Fully Paid muna</div>' : getMissingFieldsWarning(o, verifSt)}`
               }
             </td>
             <td>
@@ -3265,13 +3271,29 @@ function updatePaymentNotes(orderIdx, notes) {
   save();
 }
 function updateVerifStatus(orderIdx, status) {
-  if((S.orders[orderIdx].paymentStatus||'No Payment') !== 'Fully Paid') {
+  const o = S.orders[orderIdx];
+  if((o.paymentStatus||'No Payment') !== 'Fully Paid') {
     toast('⚠️ Kailangan Fully Paid muna bago i-verify');
     return;
   }
-  S.orders[orderIdx].verificationStatus = status;
-  if(status === 'Verified') S.orders[orderIdx].checkerStatus = 'Verified';
-  else S.orders[orderIdx].checkerStatus = 'Pending';
+  // For LBC/EMS/FedEx — require tracking, date paid, and date drop-off before verifying
+  if(status === 'Verified') {
+    const isCourier = o.paymentMethod === 'LBC' || o.paymentMethod === 'EMS' || o.paymentMethod === 'FedEx';
+    if(isCourier) {
+      const missing = [];
+      if(!o.trackingNumber) missing.push('Tracking Number');
+      if(!o.dateOfPayment)  missing.push('Date of Fully Paid');
+      if(!o.dateOfDropoff)  missing.push('Date of Drop-off');
+      if(missing.length > 0) {
+        toast('⚠️ Hindi pa mave-verify. I-fill up muna ang: ' + missing.join(', '));
+        renderChecker();
+        return;
+      }
+    }
+  }
+  o.verificationStatus = status;
+  if(status === 'Verified') o.checkerStatus = 'Verified';
+  else o.checkerStatus = 'Pending';
   save(); renderChecker();
   toast(`✅ Verification: ${status}`);
 }
@@ -3284,14 +3306,44 @@ function assignRiderFromChecker(orderIdx, riderName) {
 }
 function verifyOrder(i){
   const o = S.orders[i];
-  // For LBC orders: tracking number required before verification
-  if((o.paymentMethod==='LBC' || o.paymentMethod==='EMS' || o.paymentMethod==='FedEx') && !o.trackingNumber) {
-    toast('⚠️ Kailangan ng LBC Tracking Number bago i-verify. I-edit muna ang order at lagyan ng tracking #.');
-    return;
+  // For LBC/EMS/FedEx: tracking, date paid, and date drop-off all required
+  const isCourier = o.paymentMethod==='LBC' || o.paymentMethod==='EMS' || o.paymentMethod==='FedEx';
+  if(isCourier) {
+    const missing = [];
+    if(!o.trackingNumber) missing.push('Tracking Number');
+    if(!o.dateOfPayment)  missing.push('Date of Fully Paid');
+    if(!o.dateOfDropoff)  missing.push('Date of Drop-off');
+    if(missing.length > 0) {
+      toast('⚠️ Hindi pa mave-verify. I-fill up muna ang: ' + missing.join(', '));
+      return;
+    }
+  }
+  // ── Deduct inventory upon verification ──────────────────────────
+  // Only deduct if not yet verified (prevent double-deduction on re-verify)
+  if(o.checkerStatus !== 'Verified') {
+    (o.items||[]).forEach(item => {
+      if(!item.code) return;
+      const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
+      if(!inv) return;
+      if(inv.itemType === 'fixprice') {
+        const deductQty = item.qty || 1;
+        const before = inv.qty;
+        inv.qty = before - deductQty;
+        S.stockLog.push({ productCode:inv.code, type:'out', qty:deductQty,
+          date:o.date, notes:'Checker verified – '+o.name+' ('+onum(i)+')',
+          before, after:inv.qty });
+      } else if((item.grams||0) > 0) {
+        const before = inv.grams;
+        inv.grams = before - item.grams;
+        S.stockLog.push({ productCode:inv.code, type:'out', qty:item.grams,
+          date:o.date, notes:'Checker verified – '+o.name+' ('+onum(i)+')',
+          before, after:inv.grams });
+      }
+    });
   }
   S.orders[i].checkerStatus='Verified';
   S.orders[i].verificationStatus='Verified';
-  save(); toast('✅ Verified!'); renderChecker();
+  save(); toast('✅ Verified! Inventory deducted.'); renderChecker();
 }
 function unverifyOrder(i){
   const o = S.orders[i];
@@ -3310,9 +3362,31 @@ function unverifyOrder(i){
     toast('🔒 Hindi na maaaring i-unverify — na-Remit na ni rider ang parcel na ito.');
     return;
   }
+  // ── Restore inventory on unverify ──────────────────────────────
+  if(o.checkerStatus === 'Verified') {
+    (o.items||[]).forEach(item => {
+      if(!item.code) return;
+      const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
+      if(!inv) return;
+      if(inv.itemType === 'fixprice') {
+        const restoreQty = item.qty || 1;
+        const before = inv.qty;
+        inv.qty = before + restoreQty;
+        S.stockLog.push({ productCode:inv.code, type:'return', qty:restoreQty,
+          date:o.date, notes:'Checker unverified – '+o.name+' ('+onum(i)+')',
+          before, after:inv.qty });
+      } else if((item.grams||0) > 0) {
+        const before = inv.grams;
+        inv.grams = before + item.grams;
+        S.stockLog.push({ productCode:inv.code, type:'return', qty:item.grams,
+          date:o.date, notes:'Checker unverified – '+o.name+' ('+onum(i)+')',
+          before, after:inv.grams });
+      }
+    });
+  }
   S.orders[i].checkerStatus='Pending';
   S.orders[i].verificationStatus='Not Verified';
-  save(); toast('↩ Set back to Pending'); renderChecker();
+  save(); toast('↩ Set back to Pending. Inventory restored.'); renderChecker();
 }
 
 // ============ INVOICE ============
@@ -5724,8 +5798,8 @@ function applyRoleUI(){
   const rolePages = {
     rider:    ['riderdash'],
     remitter: ['ridersremit','cashbond','benefits','sorting','returns'],
-    sorter:   ['sorting','tracking','ordermgmt','lbcdelivery','emsdelivery','fedexdelivery'],
-    checker:  ['checker','sorting'],
+    sorter:   ['sorting','tracking','ordermgmt'],
+    checker:  ['checker','sorting','lbcdelivery','emsdelivery','fedexdelivery'],
   };
   const allowed = rolePages[currentRole] || null;
   document.querySelectorAll('.nav-item').forEach(el=>{
@@ -5748,7 +5822,7 @@ function applyRoleUI(){
       if(lockEl) lockEl.classList.add('unlocked');
     } else if(currentRole==='remitter' && ['ridersremit','cashbond','benefits','returns'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
-    } else if(currentRole==='checker' && page==='checker'){
+    } else if(currentRole==='checker' && ['checker','lbcdelivery','emsdelivery','fedexdelivery'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
     } else if(currentRole==='sorter' && page==='tracking'){
       if(lockEl) lockEl.classList.add('unlocked');
@@ -6068,19 +6142,8 @@ function renderRiderParcels() {
   const deliveredSF_dash = del.reduce((s,o) => s + (o.shipping||0), 0);
 
   // 2. Subtotal (Delivered + SF) — net of any cancelled items
-  const codSubtotal_dash = del.reduce((s,o) => {
-    const iS = o.itemStatuses||{}, iCQ = o.itemCancelQty||{};
-    const hasCancels = o.items.some((_,ii)=>iS[ii]==='Cancelled'||(iCQ[ii]||0)>0);
-    if(!hasCancels) return s + o.grandTotal;
-    let cxAmt = 0;
-    o.items.forEach((it,ii)=>{
-      const tQty = it.grams||it.qty||1;
-      const ppu = it.total/Math.max(1,tQty);
-      if(iS[ii]==='Cancelled') cxAmt += it.total;
-      else if((iCQ[ii]||0)>0) cxAmt += (iCQ[ii])*ppu;
-    });
-    return s + Math.max(0, o.grandTotal - cxAmt);
-  }, 0);
+  // grandTotal is already adjusted by rider cancel actions — use directly
+  const codSubtotal_dash = del.reduce((s,o) => s + (o.grandTotal||0), 0);
 
   // 3. Less: SF 10% (Company)
   const sf10_dash = deliveredSF_dash * 0.10;
@@ -6481,75 +6544,54 @@ function saveOrder() {
     if(!o.dateOfPayment && orig.dateOfPayment) o.dateOfPayment = orig.dateOfPayment;
     if(!o.dateOfDropoff && orig.dateOfDropoff) o.dateOfDropoff = orig.dateOfDropoff;
 
-    // ── RESTORE old inventory, then deduct new items ──────────────
-    // Step 1: reverse original items' stock deductions
-    (orig.items||[]).forEach(item => {
-      if(!item.code) return;
-      const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
-      if(!inv) return;
-      if(inv.itemType === 'fixprice') {
-        inv.qty += (item.qty||1);
-      } else if((item.grams||0) > 0) {
-        inv.grams += item.grams;
-      }
-    });
-    // Step 2: apply new items' stock deductions
-    items.forEach(item => {
-      if(!item.code) return;
-      const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
-      if(!inv) return;
-      if(inv.itemType === 'fixprice') {
-        const deductQty = item.qty||1;
-        const before = inv.qty;
-        inv.qty = before - deductQty;
-        S.stockLog.push({ productCode:inv.code, type:'out', qty:deductQty,
-          date:o.date, notes:'Auto: Edit order – '+name+' ('+admin+')',
-          before, after:inv.qty });
-      } else if((item.grams||0) > 0) {
-        const before = inv.grams;
-        inv.grams = before - item.grams;
-        S.stockLog.push({ productCode:inv.code, type:'out', qty:item.grams,
-          date:o.date, notes:'Auto: Edit order – '+name+' ('+admin+')',
-          before, after:inv.grams });
-      }
-    });
+    // ── Inventory adjustment on EDIT ─────────────────────────────
+    // Only touch inventory if the order was already checker-verified.
+    // Unverified edits don't affect stock.
+    const wasVerified = orig.checkerStatus === 'Verified';
+    if(wasVerified) {
+      // Step 1: restore original items back to stock
+      (orig.items||[]).forEach(item => {
+        if(!item.code) return;
+        const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
+        if(!inv) return;
+        if(inv.itemType === 'fixprice') {
+          const before = inv.qty; inv.qty = before + (item.qty||1);
+          S.stockLog.push({ productCode:inv.code, type:'return', qty:(item.qty||1),
+            date:o.date, notes:'Auto: Edit restore – '+name, before, after:inv.qty });
+        } else if((item.grams||0) > 0) {
+          const before = inv.grams; inv.grams = before + item.grams;
+          S.stockLog.push({ productCode:inv.code, type:'return', qty:item.grams,
+            date:o.date, notes:'Auto: Edit restore – '+name, before, after:inv.grams });
+        }
+      });
+      // Step 2: deduct new items from stock
+      items.forEach(item => {
+        if(!item.code) return;
+        const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
+        if(!inv) return;
+        if(inv.itemType === 'fixprice') {
+          const deductQty = item.qty||1;
+          const before = inv.qty; inv.qty = before - deductQty;
+          S.stockLog.push({ productCode:inv.code, type:'out', qty:deductQty,
+            date:o.date, notes:'Auto: Edit deduct – '+name+' ('+admin+')',
+            before, after:inv.qty });
+        } else if((item.grams||0) > 0) {
+          const before = inv.grams; inv.grams = before - item.grams;
+          S.stockLog.push({ productCode:inv.code, type:'out', qty:item.grams,
+            date:o.date, notes:'Auto: Edit deduct – '+name+' ('+admin+')',
+            before, after:inv.grams });
+        }
+      });
+    }
 
     S.orders[+editIdx] = o;
-    toast('✅ Order updated! Inventory adjusted.');
+    toast(wasVerified ? '✅ Order updated! Inventory adjusted.' : '✅ Order updated!');
   } else {
     S.orders.push(o);
-    // ── AUTO-DEDUCT INVENTORY ON NEW ORDER ───────────────────────
-    items.forEach(item => {
-      if(!item.code) return;
-      const invIdx = S.inventory.findIndex(it => it.code.toUpperCase() === item.code.toUpperCase());
-      if(invIdx < 0) return;
-      const inv = S.inventory[invIdx];
-      if(inv.itemType === 'fixprice') {
-        // Fix price: deduct by qty
-        const deductQty = item.qty || 1;
-        const before = inv.qty;
-        const after = before - deductQty;
-        const beforeVal = before * (inv.fixPrice||0);
-        const afterVal = after * (inv.fixPrice||0);
-        inv.qty = after;
-        S.stockLog.push({ productCode:inv.code, type:'out', qty:deductQty,
-          date:o.date, notes:'Auto: New order – '+name+' ('+admin+')',
-          before, after, beforeVal, afterVal, orderValue: item.total });
-      } else {
-        // Gram-based: deduct by grams
-        const deductGrams = item.grams || 0;
-        if(deductGrams <= 0) return;
-        const before = inv.grams;
-        const after = before - deductGrams;
-        const beforeVal = before * (inv.pergram||0);
-        const afterVal = after * (inv.pergram||0);
-        inv.grams = after;
-        S.stockLog.push({ productCode:inv.code, type:'out', qty:deductGrams,
-          date:o.date, notes:'Auto: New order – '+name+' ('+admin+')',
-          before, after, beforeVal, afterVal, orderValue: item.total });
-      }
-    });
-    toast('✅ Order saved! Inventory updated.');
+    // ── NO inventory deduction on new order ──────────────────────
+    // Inventory is only deducted when Checker VERIFIES the order.
+    // This prevents stock from being consumed by cancelled/deleted orders.
+    toast('✅ Order saved! Inventory will be updated upon Checker verification.');
   }
   save(); closeModal('modal-encode');
   initOrdersPage();
@@ -6557,7 +6599,29 @@ function saveOrder() {
 }
 function delOrder(i){
   _confirmDel(`Delete order ${onum(i)} for "${S.orders[i]?.name}"?`, ()=>{
-    S.orders.splice(i,1); save(); toast('🗑️ Order deleted');
+    const o = S.orders[i];
+    // ── Restore inventory only if order was verified ──────────────
+    if(o && o.checkerStatus === 'Verified') {
+      (o.items||[]).forEach(item => {
+        if(!item.code) return;
+        const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
+        if(!inv) return;
+        if(inv.itemType === 'fixprice') {
+          const restoreQty = item.qty || 1;
+          const before = inv.qty; inv.qty = before + restoreQty;
+          S.stockLog.push({ productCode:inv.code, type:'return', qty:restoreQty,
+            date:o.date, notes:'Order deleted (verified) – '+o.name+' ('+onum(i)+')',
+            before, after:inv.qty });
+        } else if((item.grams||0) > 0) {
+          const before = inv.grams; inv.grams = before + item.grams;
+          S.stockLog.push({ productCode:inv.code, type:'return', qty:item.grams,
+            date:o.date, notes:'Order deleted (verified) – '+o.name+' ('+onum(i)+')',
+            before, after:inv.grams });
+        }
+      });
+    }
+    S.orders.splice(i,1); save();
+    toast(o?.checkerStatus==='Verified' ? '🗑️ Order deleted. Inventory restored.' : '🗑️ Order deleted.');
     initOrdersPage(); if(currentRole==='owner') renderDash();
   });
 }
@@ -7081,20 +7145,10 @@ function populateRemitParcels() {
   const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
   // Subtotal = sum of grandTotal (items + SF) from Delivered orders
   // Subtotal = actual collected amount per delivered order (net of cancelled items)
-  const codSubtotal = delivered.reduce((s,o)=>{
-    const iS = o.itemStatuses||{}, iCQ = o.itemCancelQty||{};
-    const hasCancels = o.items.some((_,ii)=>iS[ii]==='Cancelled'||(iCQ[ii]||0)>0);
-    if(!hasCancels) return s + o.grandTotal;
-    // Subtract cancelled item amounts
-    let cxAmt = 0;
-    o.items.forEach((it,ii)=>{
-      const tQty = it.grams||it.qty||1;
-      const ppu = it.total/Math.max(1,tQty);
-      if(iS[ii]==='Cancelled') cxAmt += it.total;
-      else if((iCQ[ii]||0)>0) cxAmt += (iCQ[ii])*ppu;
-    });
-    return s + Math.max(0, o.grandTotal - cxAmt);
-  },0);
+  // codSubtotal uses o.grandTotal directly — rider cancel functions already
+  // reduce grandTotal in real time (riderItemStatus / riderItemPartialCancel).
+  // No need to re-subtract: doing so causes double-deduction of cancelled amounts.
+  const codSubtotal = delivered.reduce((s,o) => s + (o.grandTotal||0), 0);
   // CORRECT FORMULA:
   // Rider collected: codSubtotal (from customers)
   // Rider keeps: sfRider90 (their SF share)
@@ -7159,14 +7213,15 @@ function populateRemitParcels() {
         else if(cxQty > 0) totalCancelledAmt += cxQty * ppu;
       });
     }
-    const netRemitAmt = isWholeOrderCancelled ? 0 : Math.max(0, o.grandTotal - totalCancelledAmt);
+    // grandTotal is already net of any rider cancels — use directly
+    const netRemitAmt = isWholeOrderCancelled ? 0 : Math.max(0, o.grandTotal);
 
     const remitAmtDisplay = isWholeOrderCancelled
       ? `<span style="color:var(--red);font-weight:700;">₱0.00</span>
          <div style="font-size:9px;color:var(--muted);text-decoration:line-through;">${p(o.grandTotal)} (orig)</div>`
       : hasAnyCancelledItems
         ? `<span style="color:var(--green);font-weight:700;">${p(netRemitAmt)}</span>
-           <div style="font-size:9px;color:var(--orange);">Orig: <span style="text-decoration:line-through;">${p(o.grandTotal)}</span></div>
+           <div style="font-size:9px;color:var(--orange);">Orig: <span style="text-decoration:line-through;">${p(o.grandTotal + totalCancelledAmt)}</span></div>
            <div style="font-size:9px;color:var(--red);">❌ Cancel: -${p(totalCancelledAmt)}</div>`
         : `<span style="color:var(--green);font-weight:700;">${p(o.grandTotal)}</span>`;
 
@@ -8934,16 +8989,55 @@ let _mergeSetIdx  = 0;     // which dup group is selected
 let _mergeIdxA    = -1;    // S.orders index of order A
 let _mergeIdxB    = -1;    // S.orders index of order B
 
+
+// ── Duplicate detection helpers ──
+function _normName(name) {
+  // Lowercase, remove non-alpha except spaces, split to sorted tokens
+  return (name||'').toLowerCase().replace(/[^a-z\s]/g,'').trim().split(/\s+/).filter(Boolean).sort();
+}
+function _nameFuzzyMatch(a, b) {
+  const tA = _normName(a), tB = _normName(b);
+  if(!tA.length || !tB.length) return false;
+  // All tokens of the shorter name must appear in the longer name
+  const [shorter, longer] = tA.length <= tB.length ? [tA, tB] : [tB, tA];
+  return shorter.every(t => longer.includes(t));
+}
+function _normContact(c) { return (c||'').replace(/\D/g,''); }
+function _normAddress(a) {
+  return (a||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').trim().split(/\s+/).filter(w=>w.length>2).sort().join(' ');
+}
+function detectDuplicates(orders) {
+  // Build duplicate groups using Union-Find approach:
+  // Two orders are "linked" if they share (fuzzy name + date) OR (contact + date) OR (address + date)
+  const n = orders.length;
+  const parent = orders.map((_,i)=>i);
+  function find(x){ return parent[x]===x?x:(parent[x]=find(parent[x])); }
+  function union(x,y){ parent[find(x)]=find(y); }
+
+  for(let i=0;i<n;i++){
+    const oi = orders[i].o;
+    const dateI = oi.date||'';
+    const contactI = _normContact(oi.contact);
+    const addrI = _normAddress(oi.address);
+    for(let j=i+1;j<n;j++){
+      const oj = orders[j].o;
+      if((oj.date||'') !== dateI) continue; // must be same date
+      const nameMatch = _nameFuzzyMatch(oi.name, oj.name);
+      const contactMatch = contactI && contactI === _normContact(oj.contact);
+      const addrMatch = addrI.length>4 && addrI === _normAddress(oj.address);
+      if(nameMatch || contactMatch || addrMatch) union(i,j);
+    }
+  }
+  // Group by root
+  const groups = {};
+  orders.forEach((item,i)=>{ const r=find(i); if(!groups[r])groups[r]=[]; groups[r].push(item); });
+  return Object.values(groups).filter(g=>g.length>1);
+}
+
 function openMergeModal() {
-  // Re-detect duplicates from current COD orders
+  // Re-detect duplicates using fuzzy matching
   const codOrders = S.orders.map((o,i)=>({o,i})).filter(({o}) => (o.paymentMethod||'COD')==='COD');
-  const dupGroups = {};
-  codOrders.forEach(({o,i}) => {
-    const key = (o.name||'').toLowerCase().trim() + '|' + (o.contact||'').replace(/\D/g,'') + '|' + (o.date||'');
-    if(!dupGroups[key]) dupGroups[key] = [];
-    dupGroups[key].push({o,i});
-  });
-  _mergeDupSets = Object.values(dupGroups).filter(g => g.length > 1);
+  _mergeDupSets = detectDuplicates(codOrders);
 
   if(!_mergeDupSets.length) { toast('⚠️ Walang duplicate orders na nadetect.'); return; }
 
