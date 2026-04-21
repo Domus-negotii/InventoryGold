@@ -848,8 +848,8 @@ function _showRulesHint() {
     </div>
     <div class="nav-section">
       <div class="nav-label">System</div>
-      <div class="nav-item" onclick="gotoPage('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Settings</div>
-      <div class="nav-item" onclick="openModal('modal-firebase')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/></svg>☁ Firebase Config</div>
+      <div class="nav-item owner-only" onclick="gotoPage('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Settings</div>
+      <div class="nav-item owner-only" onclick="openModal('modal-firebase')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/></svg>☁ Firebase Config</div>
       <div class="nav-item owner-only" onclick="openModal('modal-change-pw')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>🔐 Change Password</div>
       <div class="nav-item owner-only" onclick="openTabPasswordsModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>🔑 Set Tab Passwords</div>
     </div>
@@ -969,7 +969,7 @@ function _showRulesHint() {
       <!-- LBC/INTL lock overlay inside checker card -->
       <div id="lbc-checker-lock" style="display:none;padding:30px;text-align:center;background:rgba(15,27,45,0.97);border-radius:8px;">
         <div style="font-size:24px;margin-bottom:10px;">🔐</div>
-        <div style="font-weight:700;color:var(--gold);margin-bottom:6px;">LBC / INTERNATIONAL Checker</div>
+        <div style="font-weight:700;color:var(--gold);margin-bottom:6px;">LBC / EMS / FedEx Checker</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Separate password required. Checker ng LBC at Admin lang ang may access.</div>
         <input type="password" class="form-control" id="lbc-checker-pw-input" placeholder="Enter LBC Checker password" style="max-width:280px;margin:0 auto 10px;text-align:center;letter-spacing:3px;" onkeydown="if(event.key==='Enter')unlockLbcChecker()">
         <div id="lbc-checker-err" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px;"></div>
@@ -1010,7 +1010,8 @@ function _showRulesHint() {
             <select class="form-control" style="width:140px;font-size:11px;padding:4px 8px;" id="checker-del-method" onchange="renderCheckerDeleted()">
               <option value="">All Methods</option>
               <option value="LBC">📦 LBC</option>
-              <option value="INTERNATIONAL">✈️ INTERNATIONAL</option>
+              <option value="EMS">✈️ EMS</option>
+              <option value="FedEx">📦 FedEx</option>
               <option value="COD">🏍️ COD</option>
             </select>
             <input type="date" class="form-control" style="width:148px;font-size:11px;" id="checker-del-date" oninput="renderCheckerDeleted()" title="Filter by cancel date">
@@ -1392,7 +1393,7 @@ function _showRulesHint() {
   <!-- SETTINGS -->
   <div class="page page-lockable" id="page-settings">
   <!-- Finance Lock Overlay -->
-  <div class="finance-lock unlocked" id="lock-settings">
+  <div class="finance-lock" id="lock-settings">
     <div class="lock-box">
       <div class="lock-icon">🔐</div>
       <div class="lock-title">Owner Access Only</div>
@@ -1653,7 +1654,7 @@ function _showRulesHint() {
   <div id="benefits-page-content"></div>
 </div>
 
-  <!-- ORDER MANAGEMENT (LBC + INTERNATIONAL) -->
+  <!-- ORDER MANAGEMENT (LBC + EMS + FedEx) -->
   <div class="page" id="page-ordermgmt">
     <div class="action-row no-print" style="flex-wrap:wrap;gap:10px;">
       <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
@@ -1702,7 +1703,8 @@ function _showRulesHint() {
         <select class="form-control" style="width:160px;font-size:11px;padding:4px 8px;" id="del-method" onchange="renderDeletedOrders()">
           <option value="">All Methods</option>
           <option value="LBC">📦 LBC</option>
-          <option value="INTERNATIONAL">✈️ INTERNATIONAL</option>
+          <option value="EMS">✈️ EMS</option>
+          <option value="FedEx">📦 FedEx</option>
           <option value="COD">🏍️ COD</option>
         </select>
         <input type="date" class="form-control" style="width:148px;font-size:11px;" id="del-date" oninput="renderDeletedOrders()" title="Filter by cancel date">
@@ -2701,7 +2703,7 @@ function _renderAdminPersonalSheet() {
     <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
       <input class="form-control" style="width:180px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / CP# / order#" id="my-order-search" oninput="renderMyOrders()">
       <select class="form-control" style="width:130px;font-size:11px;padding:4px 8px;" id="my-order-method" onchange="renderMyOrders()">
-        <option value="">All Methods</option><option>COD</option><option>LBC</option><option>INTERNATIONAL</option>
+        <option value="">All Methods</option><option>COD</option><option>LBC</option><option>EMS</option><option>FedEx</option>
       </select>
       <input type="date" class="form-control" style="width:140px;font-size:11px;padding:4px 8px;" id="my-order-date" oninput="renderMyOrders()" title="Filter by date">
       <button class="btn btn-gold" onclick="openEncodeModal()">+ New Order</button>
@@ -2761,7 +2763,7 @@ function renderMyOrders() {
   const countEl = document.getElementById('my-orders-count');
   if(countEl) countEl.textContent = list.length + ' order(s)';
 
-  // Group: LBC first, then INTERNATIONAL, then COD
+  // Group: LBC first, then EMS, then FedEx, then COD
   const methodOrder = ['LBC','EMS','FedEx','COD'];
   const grouped = {};
   methodOrder.forEach(m => { grouped[m] = list.filter(({o}) => (o.paymentMethod||'COD') === m); });
@@ -2788,8 +2790,8 @@ function renderMyOrders() {
         : ''}
     </td></tr>`;
 
-  const methodLabels = {LBC:'📦 LBC Orders', INTERNATIONAL:'✈️ INTERNATIONAL Orders', COD:'🏍️ COD Orders'};
-  const methodColors = {LBC:'var(--blue)', INTERNATIONAL:'var(--green)', COD:'var(--gold)'};
+  const methodLabels = {LBC:'📦 LBC Orders', EMS:'✈️ EMS Orders', FedEx:'📦 FedEx Orders', COD:'🏍️ COD Orders'};
+  const methodColors = {LBC:'var(--blue)', EMS:'var(--green)', FedEx:'var(--orange)', COD:'var(--gold)'};
 
   let html = '';
   if(list.length) {
@@ -2829,7 +2831,7 @@ function _renderOwnerOrdersView() {
       <input type="date" class="form-control" style="width:140px;font-size:11px;padding:4px 8px;" id="order-date-filter" oninput="renderOrders()" title="Filter by date">
       <input class="form-control" style="width:180px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / order# / CP#" id="order-search" oninput="renderOrders()">
       <select class="form-control" style="width:130px;font-size:11px;padding:4px 8px;" id="order-method-filter" onchange="renderOrders()">
-        <option value="">All Methods</option><option>COD</option><option>LBC</option><option>INTERNATIONAL</option>
+        <option value="">All Methods</option><option>COD</option><option>LBC</option><option>EMS</option><option>FedEx</option>
       </select>
       <button class="btn btn-gold" onclick="openEncodeModal()">+ New Order</button>
     </div>`;
@@ -3160,7 +3162,7 @@ function renderChecker(){
       document.getElementById('checker-tbody').innerHTML = codRows;
     }
   } else {
-    // LBC / INTERNATIONAL — payment status + verification flow
+    // LBC / EMS / FedEx — payment status + verification flow
     const PAYMENT_STATUSES = ['No Payment','Partial','Fully Paid'];
     const VERIF_STATUSES = ['Not Verified','Verified'];
     const payColor = s => s==='Fully Paid'?'var(--green)':s==='Partial'?'var(--orange)':'var(--red)';
@@ -4502,7 +4504,7 @@ function printDailySales(){
       <div class="print-box"><div class="print-box-title">Remit Summary</div>
         <div class="print-row"><span>COD (Cash on Delivery)</span><span style="font-weight:600;">${p(codR)}</span></div>
         <div class="print-row"><span>LBC</span><span style="font-weight:600;">${p(lbcR)}</span></div>
-        <div class="print-row"><span>INTERNATIONAL</span><span style="font-weight:600;">${p(intlR)}</span></div>
+        <div class="print-row"><span>EMS + FedEx</span><span style="font-weight:600;">${p(intlR)}</span></div>
         <div class="print-row"><span>VIA BANK</span><span style="font-weight:600;">${p(bankR)}</span></div>
         <div class="print-row"><span>GCASH</span><span>₱0.00</span></div>
         <div class="print-row total-row"><span>OVERALL</span><span>${p(overallR)}</span></div>
@@ -5644,7 +5646,7 @@ function renderDash(){
   });
   const aList=Object.entries(adminDel).sort((a,b)=>b[1]-a[1]);
   document.getElementById('dash-admins').innerHTML=aList.length?`<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:rgba(201,168,76,0.08);"><th style="padding:5px 7px;color:var(--gold);font-size:9px;">Admin</th><th style="padding:5px 7px;color:var(--gold);font-size:9px;">Delivered</th><th style="padding:5px 7px;color:var(--gold);font-size:9px;">Incentive</th></tr></thead><tbody>${aList.map(([a,c])=>`<tr><td style="padding:6px 7px;font-weight:500;">${a}</td><td style="padding:6px 7px;color:var(--blue);">${Number(c)%1===0?Number(c):Number(c).toFixed(1)}</td><td style="padding:6px 7px;color:var(--green);font-weight:700;">${p(c*25)}</td></tr>`).join('')}</tbody></table>`:'<p style="color:var(--muted);font-size:12px;padding:8px 0;">No delivered parcels yet</p>';
-  document.getElementById('dash-recent').innerHTML=`<table><thead><tr><th>Order #</th><th>Customer</th><th>Admin</th><th>Date</th><th>Total</th><th>Status</th></tr></thead><tbody>${[...S.orders].slice(-7).reverse().map(o=>{const i=S.orders.indexOf(o);return `<tr><td style="color:var(--gold);">${onum(i)}</td><td style="font-weight:500;">${o.name}</td><td>${o.date}</td><td style="color:var(--green);">${p(o.grandTotal)}</td><td><span class="status ${sclass(o.status)}">${o.status}</span></td></tr>`;}).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px;">No orders</td></tr>'}</tbody></table>`;
+  document.getElementById('dash-recent').innerHTML=`<table><thead><tr><th>Order #</th><th>Customer</th><th>Admin</th><th>Date</th><th>Total</th><th>Status</th></tr></thead><tbody>${[...S.orders].slice(-7).reverse().map(o=>{const i=S.orders.indexOf(o);return `<tr><td style="color:var(--gold);">${onum(i)}</td><td style="font-weight:500;">${o.name}</td><td>${o.admin||'—'}</td><td>${o.date}</td><td style="color:var(--green);">${p(o.grandTotal)}</td><td><span class="status ${sclass(o.status)}">${o.status}</span></td></tr>`;}).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px;">No orders</td></tr>'}</tbody></table>`;
 }
 
 
@@ -5796,6 +5798,7 @@ function applyRoleUI(){
 
   // Nav visibility per role
   const rolePages = {
+    admin:    ['orders'],
     rider:    ['riderdash'],
     remitter: ['ridersremit','cashbond','benefits','sorting','returns'],
     sorter:   ['sorting','tracking','ordermgmt'],
@@ -5811,9 +5814,10 @@ function applyRoleUI(){
       el.style.display=show?'flex':'none';
     }
   });
-  if(currentRole==='owner'||currentRole==='admin'){
-    document.querySelectorAll('.owner-only').forEach(el=>{ el.style.display=currentRole==='owner'?'flex':'none'; });
-  }
+  // owner-only nav items: only visible to owner, hidden for all other roles
+  document.querySelectorAll('.owner-only').forEach(el=>{
+    el.style.display = currentRole==='owner' ? 'flex' : 'none';
+  });
 
   // Auto-unlock specific pages for special roles
   FIN_PAGES.forEach(page=>{
@@ -5859,6 +5863,7 @@ function logoutUser(){
 }
 
 function changePassword(){
+  if(currentRole !== 'owner') { toast('🔒 CEO only ang maaaring mag-change ng password.'); closeModal('modal-change-pw'); return; }
   const cur=document.getElementById('pw-current').value;
   const nw=document.getElementById('pw-new').value;
   const conf=document.getElementById('pw-confirm').value;
@@ -5886,6 +5891,7 @@ function loadFbConfig(){
   document.getElementById('fb-appid').value = cfg.appId||'';
 }
 function saveFbConfig(){
+  if(currentRole !== 'owner') { toast('🔒 CEO only ang maaaring mag-edit ng Firebase Config.'); return; }
   const cfg = {
     apiKey: document.getElementById('fb-apikey').value.trim(),
     authDomain: document.getElementById('fb-authdomain').value.trim(),
@@ -7032,6 +7038,7 @@ function updateRidersTableHeader() {
 // TAB PASSWORDS — CEO can set per-tab passwords
 // ============================================================
 function openTabPasswordsModal() {
+  if(currentRole !== 'owner') { toast('🔒 CEO only ang maaaring i-set ang Tab Passwords.'); return; }
   if(!S.tabPasswords) S.tabPasswords = {checker:'', tracking:'', riders:'', ridersremit:'', cashbond:'', lbcchecker:''};
   if(!S.specialPasswords) S.specialPasswords = {remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
   document.getElementById('tab-pw-checker').value = S.tabPasswords.checker || '';
@@ -7962,7 +7969,7 @@ function startAutoRefresh(){
 }
 
 // ============================================================
-// ORDER MANAGEMENT PAGE — LBC & INTERNATIONAL
+// ORDER MANAGEMENT PAGE — LBC, EMS & FedEx
 // ============================================================
 let omTab = 'lbc';
 
@@ -8094,7 +8101,7 @@ function onPaymentMethodChange() {
   const method = document.getElementById('enc-payment-method')?.value || 'COD';
   const isLbc = method === 'LBC' || method === 'EMS' || method === 'FedEx';
 
-  // Tracking number — for LBC & INTERNATIONAL
+  // Tracking number — for LBC, EMS & FedEx
   const grp = document.getElementById('enc-tracking-group');
   if(grp) grp.style.display = isLbc ? '' : 'none';
   // Update label dynamically based on method
@@ -8114,7 +8121,7 @@ function onPaymentMethodChange() {
     if(err) err.textContent = '';
   }
 
-  // Extra date fields — show for LBC & INTERNATIONAL only
+  // Extra date fields — show for LBC, EMS & FedEx only
   const pmtGrp = document.getElementById('enc-date-payment-group');
   const dofGrp = document.getElementById('enc-date-dropoff-group');
   if(pmtGrp) pmtGrp.style.display = isLbc ? '' : 'none';
@@ -8421,7 +8428,7 @@ function lbcdUpdateStatus(orderIdx, newStatus) {
 
 
 // ============================================================
-// EMS DELIVERY PAGE (INTERNATIONAL only — no ODZ)
+// EMS DELIVERY PAGE (EMS orders — no ODZ)
 // ============================================================
 let emsDeliveryTab = 'ofd';
 
@@ -8444,7 +8451,7 @@ function renderEmsDelivery() {
   const q  = (document.getElementById('emsd-search')?.value||'').toLowerCase();
   const df = document.getElementById('emsd-date')?.value||'';
 
-  // INTERNATIONAL orders only with matching lbcStatus
+  // EMS orders only with matching lbcStatus
   const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
     if(o.paymentMethod !== 'EMS') return false;
     if((o.lbcStatus||'') !== activeStatus) return false;
@@ -8454,7 +8461,7 @@ function renderEmsDelivery() {
     return true;
   });
 
-  // Stats — all 3 statuses across all INTERNATIONAL orders
+  // Stats — all 3 statuses across all EMS orders
   const allIntl = S.orders.filter(o=>o.paymentMethod==='EMS');
   const statsEl = document.getElementById('emsd-stats');
   if(statsEl) statsEl.innerHTML = `
@@ -8498,7 +8505,13 @@ function renderEmsDelivery() {
       <td style="font-size:10.5px;max-width:180px;">${o.address||'—'}${o.landmark?'<br><span style="color:var(--muted);font-size:9.5px;">🏠 '+o.landmark+'</span>':''}</td>
       <td style="font-size:11px;">${o.admin||'—'}</td>
       <td style="font-family:monospace;font-size:11px;color:var(--blue);">${tn}</td>
-      <td>${o.date}</td>
+      <td style="font-size:11px;">${o.date}</td>
+      <td style="font-size:11px;color:${o.dateOfPayment?'var(--green)':'var(--muted)'};">
+        ${o.dateOfPayment||'<span style="color:var(--red);font-size:10px;">—</span>'}
+      </td>
+      <td style="font-size:11px;color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">
+        ${o.dateOfDropoff||'<span style="color:var(--muted);font-size:10px;">—</span>'}
+      </td>
       <td style="font-size:10px;">${itemList}</td>
       <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
       <td><span style="font-size:10px;font-weight:700;color:${stColor(lst)};padding:3px 8px;background:rgba(201,168,76,0.08);border-radius:5px;">✈️ ${lst}</span></td>
@@ -8525,10 +8538,11 @@ function renderEmsDelivery() {
       <div class="table-wrap"><table>
         <thead><tr>
           <th>Order #</th><th>Customer</th><th>Address / Landmark</th><th>Admin</th>
-          <th>Tracking #</th><th>Date</th><th>Items</th><th>Total</th>
+          <th>Tracking #</th><th>📅 Date</th><th>💳 Date Paid</th><th>📦 Date Drop-off</th>
+          <th>Items</th><th>Total</th>
           <th>Parcel Status</th><th>Update Status</th><th>Actions</th>
         </tr></thead>
-        <tbody>${rows||'<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">No '+activeStatus+' EMS parcels</td></tr>'}</tbody>
+        <tbody>${rows||'<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:26px;">No '+activeStatus+' EMS parcels</td></tr>'}</tbody>
       </table></div>
     </div>`;
 }
@@ -8721,7 +8735,7 @@ function renderDeletedOrders() {
 
 
 // ============================================================
-// FEDEX DELIVERY PAGE (INTERNATIONAL only — no ODZ)
+// FEDEX DELIVERY PAGE (FedEx orders — no ODZ)
 // ============================================================
 let fedexDeliveryTab = 'ofd';
 
@@ -8791,7 +8805,13 @@ function renderFedexDelivery() {
       <td style="font-size:10.5px;max-width:180px;">${o.address||'—'}${o.landmark?'<br><span style="color:var(--muted);font-size:9.5px;">🏠 '+o.landmark+'</span>':''}</td>
       <td style="font-size:11px;">${o.admin||'—'}</td>
       <td style="font-family:monospace;font-size:11px;color:var(--blue);">${tn}</td>
-      <td>${o.date}</td>
+      <td style="font-size:11px;">${o.date}</td>
+      <td style="font-size:11px;color:${o.dateOfPayment?'var(--green)':'var(--muted)'};">
+        ${o.dateOfPayment||'<span style="color:var(--red);font-size:10px;">—</span>'}
+      </td>
+      <td style="font-size:11px;color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">
+        ${o.dateOfDropoff||'<span style="color:var(--muted);font-size:10px;">—</span>'}
+      </td>
       <td style="font-size:10px;">${itemList}</td>
       <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
       <td><span style="font-size:10px;font-weight:700;color:${stColor(lst)};padding:3px 8px;background:rgba(201,168,76,0.08);border-radius:5px;">📦 ${lst}</span></td>
@@ -8816,10 +8836,11 @@ function renderFedexDelivery() {
       <div class="table-wrap"><table>
         <thead><tr>
           <th>Order #</th><th>Customer</th><th>Address / Landmark</th><th>Admin</th>
-          <th>Tracking #</th><th>Date</th><th>Items</th><th>Total</th>
+          <th>Tracking #</th><th>📅 Date</th><th>💳 Date Paid</th><th>📦 Date Drop-off</th>
+          <th>Items</th><th>Total</th>
           <th>Parcel Status</th><th>Update Status</th><th>Actions</th>
         </tr></thead>
-        <tbody>${rows||'<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">No '+activeStatus+' FedEx parcels</td></tr>'}</tbody>
+        <tbody>${rows||'<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:26px;">No '+activeStatus+' FedEx parcels</td></tr>'}</tbody>
       </table></div>
     </div>`;
 }
