@@ -3631,7 +3631,7 @@ function _renderForUpdateTab_orig() {
     <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
     <td style="font-size:10.5px;color:var(--orange);">${o.riderRemarks||'No remarks'}</td>
     <td style="display:flex;gap:4px;flex-wrap:wrap;">
-      <button class="btn btn-green btn-sm" onclick="resolveUpdate(${o.idx},'Out for Delivery')">🔁 Re-Deliver</button>
+      <button class="btn btn-green btn-sm" onclick="resolveUpdate(${o.idx},'Out for Delivery')">🔁 Re-Deliver (Tomorrow)</button>
       <button class="btn btn-red btn-sm" onclick="resolveUpdate(${o.idx},'Cancelled')">✕ Cancel</button>
     </td>
   </tr>`).join('')}</tbody></table></div>`
@@ -3639,11 +3639,28 @@ function _renderForUpdateTab_orig() {
 }
 
 function resolveUpdate(orderIdx, newStatus) {
-  S.orders[orderIdx].status = newStatus;
-  save(); toast('✅ Status → '+newStatus);
-  // For Update tab moved to Checker Verify
+  const o = S.orders[orderIdx];
+  if(!o) return;
+
+  if(newStatus === 'Out for Delivery') {
+    // ── Re-Deliver: reschedule for TOMORROW ─────────────────────
+    // Change order date to tomorrow so it only shows up in rider's
+    // tomorrow dashboard — not today's parcels
+    S.orders[orderIdx].date   = tomorrow();
+    S.orders[orderIdx].status = 'Ready';   // Ready for Pick-up (not OFD yet)
+    // Clear the Update remark so it doesn't persist
+    S.orders[orderIdx].riderRemarks = '';
+    save();
+    toast('🔁 Re-scheduled for tomorrow (' + tomorrow() + '). Status → Ready for Pick-up.');
+  } else {
+    // Cancel
+    S.orders[orderIdx].status = newStatus;
+    save();
+    toast('✅ Status → ' + newStatus);
+  }
+
+  // Refresh all relevant views
   renderCheckerForUpdate(); refreshUpdateBadge();
-  // Also refresh returns page if visible
   if(returnTab==='update') renderUpdateOrders();
   else if(returnTab==='orders') renderReturnOrders();
   renderReturns();
@@ -3949,7 +3966,7 @@ function renderUpdateOrders() {
             <span>SF: ${p(o.shipping)}</span>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <button class="btn btn-green btn-sm" onclick="resolveUpdate(${o.idx},'Out for Delivery')">🔁 Re-Deliver</button>
+            <button class="btn btn-green btn-sm" onclick="resolveUpdate(${o.idx},'Out for Delivery')">🔁 Re-Deliver (Tomorrow)</button>
             <button class="btn btn-red btn-sm"   onclick="resolveUpdate(${o.idx},'Cancelled')">✕ Cancel</button>
             <button class="btn btn-outline btn-sm" onclick="openInvoice(${o.idx})">🖨️ Invoice</button>
             <select class="form-control" style="width:160px;font-size:10.5px;padding:3px 6px;" onchange="updateStatus(${o.idx},this.value)">
@@ -8984,7 +9001,7 @@ function renderCheckerForUpdate() {
       <td style="font-size:10.5px;color:var(--orange);">${o.riderRemarks||'<span style="color:var(--muted);">No remarks</span>'}</td>
       <td>
         <div style="display:flex;gap:5px;flex-wrap:wrap;">
-          <button class="btn btn-green btn-sm" onclick="resolveUpdate(${i},'Out for Delivery')">🔁 Re-Deliver</button>
+          <button class="btn btn-green btn-sm" onclick="resolveUpdate(${i},'Out for Delivery')">🔁 Re-Deliver (Tomorrow)</button>
           <button class="btn btn-red btn-sm" onclick="resolveUpdate(${i},'Cancelled')">✕ Cancel</button>
           <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
         </div>
