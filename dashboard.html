@@ -1971,7 +1971,7 @@ function _showRulesHint() {
         <div style="font-size:10px;color:var(--muted);margin-top:2px;">Add new locations via Riders → + Add Location</div>
       </div>
       <div class="form-group"><label>Type</label>
-        <select class="form-control" id="rider-type"><option>LBC</option><option>Own Rider</option><option>Partner Courier</option></select>
+        <select class="form-control" id="rider-type"><option>Own Rider</option></select>
       </div>
       <div class="form-group"><label>Contact Number (11 digits)</label>
         <input class="form-control" id="rider-contact" type="tel" maxlength="11"
@@ -2639,6 +2639,12 @@ function rowTabNext(e, el) {
 // openEncodeModal() — replaced by updated version with rider/inventory pickers above
 function openEditOrder(i){
   const o=S.orders[i];
+  // Block edit if parcel is already in transit (Ready or beyond)
+  const editLocked = ['Ready','Out for Delivery','Delivered','Cancelled'].includes(o.status);
+  if(editLocked) {
+    toast('🔒 Hindi na maaaring i-edit — ' + o.status + ' na ang parcel.');
+    return;
+  }
   document.getElementById('encode-title').textContent='Edit Order '+onum(i);
   document.getElementById('enc-name').value=o.name;
   document.getElementById('enc-contact').value=o.contact;
@@ -3150,9 +3156,9 @@ function renderChecker(){
               ${!isLocked?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>`:''}
               ${o.checkerStatus!=='Verified'
                 ?`<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`
-                :(o.status!=='Delivered'
-                  ?`<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`
-                  :`<span style="font-size:9.5px;color:var(--muted);padding:2px 6px;">🔒 Delivered</span>`)}
+                :(isLocked
+                  ?`<span style="font-size:9.5px;color:var(--muted);padding:2px 6px;">🔒 ${o.status==='Delivered'?'Delivered':'In Progress'}</span>`
+                  :`<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`)}
               <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
               ${!isLocked?`<button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>`:''}
             </td>
@@ -3349,9 +3355,14 @@ function verifyOrder(i){
 }
 function unverifyOrder(i){
   const o = S.orders[i];
-  // Block unverify if order is Delivered
-  if(o.status === 'Delivered') {
-    toast('🔒 Hindi na maaaring i-unverify — na-Delivered na ang parcel.');
+  // Block unverify if parcel is already picked up (Ready or beyond)
+  const lockedStatuses = ['Ready','Out for Delivery','Delivered','Cancelled'];
+  if(lockedStatuses.includes(o.status)) {
+    const reason = o.status === 'Delivered' ? 'na-Delivered na' :
+                   o.status === 'Ready'      ? 'Ready for Pick-up na — naka-assign na sa rider' :
+                   o.status === 'Out for Delivery' ? 'Out for Delivery na — nasa rider na' :
+                   'Cancelled na';
+    toast('🔒 Hindi na maaaring i-unverify — ' + reason + ' ang parcel.');
     return;
   }
   // Block unverify if rider has already remitted this order
@@ -4642,7 +4653,7 @@ function openEditRider(i){
   const contact = r.contact||'';
   document.getElementById('rider-contact').value=contact;
   const cnt=document.getElementById('rider-contact-count');if(cnt)cnt.textContent=contact.length+'/11';
-  document.getElementById('rider-type').value=r.type||'LBC';
+  document.getElementById('rider-type').value=r.type||'Own Rider';
   const pw=document.getElementById('rider-password');if(pw)pw.value=r.password||'';
   document.getElementById('rider-edit-idx').value=i;
   populateLocationDropdown();
@@ -6069,7 +6080,7 @@ function autoAssignRider() {
 function saveRider() {
   const name = document.getElementById('rider-name').value.trim();
   const loc = document.getElementById('rider-location').value.trim();
-  if(!name || !loc) { toast('Name and Location required'); return; }
+  if(!name) { toast('Name is required'); return; }
   const contact = document.getElementById('rider-contact').value.replace(/\D/g,'');
   if(contact && contact.length !== 11) { toast('⚠️ Contact number must be exactly 11 digits'); document.getElementById('rider-contact').focus(); return; }
   const pw = document.getElementById('rider-password').value;
