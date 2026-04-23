@@ -484,7 +484,8 @@ function _fromFS(fv) {
 window.syncToFirebase = async function(S) {
   const fields = {};
   ['orders','riders','locations','payroll','expenses','inventory','stockLog',
-   'adminNames','remitLog','cashbondLog','benefitsLog','returnLog'].forEach(k=>{
+   'adminNames','remitLog','cashbondLog','benefitsLog','returnLog',
+   'deletedOrders','mergeLog'].forEach(k=>{
     fields[k] = _toFS(S[k]||[]);
   });
   ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
@@ -545,6 +546,8 @@ window.loadFromFirebase = async function() {
     if(!data.specialPasswords) data.specialPasswords = {remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
     if(!data.adminAccounts)    data.adminAccounts = [];
     if(!data.returnLog)        data.returnLog = [];
+    if(!data.deletedOrders)    data.deletedOrders = [];
+    if(!data.mergeLog)         data.mergeLog = [];
     const SM={'In Transit':'Preparing','Delivering':'Out for Delivery','For Return':'Update','Returned':'Cancelled'};
     if(data.orders) data.orders.forEach(o=>{ if(SM[o.status]) o.status=SM[o.status]; });
     const el=_syncEl(); if(el){el.style.color='var(--green)';el.textContent='☁ Online';}
@@ -2442,7 +2445,7 @@ function gotoPage(name){
 function renderPage(n){
   ({dashboard:()=>{applyDashCeoLock();if(currentRole==='owner')renderDash();},
     riderdash:()=>{},calendar:()=>{if(currentRole==='owner')renderCalendar();else{const p2=document.getElementById('page-calendar');if(p2)p2.innerHTML='<div style="text-align:center;padding:60px;"><div style="font-size:48px;">🔐</div><div style="font-family:var(--fh);font-size:20px;color:var(--gold);margin:10px 0;">CEO Only</div><p style="color:var(--muted);">Sales Calendar is restricted to CEO access.</p></div>';}},
-    orders:initOrdersPage,checker:renderChecker,tracking:()=>{renderTracking();refreshUpdateBadge();},ordermgmt:renderOrderMgmt,lbcdelivery:renderLbcDelivery,emsdelivery:renderEmsDelivery,fedexdelivery:renderFedexDelivery,deletedorders:renderDeletedOrders,
+    orders:initOrdersPage,checker:renderChecker,tracking:()=>{renderTracking();refreshUpdateBadge();},ordermgmt:renderOrderMgmt,lbcdelivery:renderLbcDelivery,emsdelivery:renderEmsDelivery,fedexdelivery:renderFedexDelivery,
     riders:renderRiders,dailyparcels:renderDailyParcels,sorting:renderSorting,returns:renderReturns,deletedorders:renderDeletedOrders,
     dailysales:renderDailySales,payroll:()=>renderPayroll(payTab),expenses:renderExpenses,
     pnl:renderPnl,inventory:()=>renderInv(invTab),adminsheets:renderAdminSheets,settings:renderSettings,
@@ -2465,9 +2468,10 @@ function addItemRow(tbodyId, calcFn, it={}) {
   const pg = it.pergram || 0;
   const subtotalVal = (qgVal > 0 && pg > 0) ? Math.ceil(qgVal * pg) : ((it.total||0) + discVal);
   const totalVal = it.total || 0;
-  // Restore fix-price unit price: if pergram=0 and total>0, derive unit price from total/qty
+  // Restore fix-price unit price: if pergram=0 and total>0, derive unit price from gross subtotal / qty
+  // MUST use (total + discount) as the gross subtotal — using net total alone gives wrong unit price for discounted items
   if(pg === 0 && (it.unitPrice || (it.total > 0 && qgVal > 0))) {
-    const unitPrice = it.unitPrice || (it.total / Math.max(1, qgVal));
+    const unitPrice = it.unitPrice || (((it.total||0) + (it.discount||0)) / Math.max(1, qgVal));
     row.dataset.unitPrice = unitPrice;
   }
   row.innerHTML = `
@@ -3664,10 +3668,29 @@ function resolveUpdate(orderIdx, newStatus) {
     save();
     toast('🔁 Re-scheduled for tomorrow (' + tomorrow() + '). Status → Ready for Pick-up.');
   } else {
-    // Cancel
+    // Cancel — restore inventory if order was verified
+    if(o.checkerStatus === 'Verified') {
+      (o.items||[]).forEach(item => {
+        if(!item.code) return;
+        const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
+        if(!inv) return;
+        if(inv.itemType === 'fixprice') {
+          const restoreQty = item.qty || 1;
+          const before = inv.qty; inv.qty = before + restoreQty;
+          S.stockLog.push({ productCode:inv.code, type:'return', qty:restoreQty,
+            date:today(), notes:`Auto-restore: Update→Cancelled – ${o.name} (${onum(orderIdx)})`,
+            before, after:inv.qty });
+        } else if((item.grams||0) > 0) {
+          const before = inv.grams; inv.grams = before + item.grams;
+          S.stockLog.push({ productCode:inv.code, type:'return', qty:item.grams,
+            date:today(), notes:`Auto-restore: Update→Cancelled – ${o.name} (${onum(orderIdx)})`,
+            before, after:inv.grams });
+        }
+      });
+    }
     S.orders[orderIdx].status = newStatus;
     save();
-    toast('✅ Status → ' + newStatus);
+    toast('✅ Status → ' + newStatus + (o.checkerStatus === 'Verified' ? ' (Inventory restored)' : ''));
   }
 
   // Refresh all relevant views
@@ -4825,7 +4848,7 @@ function switchInvTab(t){
   const btn=document.getElementById('inv-action-btn');
   if(t==='list')btn.innerHTML=`<button class="btn btn-gold" onclick="openAddInvModal()">+ Add Product</button>`;
   else if(t==='stockin')btn.innerHTML=`<button class="btn btn-green" onclick="openStockModal('in')">+ Stock In</button>`;
-  else if(t==='stockout')btn.innerHTML=`<button class="btn btn-orange" onclick="openStockModal('out')">+ Stock Out</button>`;
+  else if(t==='stockout')btn.innerHTML=`<button class="btn btn-orange" onclick="openStockModal('out')">↓ Stock Out</button><button class="btn btn-outline" style="margin-left:6px;" onclick="openStockModal('adj')">⚙ Adjustment</button>`;
   else btn.innerHTML='';
   renderInv(t);
 }
@@ -4889,15 +4912,18 @@ function renderInv(tab){
     </tbody></table></div></div>`;
   }else if(tab==='stockin'||tab==='stockout'){
     const type=tab==='stockin'?'in':'out';
-    const logs=S.stockLog.filter(l=>type==='in'?(l.type==='in'||l.type==='return'):l.type==='out');
-    el.innerHTML=`<div class="card"><div class="card-header"><span class="card-title">${tab==='stockin'?'Stock In Log':'Stock Out Log'}</span></div>
+    // Stock In: show 'in' and 'return' types. Stock Out: show 'out' and 'adj' types.
+    const logs=S.stockLog.filter(l=>type==='in'?(l.type==='in'||l.type==='return'):(l.type==='out'||l.type==='adj'));
+    const typeLabel={'in':'↑ IN','return':'↩ RETURN','out':'↓ OUT','adj':'⚙ ADJ'};
+    const typeCls={'in':'stock-in','return':'stock-in','out':'stock-out','adj':'stock-adj'};
+    el.innerHTML=`<div class="card"><div class="card-header"><span class="card-title">${tab==='stockin'?'Stock In Log':'Stock Out / Adjustment Log'}</span></div>
     <div class="table-wrap"><table><thead><tr><th>Date</th><th>Product</th><th>Type</th><th>Qty/Grams</th><th>Before</th><th>After</th><th>Notes</th><th>Actions</th></tr></thead>
     <tbody>${logs.length?[...logs].reverse().map((l)=>{
       const gi=S.stockLog.indexOf(l);
       const prod=S.inventory.find(it=>it.code===l.productCode);
       const unit = prod?.itemType==='fixprice' ? 'pcs' : 'g';
       return `<tr><td>${l.date}</td><td style="font-weight:500;">${prod?prod.desc:l.productCode}</td>
-        <td><span class="${l.type==='in'?'stock-in':l.type==='return'?'stock-in':'stock-out'}">${l.type==='in'?'↑ IN':l.type==='return'?'↩ RETURN':'↓ OUT'}</span></td>
+        <td><span class="${typeCls[l.type]||'stock-out'}">${typeLabel[l.type]||l.type}</span></td>
         <td style="font-weight:700;">${parseFloat(l.qty||0).toFixed(2)}${unit}</td><td style="color:var(--muted);">${parseFloat(l.before||0).toFixed(2)}</td>
         <td style="color:var(--gold);font-weight:600;">${parseFloat(l.after||0).toFixed(2)}</td>
         <td style="font-size:11px;">${l.notes||'—'}</td>
@@ -4908,7 +4934,7 @@ function renderInv(tab){
     const logs=[...S.stockLog].sort((a,b)=>new Date(b.date)-new Date(a.date));
     el.innerHTML=`<div class="stats-grid">
       <div class="stat-card green"><div class="stat-label">Total In Events</div><div class="stat-value">${S.stockLog.filter(l=>l.type==='in'||l.type==='return').length}</div></div>
-      <div class="stat-card red"><div class="stat-label">Total Out Events</div><div class="stat-value">${S.stockLog.filter(l=>l.type==='out').length}</div></div>
+      <div class="stat-card red"><div class="stat-label">Total Out Events</div><div class="stat-value">${S.stockLog.filter(l=>l.type==='out'||l.type==='adj').length}</div></div>
       <div class="stat-card blue"><div class="stat-label">All Transactions</div><div class="stat-value">${S.stockLog.length}</div></div>
     </div>
     <div class="card"><div class="card-header"><span class="card-title">Full Stock Ledger</span></div>
@@ -4942,12 +4968,10 @@ function openAddInvModal() {
   document.getElementById('inv-qty').value = '0';
   document.getElementById('inv-modal-title').textContent = 'Add Product';
   document.getElementById('inv-edit-idx').value = '';
-  const typeGrams = document.getElementById('inv-type-grams');
-  const typeFixed = document.getElementById('inv-type-fixprice');
-  if(typeGrams) typeGrams.checked = true;
-  if(typeFixed) typeFixed.checked = false;
-  document.querySelectorAll('.inv-grams-row').forEach(el=>el.style.display='');
-  document.querySelectorAll('.inv-fixprice-row').forEach(el=>el.style.display='none');
+  // Reset type selector to default (By Grams) — fixes bug where modal reopens on wrong type
+  const typeSelect = document.getElementById('inv-type');
+  if(typeSelect) typeSelect.value = 'grams';
+  toggleInvType();
   calcInv();
   openModal('modal-inventory');
   setTimeout(()=>document.getElementById('inv-code')?.focus(), 120);
@@ -4987,21 +5011,23 @@ function saveInv(){
       const existing = S.inventory[existingIdx];
       if(t==='fixprice' && existing.itemType==='fixprice') {
         const addQty = +document.getElementById('inv-qty').value||0;
+        if(!addQty){ toast('⚠️ Enter quantity to merge'); return; }
         const before = existing.qty;
         existing.qty += addQty;
         S.stockLog.push({productCode:code,type:'in',qty:addQty,date:today(),
           notes:'Merged stock-in (same serial code)',before,after:existing.qty});
-        save(); closeModal('modal-inventory'); toast(`✅ Stock merged! ${existing.name||desc} now has ${existing.qty} pcs.`);
+        save(); closeModal('modal-inventory'); toast(`✅ Stock merged! ${existing.desc||desc} now has ${existing.qty} pcs.`);
         document.getElementById('inv-edit-idx').value='';
         document.getElementById('inv-modal-title').textContent='Add Product';
         renderInv(invTab); return;
       } else if(t==='grams' && existing.itemType!=='fixprice') {
         const addGrams = +document.getElementById('inv-grams').value||0;
+        if(!addGrams){ toast('⚠️ Enter grams to merge'); return; }
         const before = existing.grams;
         existing.grams += addGrams;
         S.stockLog.push({productCode:code,type:'in',qty:addGrams,date:today(),
           notes:'Merged stock-in (same serial code)',before,after:existing.grams});
-        save(); closeModal('modal-inventory'); toast(`✅ Stock merged! ${desc} now has ${existing.grams}g.`);
+        save(); closeModal('modal-inventory'); toast(`✅ Stock merged! ${existing.desc||desc} now has ${existing.grams}g.`);
         document.getElementById('inv-edit-idx').value='';
         document.getElementById('inv-modal-title').textContent='Add Product';
         renderInv(invTab); return;
@@ -5031,12 +5057,13 @@ function delInv(i){_confirmDel(`Delete product "${S.inventory[i]?.desc}"?`,()=>{
 
 // Stock modal
 function openStockModal(type,prodIdx=null){
-  document.getElementById('stock-modal-title').textContent=type==='in'?'Stock In':'Stock Out';
-  document.getElementById('stock-type').value=type==='in'?'in':'out';
+  const titleMap = {in:'Stock In',out:'Stock Out',adj:'Adjustment',return:'Return to Stock'};
+  document.getElementById('stock-modal-title').textContent=titleMap[type]||'Stock Transaction';
+  document.getElementById('stock-type').value=type||'in';
   document.getElementById('stock-date').value=today();
   document.getElementById('stock-notes').value='';
   document.getElementById('stock-qty').value='1';
-  // Populate product dropdown — only fix price items (grams items track by grams, not qty)
+  // Populate product dropdown — all item types supported
   const sel=document.getElementById('stock-product');
   sel.innerHTML='<option value="">-- Select Product --</option>'+S.inventory.map((it,i)=>{
     const isGrams = it.itemType!=='fixprice';
@@ -5073,7 +5100,7 @@ function saveStock(){
   const isGrams = it.itemType !== 'fixprice';
   const before = isGrams ? it.grams : it.qty;
   const after=type==='in'||type==='return'?before+qty:before-qty;
-  if(after<0&&!confirm('Stock will go negative. Continue?'))return;
+  if(after<0){ toast('⚠️ Stock will go negative! Reduce the quantity or check your entry.'); return; }
   if(isGrams) it.grams=after; else it.qty=after;
   S.stockLog.push({productCode:it.code,type,qty,date:document.getElementById('stock-date').value||today(),notes:document.getElementById('stock-notes').value,before,after});
   save();closeModal('modal-stock');toast('✅ Stock updated!');renderInv(invTab);
@@ -6281,7 +6308,7 @@ function renderRiderParcels() {
         </td>
         <td colspan="4" style="font-size:9.5px;color:${stColor};font-weight:700;">
           ${isCancelledItem?'❌ All Cancelled':cancelledQty>0?`⚠️ ${cancelledQty}${isGramsItem?'g':' pc'} cancelled`:itemSt}
-          ${isCancelledItem?'<br><span style="font-size:9px;">(stock restored)</span>':''}
+          ${isCancelledItem?'<br><span style="font-size:9px;color:var(--orange);">(pending return log)</span>':''}
         </td>
       </tr>`;
     }).join('');
@@ -6468,8 +6495,7 @@ function riderItemPartialCancel(orderIdx, itemIdx, cancelQtyStr, totalQty, isGra
   const clampedQty = Math.min(Math.max(0, cancelQty), totalQty);
   order.itemCancelQty[itemIdx] = clampedQty;
 
-  // Compute value deduction: (cancelQty / totalQty) × item.total
-  const pricePerUnit = item.total / totalQty;
+  // Compute value deduction as proportion of item total
   const prevDeducted = (prevCancelQty / totalQty) * item.total;
   const newDeducted = (clampedQty / totalQty) * item.total;
   const diff = newDeducted - prevDeducted;
@@ -8660,39 +8686,43 @@ function confirmCheckerCancel() {
     checkerStatus: o.checkerStatus||'',
     riderRemarks: o.riderRemarks||''
   });
-  // ── Auto-restore inventory for each item in the cancelled order ──
-  (o.items||[]).forEach(item => {
-    if(!item.code) return;
-    const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
-    if(!inv) return;
-    if(inv.itemType === 'fixprice') {
-      const restoreQty = item.qty || 1;
-      const before = inv.qty;
-      inv.qty = before + restoreQty;
-      S.stockLog.push({
-        productCode: inv.code, type: 'return', qty: restoreQty,
-        date: today(),
-        notes: `Auto-restore: Checker cancelled order ${onum(orderIdx)} – ${o.name}`,
-        before, after: inv.qty
-      });
-    } else if((item.grams||0) > 0) {
-      const restoreGrams = item.grams;
-      const before = inv.grams;
-      inv.grams = before + restoreGrams;
-      S.stockLog.push({
-        productCode: inv.code, type: 'return', qty: restoreGrams,
-        date: today(),
-        notes: `Auto-restore: Checker cancelled order ${onum(orderIdx)} – ${o.name}`,
-        before, after: inv.grams
-      });
-    }
-  });
+  // ── Auto-restore inventory ONLY if order was already verified (inventory was deducted) ──
+  // Unverified orders never had stock deducted, so restoring would create phantom stock.
+  if(o.checkerStatus === 'Verified') {
+    (o.items||[]).forEach(item => {
+      if(!item.code) return;
+      const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
+      if(!inv) return;
+      if(inv.itemType === 'fixprice') {
+        const restoreQty = item.qty || 1;
+        const before = inv.qty;
+        inv.qty = before + restoreQty;
+        S.stockLog.push({
+          productCode: inv.code, type: 'return', qty: restoreQty,
+          date: today(),
+          notes: `Auto-restore: Checker cancelled order ${onum(orderIdx)} – ${o.name}`,
+          before, after: inv.qty
+        });
+      } else if((item.grams||0) > 0) {
+        const restoreGrams = item.grams;
+        const before = inv.grams;
+        inv.grams = before + restoreGrams;
+        S.stockLog.push({
+          productCode: inv.code, type: 'return', qty: restoreGrams,
+          date: today(),
+          notes: `Auto-restore: Checker cancelled order ${onum(orderIdx)} – ${o.name}`,
+          before, after: inv.grams
+        });
+      }
+    });
+  }
 
   // Remove from active orders
   S.orders.splice(orderIdx, 1);
   save();
   closeModal('modal-checker-cancel');
-  toast(`❌ Order cancelled & inventory restored. Reason: ${reason}`);
+  const wasVerified = o.checkerStatus === 'Verified';
+  toast(`❌ Order cancelled${wasVerified ? ' & inventory restored' : ''}. Reason: ${reason}`);
   renderChecker();
   if(currentRole==='owner') renderDash();
 }
