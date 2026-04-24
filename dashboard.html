@@ -832,7 +832,7 @@ function _showRulesHint() {
       <div class="nav-item" onclick="gotoPage('deletedorders')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>Recently Deleted</div>
       <div class="nav-item" onclick="gotoPage('ridersremit')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Riders Remit</div>
       <div class="nav-item" onclick="gotoPage('cashbond')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>Cashbond</div>
-      <div class="nav-item" onclick="gotoPage('benefits')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>Benefits (SSS/PH/PI)</div>
+      <div class="nav-item" onclick="gotoPage('benefits')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>Benefits</div>
     </div>
     <div class="nav-section">
       <div class="nav-label">Finance</div>
@@ -1108,7 +1108,7 @@ function _showRulesHint() {
     <!-- Rider table per location -->
     <div class="card">
       <div class="card-header"><span class="card-title" id="rider-loc-label">All Riders</span><span id="rider-loc-count" style="font-size:11px;color:var(--muted);"></span></div>
-      <div class="table-wrap"><table><thead><tr><th>Rider Name</th><th>Location</th><th>Type</th><th>Contact</th><th>Password</th><th>Parcels</th><th>Delivered</th><th>Cancelled</th><th>SF (Delivered)</th><th>COD Collected</th><th>Deductions</th><th>Net to Remit</th><th>Actions</th></tr></thead><tbody id="riders-tbody"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>Rider Name</th><th>Location</th><th>Type</th><th>Contact</th><th>Password</th><th>Actions</th></tr></thead><tbody id="riders-tbody"></tbody></table></div>
     </div>
   </div>
 
@@ -1160,24 +1160,9 @@ function _showRulesHint() {
 
     <!-- Sub-tabs: 4 tabs -->
     <div class="section-tabs no-print" style="margin-bottom:13px;" id="returns-tabs">
-      <button class="tab-btn active"  onclick="setReturnTab('orders')">🚫 Cancelled Orders</button>
+      <button class="tab-btn active"         onclick="setReturnTab('items')"  id="ret-tab-items-btn">📦 Cancelled Items</button>
       <button class="tab-btn"         onclick="setReturnTab('update')" id="ret-tab-update-btn">🔄 For Update</button>
-      <button class="tab-btn"         onclick="setReturnTab('items')"  id="ret-tab-items-btn">📦 Cancelled Items</button>
       <button class="tab-btn"         onclick="setReturnTab('log')">📋 Return Log</button>
-    </div>
-
-    <!-- Tab: Cancelled Orders -->
-    <div id="ret-tab-orders">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">🚫 Cancelled Orders</span>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <input type="date" class="form-control" id="ret-orders-date" style="width:155px;font-size:11px;" oninput="renderReturnOrders()" title="Filter by date">
-            <button class="btn btn-outline btn-sm" onclick="document.getElementById('ret-orders-date').value='';renderReturnOrders()">All Dates</button>
-          </div>
-        </div>
-        <div id="ret-cancelled-orders-content"></div>
-      </div>
     </div>
 
     <!-- Tab: For Update Orders -->
@@ -1195,17 +1180,20 @@ function _showRulesHint() {
     </div>
 
     <!-- Tab: Cancelled Items -->
-    <div id="ret-tab-items" style="display:none;">
+    <div id="ret-tab-items">
       <div class="card">
         <div class="card-header">
           <span class="card-title">📦 Cancelled Items (Per Item)</span>
-          <span style="font-size:11px;color:var(--muted);">Items na ni-cancel ng rider. Stock ay awtomatikong na-restore.</span>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input type="date" class="form-control" id="ret-items-date" style="width:155px;font-size:11px;" oninput="renderCancelledItems()" title="Filter by date">
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('ret-items-date').value='';renderCancelledItems()">All Dates</button>
+          </div>
         </div>
         <div class="table-wrap"><table>
           <thead><tr>
             <th>Order #</th><th>Customer</th><th>Contact</th><th>Rider</th><th>Date</th>
             <th>Code</th><th>Description</th><th>Cancelled Qty</th><th>Item Value</th>
-            <th>Item Status</th><th>Rider Remark</th><th>Record Return</th>
+            <th>Cancel Type</th><th>Rider Remark</th><th>Record Return</th>
           </tr></thead>
           <tbody id="cancelled-items-tbody"></tbody>
         </table></div>
@@ -1651,7 +1639,7 @@ function _showRulesHint() {
     </div>
   </div>
   <div class="action-row no-print">
-    <div style="font-size:12px;color:var(--muted);">Track SSS, PhilHealth, Pag-IBIG contributions for riders and staff.</div>
+    <div style="font-size:12px;color:var(--muted);">Track benefit deductions for riders and staff.</div>
     <button class="btn btn-gold" onclick="openBenefitsModal()">+ Add Benefits Entry</button>
   </div>
   <div id="benefits-page-content"></div>
@@ -2208,17 +2196,14 @@ function _showRulesHint() {
 
 <!-- Benefits Modal -->
 <div class="modal-overlay" id="modal-benefits">
-  <div class="modal" style="max-width:520px;">
+  <div class="modal" style="max-width:460px;">
     <div class="modal-header"><span class="modal-title">Add Benefits Entry</span><button class="modal-close" onclick="closeModal('modal-benefits')">✕</button></div>
     <div class="form-grid">
       <div class="form-group"><label>Employee/Rider *</label><input class="form-control" id="ben-person" placeholder="Name"></div>
       <div class="form-group"><label>Type</label><select class="form-control" id="ben-type"><option value="rider">Rider</option><option value="staff">Staff</option></select></div>
-      <div class="form-group"><label>Period</label><input class="form-control" id="ben-period" placeholder="e.g. March 2025"></div>
-      <div class="form-group"><label>Date</label><input type="date" class="form-control" id="ben-date"></div>
-      <div class="form-group"><label>SSS (₱)</label><input type="number" class="form-control" id="ben-sss" value="0" oninput="calcBen()"></div>
-      <div class="form-group"><label>PhilHealth (₱)</label><input type="number" class="form-control" id="ben-ph" value="0" oninput="calcBen()"></div>
-      <div class="form-group"><label>Pag-IBIG (₱)</label><input type="number" class="form-control" id="ben-pi" value="0" oninput="calcBen()"></div>
-      <div class="form-group"><label>Other (₱)</label><input type="number" class="form-control" id="ben-other" value="0" oninput="calcBen()"></div>
+      <div class="form-group"><label>Date *</label><input type="date" class="form-control" id="ben-date"></div>
+      <div class="form-group"><label>Benefits (₱) *</label><input type="number" class="form-control" id="ben-amount" value="0" min="0" oninput="calcBen()"></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Notes</label><input class="form-control" id="ben-notes" placeholder="e.g. Monthly benefit deduction"></div>
     </div>
     <div style="background:var(--navy);border-radius:8px;padding:10px;margin-top:10px;font-size:13px;">
       <div class="info-row" style="border-bottom:none;"><span style="color:var(--muted);">Total Benefits</span><strong id="ben-total" style="color:var(--gold);">₱0.00</strong></div>
@@ -3147,11 +3132,10 @@ function renderChecker(){
             <td>${p(o.itemsTotal)}</td><td>${p(o.shipping)}</td>
             <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
             <td>
-              <select class="form-control" style="width:145px;font-size:10.5px;padding:3px 6px;"
-                onchange="assignRiderFromChecker(${i},this.value)">
-                ${riderOpts.replace(`value="${o.assignedRider||''}"`,`value="${o.assignedRider||''}" selected`)}
-              </select>
-              ${o.assignedRider?`<div style="font-size:9.5px;color:var(--blue);margin-top:2px;">🏍️ ${o.assignedRider}</div>`:''}
+              ${isLocked
+                ? '<div style="font-size:11px;color:var(--blue);padding:4px 8px;background:rgba(46,112,204,0.08);border:1px solid rgba(46,112,204,0.2);border-radius:6px;">\uD83D\uDD12 '+(o.assignedRider||'Unassigned')+'<div style=\"font-size:9px;color:var(--muted);margin-top:2px;\">Locked — '+(o.status==='Ready'?'Ready for Pick-up':o.status)+'</div></div>'
+                : '<select class=\"form-control\" style=\"width:145px;font-size:10.5px;padding:3px 6px;\" onchange=\"assignRiderFromChecker('+i+',this.value)\">'+riderOpts.replace('value=\"'+(o.assignedRider||'')+'\"','value=\"'+(o.assignedRider||'')+'\" selected')+'</select>'+(o.assignedRider?'<div style=\"font-size:9.5px;color:var(--blue);margin-top:2px;\">\uD83C\uDFCD\uFE0F '+o.assignedRider+'</div>':'')
+              }
             </td>
             <td>
               <span class="checker-tag ${o.checkerStatus==='Verified'?'verified':'pending'}" style="margin-bottom:4px;display:block;">${o.checkerStatus}</span>
@@ -3696,7 +3680,7 @@ function resolveUpdate(orderIdx, newStatus) {
   // Refresh all relevant views
   renderCheckerForUpdate(); refreshUpdateBadge();
   if(returnTab==='update') renderUpdateOrders();
-  else if(returnTab==='orders') renderReturnOrders();
+  else renderCancelledItems();
   renderReturns();
   if(currentRole==='owner') renderDash();
 }
@@ -3810,20 +3794,18 @@ function renderDailyParcels(){
 }
 
 // ============ RETURNS ============
-let returnTab = 'orders';
+let returnTab = 'items';
 function setReturnTab(tab) {
   returnTab = tab;
-  const tabs = ['orders','update','items','log'];
+  const tabs = ['items','update','log'];
   document.querySelectorAll('#returns-tabs .tab-btn').forEach((b,i) =>
     b.classList.toggle('active', tabs[i] === tab));
-  document.getElementById('ret-tab-orders').style.display  = tab==='orders' ? '' : 'none';
-  document.getElementById('ret-tab-update').style.display  = tab==='update' ? '' : 'none';
-  document.getElementById('ret-tab-items').style.display   = tab==='items'  ? '' : 'none';
-  document.getElementById('ret-tab-log').style.display     = tab==='log'    ? '' : 'none';
-  if(tab==='orders')      renderReturnOrders();
+  document.getElementById('ret-tab-items').style.display  = tab==='items'  ? '' : 'none';
+  document.getElementById('ret-tab-update').style.display = tab==='update' ? '' : 'none';
+  document.getElementById('ret-tab-log').style.display    = tab==='log'    ? '' : 'none';
+  if(tab==='items')  renderCancelledItems();
   else if(tab==='update') renderUpdateOrders();
-  else if(tab==='items')  renderCancelledItems();
-  else                    renderReturnLog();
+  else renderReturnLog();
 }
 
 function renderReturns() {
@@ -3832,119 +3814,33 @@ function renderReturns() {
   let cancelledItemCount = 0;
   S.orders.forEach(o=>{
     const iS = o.itemStatuses||{}, iCQ = o.itemCancelQty||{};
-    o.items.forEach((_,ii)=>{ if(iS[ii]==='Cancelled'||(iCQ[ii]||0)>0) cancelledItemCount++; });
+    // Count items from whole-cancelled orders
+    if(o.status==='Cancelled') {
+      cancelledItemCount += o.items.length;
+    } else {
+      o.items.forEach((_,ii)=>{ if(iS[ii]==='Cancelled'||(iCQ[ii]||0)>0) cancelledItemCount++; });
+    }
   });
   const returnLogCount = (S.returnLog||[]).length;
-  const cancelTotalAmt = S.orders.filter(o=>o.status==='Cancelled').reduce((s,o)=>s+o.grandTotal,0);
 
   document.getElementById('return-stats').innerHTML=`
-    <div class="stat-card red">   <div class="stat-label">Cancelled Orders</div><div class="stat-value">${cancelledOrders}</div><div class="stat-sub">${p(cancelTotalAmt)} orig. value</div></div>
+    <div class="stat-card red">   <div class="stat-label">Cancelled Orders</div><div class="stat-value">${cancelledOrders}</div><div class="stat-sub">${cancelledItemCount} items total</div></div>
     <div class="stat-card orange"><div class="stat-label">For Update</div><div class="stat-value">${updateOrders}</div><div class="stat-sub">Pending resolution</div></div>
-    <div class="stat-card purple"><div class="stat-label">Cancelled Items</div><div class="stat-value">${cancelledItemCount}</div><div class="stat-sub">individual items</div></div>
+    <div class="stat-card purple"><div class="stat-label">Cancelled Items</div><div class="stat-value">${cancelledItemCount}</div><div class="stat-sub">pending return log</div></div>
     <div class="stat-card blue">  <div class="stat-label">Return Log</div><div class="stat-value">${returnLogCount}</div><div class="stat-sub">manual entries</div></div>`;
 
-  // Update badge labels
   const updateBtn = document.getElementById('ret-tab-update-btn');
   if(updateBtn) updateBtn.textContent = updateOrders>0 ? `🔄 For Update (${updateOrders})` : '🔄 For Update';
   const itemsBtn = document.getElementById('ret-tab-items-btn');
   if(itemsBtn) itemsBtn.textContent = cancelledItemCount>0 ? `📦 Cancelled Items (${cancelledItemCount})` : '📦 Cancelled Items';
 
   // Render active tab
-  if(returnTab==='orders')      renderReturnOrders();
-  else if(returnTab==='update') renderUpdateOrders();
-  else if(returnTab==='items')  renderCancelledItems();
-  else                          renderReturnLog();
+  if(returnTab==='update') renderUpdateOrders();
+  else if(returnTab==='log') renderReturnLog();
+  else renderCancelledItems();
 }
 
-// ── CANCELLED ORDERS (full item detail) ─────────────────────────────
-function renderReturnOrders() {
-  const df  = document.getElementById('ret-orders-date')?.value||'';
-  const el  = document.getElementById('ret-cancelled-orders-content'); if(!el) return;
-  const rows = S.orders.map((o,i)=>({...o,idx:i}))
-    .filter(o=>{
-      if(o.status!=='Cancelled') return false;
-      if(df && o.date!==df) return false;
-      // Hide if every cancelled item already has a returnLog entry
-      const iS = o.itemStatuses||{};
-      const cancelledItems = o.items.map((_,ii)=>ii).filter(ii=>iS[ii]==='Cancelled'||(o.itemCancelQty||{})[ii]>0);
-      if(cancelledItems.length===0) return true;
-      const allLogged = cancelledItems.every(ii=>(S.returnLog||[]).some(r=>r.orderNum===onum(o.idx)&&r.itemIdx===ii));
-      return !allLogged;
-    });
 
-  if(!rows.length){
-    el.innerHTML=`<p style="color:var(--muted);padding:24px;text-align:center;">Walang cancelled orders${df?' para sa petsang ito':''}.</p>`;
-    return;
-  }
-
-  el.innerHTML = rows.map(o=>{
-    const iS  = o.itemStatuses||{};
-    const iCQ = o.itemCancelQty||{};
-    const iR  = o.itemRemarks||{};
-    const itemRows = o.items.map((it,ii)=>{
-      const st        = iS[ii]||'—';
-      const isGrams   = it.pergram>0;
-      const totalQty  = isGrams ? it.grams : (it.qty||1);
-      const unit      = isGrams ? 'g' : 'pcs';
-      const cancelQty = iCQ[ii]||0;
-      const stColor   = st==='Cancelled'?'var(--red)':st==='Delivered'?'var(--green)':'var(--muted)';
-      const disc      = it.discount||0;
-      return `<tr>
-        <td style="font-family:monospace;font-size:11px;color:var(--gold);font-weight:700;">${it.code||'—'}</td>
-        <td style="font-size:11.5px;">${it.desc||'—'}</td>
-        <td style="text-align:center;">${isGrams?`${it.grams}g @ ${p(it.pergram)}/g`:`×${it.qty||1}`}</td>
-        <td style="color:${disc>0?'var(--orange)':'var(--muted)'};text-align:center;">${disc>0?'-'+p(disc):disc===0?'—':p(disc)}</td>
-        <td style="color:var(--green);font-weight:700;text-align:right;">${p(it.total)}</td>
-        <td style="text-align:center;"><span class="status ${st==='Cancelled'?'cancelled':st==='Delivered'?'delivered':'transit'}" style="font-size:9px;">${st||'—'}</span></td>
-        <td style="font-size:10px;color:var(--orange);">${iR[ii]||'—'}</td>
-      </tr>`;
-    }).join('');
-
-    return `<div style="border:1px solid var(--navy-border);border-radius:8px;margin-bottom:12px;overflow:hidden;">
-      <!-- Order Header -->
-      <div style="background:rgba(224,85,85,0.08);padding:10px 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;border-bottom:1px solid var(--navy-border);">
-        <span style="font-family:var(--fh);font-size:14px;color:var(--gold);font-weight:700;">${onum(o.idx)}</span>
-        <span class="status cancelled" style="font-size:10px;">🚫 Cancelled</span>
-        <span style="font-size:12px;font-weight:600;">${o.name}</span>
-        <span style="font-size:11.5px;color:var(--muted);">📞 ${o.contact||'—'}</span>
-        <span style="font-size:11.5px;color:var(--muted);">📍 ${o.city||o.address||'—'}${o.landmark?' — '+o.landmark:''}</span>
-        <span style="font-size:11.5px;color:var(--muted);">📅 ${o.date}</span>
-        <span style="font-size:11.5px;color:var(--muted);">👤 ${o.admin||'—'}</span>
-        <span style="font-size:11.5px;color:var(--blue);">🏍️ ${o.assignedRider||'Unassigned'}</span>
-        <span style="font-size:11px;color:var(--muted);">Method: <strong>${o.paymentMethod||'COD'}</strong></span>
-        <span style="margin-left:auto;font-size:11.5px;color:var(--muted);">SF: ${p(o.shipping)}</span>
-        <span style="font-size:13px;font-weight:700;color:var(--red);text-decoration:line-through;">${p(o.grandTotal)}</span>
-        ${o.riderRemarks?`<div style="width:100%;font-size:10.5px;color:var(--orange);margin-top:2px;">⚠️ Rider Remark: <strong>${o.riderRemarks}</strong></div>`:''}
-      </div>
-      <!-- Items Detail -->
-      <div style="padding:10px 14px;">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Items in this Order</div>
-        <div class="table-wrap"><table style="font-size:11.5px;">
-          <thead><tr style="background:rgba(201,168,76,0.07);">
-            <th>Code</th><th>Description</th><th>Qty / Grams</th><th>Discount</th><th>Item Total</th><th>Item Status</th><th>Rider Remark</th>
-          </tr></thead>
-          <tbody>${itemRows}</tbody>
-        </table></div>
-        <!-- Totals row + action -->
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;flex-wrap:wrap;gap:8px;">
-          <div style="display:flex;gap:16px;font-size:12px;">
-            <span>Items: <strong style="color:var(--red);text-decoration:line-through;">${p(o.itemsTotal||0)}</strong></span>
-            <span>SF: <strong>${p(o.shipping)}</strong></span>
-            <span>Grand Total: <strong style="color:var(--red);text-decoration:line-through;">${p(o.grandTotal)}</strong></span>
-          </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <select class="form-control" style="width:160px;font-size:10.5px;padding:3px 6px;"
-              onchange="updateStatus(${o.idx},this.value)">
-              ${['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'].map(s=>`<option${o.status===s?' selected':''}>${s}</option>`).join('')}
-            </select>
-            <button class="btn btn-outline btn-sm" onclick="openInvoice(${o.idx})">🖨️ Invoice</button>
-            <button class="btn btn-blue btn-sm" onclick="openReturnLogModal('${onum(o.idx)}',null)">📋 Log Return</button>
-          </div>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-}
 
 // ── FOR UPDATE ORDERS ────────────────────────────────────────────────
 function renderUpdateOrders() {
@@ -4016,22 +3912,32 @@ function renderUpdateOrders() {
 function renderCancelledItems() {
   const tbody = document.getElementById('cancelled-items-tbody');
   if(!tbody) return;
+  const df = document.getElementById('ret-items-date')?.value || '';
   const rows = [];
   S.orders.forEach((o,oi)=>{
+    if(df && o.date !== df) return;
     const iS=o.itemStatuses||{}, iCQ=o.itemCancelQty||{}, iR=o.itemRemarks||{};
+    const wholeOrderCancelled = o.status === 'Cancelled';
+
     o.items.forEach((it,ii)=>{
-      const isCancelled = iS[ii]==='Cancelled';
-      const partialQty  = iCQ[ii]||0;
+      const isCancelled  = iS[ii]==='Cancelled' || wholeOrderCancelled;
+      const partialQty   = iCQ[ii]||0;
       if(!isCancelled && partialQty===0) return;
-      const isGrams  = it.grams>0;
-      const totalQty = isGrams ? it.grams : (it.qty||1);
-      const cancelledQty = isCancelled ? totalQty : partialQty;
+      const isGrams    = it.grams>0;
+      const totalQty   = isGrams ? it.grams : (it.qty||1);
+      const cancelledQty = (isCancelled && partialQty===0) ? totalQty : (partialQty||totalQty);
       const unit = isGrams ? 'g' : (cancelledQty>1?'pcs':'pc');
       const hasReturnLog = (S.returnLog||[]).some(r=>r.orderNum===onum(oi)&&r.itemIdx===ii);
-      if(!hasReturnLog) rows.push({o,oi,it,ii,isGrams,cancelledQty,totalQty,unit,isCancelled,partialQty,remark:iR[ii]||o.riderRemarks||''});
+      if(!hasReturnLog) rows.push({o,oi,it,ii,isGrams,cancelledQty,totalQty,unit,isCancelled,partialQty,wholeOrderCancelled,remark:iR[ii]||o.riderRemarks||''});
     });
   });
-  tbody.innerHTML = rows.length ? rows.map(({o,oi,it,ii,cancelledQty,totalQty,unit,isCancelled,partialQty,remark})=>`<tr>
+  tbody.innerHTML = rows.length ? rows.map(({o,oi,it,ii,cancelledQty,totalQty,unit,isCancelled,partialQty,wholeOrderCancelled,remark})=>{
+    const cancelType = wholeOrderCancelled && !(isCancelled && !wholeOrderCancelled)
+      ? `<span class="status cancelled" style="font-size:9px;">🚫 Whole Order</span>`
+      : partialQty>0 && partialQty<totalQty
+        ? `<span class="status orange" style="font-size:9px;">⚠️ Partial</span>`
+        : `<span class="status cancelled" style="font-size:9px;">❌ Item Cancel</span>`;
+    return `<tr>
     <td style="color:var(--gold);font-weight:600;">${onum(oi)}</td>
     <td style="font-weight:500;">${o.name}</td>
     <td style="font-size:11px;">${o.contact||'—'}</td>
@@ -4040,17 +3946,14 @@ function renderCancelledItems() {
     <td style="font-family:monospace;font-size:11px;color:var(--gold);">${it.code||'—'}</td>
     <td style="font-size:11.5px;">${it.desc||'—'}</td>
     <td style="font-weight:600;color:${isCancelled?'var(--red)':'var(--orange)'};">
-      ${cancelledQty}${unit} ${!isCancelled?`<div style="font-size:9px;color:var(--muted);">of ${totalQty}${it.grams>0?'g':' pcs'} total (Partial)</div>`:'(Full)'}
+      ${cancelledQty}${unit} ${partialQty>0&&partialQty<totalQty?`<div style="font-size:9px;color:var(--muted);">of ${totalQty}${it.grams>0?'g':' pcs'} (Partial)</div>`:''}
     </td>
     <td style="color:var(--red);font-weight:700;">${p(it.total)}</td>
-    <td>
-      <span class="status ${isCancelled?'cancelled':'orange'}" style="font-size:9px;">${isCancelled?'Cancelled':'Partial Cancel'}</span>
-      <div style="font-size:9px;color:var(--green);">✅ Stock restored</div>
-    </td>
+    <td>${cancelType}</td>
     <td style="font-size:10.5px;color:var(--orange);">${remark||'—'}</td>
     <td><button class="btn btn-blue btn-sm" onclick="openReturnLogModal('${onum(oi)}',${ii})">📋 Log Return</button></td>
-  </tr>`).join('')
-  : '<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:26px;">Lahat ng cancelled items ay naka-log na sa Return Log.</td></tr>';
+  </tr>`;}).join('')
+  : `<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:26px;">${df?'Walang cancelled items para sa petsang ito.':'Lahat ng cancelled items ay naka-log na sa Return Log.'}</td></tr>`;
 }
 
 // ── RETURN LOG (Manual) ───────────────────────────────────────────
@@ -5856,7 +5759,7 @@ function applyRoleUI(){
     admin:    ['orders'],
     rider:    ['riderdash'],
     remitter: ['ridersremit','cashbond','benefits','sorting','returns'],
-    sorter:   ['sorting','tracking','ordermgmt'],
+    sorter:   ['sorting','tracking','ordermgmt','dailyparcels','returns'],
     checker:  ['checker','sorting','lbcdelivery','emsdelivery','fedexdelivery'],
   };
   const allowed = rolePages[currentRole] || null;
@@ -5883,7 +5786,7 @@ function applyRoleUI(){
       if(lockEl) lockEl.classList.add('unlocked');
     } else if(currentRole==='checker' && ['checker','lbcdelivery','emsdelivery','fedexdelivery'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
-    } else if(currentRole==='sorter' && page==='tracking'){
+    } else if(currentRole==='sorter' && ['tracking','sorting','dailyparcels','returns','ordermgmt'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
     } else {
       if(lockEl) lockEl.classList.remove('unlocked');
@@ -6186,8 +6089,8 @@ function renderRiderParcels() {
       .map(r => r.date)
   );
   const myOrders = allMyOrders.filter(o => {
-    // Hide if Delivered AND the order's date matches a remitted date
-    if(o.status === 'Delivered' && remittedDates.has(o.date)) return false;
+    // Hide ALL orders whose date matches a remitted date — rider already submitted these
+    if(remittedDates.has(o.date)) return false;
     return true;
   });
   // Apply date filter (default = today)
@@ -6992,82 +6895,26 @@ function renderRiders() {
   renderLocTabs();
   const q = (document.getElementById('rider-search')?.value||'').toLowerCase();
   let filtered = curLocation==='ALL' ? S.riders : S.riders.filter(r=>r.location===curLocation);
-  if(q) filtered = filtered.filter(r => r.name.toLowerCase().includes(q) ||
-    S.orders.some(o => o.assignedRider===r.name &&
-      (o.name.toLowerCase().includes(q)||(o.contact||'').includes(q))));
+  if(q) filtered = filtered.filter(r => r.name.toLowerCase().includes(q));
   document.getElementById('rider-loc-label').textContent = curLocation==='ALL'?'All Riders':'Riders – '+curLocation;
   document.getElementById('rider-loc-count').textContent = filtered.length+' rider(s)';
   let html = '';
   filtered.forEach(r => {
     const ri = S.riders.indexOf(r);
-    const myOrders = S.orders.map((o,i)=>({...o,idx:i})).filter(o => o.assignedRider === r.name);
-    const delivered = myOrders.filter(o => o.status==='Delivered');
-    const cancelled = myOrders.filter(o => o.status==='Cancelled');
-    // Use DELIVERED-only SF for accurate calculations
-    const totalSF = delivered.reduce((s,o)=>s+(o.shipping||0),0);
-    const sf10 = totalSF * 0.10;           // 10% of delivered SF → company
-    const sfRider90 = totalSF * 0.90;      // 90% delivered SF → rider keeps
-    const cbDeduct = 100;                  // cashbond fixed ₱100
-    const benDeduct = (S.benefitsLog||[]).filter(b=>b.person.toUpperCase()===r.name.toUpperCase()).reduce((s,b)=>s+(b.sss||0)+(b.philhealth||0)+(b.pagibig||0)+(b.other||0),0);
-    // Subtotal = total collected from customers (grandTotal = items + SF) for delivered orders
-    const subtotal = delivered.reduce((s,o)=>s+o.grandTotal,0);
-    // CORRECT: Net to Remit = collected - rider keeps (SF90%) - deductions
-    // Rider's Net SF = sfRider90 - deductions (consistent with Remit modal)
-    const riderNetSF = Math.max(0, sfRider90 - cbDeduct - benDeduct);
-    // Net to Remit = COD Subtotal - Rider's Net SF
-    const netTotal = Math.max(0, subtotal - riderNetSF);
-    const totalDeductions = sfRider90 - riderNetSF + cbDeduct + benDeduct; // for display
-    html += `<tr style="background:rgba(201,168,76,0.04);cursor:pointer;" onclick="toggleRiderParcels(${ri})">
-      <td style="font-weight:700;color:var(--gold);">▶ ${r.name}</td>
+    html += `<tr>
+      <td style="font-weight:700;color:var(--gold);">🏍️ ${r.name}</td>
       <td><span style="font-size:10px;padding:2px 7px;border-radius:20px;background:rgba(201,168,76,0.15);color:var(--gold);">📍 ${r.location||'—'}</span></td>
-      <td><span class="status ${r.type==='LBC'?'blue':'green'}">${r.type}</span></td>
-      <td>${r.contact}</td>
+      <td><span class="status ${r.type==='LBC'?'blue':'green'}">${r.type||'COD'}</span></td>
+      <td>${r.contact||'—'}</td>
       <td style="font-size:10.5px;">${r.password?'<span style="color:var(--green);">✅ Set</span>':'<span style="color:var(--red);">❌ No PW</span>'}</td>
-      <td style="color:var(--blue);font-weight:600;">${myOrders.length}</td>
-      <td style="color:var(--green);">${delivered.length}</td>
-      <td style="color:var(--red);">${cancelled.length}</td>
-      <td style="color:var(--gold);font-weight:600;">${p(totalSF)}</td>
-      <td style="color:var(--green);font-weight:700;">${p(subtotal)}</td>
-      <td style="color:var(--red);font-size:11px;">-${p(sfRider90+cbDeduct+benDeduct)}<br><span style="font-size:9px;color:var(--muted);">SF90%+CB+Ben</span></td>
-      <td style="color:var(--gold);font-weight:700;font-size:13px;">${p(netTotal)}</td>
-      <td><button class="btn btn-red btn-sm" onclick="event.stopPropagation();delRider(${ri})">🗑️</button></td></tr>`;
-    // Parcel detail rows (collapsed by default)
-    html += `<tr id="rider-parcels-${ri}" style="display:none;">
-      <td colspan="13" style="padding:0;">
-        <div style="background:var(--navy);padding:10px 14px;border-top:1px solid var(--navy-border);">
-          <div style="font-size:10.5px;font-weight:600;color:var(--gold);margin-bottom:8px;">📦 All Parcels – ${r.name}</div>
-          ${myOrders.length ? `<div class="table-wrap"><table style="font-size:11px;">
-            <thead><tr style="background:rgba(201,168,76,0.08);">
-              <th>Order #</th><th>Customer</th><th>CP #</th><th>Address</th><th>Date</th>
-              <th>Items</th><th>SF</th><th>Total</th><th>Status</th><th>Actions</th>
-            </tr></thead>
-            <tbody>${myOrders.map(o => `<tr>
-              <td style="color:var(--gold);font-weight:600;">${onum(o.idx)}</td>
-              <td style="font-weight:500;">${o.name}</td>
-              <td>${o.contact||'—'}</td>
-              <td style="font-size:10.5px;max-width:160px;">${o.address||'—'}</td>
-              <td>${o.date}</td>
-              <td style="font-size:10.5px;">${o.items.map(it=>`${it.code}×${it.qty}`).join(', ')}</td>
-              <td>${p(o.shipping)}</td>
-              <td style="color:var(--green);font-weight:700;">${p(o.grandTotal)}</td>
-              <td><span class="status ${sclass(o.status)}">${o.status}</span></td>
-              <td style="display:flex;gap:3px;">
-                <button class="btn btn-outline btn-sm" onclick="openEditOrder(${o.idx})">✏️ Edit</button>
-                <button class="btn btn-blue btn-sm" onclick="openInvoice(${o.idx})">🖨️</button>
-              </td>
-            </tr>`).join('')}</tbody>
-          </table></div>` : '<p style="color:var(--muted);font-size:11.5px;">No parcels assigned yet.</p>'}
-        </div>
-      </td></tr>`;
+      <td style="display:flex;gap:4px;">
+        <button class="btn btn-outline btn-sm" onclick="openEditRider(${ri})">✏️ Edit</button>
+        <button class="btn btn-red btn-sm" onclick="delRider(${ri})">🗑️</button>
+      </td>
+    </tr>`;
   });
   document.getElementById('riders-tbody').innerHTML = html ||
-    '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No riders</td></tr>';
-}
-
-function toggleRiderParcels(ri) {
-  const row = document.getElementById('rider-parcels-'+ri);
-  if(!row) return;
-  row.style.display = row.style.display==='none' ? '' : 'none';
+    '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:26px;">No riders yet. Add one above.</td></tr>';
 }
 
 // Update tracking table to have 9 cols
@@ -7082,7 +6929,7 @@ function updateTrackingTableHeader() {
 function updateRidersTableHeader() {
   const th = document.querySelector('#page-riders thead tr');
   if(th) {
-    th.innerHTML = '<th>Rider Name</th><th>Location</th><th>Type</th><th>Contact</th><th>Password</th><th>Parcels</th><th>Delivered</th><th>Cancelled</th><th>SF (Delivered)</th><th>COD Collected</th><th>Deductions</th><th>Net to Remit</th><th>Actions</th>';
+    th.innerHTML = '<th>Rider Name</th><th>Location</th><th>Type</th><th>Contact</th><th>Password</th><th>Actions</th>';
   }
 }
 
@@ -7777,29 +7624,25 @@ function delCashbond(i) {
 // BENEFITS — Functions
 // ============================================================
 function calcBen() {
-  const sss = parseFloat(document.getElementById('ben-sss').value)||0;
-  const ph = parseFloat(document.getElementById('ben-ph').value)||0;
-  const pi = parseFloat(document.getElementById('ben-pi').value)||0;
-  const oth = parseFloat(document.getElementById('ben-other').value)||0;
-  document.getElementById('ben-total').textContent = p(sss+ph+pi+oth);
+  const amt = parseFloat(document.getElementById('ben-amount').value)||0;
+  document.getElementById('ben-total').textContent = p(amt);
 }
 
 function openBenefitsModal(editIdx=null) {
-  ['ben-person','ben-period','ben-notes'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['ben-person','ben-notes'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('ben-type').value='rider';
   document.getElementById('ben-date').value=today();
-  ['ben-sss','ben-ph','ben-pi','ben-other'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='0';});
+  document.getElementById('ben-amount').value='0';
   document.getElementById('ben-edit-idx').value = editIdx!==null?editIdx:'';
   if(editIdx!==null) {
     const e = S.benefitsLog[editIdx];
-    document.getElementById('ben-person').value = e.person;
+    document.getElementById('ben-person').value = e.person||'';
     document.getElementById('ben-type').value = e.type||'rider';
-    document.getElementById('ben-period').value = e.period||'';
-    document.getElementById('ben-date').value = e.date;
-    document.getElementById('ben-sss').value = e.sss||0;
-    document.getElementById('ben-ph').value = e.philhealth||0;
-    document.getElementById('ben-pi').value = e.pagibig||0;
-    document.getElementById('ben-other').value = e.other||0;
+    document.getElementById('ben-date').value = e.date||today();
+    // Support legacy entries that stored sss/philhealth/pagibig separately
+    const legacyTotal = (e.sss||0)+(e.philhealth||0)+(e.pagibig||0)+(e.other||0);
+    document.getElementById('ben-amount').value = e.amount!=null ? e.amount : legacyTotal;
+    document.getElementById('ben-notes').value = e.notes||e.period||'';
   }
   calcBen();
   openModal('modal-benefits');
@@ -7808,14 +7651,15 @@ function openBenefitsModal(editIdx=null) {
 function saveBenefits() {
   const person = document.getElementById('ben-person').value.trim();
   if(!person) { toast('⚠️ Enter a name'); return; }
+  const amount = parseFloat(document.getElementById('ben-amount').value)||0;
+  if(!amount) { toast('⚠️ Enter a benefits amount'); return; }
   const entry = {
     person, type: document.getElementById('ben-type').value,
-    period: document.getElementById('ben-period').value,
     date: document.getElementById('ben-date').value || today(),
-    sss: parseFloat(document.getElementById('ben-sss').value)||0,
-    philhealth: parseFloat(document.getElementById('ben-ph').value)||0,
-    pagibig: parseFloat(document.getElementById('ben-pi').value)||0,
-    other: parseFloat(document.getElementById('ben-other').value)||0
+    amount,
+    notes: document.getElementById('ben-notes').value,
+    // Keep compat fields zeroed so old code reading sss/philhealth/pagibig still works
+    sss: 0, philhealth: 0, pagibig: 0, other: amount
   };
   const editIdx = document.getElementById('ben-edit-idx').value;
   if(editIdx!=='') S.benefitsLog[+editIdx]=entry; else S.benefitsLog.push(entry);
@@ -7829,23 +7673,17 @@ function renderBenefitsPage() {
     el.innerHTML = '<div class="card"><p style="color:var(--muted);padding:20px;text-align:center;">No benefits entries yet.</p></div>';
     return;
   }
+  // Helper: get total from entry (support legacy sss/ph/pi/other OR new amount field)
+  const entryTotal = e => e.amount!=null ? e.amount : (e.sss||0)+(e.philhealth||0)+(e.pagibig||0)+(e.other||0);
   const byPerson = {};
   S.benefitsLog.forEach((e,i)=>{ if(!byPerson[e.person]) byPerson[e.person]=[]; byPerson[e.person].push({...e,idx:i}); });
-  const totalSSS = S.benefitsLog.reduce((s,e)=>s+(e.sss||0),0);
-  const totalPH = S.benefitsLog.reduce((s,e)=>s+(e.philhealth||0),0);
-  const totalPI = S.benefitsLog.reduce((s,e)=>s+(e.pagibig||0),0);
+  const grandTotal = S.benefitsLog.reduce((s,e)=>s+entryTotal(e),0);
   el.innerHTML = `<div class="stats-grid" style="margin-bottom:13px;">
-    <div class="stat-card gold"><div class="stat-label">SSS Total</div><div class="stat-value">${p(totalSSS)}</div></div>
-    <div class="stat-card blue"><div class="stat-label">PhilHealth Total</div><div class="stat-value">${p(totalPH)}</div></div>
-    <div class="stat-card green"><div class="stat-label">Pag-IBIG Total</div><div class="stat-value">${p(totalPI)}</div></div>
-    <div class="stat-card orange"><div class="stat-label">Grand Total Benefits</div><div class="stat-value">${p(totalSSS+totalPH+totalPI)}</div></div>
+    <div class="stat-card gold"><div class="stat-label">Total Entries</div><div class="stat-value">${S.benefitsLog.length}</div></div>
+    <div class="stat-card red"><div class="stat-label">Grand Total Benefits</div><div class="stat-value">${p(grandTotal)}</div></div>
   </div>`
   + Object.entries(byPerson).map(([person, entries])=>{
-    const tSSS = entries.reduce((s,e)=>s+(e.sss||0),0);
-    const tPH = entries.reduce((s,e)=>s+(e.philhealth||0),0);
-    const tPI = entries.reduce((s,e)=>s+(e.pagibig||0),0);
-    const tOth = entries.reduce((s,e)=>s+(e.other||0),0);
-    const total = tSSS+tPH+tPI+tOth;
+    const total = entries.reduce((s,e)=>s+entryTotal(e),0);
     return `<div class="card" style="margin-bottom:11px;">
       <div class="card-header">
         <span class="card-title">${entries[0]?.type==='rider'?'🏍️':'👤'} ${person}</span>
@@ -7853,17 +7691,20 @@ function renderBenefitsPage() {
       </div>
       <div class="table-wrap"><table style="font-size:11.5px;">
         <thead><tr style="background:rgba(201,168,76,0.08);">
-          <th>Period</th><th>Date</th><th>SSS</th><th>PhilHealth</th><th>Pag-IBIG</th><th>Other</th><th>Total</th><th>Del</th>
+          <th>Date</th><th>Notes</th><th>Benefits (₱)</th><th>Actions</th>
         </tr></thead>
         <tbody>
           ${entries.map(e=>`<tr>
-            <td>${e.period||'—'}</td><td>${e.date}</td>
-            <td>${p(e.sss||0)}</td><td>${p(e.philhealth||0)}</td><td>${p(e.pagibig||0)}</td><td>${p(e.other||0)}</td>
-            <td style="font-weight:700;color:var(--gold);">${p((e.sss||0)+(e.philhealth||0)+(e.pagibig||0)+(e.other||0))}</td>
-            <td><button class="btn btn-red btn-sm" onclick="delBenefits(${e.idx})">🗑️</button></td>
+            <td>${e.date}</td>
+            <td style="font-size:11px;color:var(--muted);">${e.notes||e.period||'—'}</td>
+            <td style="font-weight:700;color:var(--gold);">${p(entryTotal(e))}</td>
+            <td style="display:flex;gap:4px;">
+              <button class="btn btn-outline btn-sm" onclick="openBenefitsModal(${e.idx})">✏️</button>
+              <button class="btn btn-red btn-sm" onclick="delBenefits(${e.idx})">🗑️</button>
+            </td>
           </tr>`).join('')}
           <tr style="background:rgba(201,168,76,0.06);font-weight:700;">
-            <td colspan="2">Totals</td><td>${p(tSSS)}</td><td>${p(tPH)}</td><td>${p(tPI)}</td><td>${p(tOth)}</td>
+            <td colspan="2" style="color:var(--muted);">Total</td>
             <td style="color:var(--gold);">${p(total)}</td><td></td>
           </tr>
         </tbody>
@@ -7916,7 +7757,7 @@ async function initApp(){
   setVal('checker-date', today());
   setVal('track-date', today());
   setVal('sort-date', today());
-  setVal('ret-orders-date', today());
+  setVal('ret-items-date', today());
   setVal('ret-update-date', today());
   setVal('remit-page-date', today());
   setVal('my-order-date', today());
@@ -7997,7 +7838,7 @@ function startAutoRefresh(){
         riders: ()=>renderRiders?.(),
         dailyparcels: ()=>renderDailyParcels?.(),
         sorting: ()=>renderSorting?.(),
-        returns: ()=>renderReturnOrders?.(),
+        returns: ()=>renderCancelledItems?.(),
         dailysales: ()=>renderDailySales?.(),
         payroll: ()=>renderPayroll?.(),
         expenses: ()=>renderExpenses?.(),
