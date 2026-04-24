@@ -2517,6 +2517,26 @@ function autoFillFromCode(codeInput) {
     }
     // else: existing price — keep stored pergram (price lock)
   }
+  // ── Show live stock level next to code field ─────────────────
+  const codeCell = codeInput.closest('td');
+  let stockTag = codeCell.querySelector('.stock-tag');
+  if(!stockTag) {
+    stockTag = document.createElement('div');
+    stockTag.className = 'stock-tag';
+    stockTag.style.cssText = 'font-size:9px;margin-top:2px;font-weight:600;';
+    codeCell.appendChild(stockTag);
+  }
+  if(inv) {
+    const isGrams = inv.itemType !== 'fixprice';
+    const stock = isGrams ? inv.grams : inv.qty;
+    const unit = isGrams ? 'g' : ' pcs';
+    const color = stock <= 0 ? 'var(--red)' : stock <= 5 ? 'var(--orange)' : 'var(--green)';
+    stockTag.style.color = color;
+    stockTag.textContent = 'Stock: ' + (isGrams ? stock.toFixed(1) : stock) + unit;
+  } else {
+    stockTag.style.color = 'var(--red)';
+    stockTag.textContent = '⚠️ Not in inventory';
+  }
   window.calcEnc?.();
 }
 // onManualTotal removed — total field is now readonly, auto-computed from subtotal − discount
@@ -3314,32 +3334,17 @@ function verifyOrder(i){
       return;
     }
   }
-  // ── Deduct inventory upon verification ──────────────────────────
-  // Only deduct if not yet verified (prevent double-deduction on re-verify)
-  if(o.checkerStatus !== 'Verified') {
-    (o.items||[]).forEach(item => {
-      if(!item.code) return;
-      const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
-      if(!inv) return;
-      if(inv.itemType === 'fixprice') {
-        const deductQty = item.qty || 1;
-        const before = inv.qty;
-        inv.qty = before - deductQty;
-        S.stockLog.push({ productCode:inv.code, type:'out', qty:deductQty,
-          date:o.date, notes:'Checker verified – '+o.name+' ('+onum(i)+')',
-          before, after:inv.qty });
-      } else if((item.grams||0) > 0) {
-        const before = inv.grams;
-        inv.grams = before - item.grams;
-        S.stockLog.push({ productCode:inv.code, type:'out', qty:item.grams,
-          date:o.date, notes:'Checker verified – '+o.name+' ('+onum(i)+')',
-          before, after:inv.grams });
-      }
-    });
+  // ── Inventory: already deducted on saveOrder (new flow) ────────
+  // For OLD orders saved before this update (no inventoryDeducted flag),
+  // fall back to deducting at verify to avoid missed deductions.
+  if(o.checkerStatus !== 'Verified' && !o.inventoryDeducted) {
+    const didDeduct = _deductOrderItems(o.items, o.date,
+      'Checker verified (legacy) – '+o.name+' ('+onum(i)+')');
+    if(didDeduct) S.orders[i].inventoryDeducted = true;
   }
   S.orders[i].checkerStatus='Verified';
   S.orders[i].verificationStatus='Verified';
-  save(); toast('✅ Verified! Inventory deducted.'); renderChecker();
+  save(); toast('✅ Order verified!'); renderChecker();
 }
 function unverifyOrder(i){
   const o = S.orders[i];
@@ -3363,31 +3368,17 @@ function unverifyOrder(i){
     toast('🔒 Hindi na maaaring i-unverify — na-Remit na ni rider ang parcel na ito.');
     return;
   }
-  // ── Restore inventory on unverify ──────────────────────────────
-  if(o.checkerStatus === 'Verified') {
-    (o.items||[]).forEach(item => {
-      if(!item.code) return;
-      const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
-      if(!inv) return;
-      if(inv.itemType === 'fixprice') {
-        const restoreQty = item.qty || 1;
-        const before = inv.qty;
-        inv.qty = before + restoreQty;
-        S.stockLog.push({ productCode:inv.code, type:'return', qty:restoreQty,
-          date:o.date, notes:'Checker unverified – '+o.name+' ('+onum(i)+')',
-          before, after:inv.qty });
-      } else if((item.grams||0) > 0) {
-        const before = inv.grams;
-        inv.grams = before + item.grams;
-        S.stockLog.push({ productCode:inv.code, type:'return', qty:item.grams,
-          date:o.date, notes:'Checker unverified – '+o.name+' ('+onum(i)+')',
-          before, after:inv.grams });
-      }
-    });
+  // ── Inventory: in the new flow, deduction happens at saveOrder ──
+  // Unverifying just resets the checker status — stock stays deducted.
+  // For OLD orders where deduction happened at verify (no inventoryDeducted flag),
+  // restore stock on unverify to match old behavior.
+  if(o.checkerStatus === 'Verified' && !o.inventoryDeducted) {
+    _restoreOrderItems(o.items, o.date,
+      'Checker unverified (legacy) – '+o.name+' ('+onum(i)+')');
   }
   S.orders[i].checkerStatus='Pending';
   S.orders[i].verificationStatus='Not Verified';
-  save(); toast('↩ Set back to Pending. Inventory restored.'); renderChecker();
+  save(); toast('↩ Set back to Pending.'); renderChecker();
 }
 
 // ============ INVOICE ============
@@ -3600,6 +3591,25 @@ function updateStatus(i,v){
   // Map display label to stored value
   const map = {'Ready for Pick-up':'Ready','For Update':'Update'};
   const stored = map[v] || v;
+
+  // ── Restore inventory if rider marks as Cancelled ──────────────
+  if(stored === 'Cancelled') {
+    const o = S.orders[i];
+    let restored = false;
+    if(_invDeducted(o)) {
+      restored = _restoreOrderItems(o.items||[], today(),
+        `Rider cancelled – ${o.name} (${onum(i)})`);
+      S.orders[i].inventoryDeducted = false;
+      S.orders[i].checkerStatus = 'Pending';
+    }
+    S.orders[i].status = stored;
+    save();
+    toast('Status → ' + v + (restored ? ' (Inventory restored)' : ''));
+    renderTracking(); refreshUpdateBadge();
+    if(currentRole==='owner') renderDash();
+    return;
+  }
+
   S.orders[i].status=stored;
   save();
   toast('Status → '+v);
@@ -3652,29 +3662,18 @@ function resolveUpdate(orderIdx, newStatus) {
     save();
     toast('🔁 Re-scheduled for tomorrow (' + tomorrow() + '). Status → Ready for Pick-up.');
   } else {
-    // Cancel — restore inventory if order was verified
-    if(o.checkerStatus === 'Verified') {
-      (o.items||[]).forEach(item => {
-        if(!item.code) return;
-        const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
-        if(!inv) return;
-        if(inv.itemType === 'fixprice') {
-          const restoreQty = item.qty || 1;
-          const before = inv.qty; inv.qty = before + restoreQty;
-          S.stockLog.push({ productCode:inv.code, type:'return', qty:restoreQty,
-            date:today(), notes:`Auto-restore: Update→Cancelled – ${o.name} (${onum(orderIdx)})`,
-            before, after:inv.qty });
-        } else if((item.grams||0) > 0) {
-          const before = inv.grams; inv.grams = before + item.grams;
-          S.stockLog.push({ productCode:inv.code, type:'return', qty:item.grams,
-            date:today(), notes:`Auto-restore: Update→Cancelled – ${o.name} (${onum(orderIdx)})`,
-            before, after:inv.grams });
-        }
-      });
+    // Cancel — restore inventory whenever it was deducted
+    let restored = false;
+    if(_invDeducted(o)) {
+      restored = _restoreOrderItems(o.items||[], today(),
+        `Update→Cancelled – ${o.name} (${onum(orderIdx)})`);
+      // Mark as NOT deducted so no second restore if checker also cancels this order
+      S.orders[orderIdx].inventoryDeducted = false;
+      S.orders[orderIdx].checkerStatus = 'Pending'; // clear Verified so _invDeducted stays false
     }
     S.orders[orderIdx].status = newStatus;
     save();
-    toast('✅ Status → ' + newStatus + (o.checkerStatus === 'Verified' ? ' (Inventory restored)' : ''));
+    toast('✅ Status → ' + newStatus + (restored ? ' (Inventory restored)' : ''));
   }
 
   // Refresh all relevant views
@@ -6424,6 +6423,64 @@ function riderItemPartialCancel(orderIdx, itemIdx, cancelQtyStr, totalQty, isGra
 // ============================================================
 // UPDATED SAVE ORDER — include assigned rider + 10% tracking
 // ============================================================
+
+// ── INVENTORY HELPERS ─────────────────────────────────────────────────────────
+// Deduct order items from inventory. Returns true if anything was deducted.
+function _deductOrderItems(items, orderDate, label) {
+  let deducted = false;
+  (items||[]).forEach(item => {
+    if(!item.code) return;
+    const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
+    if(!inv) return;
+    if(inv.itemType === 'fixprice') {
+      const qty = item.qty || 1;
+      const before = inv.qty;
+      inv.qty = before - qty;
+      S.stockLog.push({ productCode:inv.code, type:'out', qty,
+        date:orderDate, notes:'Auto deduct – '+label, before, after:inv.qty });
+      deducted = true;
+    } else if((item.grams||0) > 0) {
+      const before = inv.grams;
+      inv.grams = before - item.grams;
+      S.stockLog.push({ productCode:inv.code, type:'out', qty:item.grams,
+        date:orderDate, notes:'Auto deduct – '+label, before, after:inv.grams });
+      deducted = true;
+    }
+  });
+  return deducted;
+}
+
+// Restore order items back to inventory. Returns true if anything was restored.
+function _restoreOrderItems(items, orderDate, label) {
+  let restored = false;
+  (items||[]).forEach(item => {
+    if(!item.code) return;
+    const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
+    if(!inv) return;
+    if(inv.itemType === 'fixprice') {
+      const qty = item.qty || 1;
+      const before = inv.qty;
+      inv.qty = before + qty;
+      S.stockLog.push({ productCode:inv.code, type:'return', qty,
+        date:orderDate, notes:'Auto restore – '+label, before, after:inv.qty });
+      restored = true;
+    } else if((item.grams||0) > 0) {
+      const before = inv.grams;
+      inv.grams = before + item.grams;
+      S.stockLog.push({ productCode:inv.code, type:'return', qty:item.grams,
+        date:orderDate, notes:'Auto restore – '+label, before, after:inv.grams });
+      restored = true;
+    }
+  });
+  return restored;
+}
+
+// Returns true if this order's inventory was already deducted (new flow OR old verified)
+function _invDeducted(o) {
+  return o.inventoryDeducted === true || o.checkerStatus === 'Verified';
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function saveOrder() {
   const name = document.getElementById('enc-name').value.trim();
   const contact = document.getElementById('enc-contact').value.replace(/\D/g,'');
@@ -6508,53 +6565,27 @@ function saveOrder() {
     if(!o.dateOfDropoff && orig.dateOfDropoff) o.dateOfDropoff = orig.dateOfDropoff;
 
     // ── Inventory adjustment on EDIT ─────────────────────────────
-    // Only touch inventory if the order was already checker-verified.
-    // Unverified edits don't affect stock.
-    const wasVerified = orig.checkerStatus === 'Verified';
-    if(wasVerified) {
-      // Step 1: restore original items back to stock
-      (orig.items||[]).forEach(item => {
-        if(!item.code) return;
-        const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
-        if(!inv) return;
-        if(inv.itemType === 'fixprice') {
-          const before = inv.qty; inv.qty = before + (item.qty||1);
-          S.stockLog.push({ productCode:inv.code, type:'return', qty:(item.qty||1),
-            date:o.date, notes:'Auto: Edit restore – '+name, before, after:inv.qty });
-        } else if((item.grams||0) > 0) {
-          const before = inv.grams; inv.grams = before + item.grams;
-          S.stockLog.push({ productCode:inv.code, type:'return', qty:item.grams,
-            date:o.date, notes:'Auto: Edit restore – '+name, before, after:inv.grams });
-        }
-      });
-      // Step 2: deduct new items from stock
-      items.forEach(item => {
-        if(!item.code) return;
-        const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
-        if(!inv) return;
-        if(inv.itemType === 'fixprice') {
-          const deductQty = item.qty||1;
-          const before = inv.qty; inv.qty = before - deductQty;
-          S.stockLog.push({ productCode:inv.code, type:'out', qty:deductQty,
-            date:o.date, notes:'Auto: Edit deduct – '+name+' ('+admin+')',
-            before, after:inv.qty });
-        } else if((item.grams||0) > 0) {
-          const before = inv.grams; inv.grams = before - item.grams;
-          S.stockLog.push({ productCode:inv.code, type:'out', qty:item.grams,
-            date:o.date, notes:'Auto: Edit deduct – '+name+' ('+admin+')',
-            before, after:inv.grams });
-        }
-      });
+    // Always restore orig items then deduct new items (new flow: deduct on save)
+    const hadDeducted = _invDeducted(orig);
+    if(hadDeducted) {
+      _restoreOrderItems(orig.items||[], o.date, 'Edit restore – '+name);
     }
+    // Always deduct new items
+    o.inventoryDeducted = _deductOrderItems(items, o.date, 'Edit deduct – '+name+' ('+admin+')');
 
     S.orders[+editIdx] = o;
-    toast(wasVerified ? '✅ Order updated! Inventory adjusted.' : '✅ Order updated!');
+    toast('✅ Order updated! Inventory adjusted.');
   } else {
+    // ── Deduct inventory immediately on new order save ────────────
+    o.inventoryDeducted = _deductOrderItems(items, o.date, name+' ('+admin+')');
     S.orders.push(o);
-    // ── NO inventory deduction on new order ──────────────────────
-    // Inventory is only deducted when Checker VERIFIES the order.
-    // This prevents stock from being consumed by cancelled/deleted orders.
-    toast('✅ Order saved! Inventory will be updated upon Checker verification.');
+    const lowStock = items.filter(it=>{
+      const inv = S.inventory.find(x=>x.code.toUpperCase()===(it.code||'').toUpperCase());
+      if(!inv) return false;
+      return inv.itemType==='fixprice' ? inv.qty < 0 : inv.grams < 0;
+    });
+    const warn = lowStock.length ? ' ⚠️ '+lowStock.map(x=>x.code).join(', ')+' ay negative na sa inventory!' : '';
+    toast('✅ Order saved! Inventory deducted.'+warn);
   }
   save(); closeModal('modal-encode');
   initOrdersPage();
@@ -6563,28 +6594,14 @@ function saveOrder() {
 function delOrder(i){
   _confirmDel(`Delete order ${onum(i)} for "${S.orders[i]?.name}"?`, ()=>{
     const o = S.orders[i];
-    // ── Restore inventory only if order was verified ──────────────
-    if(o && o.checkerStatus === 'Verified') {
-      (o.items||[]).forEach(item => {
-        if(!item.code) return;
-        const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
-        if(!inv) return;
-        if(inv.itemType === 'fixprice') {
-          const restoreQty = item.qty || 1;
-          const before = inv.qty; inv.qty = before + restoreQty;
-          S.stockLog.push({ productCode:inv.code, type:'return', qty:restoreQty,
-            date:o.date, notes:'Order deleted (verified) – '+o.name+' ('+onum(i)+')',
-            before, after:inv.qty });
-        } else if((item.grams||0) > 0) {
-          const before = inv.grams; inv.grams = before + item.grams;
-          S.stockLog.push({ productCode:inv.code, type:'return', qty:item.grams,
-            date:o.date, notes:'Order deleted (verified) – '+o.name+' ('+onum(i)+')',
-            before, after:inv.grams });
-        }
-      });
+    // ── Always restore inventory if it was deducted (new: on save / old: on verify) ──
+    let restored = false;
+    if(o && _invDeducted(o)) {
+      restored = _restoreOrderItems(o.items||[], o.date,
+        'Order deleted – '+o.name+' ('+onum(i)+')');
     }
     S.orders.splice(i,1); save();
-    toast(o?.checkerStatus==='Verified' ? '🗑️ Order deleted. Inventory restored.' : '🗑️ Order deleted.');
+    toast(restored ? '🗑️ Order deleted. Inventory restored.' : '🗑️ Order deleted.');
     initOrdersPage(); if(currentRole==='owner') renderDash();
   });
 }
@@ -8527,43 +8544,19 @@ function confirmCheckerCancel() {
     checkerStatus: o.checkerStatus||'',
     riderRemarks: o.riderRemarks||''
   });
-  // ── Auto-restore inventory ONLY if order was already verified (inventory was deducted) ──
-  // Unverified orders never had stock deducted, so restoring would create phantom stock.
-  if(o.checkerStatus === 'Verified') {
-    (o.items||[]).forEach(item => {
-      if(!item.code) return;
-      const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
-      if(!inv) return;
-      if(inv.itemType === 'fixprice') {
-        const restoreQty = item.qty || 1;
-        const before = inv.qty;
-        inv.qty = before + restoreQty;
-        S.stockLog.push({
-          productCode: inv.code, type: 'return', qty: restoreQty,
-          date: today(),
-          notes: `Auto-restore: Checker cancelled order ${onum(orderIdx)} – ${o.name}`,
-          before, after: inv.qty
-        });
-      } else if((item.grams||0) > 0) {
-        const restoreGrams = item.grams;
-        const before = inv.grams;
-        inv.grams = before + restoreGrams;
-        S.stockLog.push({
-          productCode: inv.code, type: 'return', qty: restoreGrams,
-          date: today(),
-          notes: `Auto-restore: Checker cancelled order ${onum(orderIdx)} – ${o.name}`,
-          before, after: inv.grams
-        });
-      }
-    });
+  // ── Auto-restore inventory whenever it was deducted ─────────────
+  // New flow: deducted on saveOrder. Old flow: deducted on verify.
+  let restored = false;
+  if(_invDeducted(o)) {
+    restored = _restoreOrderItems(o.items||[], today(),
+      `Checker cancelled ${onum(orderIdx)} – ${o.name}`);
   }
 
   // Remove from active orders
   S.orders.splice(orderIdx, 1);
   save();
   closeModal('modal-checker-cancel');
-  const wasVerified = o.checkerStatus === 'Verified';
-  toast(`❌ Order cancelled${wasVerified ? ' & inventory restored' : ''}. Reason: ${reason}`);
+  toast(`❌ Order cancelled${restored ? ' & inventory restored' : ''}. Reason: ${reason}`);
   renderChecker();
   if(currentRole==='owner') renderDash();
 }
