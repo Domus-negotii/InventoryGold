@@ -2401,7 +2401,7 @@ function closeModal(id){document.getElementById(id).classList.remove('open');}
 })();
 
 // ============ NAVIGATION ============
-const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales Calendar',orders:'Admin Encode',checker:'Checker Verify',tracking:'COD Tracking',ordermgmt:'Order Management',lbcdelivery:'LBC Delivery',emsdelivery:'EMS Delivery',fedexdelivery:'FedEx Delivery',riders:'Riders by Location',dailyparcels:'Daily Parcels',sorting:'Parcel Sorting',returns:'Return / Cancel',deletedorders:'Recently Deleted',dailysales:'Daily Sales Record',payroll:'Payroll',expenses:'Expenses',pnl:'P&L Report',inventory:'Inventory',adminsheets:'Per-Admin Order Sheets',settings:'Settings',ridersremit:'Riders Remit',cashbond:'Cashbond Tracker',benefits:'Benefits (SSS / PhilHealth / Pag-IBIG)'};
+const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales Calendar',orders:'Admin Encode',checker:'Checker Verify',tracking:'COD Tracking',ordermgmt:'Order Management',lbcdelivery:'LBC Delivery',emsdelivery:'EMS Delivery',fedexdelivery:'FedEx Delivery',riders:'Riders by Location',dailyparcels:'Daily Parcels',sorting:'Parcel Sorting',returns:'Return / Cancel',deletedorders:'Recently Deleted',dailysales:'Daily Sales Record',payroll:'Payroll',expenses:'Expenses',pnl:'P&L Report',inventory:'Inventory',adminsheets:'Per-Admin Order Sheets',settings:'Settings',ridersremit:'Riders Remit',cashbond:'Cashbond Tracker',benefits:'Benefits'};
 let _activePage = 'dashboard';
 function gotoPage(name){
   _activePage = name;
@@ -3273,8 +3273,8 @@ function updateVerifStatus(orderIdx, status) {
     return;
   }
   // For LBC/EMS/FedEx — require tracking, date paid, and date drop-off before verifying
+  const isCourier = o.paymentMethod === 'LBC' || o.paymentMethod === 'EMS' || o.paymentMethod === 'FedEx';
   if(status === 'Verified') {
-    const isCourier = o.paymentMethod === 'LBC' || o.paymentMethod === 'EMS' || o.paymentMethod === 'FedEx';
     if(isCourier) {
       const missing = [];
       if(!o.trackingNumber) missing.push('Tracking Number');
@@ -3286,12 +3286,27 @@ function updateVerifStatus(orderIdx, status) {
         return;
       }
     }
+    // ── Deduct inventory on Verify (same as COD verifyOrder) ─────
+    // Guard: only deduct once — skip if already deducted
+    if(!o.inventoryDeducted) {
+      const didDeduct = _deductOrderItems(o.items||[], today(),
+        `LBC/INTL Checker verified – ${o.name} (${onum(orderIdx)})`);
+      if(didDeduct) S.orders[orderIdx].inventoryDeducted = true;
+    }
+    o.verificationStatus = 'Verified';
+    o.checkerStatus = 'Verified';
+  } else {
+    // ── Restore inventory on Un-verify ───────────────────────────
+    if(_invDeducted(o)) {
+      _restoreOrderItems(o.items||[], today(),
+        `LBC/INTL Unverified – ${o.name} (${onum(orderIdx)})`);
+      S.orders[orderIdx].inventoryDeducted = false;
+    }
+    o.verificationStatus = 'Not Verified';
+    o.checkerStatus = 'Pending';
   }
-  o.verificationStatus = status;
-  if(status === 'Verified') o.checkerStatus = 'Verified';
-  else o.checkerStatus = 'Pending';
   save(); renderChecker();
-  toast(`✅ Verification: ${status}`);
+  toast(`✅ Verification: ${status}${status==='Verified'?' — Inventory deducted.':' — Inventory restored.'}`);
 }
 
 function assignRiderFromChecker(orderIdx, riderName) {
@@ -3350,7 +3365,7 @@ function unverifyOrder(i){
   // ── Restore inventory on Unverify ──────────────────────────────
   // Deduction happened at Verify — so restore it here.
   if(_invDeducted(o)) {
-    _restoreOrderItems(o.items, o.date,
+    _restoreOrderItems(o.items, today(),
       'Checker unverified – '+o.name+' ('+onum(i)+')');
     S.orders[i].inventoryDeducted = false;
   }
@@ -3570,19 +3585,12 @@ function updateStatus(i,v){
   const map = {'Ready for Pick-up':'Ready','For Update':'Update'};
   const stored = map[v] || v;
 
-  // ── Restore inventory if rider marks as Cancelled ──────────────
+  // ── Rider marks as Cancelled — do NOT auto-restore inventory ───
+  // Inventory only restores when Return Log is manually recorded.
   if(stored === 'Cancelled') {
-    const o = S.orders[i];
-    let restored = false;
-    if(_invDeducted(o)) {
-      restored = _restoreOrderItems(o.items||[], today(),
-        `Rider cancelled (verified) – ${o.name} (${onum(i)})`);
-      S.orders[i].inventoryDeducted = false;
-      S.orders[i].checkerStatus = 'Pending';
-    }
     S.orders[i].status = stored;
     save();
-    toast('Status → ' + v + (restored ? ' (Inventory restored)' : ''));
+    toast('Status → Cancelled. I-log ang return sa Returns tab para maibalik sa inventory.');
     renderTracking(); refreshUpdateBadge();
     if(currentRole==='owner') renderDash();
     return;
@@ -3601,29 +3609,7 @@ function renderForUpdateTab() {
   renderCheckerForUpdate();
 }
 
-function _renderForUpdateTab_orig() {
-  const list = S.orders.map((o,i)=>({...o,idx:i})).filter(o=>o.status==='Update' && (o.paymentMethod||'COD')==='COD');
-  const el = document.getElementById('for-update-list');
-  if(!el) return;
-  el.innerHTML = list.length ? `<div class="table-wrap"><table><thead><tr>
-    <th>Order #</th><th>Customer</th><th>Contact</th><th>Method</th><th>Rider</th><th>Address</th><th>Date</th><th>Total</th><th>Rider Remarks</th><th>Admin Action</th>
-  </tr></thead><tbody>${list.map(o=>`<tr>
-    <td style="color:var(--gold);font-weight:600;">${onum(o.idx)}</td>
-    <td style="font-weight:500;">${o.name}</td>
-    <td>${o.contact||'—'}</td>
-    <td><span class="status ${(o.paymentMethod||'COD')==='COD'?'delivering':(o.paymentMethod==='LBC'?'blue':'green')}" style="font-size:9px;">${o.paymentMethod||'COD'}</span></td>
-    <td style="color:var(--blue);">🏍️ ${o.assignedRider||'—'}</td>
-    <td style="font-size:10.5px;">${o.address||'—'}</td>
-    <td>${o.date}</td>
-    <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
-    <td style="font-size:10.5px;color:var(--orange);">${o.riderRemarks||'No remarks'}</td>
-    <td style="display:flex;gap:4px;flex-wrap:wrap;">
-      <button class="btn btn-green btn-sm" onclick="resolveUpdate(${o.idx},'Out for Delivery')">🔁 Re-Deliver (Tomorrow)</button>
-      <button class="btn btn-red btn-sm" onclick="resolveUpdate(${o.idx},'Cancelled')">✕ Cancel</button>
-    </td>
-  </tr>`).join('')}</tbody></table></div>`
-  : '<p style="color:var(--muted);padding:20px;text-align:center;">No parcels for update.</p>';
-}
+
 
 function resolveUpdate(orderIdx, newStatus) {
   const o = S.orders[orderIdx];
@@ -3631,27 +3617,21 @@ function resolveUpdate(orderIdx, newStatus) {
 
   if(newStatus === 'Out for Delivery') {
     // ── Re-Deliver: reschedule for TOMORROW ─────────────────────
-    // Change order date to tomorrow so it only shows up in rider's
-    // tomorrow dashboard — not today's parcels
+    // Set status to Preparing — rider must go through the normal
+    // Ready for Pick-up → Out for Delivery flow again tomorrow
     S.orders[orderIdx].date   = tomorrow();
-    S.orders[orderIdx].status = 'Ready';   // Ready for Pick-up (not OFD yet)
+    S.orders[orderIdx].status = 'Preparing';
     // Clear the Update remark so it doesn't persist
     S.orders[orderIdx].riderRemarks = '';
     save();
-    toast('🔁 Re-scheduled for tomorrow (' + tomorrow() + '). Status → Ready for Pick-up.');
+    toast('🔁 Re-scheduled for tomorrow (' + tomorrow() + '). Status → Preparing.');
   } else {
-    // Cancel — restore inventory whenever it was deducted
-    let restored = false;
-    if(_invDeducted(o)) {
-      restored = _restoreOrderItems(o.items||[], today(),
-        `Update→Cancelled – ${o.name} (${onum(orderIdx)})`);
-      // Mark as NOT deducted so no second restore if checker also cancels this order
-      S.orders[orderIdx].inventoryDeducted = false;
-      S.orders[orderIdx].checkerStatus = 'Pending'; // clear Verified so _invDeducted stays false
-    }
+    // ── Cancel: do NOT auto-restore inventory ────────────────────
+    // Inventory will only be restored when staff manually records
+    // a Return Log entry for each item in the Cancelled Items tab.
     S.orders[orderIdx].status = newStatus;
     save();
-    toast('✅ Status → ' + newStatus + (restored ? ' (Inventory restored)' : ''));
+    toast('❌ Order Cancelled. I-log ang return sa Returns tab para maibalik sa inventory.');
   }
 
   // Refresh all relevant views
@@ -5782,7 +5762,7 @@ function applyRoleUI(){
     admin:    ['orders'],
     rider:    ['riderdash'],
     remitter: ['ridersremit','cashbond','benefits','sorting','returns'],
-    sorter:   ['sorting','tracking','ordermgmt','dailyparcels','returns'],
+    sorter:   ['sorting','tracking','ordermgmt','dailyparcels','returns','riders'],
     checker:  ['checker','sorting','lbcdelivery','emsdelivery','fedexdelivery'],
   };
   const allowed = rolePages[currentRole] || null;
@@ -5809,7 +5789,7 @@ function applyRoleUI(){
       if(lockEl) lockEl.classList.add('unlocked');
     } else if(currentRole==='checker' && ['checker','lbcdelivery','emsdelivery','fedexdelivery'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
-    } else if(currentRole==='sorter' && ['tracking','sorting','dailyparcels','returns','ordermgmt'].includes(page)){
+    } else if(currentRole==='sorter' && ['tracking','sorting','dailyparcels','returns','ordermgmt','riders'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
     } else {
       if(lockEl) lockEl.classList.remove('unlocked');
@@ -6596,8 +6576,8 @@ function saveOrder() {
     const hadDeducted = _invDeducted(orig);
     if(hadDeducted) {
       // Restore old items, deduct new items
-      _restoreOrderItems(orig.items||[], o.date, 'Edit restore – '+name);
-      o.inventoryDeducted = _deductOrderItems(items, o.date, 'Edit deduct – '+name+' ('+admin+')');
+      _restoreOrderItems(orig.items||[], today(), 'Edit restore – '+name);
+      o.inventoryDeducted = _deductOrderItems(items, today(), 'Edit deduct – '+name+' ('+admin+')');
     } else {
       o.inventoryDeducted = false;
     }
@@ -6620,7 +6600,7 @@ function delOrder(i){
     // ── Always restore inventory if it was deducted (new: on save / old: on verify) ──
     let restored = false;
     if(o && _invDeducted(o)) {
-      restored = _restoreOrderItems(o.items||[], o.date,
+      restored = _restoreOrderItems(o.items||[], today(),
         'Order deleted – '+o.name+' ('+onum(i)+')');
     }
     S.orders.splice(i,1); save();
@@ -7738,8 +7718,7 @@ function renderBenefitsPage() {
             <td>${e.date}</td>
             <td style="font-size:11px;color:var(--muted);">${e.notes||e.period||'—'}</td>
             <td style="font-weight:700;color:var(--gold);">${p(entryTotal(e))}</td>
-            <td style="display:flex;gap:4px;">
-              <button class="btn btn-outline btn-sm" onclick="openBenefitsModal(${e.idx})">✏️</button>
+            <td>
               <button class="btn btn-red btn-sm" onclick="delBenefits(${e.idx})">🗑️</button>
             </td>
           </tr>`).join('')}
