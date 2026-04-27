@@ -983,12 +983,12 @@ function _showRulesHint() {
         <div class="table-wrap" id="checker-cod-table"><table><thead><tr>
           <th>Order #</th><th>Customer</th><th>CP #</th><th>Date</th>
           <th>Items Total</th><th>SF</th><th>Grand Total</th><th>Assign Rider</th>
-          <th>Checker Status</th><th>Actions</th>
+          <th>Checker Status</th><th>Print</th><th>Actions</th>
         </tr></thead><tbody id="checker-tbody"></tbody></table></div>
         <div id="checker-lbc-table" style="display:none;"><table><thead><tr>
           <th>Order #</th><th>Customer</th><th>CP #</th><th>Date</th>
           <th>Grand Total</th><th>💳 Payment Status</th>
-          <th>✅ Verification</th><th>📦 Parcel Status</th><th>Actions</th>
+          <th>✅ Verification</th><th>📦 Parcel Status</th><th>Print</th><th>Actions</th>
         </tr></thead><tbody id="checker-lbc-tbody"></tbody></table></div>
       </div>
     </div>
@@ -2084,7 +2084,11 @@ function _showRulesHint() {
     <div class="modal-header"><span class="modal-title" id="stock-modal-title">Stock In</span><button class="modal-close" onclick="closeModal('modal-stock')">✕</button></div>
     <div class="form-grid">
       <div class="form-group"><label>Product *</label>
-        <select class="form-control" id="stock-product"><option value="">-- Select Product --</option></select>
+        <input class="form-control" id="stock-product-search" list="stock-product-list"
+          placeholder="Type code or name..." oninput="onStockProductSearch()" autocomplete="off"
+          style="font-size:12px;">
+        <datalist id="stock-product-list"></datalist>
+        <input type="hidden" id="stock-product">
       </div>
       <div class="form-group"><label>Transaction Type</label>
         <select class="form-control" id="stock-type" onchange="updateStockType()">
@@ -2803,7 +2807,7 @@ function renderMyOrders() {
       html += group.map(rowOf).join('');
     });
   } else {
-    html = `<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:26px;">${loggedAdmin?'No orders by '+loggedAdmin+' yet. Click + New Order to encode.':'No orders found.'}</td></tr>`;
+    html = `<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">${loggedAdmin?'No orders by '+loggedAdmin+' yet. Click + New Order to encode.':'No orders found.'}</td></tr>`;
   }
   tbody.innerHTML = html;
 }
@@ -3140,6 +3144,11 @@ function renderChecker(){
             <td>
               <span class="checker-tag ${o.checkerStatus==='Verified'?'verified':'pending'}" style="margin-bottom:4px;display:block;">${o.checkerStatus}</span>
             </td>
+            <td style="text-align:center;">
+              ${(o.printCount||0) > 0
+                ? `<span style="font-size:11px;font-weight:700;color:var(--gold);">🖨️ ${o.printCount}×</span>`
+                : `<span style="font-size:10px;color:var(--muted);">—</span>`}
+            </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
               ${!isLocked?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>`:''}
               ${o.checkerStatus!=='Verified'
@@ -3169,7 +3178,7 @@ function renderChecker(){
     });
     if(!list.length) {
       document.getElementById('checker-lbc-tbody').innerHTML =
-        `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:26px;">No ${checkerTab} orders found</td></tr>`;
+        `<tr><td colspan="10" orders found</td></tr>`;
     } else {
       let rows = '';
       Object.keys(adminGroups).sort().forEach(adm => {
@@ -3229,6 +3238,11 @@ function renderChecker(){
                     </select>`
                 : `<span style="font-size:9.5px;color:var(--muted);">—</span>`
               }
+            </td>
+            <td style="text-align:center;">
+              ${(o.printCount||0) > 0
+                ? `<span style="font-size:11px;font-weight:700;color:var(--gold);">🖨️ ${o.printCount}×</span>`
+                : `<span style="font-size:10px;color:var(--muted);">—</span>`}
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
               ${isDroppedOff
@@ -3377,6 +3391,13 @@ function unverifyOrder(i){
 // ============ INVOICE ============
 function openInvoice(i){
   const o=S.orders[i];
+  // ── Increment print counter ────────────────────────────────────
+  if(i !== undefined && i !== null && S.orders[i]) {
+    S.orders[i].printCount = (S.orders[i].printCount || 0) + 1;
+    save();
+    // Refresh checker table if on checker page
+    if(typeof renderChecker === 'function' && document.getElementById('checker-tbody')) renderChecker();
+  }
   const biz=S.bizInfo||{};
   const bizAddress=biz.address||'Las Pinas City, Metro Manila, PH';
   const bizPhone=biz.contact||'0917-130-7239';
@@ -4975,16 +4996,40 @@ function openStockModal(type,prodIdx=null){
   document.getElementById('stock-date').value=today();
   document.getElementById('stock-notes').value='';
   document.getElementById('stock-qty').value='1';
-  // Populate product dropdown — all item types supported
-  const sel=document.getElementById('stock-product');
-  sel.innerHTML='<option value="">-- Select Product --</option>'+S.inventory.map((it,i)=>{
-    const isGrams = it.itemType!=='fixprice';
-    const stockInfo = isGrams ? `${it.grams}g` : `${it.qty} pcs`;
-    return `<option value="${i}">[${isGrams?'⚖️':'🏷️'}] ${it.code} – ${it.desc} (${stockInfo})</option>`;
+  // Populate datalist for searchable product input
+  const dl=document.getElementById('stock-product-list');
+  const hiddenIdx=document.getElementById('stock-product');
+  dl.innerHTML=S.inventory.map((it,i)=>{
+    const isGrams=it.itemType!=='fixprice';
+    const stockInfo=isGrams?`${it.grams}g`:`${it.qty} pcs`;
+    return `<option value="${it.code} — ${it.desc} (${stockInfo})" data-idx="${i}">`;
   }).join('');
-  if(prodIdx!==null)sel.value=prodIdx;
+  // If called with a specific product, pre-fill
+  const searchEl=document.getElementById('stock-product-search');
+  if(prodIdx!==null && S.inventory[prodIdx]){
+    const it=S.inventory[prodIdx];
+    const isGrams=it.itemType!=='fixprice';
+    searchEl.value=`${it.code} — ${it.desc} (${isGrams?it.grams+'g':it.qty+' pcs'})`;
+    hiddenIdx.value=prodIdx;
+  } else {
+    searchEl.value='';
+    hiddenIdx.value='';
+  }
   updateStockPreview();
   openModal('modal-stock');
+}
+
+function onStockProductSearch(){
+  const searchEl=document.getElementById('stock-product-search');
+  const hiddenIdx=document.getElementById('stock-product');
+  const val=searchEl.value.trim();
+  // Match by code prefix or description
+  const found=S.inventory.findIndex((it,i)=>{
+    const label=`${it.code} — ${it.desc}`;
+    return val.startsWith(it.code+' —') || val===`${it.code} — ${it.desc} (${it.itemType!=='fixprice'?it.grams+'g':it.qty+' pcs'})`;
+  });
+  hiddenIdx.value=found>=0?found:'';
+  updateStockPreview();
 }
 function updateStockType(){updateStockPreview();}
 function updateStockPreview(){
@@ -5004,11 +5049,19 @@ function updateStockPreview(){
 
 function saveStock(){
   const idx=document.getElementById('stock-product').value;
-  if(idx===''){toast('Select a product');return;}
+  const searchVal=document.getElementById('stock-product-search').value.trim();
+  // If nothing selected via datalist, try to match by code typed directly
+  let resolvedIdx = idx !== '' ? +idx : -1;
+  if(resolvedIdx < 0 && searchVal){
+    const code = searchVal.toUpperCase().split(' —')[0].trim();
+    resolvedIdx = S.inventory.findIndex(it=>it.code.toUpperCase()===code);
+    if(resolvedIdx >= 0) document.getElementById('stock-product').value=resolvedIdx;
+  }
+  if(resolvedIdx < 0){toast('⚠️ Select or type a valid product');return;}
   const qty=+document.getElementById('stock-qty').value||0;
-  if(!qty){toast('Enter quantity');return;}
+  if(!qty){toast('⚠️ Enter quantity');return;}
   const type=document.getElementById('stock-type').value;
-  const it=S.inventory[+idx];
+  const it=S.inventory[resolvedIdx];
   const isGrams = it.itemType !== 'fixprice';
   const before = isGrams ? it.grams : it.qty;
   const after=type==='in'||type==='return'?before+qty:before-qty;
@@ -5024,9 +5077,14 @@ function delStockLog(i){
 }
 // Stock modal event listeners (safe — run after DOM ready)
 document.addEventListener('DOMContentLoaded', function() {
-  const sp=document.getElementById('stock-product'); if(sp) sp.addEventListener('change',updateStockPreview);
   const sq=document.getElementById('stock-qty'); if(sq) sq.addEventListener('input',updateStockPreview);
   const st=document.getElementById('stock-type'); if(st) st.addEventListener('change',updateStockPreview);
+  // Searchable product input listeners
+  const sps=document.getElementById('stock-product-search');
+  if(sps){
+    sps.addEventListener('input',onStockProductSearch);
+    sps.addEventListener('change',onStockProductSearch);
+  }
 });
 
 // ============ SALES CALENDAR ============
@@ -5765,7 +5823,7 @@ function applyRoleUI(){
     admin:    ['orders'],
     rider:    ['riderdash'],
     remitter: ['ridersremit','cashbond','benefits','sorting','returns'],
-    sorter:   ['sorting','tracking','ordermgmt','dailyparcels','returns','riders'],
+    sorter:   ['sorting','tracking','ordermgmt','dailyparcels','returns'],
     checker:  ['checker','sorting','lbcdelivery','emsdelivery','fedexdelivery'],
   };
   const allowed = rolePages[currentRole] || null;
@@ -5792,7 +5850,7 @@ function applyRoleUI(){
       if(lockEl) lockEl.classList.add('unlocked');
     } else if(currentRole==='checker' && ['checker','lbcdelivery','emsdelivery','fedexdelivery'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
-    } else if(currentRole==='sorter' && ['tracking','sorting','dailyparcels','returns','ordermgmt','riders'].includes(page)){
+    } else if(currentRole==='sorter' && ['tracking','sorting','dailyparcels','returns','ordermgmt'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
     } else {
       if(lockEl) lockEl.classList.remove('unlocked');
