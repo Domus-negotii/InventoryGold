@@ -817,7 +817,7 @@ function _showRulesHint() {
       <div class="nav-item" onclick="gotoPage('orders')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>Admin Encode</div>
       <div class="nav-item" onclick="gotoPage('checker')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Checker Verify</div>
       <div class="nav-item" onclick="gotoPage('tracking')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>COD Tracking</div>
-      <div class="nav-item" onclick="gotoPage('ordermgmt')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><path d="M9 3h6v4H9z"/><path d="M9 12h6M9 16h4"/></svg>Order Management</div>
+      <div class="nav-item" onclick="gotoPage('ordermgmt')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><path d="M9 3h6v4H9z"/><path d="M9 12h6M9 16h4"/></svg>LBC/EMS/FedEx Tracking</div>
       <div class="nav-item" onclick="gotoPage('lbcdelivery')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 4v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>LBC Delivery</div>
       <div class="nav-item" onclick="gotoPage('emsdelivery')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>EMS Delivery</div>
       <div class="nav-item" onclick="gotoPage('fedexdelivery')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11a2 2 0 012 2v3"/><rect x="9" y="11" width="14" height="10" rx="2"/><path d="M16 11V9a2 2 0 00-2-2"/></svg>FedEx Delivery</div>
@@ -1859,8 +1859,8 @@ function _showRulesHint() {
       <input type="hidden" id="enc-city" value="">
       <div class="form-group"><label>Landmark / Pakuha sa</label><input class="form-control enc-tab" id="enc-landmark" placeholder="Near church, beside sari-sari..." onkeydown="encNextField(event,this)"></div>
       <div class="form-group" id="enc-date-purchase-group">
-        <label>Date of Purchase <span style="font-size:10px;color:var(--muted);" id="enc-date-hint">(default: tomorrow — delivery date)</span></label>
-        <input type="date" class="form-control enc-tab" id="enc-date" onkeydown="encNextField(event,this)">
+        <label>Date of Purchase <span style="font-size:10px;color:var(--red);font-weight:600;" id="enc-date-hint">* Required (mm/dd/yy)</span></label>
+        <input type="date" class="form-control enc-tab" id="enc-date" required onkeydown="encNextField(event,this)" placeholder="mm/dd/yy">
       </div>
       <div class="form-group" id="enc-date-payment-group" style="display:none;">
         <label>Date of Payment <span style="font-size:10px;color:var(--muted);">(editable)</span></label>
@@ -1889,8 +1889,8 @@ function _showRulesHint() {
       </div>
       <div class="form-group" id="enc-tracking-group" style="display:none;">
         <label>LBC Tracking Number <span id="enc-tracking-label-hint" style="font-size:10px;color:var(--muted);">(12 digits)</span></label>
-        <input class="form-control enc-tab" id="enc-tracking-number" placeholder="000000000000" maxlength="14"
-          oninput="this.value=this.value.replace(/\D/g,'');validateTrackingNum(this)"
+        <input class="form-control enc-tab" id="enc-tracking-number" placeholder="000000000000" maxlength="22"
+          oninput="validateTrackingNum(this)"
           onkeydown="encNextField(event,this)">
         <div id="enc-tracking-err" style="font-size:10.5px;color:var(--red);min-height:14px;margin-top:2px;"></div>
       </div>
@@ -2276,24 +2276,7 @@ function _showRulesHint() {
         </select>
       </div>
       <div class="form-group"><label>Reason for Return *</label>
-        <select class="form-control" id="ret-reason">
-          <option>Customer changed mind</option>
-          <option>Wrong item delivered</option>
-          <option>Damaged/defective</option>
-          <option>Customer refused</option>
-          <option>Rider brought back</option>
-          <option>Other</option>
-        </select>
-      </div>
-      <div class="form-group"><label>Item Condition</label>
-        <select class="form-control" id="ret-condition">
-          <option>Good — can re-sell</option>
-          <option>Damaged — cannot re-sell</option>
-          <option>Missing parts</option>
-        </select>
-      </div>
-      <div class="form-group"><label>Estimated Value (₱)</label>
-        <input type="number" class="form-control" id="ret-value" value="0" min="0">
+        <input class="form-control" id="ret-reason" placeholder="e.g. Customer changed mind, Rider brought back...">
       </div>
       <div class="form-group"><label>Restore to Inventory?</label>
         <select class="form-control" id="ret-restore-inv">
@@ -2405,7 +2388,7 @@ function closeModal(id){document.getElementById(id).classList.remove('open');}
 })();
 
 // ============ NAVIGATION ============
-const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales Calendar',orders:'Admin Encode',checker:'Checker Verify',tracking:'COD Tracking',ordermgmt:'Order Management',lbcdelivery:'LBC Delivery',emsdelivery:'EMS Delivery',fedexdelivery:'FedEx Delivery',riders:'Riders by Location',dailyparcels:'Daily Parcels',sorting:'Parcel Sorting',returns:'Return / Cancel',deletedorders:'Recently Deleted',dailysales:'Daily Sales Record',payroll:'Payroll',expenses:'Expenses',pnl:'P&L Report',inventory:'Inventory',adminsheets:'Per-Admin Order Sheets',settings:'Settings',ridersremit:'Riders Remit',cashbond:'Cashbond Tracker',benefits:'Benefits'};
+const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales Calendar',orders:'Admin Encode',checker:'Checker Verify',tracking:'COD Tracking',ordermgmt:'LBC/EMS/FedEx Tracking',lbcdelivery:'LBC Delivery',emsdelivery:'EMS Delivery',fedexdelivery:'FedEx Delivery',riders:'Riders by Location',dailyparcels:'Daily Parcels',sorting:'Parcel Sorting',returns:'Return / Cancel',deletedorders:'Recently Deleted',dailysales:'Daily Sales Record',payroll:'Payroll',expenses:'Expenses',pnl:'P&L Report',inventory:'Inventory',adminsheets:'Per-Admin Order Sheets',settings:'Settings',ridersremit:'Riders Remit',cashbond:'Cashbond Tracker',benefits:'Benefits'};
 let _activePage = 'dashboard';
 function gotoPage(name){
   _activePage = name;
@@ -2654,7 +2637,7 @@ function openEditOrder(i){
   const dofGrp2=document.getElementById('enc-date-dropoff-group'); if(dofGrp2) dofGrp2.style.display=editIsLbc?'':'none';
   const pmtInp3=document.getElementById('enc-date-payment'); if(pmtInp3) pmtInp3.value=o.dateOfPayment||'';
   const dofInp3=document.getElementById('enc-date-dropoff'); if(dofInp3) dofInp3.value=o.dateOfDropoff||'';
-  const hint2=document.getElementById('enc-date-hint'); if(hint2) hint2.textContent=editIsLbc?'(auto: today)':'(default: tomorrow — delivery date)';
+  const hint2=document.getElementById('enc-date-hint'); if(hint2) hint2.textContent='* Required (mm/dd/yy)';
   populateAdminDropdown();
   // For owner: set the dropdown to the order's admin.
   // For admin: populateAdminDropdown already locked it to their name — don't override.
@@ -3145,9 +3128,9 @@ function renderChecker(){
               <span class="checker-tag ${o.checkerStatus==='Verified'?'verified':'pending'}" style="margin-bottom:4px;display:block;">${o.checkerStatus}</span>
             </td>
             <td style="text-align:center;">
-              ${(o.printCount||0) > 0
-                ? `<span style="font-size:11px;font-weight:700;color:var(--gold);">🖨️ ${o.printCount}×</span>`
-                : `<span style="font-size:10px;color:var(--muted);">—</span>`}
+              ${o.printed
+                ? `<button class="btn btn-orange btn-sm" onclick="togglePrinted(${i})" style="font-size:10px;padding:2px 7px;">🖨️ Printed</button>`
+                : `<button class="btn btn-outline btn-sm" onclick="togglePrinted(${i})" style="font-size:10px;padding:2px 7px;">🖨️ Print</button>`}
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
               ${!isLocked?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>`:''}
@@ -3240,9 +3223,9 @@ function renderChecker(){
               }
             </td>
             <td style="text-align:center;">
-              ${(o.printCount||0) > 0
-                ? `<span style="font-size:11px;font-weight:700;color:var(--gold);">🖨️ ${o.printCount}×</span>`
-                : `<span style="font-size:10px;color:var(--muted);">—</span>`}
+              ${o.printed
+                ? `<button class="btn btn-orange btn-sm" onclick="togglePrinted(${i})" style="font-size:10px;padding:2px 7px;">🖨️ Printed</button>`
+                : `<button class="btn btn-outline btn-sm" onclick="togglePrinted(${i})" style="font-size:10px;padding:2px 7px;">🖨️ Print</button>`}
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
               ${isDroppedOff
@@ -3389,14 +3372,20 @@ function unverifyOrder(i){
 }
 
 // ============ INVOICE ============
+function togglePrinted(i) {
+  if(!S.orders[i]) return;
+  S.orders[i].printed = !S.orders[i].printed;
+  save();
+  if(document.getElementById('checker-tbody')) renderChecker();
+}
+
 function openInvoice(i){
   const o=S.orders[i];
-  // ── Increment print counter ────────────────────────────────────
-  if(i !== undefined && i !== null && S.orders[i]) {
-    S.orders[i].printCount = (S.orders[i].printCount || 0) + 1;
+  // ── Mark as Printed when invoice is opened ────────────────────
+  if(i !== undefined && i !== null && S.orders[i] && !S.orders[i].printed) {
+    S.orders[i].printed = true;
     save();
-    // Refresh checker table if on checker page
-    if(typeof renderChecker === 'function' && document.getElementById('checker-tbody')) renderChecker();
+    if(document.getElementById('checker-tbody')) renderChecker();
   }
   const biz=S.bizInfo||{};
   const bizAddress=biz.address||'Las Pinas City, Metro Manila, PH';
@@ -3941,9 +3930,7 @@ function openReturnLogModal(orderNum='', itemIdx=null) {
   document.getElementById('ret-item-desc').value = '';
   document.getElementById('ret-qty-grams').value = '0';
   document.getElementById('ret-unit').value = 'grams';
-  document.getElementById('ret-reason').value = 'Customer changed mind';
-  document.getElementById('ret-condition').value = 'Good — can re-sell';
-  document.getElementById('ret-value').value = '0';
+  document.getElementById('ret-reason').value = '';
   document.getElementById('ret-restore-inv').value = 'yes';
   document.getElementById('ret-received-by').value = '';
   document.getElementById('ret-notes').value = '';
@@ -3966,8 +3953,6 @@ function openReturnLogModal(orderNum='', itemIdx=null) {
         document.getElementById('ret-unit').value = isGrams ? 'grams' : 'pcs';
         // Default item value: always ₱5,000 per item in the order (items.length × ₱5,000)
         // e.g. 1 item = ₱5,000 default; 3 items = ₱15,000 default
-        const defaultValue = o.items.length * 5000;
-        document.getElementById('ret-value').value = defaultValue;
         // Auto-fill rider and cancel reason from order
         const itemRemark = (o.itemRemarks||{})[itemIdx] || '';
         if(itemRemark) document.getElementById('ret-reason').value = itemRemark;
@@ -4051,8 +4036,6 @@ function saveReturnLog() {
     itemDesc: desc,
     qtyGrams, unit,
     reason: document.getElementById('ret-reason').value,
-    condition: document.getElementById('ret-condition').value,
-    value: parseFloat(document.getElementById('ret-value').value)||0,
     restoredToInv: restoreInv,
     receivedBy,
     notes: document.getElementById('ret-notes').value.trim(),
@@ -4085,7 +4068,6 @@ function renderReturnLog() {
     <div class="card"><p style="color:var(--muted);padding:20px;text-align:center;">Walang return log entries${dateFilter?' para sa petsang ito':''}.</p></div>`;
     return;
   }
-  const totalValue = log.reduce((s,e)=>s+(e.value||0),0);
   const isCEO = currentRole === 'owner';
   el.innerHTML = `
     <div class="action-row no-print" style="margin-bottom:10px;flex-wrap:wrap;gap:8px;">
@@ -4095,7 +4077,6 @@ function renderReturnLog() {
     </div>
     <div class="stats-grid" style="margin-bottom:13px;">
       <div class="stat-card red"><div class="stat-label">Returns</div><div class="stat-value">${log.length}</div></div>
-      <div class="stat-card orange"><div class="stat-label">Total Value</div><div class="stat-value">${p(totalValue)}</div></div>
       <div class="stat-card green"><div class="stat-label">Restored to Stock</div><div class="stat-value">${log.filter(e=>e.restoredToInv).length}</div></div>
     </div>
     <div class="card">
@@ -4103,15 +4084,14 @@ function renderReturnLog() {
       <div class="table-wrap"><table style="font-size:11px;">
         <thead><tr style="background:rgba(201,168,76,0.08);">
           <th>Date</th><th>Order #</th><th>Customer</th><th>Item</th><th>Qty/Grams</th>
-          <th>Reason</th><th>Condition</th><th>Value</th><th>Inv Restored?</th><th>Received By</th><th>Notes</th>
+          <th>Reason</th><th>Inv Restored?</th><th>Received By</th><th>Notes</th>
           ${isCEO?'<th>Del</th>':''}
         </tr></thead>
         <tbody>
           ${log.map((e,ri)=>{
             // Find actual index in full array
             const actualIdx = S.returnLog.indexOf(e);
-            const condColor = e.condition==='Good — can re-sell'?'var(--green)':e.condition==='Damaged — cannot re-sell'?'var(--red)':'var(--orange)';
-            // Lookup customer name from order
+                    // Lookup customer name from order
             const orderIdx = S.orders.findIndex((_,i)=>onum(i)===e.orderNum);
             const customerName = orderIdx>=0 ? S.orders[orderIdx].name : '—';
             return `<tr>
@@ -4121,8 +4101,6 @@ function renderReturnLog() {
               <td style="font-size:10.5px;max-width:140px;">${e.itemDesc}</td>
               <td style="font-weight:600;">${e.qtyGrams||'—'} ${e.unit||''}</td>
               <td style="font-size:10px;">${e.reason}</td>
-              <td style="font-size:10px;color:${condColor};">${e.condition}</td>
-              <td style="color:var(--red);font-weight:600;">${p(e.value)}</td>
               <td>${e.restoredToInv?'<span style="color:var(--green);">✅ Yes</span>':'<span style="color:var(--muted);">No</span>'}</td>
               <td style="font-size:10.5px;font-weight:600;">${e.receivedBy}</td>
               <td style="font-size:10px;">${e.notes||'—'}</td>
@@ -4160,8 +4138,9 @@ function renderSorting() {
   const sf = document.getElementById('sort-status-filter')?.value || '';
   const sq = (document.getElementById('sort-search')?.value||'').toLowerCase().trim();
 
-  // Filter orders
-  let orders = S.orders.map((o,i)=>({...o,idx:i}));
+  // Filter orders — COD only (LBC/EMS/FedEx go through their own delivery pages)
+  let orders = S.orders.map((o,i)=>({...o,idx:i}))
+    .filter(o => !o.paymentMethod || o.paymentMethod === 'COD');
   if(df) orders = orders.filter(o=>o.date===df);
   if(sf) orders = orders.filter(o=>o.status===sf);
   // Search filter — name or contact number
@@ -6555,6 +6534,7 @@ function saveOrder() {
   const address = document.getElementById('enc-address').value.trim();
   const admin = document.getElementById('enc-admin').value.trim();
   const date = document.getElementById('enc-date').value;
+  if(!date) { toast('⚠️ Date is required. Please enter the date of purchase.'); document.getElementById('enc-date').focus(); return; }
   const shipping = document.getElementById('enc-shipping').value;
   const paymentMethod = document.getElementById('enc-payment-method')?.value || 'COD';
 
@@ -6678,7 +6658,7 @@ function openEncodeModal() {
   ['enc-name','enc-contact','enc-backup-contact','enc-address','enc-landmark'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const cpErr=document.getElementById('enc-contact-err'); if(cpErr) cpErr.textContent='';
   document.getElementById('enc-city').value = '';
-  document.getElementById('enc-date').value = tomorrow();
+  document.getElementById('enc-date').value = '';
   document.getElementById('enc-shipping').value = '0';
   document.getElementById('enc-items-tbody').innerHTML = '';
   document.getElementById('enc-edit-idx').value = '';
@@ -6693,7 +6673,7 @@ function openEncodeModal() {
   const dofGrp3=document.getElementById('enc-date-dropoff-group'); if(dofGrp3) dofGrp3.style.display='none';
   const pmtInp4=document.getElementById('enc-date-payment'); if(pmtInp4) pmtInp4.value='';
   const dofInp4=document.getElementById('enc-date-dropoff'); if(dofInp4) dofInp4.value='';
-  const hint3=document.getElementById('enc-date-hint'); if(hint3) hint3.textContent='(default: tomorrow — delivery date)';
+  const hint3=document.getElementById('enc-date-hint'); if(hint3) hint3.textContent='* Required (mm/dd/yy)';
   populateAdminDropdown();
   populateInvQuickPick();
   addItemRow('enc-items-tbody','calcEnc'); calcEnc();
@@ -7843,7 +7823,7 @@ async function initApp(){
   setVal('my-order-date', today());
   setVal('order-date-filter', tomorrow());
   setVal('rider-date-filter', today());
-  setVal('enc-date', tomorrow());
+  setVal('enc-date', '');
   setVal('pay-date', today());
   setVal('exp-date', today());
   setVal('stock-date', today());
@@ -8079,16 +8059,29 @@ function onPaymentMethodChange() {
   // Tracking number — for LBC, EMS & FedEx
   const grp = document.getElementById('enc-tracking-group');
   if(grp) grp.style.display = isLbc ? '' : 'none';
-  // Update label dynamically based on method
-  const tnLabel = document.querySelector('#enc-tracking-group label');
-  if(tnLabel) tnLabel.firstChild.textContent = method === 'LBC'
-    ? 'LBC Tracking Number '
-    : 'Courier Tracking Number (FedEx/EMS) ';
-  // Update maxlength per method and label hint
+  // Update label, maxlength, input filter per method
   const tnInpML = document.getElementById('enc-tracking-number');
-  if(tnInpML) tnInpML.maxLength = method === 'LBC' ? 12 : 14;
-  const tnHint = document.getElementById('enc-tracking-label-hint');
-  if(tnHint) tnHint.textContent = method === 'LBC' ? '(12 digits, optional until verified)' : '(12–14 digits, optional)';
+  const tnHint  = document.getElementById('enc-tracking-label-hint');
+  const tnLabel = document.querySelector('#enc-tracking-group label');
+  if(method === 'LBC') {
+    if(tnLabel) tnLabel.firstChild.textContent = 'LBC Tracking Number ';
+    if(tnHint)  tnHint.textContent = '(12 digits)';
+    if(tnInpML) { tnInpML.maxLength = 12; tnInpML.placeholder = '000000000000'; }
+    // LBC: digits only
+    if(tnInpML) tnInpML.oninput = function(){ this.value=this.value.replace(/\D/g,''); validateTrackingNum(this); };
+  } else if(method === 'EMS') {
+    if(tnLabel) tnLabel.firstChild.textContent = 'EMS Tracking Number ';
+    if(tnHint)  tnHint.textContent = '(13 characters: 4 letters + 9 digits, e.g. EB123456789PH)';
+    if(tnInpML) { tnInpML.maxLength = 13; tnInpML.placeholder = 'EB123456789PH'; }
+    // EMS: allow letters and digits
+    if(tnInpML) tnInpML.oninput = function(){ this.value=this.value.toUpperCase(); validateTrackingNum(this); };
+  } else if(method === 'FedEx') {
+    if(tnLabel) tnLabel.firstChild.textContent = 'FedEx Tracking Number ';
+    if(tnHint)  tnHint.textContent = '(12–22 digits)';
+    if(tnInpML) { tnInpML.maxLength = 22; tnInpML.placeholder = '123456789012'; }
+    // FedEx: digits only
+    if(tnInpML) tnInpML.oninput = function(){ this.value=this.value.replace(/\D/g,''); validateTrackingNum(this); };
+  }
   if(!isLbc) {
     const inp = document.getElementById('enc-tracking-number');
     if(inp) inp.value = '';
@@ -8106,11 +8099,9 @@ function onPaymentMethodChange() {
   const hint = document.getElementById('enc-date-hint');
   const dateEl = document.getElementById('enc-date');
   if(isLbc) {
-    if(hint) hint.textContent = '(auto: today)';
-    if(dateEl && !dateEl.value) dateEl.value = today();
+    if(hint) hint.textContent = '* Required (mm/dd/yy)';
   } else {
-    if(hint) hint.textContent = '(default: tomorrow — delivery date)';
-    if(dateEl && !dateEl.value) dateEl.value = tomorrow();
+    if(hint) hint.textContent = '* Required (mm/dd/yy)';
   }
 
   // Clear extra date fields if switching back to COD
@@ -8126,18 +8117,23 @@ function validateTrackingNum(input) {
   const err = document.getElementById('enc-tracking-err');
   const v = input.value;
   const method = document.getElementById('enc-payment-method')?.value || 'LBC';
-  if(!v) { if(err) err.textContent = ''; return; } // not required — skip if empty
+  if(!v) { if(err) err.textContent = ''; return; }
   if(method === 'LBC') {
-    if(v.length !== 12) {
-      if(err) err.textContent = `⚠️ LBC tracking: exactly 12 digits (${v.length} entered)`;
+    const digits = v.replace(/\D/g,'');
+    if(digits.length !== 12) {
+      if(err) err.textContent = `⚠️ LBC: exactly 12 digits (${digits.length} entered)`;
     } else { if(err) err.textContent = ''; }
   } else if(method === 'EMS') {
-    if(v.length < 11 || v.length > 13) {
-      if(err) err.textContent = `⚠️ EMS tracking: 11–13 digits (${v.length} entered)`;
+    // EMS: 13 chars, format: 4 letters + 9 digits (e.g. EB123456789PH)
+    if(v.length !== 13) {
+      if(err) err.textContent = `⚠️ EMS: exactly 13 characters (${v.length} entered)`;
+    } else if(!/^[A-Z]{2}\d{8}[A-Z]{2}$/.test(v) && !/^[A-Za-z]{2}\d{8}[A-Za-z]{2}$/.test(v)) {
+      if(err) err.textContent = `⚠️ EMS format: 2 letters + 8 digits + 2 letters (e.g. EB12345678PH)`;
     } else { if(err) err.textContent = ''; }
   } else if(method === 'FedEx') {
-    if(v.length < 12 || v.length > 14) {
-      if(err) err.textContent = `⚠️ FedEx tracking: 12–14 digits (${v.length} entered)`;
+    const digits = v.replace(/\D/g,'');
+    if(digits.length < 12 || digits.length > 22) {
+      if(err) err.textContent = `⚠️ FedEx: 12–22 digits (${digits.length} entered)`;
     } else { if(err) err.textContent = ''; }
   }
 }
