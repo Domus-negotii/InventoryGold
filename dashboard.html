@@ -3332,7 +3332,7 @@ function verifyOrder(i){
   // ── Deduct inventory on Checker Verify ────────────────────────
   // Only deduct once — guard against re-verify clicks.
   if(o.checkerStatus !== 'Verified') {
-    const didDeduct = _deductOrderItems(o.items, o.date,
+    const didDeduct = _deductOrderItems(o.items, today(),
       'Checker verified – '+o.name+' ('+onum(i)+')');
     if(didDeduct) S.orders[i].inventoryDeducted = true;
   }
@@ -4352,7 +4352,13 @@ function addUnassignedRiderSlot() {
 function renderDailySales(){
   if(!document.getElementById('ds-date').value)document.getElementById('ds-date').value=today();
   const d=document.getElementById('ds-date').value;
-  const dayO=S.orders.filter(o=>o.date===d),del=dayO.filter(o=>o.status==='Delivered');
+  const dayO=S.orders.filter(o=>o.date===d);
+  // COD: status Delivered. LBC/EMS/FedEx: Fully Paid + Verified (same rule as P&L)
+  const codDel = dayO.filter(o=>o.status==='Delivered'&&(o.paymentMethod||'COD')==='COD');
+  const courierDel = dayO.filter(o=>
+    (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx')&&
+    o.paymentStatus==='Fully Paid'&&o.verificationStatus==='Verified');
+  const del=[...codDel,...courierDel];
   const remit=del.reduce((s,o)=>s+o.grandTotal,0);
   const adminDel={};
   del.forEach(o=>{
@@ -5391,14 +5397,12 @@ function renderPnl(){
 
   // === INCOME ===
   // COD: counted when Delivered
-  // LBC/INTL: counted when Fully Paid + Verified + Ready to Pick-up (payment-first model)
+  // LBC/EMS/FedEx: counted as soon as Fully Paid + Verified (payment-confirmed model)
+  // No need to wait for lbcStatus — payment is already confirmed, delivery is guaranteed
   const lbcIntlPaidOrders = fO.filter(o =>
     (o.paymentMethod==='LBC' || o.paymentMethod==='EMS' || o.paymentMethod==='FedEx') &&
     o.paymentStatus === 'Fully Paid' &&
-    o.verificationStatus === 'Verified' &&
-    (o.lbcStatus === 'Ready to Pick-up' || o.lbcStatus === 'Drop off at LBC' ||
-     o.lbcStatus === 'Drop off at EMS' || o.lbcStatus === 'Out for Delivery' ||
-     o.lbcStatus === 'Delivered' || o.status === 'Delivered')
+    o.verificationStatus === 'Verified'
   );
   const deliveredOrders = fO.filter(o => o.status==='Delivered' && (o.paymentMethod||'COD')==='COD');
   const incomeOrders = [...deliveredOrders, ...lbcIntlPaidOrders];
@@ -5518,8 +5522,7 @@ function printPnl(){
   const codDel=fO.filter(o=>o.status==='Delivered'&&(o.paymentMethod||'COD')==='COD');
   const lbcIntlPaid=fO.filter(o=>
     (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx')&&
-    o.paymentStatus==='Fully Paid'&&o.verificationStatus==='Verified'&&
-    ['Ready to Pick-up','Drop off at LBC','Drop off at EMS','Out for Delivery','Delivered'].includes(o.lbcStatus||o.status)
+    o.paymentStatus==='Fully Paid'&&o.verificationStatus==='Verified'
   );
   const del=[...codDel,...lbcIntlPaid];
   const grossRev=del.reduce((s,o)=>s+o.itemsTotal,0);
