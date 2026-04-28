@@ -965,7 +965,7 @@ function _showRulesHint() {
           <select class="form-control" style="width:130px;font-size:11px;padding:4px 8px;" id="checker-filter" onchange="renderChecker()">
             <option value="">All Status</option><option value="Pending">Pending</option><option value="Verified">Verified</option>
           </select>
-          <input type="date" class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" id="checker-date" oninput="renderChecker()" title="Filter by date">
+          <input type="date" class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" id="checker-date" oninput="renderChecker()" title="Filter by date" oninput="validateDateInput(this)">
           <button class="btn btn-outline btn-sm" onclick="document.getElementById('checker-date').value='';renderChecker()">All Dates</button>
         </div>
       </div>
@@ -1067,7 +1067,7 @@ function _showRulesHint() {
               <option value="">All Status</option>
               <option>Preparing</option><option>Ready</option><option>Out for Delivery</option><option>Delivered</option><option>Cancelled</option><option>Update</option>
             </select>
-            <input type="date" class="form-control" style="width:150px;font-size:11px;" id="track-date" oninput="renderTracking()" title="Filter by date">
+            <input type="date" class="form-control" style="width:150px;font-size:11px;" id="track-date" oninput="renderTracking()" title="Filter by date" oninput="validateDateInput(this)">
           </div>
         </div>
         <div class="table-wrap"><table><thead><tr>
@@ -1117,7 +1117,7 @@ function _showRulesHint() {
     <div class="action-row no-print">
       <div style="display:flex;align-items:center;gap:9px;">
         <label style="font-size:10.5px;color:var(--muted);">Date:</label>
-        <input type="date" class="form-control" id="daily-date" style="width:148px;" oninput="renderDailyParcels()">
+        <input type="date" class="form-control" id="daily-date" style="width:148px;" oninput="renderDailyParcels()" oninput="validateDateInput(this)">
       </div>
       <span id="daily-summary" style="font-size:12px;color:var(--gold);"></span>
     </div>
@@ -1192,7 +1192,7 @@ function _showRulesHint() {
         <div class="table-wrap"><table>
           <thead><tr>
             <th>Order #</th><th>Customer</th><th>Contact</th><th>Rider</th><th>Date</th>
-            <th>Code</th><th>Description</th><th>Cancelled Qty</th><th>Item Value</th>
+            <th>Code</th><th>Description</th><th>Cancelled Qty</th>
             <th>Cancel Type</th><th>Rider Remark</th><th>Record Return</th>
           </tr></thead>
           <tbody id="cancelled-items-tbody"></tbody>
@@ -1316,7 +1316,7 @@ function _showRulesHint() {
         <button class="tab-btn" onclick="switchPnlTab('monthly')">Monthly</button>
       </div>
       <div style="display:flex;gap:7px;align-items:center;">
-        <input type="date" class="form-control" id="pnl-date" style="width:148px;">
+        <input type="date" class="form-control" id="pnl-date" style="width:148px;" oninput="validateDateInput(this)">
         <button class="btn btn-print no-print" onclick="printPnl()">🖨️ Print P&L</button>
       </div>
     </div>
@@ -1371,9 +1371,9 @@ function _showRulesHint() {
     <div class="action-row no-print">
       <div style="font-size:12px;color:var(--muted);">Per-admin order sheets — auto-pulled from main order list.</div>
       <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
-        <input type="date" class="form-control" style="width:145px;" id="as-date-from" oninput="renderAdminSheets()">
+        <input type="date" class="form-control" style="width:145px;" id="as-date-from" oninput="renderAdminSheets()" oninput="validateDateInput(this)">
         <span style="color:var(--muted);font-size:11px;">to</span>
-        <input type="date" class="form-control" style="width:145px;" id="as-date-to" oninput="renderAdminSheets()">
+        <input type="date" class="form-control" style="width:145px;" id="as-date-to" oninput="renderAdminSheets()" oninput="validateDateInput(this)">
         <button class="btn btn-print no-print" onclick="printAdminSheet()">🖨️ Print Sheet</button>
       </div>
     </div>
@@ -1540,7 +1540,7 @@ function _showRulesHint() {
       <div class="card-header">
         <span class="card-title">My Assigned Parcels</span>
         <div style="display:flex;gap:7px;flex-wrap:wrap;">
-          <input type="date" class="form-control" style="width:148px;font-size:11px;padding:4px 8px;" id="rider-date-filter" oninput="renderRiderParcels()" title="Filter by date">
+          <input type="date" class="form-control" style="width:148px;font-size:11px;padding:4px 8px;" id="rider-date-filter" oninput="renderRiderParcels()" title="Filter by date" oninput="validateDateInput(this)">
           <button class="btn btn-outline btn-sm" onclick="document.getElementById('rider-date-filter').value='';renderRiderParcels()" title="Show all dates">All</button>
           <input class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / CP#" id="rider-parcel-search" oninput="renderRiderParcels()">
           <select class="form-control" style="width:120px;font-size:11px;padding:4px 8px;" id="rider-status-filter" onchange="renderRiderParcels()">
@@ -1587,7 +1587,7 @@ function _showRulesHint() {
   <div class="action-row no-print">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <span style="font-size:12px;color:var(--muted);">Record and track all rider remittances.</span>
-      <input type="date" class="form-control" id="remit-page-date" style="width:155px;font-size:11px;" oninput="renderRemitPage()" title="Filter by date">
+      <input type="date" class="form-control" id="remit-page-date" style="width:155px;font-size:11px;" oninput="renderRemitPage()" title="Filter by date" oninput="validateDateInput(this)">
       <button class="btn btn-outline btn-sm" onclick="document.getElementById('remit-page-date').value='';renderRemitPage()">All Dates</button>
     </div>
     <button class="btn btn-gold" onclick="openRemitModal()">+ Add Remit Entry</button>
@@ -1614,7 +1614,7 @@ function _showRulesHint() {
   <div class="action-row no-print">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <span style="font-size:12px;color:var(--muted);">Track cashbond contributions.</span>
-      <input type="date" class="form-control" id="cashbond-page-date" style="width:155px;font-size:11px;" oninput="renderCashbondPage()" title="Filter by date">
+      <input type="date" class="form-control" id="cashbond-page-date" style="width:155px;font-size:11px;" oninput="renderCashbondPage()" title="Filter by date" oninput="validateDateInput(this)">
       <button class="btn btn-outline btn-sm" onclick="document.getElementById('cashbond-page-date').value='';renderCashbondPage()">All Dates</button>
     </div>
     <button class="btn btn-gold" onclick="openCashbondModal()">+ Add Cashbond Entry</button>
@@ -1860,15 +1860,15 @@ function _showRulesHint() {
       <div class="form-group"><label>Landmark / Pakuha sa</label><input class="form-control enc-tab" id="enc-landmark" placeholder="Near church, beside sari-sari..." onkeydown="encNextField(event,this)"></div>
       <div class="form-group" id="enc-date-purchase-group">
         <label>Date of Purchase <span style="font-size:10px;color:var(--red);font-weight:600;" id="enc-date-hint">* Required (mm/dd/yy)</span></label>
-        <input type="date" class="form-control enc-tab" id="enc-date" required onkeydown="encNextField(event,this)" placeholder="mm/dd/yy">
+        <input type="date" class="form-control enc-tab" id="enc-date" required oninput="validateDateInput(this)" onkeydown="encNextField(event,this)" placeholder="mm/dd/yy">
       </div>
       <div class="form-group" id="enc-date-payment-group" style="display:none;">
         <label>Date of Payment <span style="font-size:10px;color:var(--muted);">(editable)</span></label>
-        <input type="date" class="form-control enc-tab" id="enc-date-payment" onkeydown="encNextField(event,this)">
+        <input type="date" class="form-control enc-tab" id="enc-date-payment" onkeydown="encNextField(event,this)" oninput="validateDateInput(this)">
       </div>
       <div class="form-group" id="enc-date-dropoff-group" style="display:none;">
         <label>Date of Drop-off <span style="font-size:10px;color:var(--muted);">(editable)</span></label>
-        <input type="date" class="form-control enc-tab" id="enc-date-dropoff" onkeydown="encNextField(event,this)">
+        <input type="date" class="form-control enc-tab" id="enc-date-dropoff" onkeydown="encNextField(event,this)" oninput="validateDateInput(this)">
       </div>
       <div class="form-group"><label>Admin Name *</label>
         <div id="enc-admin-wrapper">
@@ -1994,7 +1994,7 @@ function _showRulesHint() {
       <div class="form-group"><label>Employee Name *</label><input class="form-control" id="pay-name" placeholder="e.g. PAM, TIN"></div>
       <div class="form-group"><label>Role</label><select class="form-control" id="pay-role"><option>Admin</option><option>Staff</option><option>Live Seller</option><option>Asst. Live Seller</option><option>Checker</option></select></div>
       <div class="form-group"><label>Period</label><select class="form-control" id="pay-period"><option value="daily">Daily</option><option value="weekly">Weekly</option></select></div>
-      <div class="form-group"><label>Pay Date</label><input type="date" class="form-control" id="pay-date"></div>
+      <div class="form-group"><label>Pay Date</label><input type="date" class="form-control" id="pay-date" oninput="validateDateInput(this)"></div>
       <div class="form-group"><label>Daily Rate (₱)</label><input type="number" class="form-control" id="pay-rate" value="0" oninput="calcPay()"></div>
       <div class="form-group"><label>Days Worked</label><input type="number" class="form-control" id="pay-days" value="1" oninput="calcPay()"></div>
       <div class="form-group"><label>Successful Parcels</label><input type="number" class="form-control" id="pay-parcels" value="0" oninput="calcPay()"></div>
@@ -2041,7 +2041,7 @@ function _showRulesHint() {
   <div class="modal" style="max-width:460px;">
     <div class="modal-header"><span class="modal-title" id="exp-modal-title">Add Expense</span><button class="modal-close" onclick="closeModal('modal-expense')">✕</button></div>
     <div class="form-grid">
-      <div class="form-group"><label>Date</label><input type="date" class="form-control" id="exp-date"></div>
+      <div class="form-group"><label>Date</label><input type="date" class="form-control" id="exp-date" oninput="validateDateInput(this)"></div>
       <div class="form-group"><label>Category</label><select class="form-control" id="exp-cat"><option>Shipping</option><option>Supplies</option><option>Utilities</option><option>Salaries</option><option>Marketing</option><option>Packaging</option><option>Other</option></select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Description *</label><input class="form-control" id="exp-desc"></div>
       <div class="form-group"><label>Amount (₱) *</label><input type="number" class="form-control" id="exp-amount" min="0"></div>
@@ -2099,7 +2099,7 @@ function _showRulesHint() {
         </select>
       </div>
       <div class="form-group"><label>Quantity *</label><input type="number" class="form-control" id="stock-qty" value="1" min="1"></div>
-      <div class="form-group"><label>Date</label><input type="date" class="form-control" id="stock-date"></div>
+      <div class="form-group"><label>Date</label><input type="date" class="form-control" id="stock-date" oninput="validateDateInput(this)"></div>
       <div class="form-group" style="grid-column:1/-1"><label>Reference / Notes</label><input class="form-control" id="stock-notes" placeholder="Order #, supplier, reason..."></div>
     </div>
     <div style="background:var(--navy);border-radius:7px;padding:10px;margin-top:10px;font-size:12px;" id="stock-preview">
@@ -2122,7 +2122,7 @@ function _showRulesHint() {
         </select>
       </div>
       <div class="form-group" style="margin:0;"><label>Date *</label>
-        <input type="date" class="form-control" id="remit-date" onchange="populateRemitParcels()">
+        <input type="date" class="form-control" id="remit-date" onchange="populateRemitParcels()" oninput="validateDateInput(this)">
       </div>
     </div>
     <!-- Parcel list per rider -->
@@ -2205,7 +2205,7 @@ function _showRulesHint() {
     <div class="form-grid">
       <div class="form-group"><label>Employee/Rider *</label><input class="form-control" id="ben-person" placeholder="Name"></div>
       <div class="form-group"><label>Type</label><select class="form-control" id="ben-type"><option value="rider">Rider</option><option value="staff">Staff</option></select></div>
-      <div class="form-group"><label>Date *</label><input type="date" class="form-control" id="ben-date"></div>
+      <div class="form-group"><label>Date *</label><input type="date" class="form-control" id="ben-date" oninput="validateDateInput(this)"></div>
       <div class="form-group"><label>Benefits (₱) *</label><input type="number" class="form-control" id="ben-amount" value="0" min="0" oninput="calcBen()"></div>
       <div class="form-group" style="grid-column:1/-1"><label>Notes</label><input class="form-control" id="ben-notes" placeholder="e.g. Monthly benefit deduction"></div>
     </div>
@@ -2261,7 +2261,7 @@ function _showRulesHint() {
         <input class="form-control" id="ret-order-num" placeholder="GOE-00001" oninput="previewReturnOrder()">
       </div>
       <div class="form-group"><label>Date Returned</label>
-        <input type="date" class="form-control" id="ret-date">
+        <input type="date" class="form-control" id="ret-date" oninput="validateDateInput(this)">
       </div>
       <div class="form-group" style="grid-column:1/-1"><label>Item Description *</label>
         <input class="form-control" id="ret-item-desc" placeholder="e.g. 18K Gold Pendant 10V89 — 2.5g">
@@ -2353,6 +2353,32 @@ let currentRole = null;
 const p=n=>'₱'+parseFloat(n||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
 const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 const tomorrow=()=>{const d=new Date();d.setDate(d.getDate()+1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+// ── Date input validator — prevents invalid dates like April 31 ──────────────
+function validateDateInput(input) {
+  if(!input.value) { input.setCustomValidity(''); return; }
+  // Parse strictly — add T00:00:00 to avoid UTC timezone shifts
+  const parts = input.value.split('-').map(Number);
+  if(parts.length !== 3) { input.setCustomValidity(''); return; }
+  const [y, m, day] = parts;
+  // Validate month range
+  if(m < 1 || m > 12) {
+    input.setCustomValidity('Invalid month');
+    input.value = '';
+    toast('⚠️ Invalid month — please enter a valid date');
+    return;
+  }
+  // Get max days in this month/year
+  const maxDay = new Date(y, m, 0).getDate(); // day 0 of next month = last day of this month
+  if(day < 1 || day > maxDay) {
+    input.setCustomValidity(`Day ${day} does not exist in month ${m} (max: ${maxDay})`);
+    const corrected = `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(Math.min(day,maxDay)).padStart(2,'0')}`;
+    toast(`⚠️ Day ${day} doesn't exist in this month — max is ${maxDay}. Please re-enter.`);
+    input.value = '';
+    return;
+  }
+  input.setCustomValidity('');
+}
+
 const onum=i=>'GOE-'+String(i+1).padStart(5,'0');
 const sclass=s=>({'In Transit':'transit','Delivering':'delivering','Delivered':'delivered','Cancelled':'cancelled','For Return':'return','Returned':'returned','Preparing':'delivering','Ready':'blue','Out for Delivery':'gold','Update':'return'}[s]||'transit');
 function toast(msg,t=2500){
@@ -2615,11 +2641,16 @@ function rowTabNext(e, el) {
 // openEncodeModal() — replaced by updated version with rider/inventory pickers above
 function openEditOrder(i){
   const o=S.orders[i];
-  // Block edit if parcel is already in transit (Ready or beyond)
-  const editLocked = ['Ready','Out for Delivery','Delivered','Cancelled'].includes(o.status);
-  if(editLocked) {
-    toast('🔒 Hindi na maaaring i-edit — ' + o.status + ' na ang parcel.');
-    return;
+  // RTO LBC/INTL parcels (lbcStatus='RTO') can always be edited by checker/owner for re-dispatch
+  const isRtoParcel = o.lbcStatus === 'RTO' &&
+    (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx');
+  if(!isRtoParcel) {
+    // Block edit for COD/non-RTO parcels that are already in transit
+    const editLocked = ['Ready','Out for Delivery','Delivered','Cancelled'].includes(o.status);
+    if(editLocked) {
+      toast('🔒 Hindi na maaaring i-edit — ' + o.status + ' na ang parcel.');
+      return;
+    }
   }
   document.getElementById('encode-title').textContent='Edit Order '+onum(i);
   document.getElementById('enc-name').value=o.name;
@@ -2906,7 +2937,7 @@ function renderOrders() {
         ? `<button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>`
         : ''}
     </td></tr>`).join('')
-  : '<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:26px;">No orders found</td></tr>';
+  : '<tr><td colspan="14" style="text-align:center;color:var(--muted);padding:26px;">No orders found</td></tr>';
 }
 
 // Print from owner admin tab view
@@ -3631,17 +3662,25 @@ function resolveUpdate(orderIdx, newStatus) {
     // Ready for Pick-up → Out for Delivery flow again tomorrow
     S.orders[orderIdx].date   = tomorrow();
     S.orders[orderIdx].status = 'Preparing';
-    // Clear the Update remark so it doesn't persist
     S.orders[orderIdx].riderRemarks = '';
+    S.orders[orderIdx].checkerCancelledDirect = false; // Allow cancelled items tracking if re-cancelled
     save();
     toast('🔁 Re-scheduled for tomorrow (' + tomorrow() + '). Status → Preparing.');
   } else {
-    // ── Cancel: do NOT auto-restore inventory ────────────────────
-    // Inventory will only be restored when staff manually records
-    // a Return Log entry for each item in the Cancelled Items tab.
+    // ── Cancel from Checker For Update ───────────────────────────
+    // Auto-restore inventory (checker-initiated cancel = confirmed return)
+    // and mark as checker-cancelled so it won't appear in Cancelled Items tab
+    let restored = false;
+    if(_invDeducted(o)) {
+      restored = _restoreOrderItems(o.items||[], today(),
+        `Checker For Update Cancel – ${o.name} (${onum(orderIdx)})`);
+      S.orders[orderIdx].inventoryDeducted = false;
+      S.orders[orderIdx].checkerStatus = 'Pending';
+    }
     S.orders[orderIdx].status = newStatus;
+    S.orders[orderIdx].checkerCancelledDirect = true; // flag: skip Cancelled Items tab
     save();
-    toast('❌ Order Cancelled. I-log ang return sa Returns tab para maibalik sa inventory.');
+    toast(restored ? '❌ Order Cancelled — inventory restored automatically. Hindi na lalabas sa Cancelled Items.' : '❌ Order Cancelled.');
   }
 
   // Refresh all relevant views
@@ -3863,12 +3902,15 @@ function renderUpdateOrders() {
             <span>SF: ${p(o.shipping)}</span>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <button class="btn btn-green btn-sm" onclick="resolveUpdate(${o.idx},'Out for Delivery')">🔁 Re-Deliver (Tomorrow)</button>
-            <button class="btn btn-red btn-sm"   onclick="resolveUpdate(${o.idx},'Cancelled')">✕ Cancel</button>
-            <button class="btn btn-outline btn-sm" onclick="openInvoice(${o.idx})">🖨️ Invoice</button>
-            <select class="form-control" style="width:160px;font-size:10.5px;padding:3px 6px;" onchange="updateStatus(${o.idx},this.value)">
-              ${['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'].map(s=>`<option${o.status===s?' selected':''}>${s}</option>`).join('')}
-            </select>
+            ${currentRole==='remitter'
+              ? `<span style="font-size:10.5px;color:var(--muted);padding:4px 8px;background:rgba(201,168,76,0.07);border-radius:6px;">🔒 View only — Checker manages this</span>
+                 <button class="btn btn-outline btn-sm" onclick="openInvoice(${o.idx})">🖨️ Invoice</button>`
+              : `<button class="btn btn-green btn-sm" onclick="resolveUpdate(${o.idx},'Out for Delivery')">🔁 Re-Deliver (Tomorrow)</button>
+                 <button class="btn btn-red btn-sm" onclick="resolveUpdate(${o.idx},'Cancelled')">✕ Cancel</button>
+                 <button class="btn btn-outline btn-sm" onclick="openInvoice(${o.idx})">🖨️ Invoice</button>
+                 <select class="form-control" style="width:160px;font-size:10.5px;padding:3px 6px;" onchange="updateStatus(${o.idx},this.value)">
+                   ${['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'].map(s=>`<option${o.status===s?' selected':''}>${s}</option>`).join('')}
+                 </select>`}
           </div>
         </div>
       </div>
@@ -3883,6 +3925,8 @@ function renderCancelledItems() {
   const rows = [];
   S.orders.forEach((o,oi)=>{
     if(df && o.date !== df) return;
+    // Skip orders cancelled directly by checker (inventory already restored, no need to log return)
+    if(o.checkerCancelledDirect) return;
     const iS=o.itemStatuses||{}, iCQ=o.itemCancelQty||{}, iR=o.itemRemarks||{};
     const wholeOrderCancelled = o.status === 'Cancelled';
 
@@ -3915,12 +3959,11 @@ function renderCancelledItems() {
     <td style="font-weight:600;color:${isCancelled?'var(--red)':'var(--orange)'};">
       ${cancelledQty}${unit} ${partialQty>0&&partialQty<totalQty?`<div style="font-size:9px;color:var(--muted);">of ${totalQty}${it.grams>0?'g':' pcs'} (Partial)</div>`:''}
     </td>
-    <td style="color:var(--red);font-weight:700;">${p(it.total)}</td>
     <td>${cancelType}</td>
     <td style="font-size:10.5px;color:var(--orange);">${remark||'—'}</td>
     <td><button class="btn btn-blue btn-sm" onclick="openReturnLogModal('${onum(oi)}',${ii})">📋 Log Return</button></td>
   </tr>`;}).join('')
-  : `<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:26px;">${df?'Walang cancelled items para sa petsang ito.':'Lahat ng cancelled items ay naka-log na sa Return Log.'}</td></tr>`;
+  : `<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">${df?'Walang cancelled items para sa petsang ito.':'Lahat ng cancelled items ay naka-log na sa Return Log.'}</td></tr>`;
 }
 
 // ── RETURN LOG (Manual) ───────────────────────────────────────────
@@ -3951,8 +3994,6 @@ function openReturnLogModal(orderNum='', itemIdx=null) {
         document.getElementById('ret-item-desc').value = `${it.code||''} — ${it.desc||''}`;
         document.getElementById('ret-qty-grams').value = retQty;
         document.getElementById('ret-unit').value = isGrams ? 'grams' : 'pcs';
-        // Default item value: always ₱5,000 per item in the order (items.length × ₱5,000)
-        // e.g. 1 item = ₱5,000 default; 3 items = ₱15,000 default
         // Auto-fill rider and cancel reason from order
         const itemRemark = (o.itemRemarks||{})[itemIdx] || '';
         if(itemRemark) document.getElementById('ret-reason').value = itemRemark;
@@ -4901,6 +4942,15 @@ function saveInv(){
     }
   }
 
+  // Guard: if EDITING and code changed to match a DIFFERENT product, block BEFORE building obj
+  if(editIdx!=='') {
+    const conflictIdx = S.inventory.findIndex((it,ix) => it.code.toUpperCase()===code && ix !== +editIdx);
+    if(conflictIdx >= 0) {
+      toast(`⚠️ Serial Code "${code}" already exists on another product (${S.inventory[conflictIdx].desc}). Use a different code.`);
+      return;
+    }
+  }
+
   let obj;
   if(t==='fixprice'){
     const qty=+document.getElementById('inv-qty').value||0;
@@ -4916,12 +4966,6 @@ function saveInv(){
 
   if(editIdx!=='') {
     const orig = S.inventory[+editIdx];
-    // Guard: if code changed to match a DIFFERENT product, block it
-    const conflictIdx = S.inventory.findIndex((it,i) => it.code.toUpperCase()===code && i !== +editIdx);
-    if(conflictIdx >= 0) {
-      toast(`⚠️ Serial Code "${code}" already exists on another product (${S.inventory[conflictIdx].desc}). Use a different code.`);
-      return;
-    }
     // Log stock change if qty or grams changed
     if(orig) {
       if(t==='fixprice' && obj.qty !== (orig.qty||0)) {
@@ -5802,7 +5846,7 @@ function applyRoleUI(){
     admin:    ['orders'],
     rider:    ['riderdash'],
     remitter: ['ridersremit','cashbond','benefits','sorting','returns'],
-    sorter:   ['sorting','tracking','ordermgmt','dailyparcels','returns'],
+    sorter:   ['sorting','tracking','ordermgmt'],
     checker:  ['checker','sorting','lbcdelivery','emsdelivery','fedexdelivery'],
   };
   const allowed = rolePages[currentRole] || null;
@@ -5829,7 +5873,7 @@ function applyRoleUI(){
       if(lockEl) lockEl.classList.add('unlocked');
     } else if(currentRole==='checker' && ['checker','lbcdelivery','emsdelivery','fedexdelivery'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
-    } else if(currentRole==='sorter' && ['tracking','sorting','dailyparcels','returns','ordermgmt'].includes(page)){
+    } else if(currentRole==='sorter' && ['tracking','sorting','ordermgmt'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
     } else {
       if(lockEl) lockEl.classList.remove('unlocked');
@@ -6623,8 +6667,16 @@ function saveOrder() {
       o.inventoryDeducted = false;
     }
 
+    // If editing an RTO parcel, reset lbcStatus so it re-enters the delivery flow
+    if(orig.lbcStatus === 'RTO') {
+      o.lbcStatus = 'Ready to Pick-up';
+      o.status = 'Preparing';
+      o.rtoReason = '';
+      o.inventoryDeducted = false; // Will be re-deducted when checker re-verifies
+    }
     S.orders[+editIdx] = o;
-    toast(hadDeducted ? '✅ Order updated! Inventory adjusted.' : '✅ Order updated!');
+    const wasRto = orig.lbcStatus === 'RTO';
+    toast(wasRto ? '✅ Order updated & ready for re-dispatch!' : hadDeducted ? '✅ Order updated! Inventory adjusted.' : '✅ Order updated!');
   } else {
     // ── NO deduction on new order — inventory deducted only when Checker VERIFIES ──
     o.inventoryDeducted = false;
@@ -7972,11 +8024,21 @@ function renderOrderMgmt() {
     if(s==='Out for Delivery') return 'var(--gold)';
     return 'var(--muted)';
   };
-  const OM_STATUSES = omTab==='lbc'
-    ? ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO']
-    : omTab==='ems'
-    ? ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO']
-    : ['Ready to Pick-up','Drop off at FedEx','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
+  // Full status list per courier type (for all non-OFD statuses)
+  const ALL_STATUSES_LBC   = ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
+  const ALL_STATUSES_EMS   = ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
+  const ALL_STATUSES_FEDEX = ['Ready to Pick-up','Drop off at Courier','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
+  // OFD-specific choices per role (checker/owner: OFD+Delivered+RTO, sorter: OFD+RTO only)
+  const OFD_CHOICES_FULL = ['Out for Delivery','Delivered','RTO'];
+  const OFD_CHOICES_SORTER = ['Out for Delivery','RTO'];
+  // OM_STATUSES is a function of the parcel's current status (computed per row below)
+  const getOmStatuses = (currentLbcSt, method) => {
+    const isOFD = currentLbcSt === 'Out for Delivery';
+    if(isOFD) return (currentRole==='checker'||currentRole==='owner') ? OFD_CHOICES_FULL : OFD_CHOICES_SORTER;
+    if(method==='EMS') return ALL_STATUSES_EMS;
+    if(method==='FedEx') return ALL_STATUSES_FEDEX;
+    return ALL_STATUSES_LBC;
+  };
 
   const rows = list.map(({o,i}) => {
     // Migrate 'Preparing' to 'Ready to Pick-up' for display consistency with Parcel Tracking
@@ -7997,7 +8059,7 @@ function renderOrderMgmt() {
       <td>
         ${o.verificationStatus === 'Verified'
           ? `<select class="form-control" style="width:165px;font-size:10.5px;padding:3px 5px;" onchange="omUpdateStatus(${i},this.value)">
-              ${OM_STATUSES.map(s=>`<option${lbcSt===s?' selected':''}>${s}</option>`).join('')}
+              ${getOmStatuses(lbcSt, o.paymentMethod).map(s=>`<option${lbcSt===s?' selected':''}>${s}</option>`).join('')}
              </select>`
           : `<span style="font-size:10px;color:var(--orange);padding:3px 7px;background:rgba(224,138,48,0.1);border-radius:5px;display:inline-block;">
                🔒 Not Verified Yet
@@ -8029,24 +8091,16 @@ function renderOrderMgmt() {
 }
 
 function omUpdateStatus(orderIdx, newStatus) {
-  // Guard: only allow if order is verified
   if((S.orders[orderIdx]?.verificationStatus||'Not Verified') !== 'Verified') {
     toast('⚠️ Hindi pa na-verify ang payment. I-verify muna sa Checker Verify.');
-    renderOrderMgmt();
-    return;
+    renderOrderMgmt(); return;
   }
+  if(newStatus === 'RTO') { _promptRTO(orderIdx,'ordermgmt'); return; }
+  if(newStatus === 'Delivered') { _promptDelivered(orderIdx,'ordermgmt'); return; }
   S.orders[orderIdx].lbcStatus = newStatus;
-  // Sync main status field so P&L, Daily Parcels, Dashboard reflect correctly
-  if(newStatus === 'Delivered') {
-    S.orders[orderIdx].status = 'Delivered';
-  } else if(newStatus === 'RTO') {
-    S.orders[orderIdx].status = 'Cancelled'; // RTO = Return to Origin = treat as cancelled
-  } else {
-    // Any other status means order is still in progress
-    S.orders[orderIdx].status = 'Preparing';
-  }
+  S.orders[orderIdx].status = 'Preparing';
   save();
-  toast(`📦 Parcel Status → ${newStatus}${newStatus==='Delivered'?' ✅ Naka-reflect na sa P&L & Daily Parcels':''}`);
+  toast('📦 Parcel Status → '+newStatus);
   renderOrderMgmt();
   if(currentRole==='owner') renderDash();
 }
@@ -8304,8 +8358,15 @@ function renderLbcDelivery() {
   const pmIcon = o => o.paymentMethod === 'EMS' ? '✈️' : '📦';
 
   // Update dropdown choices per method
-  const UPDATE_STATUSES_LBC  = ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
-  const UPDATE_STATUSES_INTL = ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
+  // OFD tab: checker sees only OFD/Delivered/RTO; sorter sees OFD/RTO only
+  const ofdChoicesChecker = ['Out for Delivery','Delivered','RTO'];
+  const ofdChoicesSorter  = ['Out for Delivery','RTO'];
+  const UPDATE_STATUSES_LBC  = (lbcDeliveryTab==='ofd')
+    ? (currentRole==='checker'||currentRole==='owner' ? ofdChoicesChecker : ofdChoicesSorter)
+    : ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
+  const UPDATE_STATUSES_INTL = (lbcDeliveryTab==='ofd')
+    ? (currentRole==='checker'||currentRole==='owner' ? ofdChoicesChecker : ofdChoicesSorter)
+    : ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
 
   const stColor = s => {
     if(s==='Delivered') return 'var(--green)';
@@ -8346,15 +8407,16 @@ function renderLbcDelivery() {
       <td style="font-size:11px;color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">
         ${o.dateOfDropoff||'<span style="color:var(--muted);font-size:10px;">—</span>'}
       </td>
+      <td style="font-size:11px;color:${o.dateDelivered?'var(--green)':'var(--muted)'}">${o.dateDelivered||'<span style="color:var(--muted);font-size:10px;">—</span>'}</td>
       <td style="font-size:10px;">${itemList}</td>
       <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
-      <td><span style="font-size:10px;font-weight:700;color:${stColor(lst)};padding:3px 8px;background:rgba(201,168,76,0.08);border-radius:5px;">${lst}</span></td>
+      <td><span style="font-size:10px;font-weight:700;color:${stColor(lst)};padding:3px 8px;background:rgba(201,168,76,0.08);border-radius:5px;">${lst}</span>${isRTO&&o.rtoReason?`<div style="font-size:9px;color:var(--red);margin-top:3px;">📝 ${o.rtoReason}</div>`:''}</td>
       <td>
         <div style="display:flex;flex-direction:column;gap:4px;">
           <select class="form-control" style="width:175px;font-size:10.5px;padding:3px 5px;" onchange="lbcdUpdateStatus(${i},this.value)">
             ${UPDATE_STATUSES.map(s=>`<option${lst===s?' selected':''}>${s}</option>`).join('')}
           </select>
-          ${(isRTO||isODZ)?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" style="width:175px;font-size:10.5px;">✏️ Edit / Re-dispatch</button>`:''}
+          ${isRTO?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" style="width:175px;font-size:10.5px;">✏️ Edit / Re-dispatch</button>`:''}
         </div>
       </td>
       <td>
@@ -8372,27 +8434,87 @@ function renderLbcDelivery() {
       <div class="table-wrap"><table>
         <thead><tr>
           <th>Order #</th><th>Customer</th><th>Address / Landmark</th><th>Admin / Method</th>
-          <th>Tracking #</th><th>📅 Date</th><th>💳 Date Paid</th><th>📦 Date Drop-off</th>
+          <th>Tracking #</th><th>📅 Date</th><th>💳 Date Paid</th><th>📦 Date Drop-off</th><th>✅ Date Delivered</th>
           <th>Items</th><th>Total</th>
           <th>Parcel Status</th><th>Update Status</th><th>Actions</th>
         </tr></thead>
-        <tbody>${rows||'<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:26px;">No '+activeStatus+' parcels</td></tr>'}</tbody>
+        <tbody>${rows||'<tr><td colspan="14" style="text-align:center;color:var(--muted);padding:26px;">No ${activeStatus} parcels</td></tr>'}</tbody>
       </table></div>
     </div>`;
 }
 
-function lbcdUpdateStatus(orderIdx, newStatus) {
-  S.orders[orderIdx].lbcStatus = newStatus;
-  // Sync main status
-  if(newStatus === 'Delivered') {
-    S.orders[orderIdx].status = 'Delivered';
-  } else if(newStatus === 'RTO') {
-    S.orders[orderIdx].status = 'Cancelled';
-  } else {
-    S.orders[orderIdx].status = 'Preparing';
-  }
+
+// ── Shared RTO / Delivery Date modal helpers ─────────────────────────────────
+function _promptRTO(orderIdx, renderFn) {
+  const existing = S.orders[orderIdx]?.rtoReason || '';
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `<div style="background:var(--navy-card);border:1px solid var(--navy-border);border-radius:12px;padding:22px 24px;width:340px;max-width:95vw;">
+    <div style="font-weight:700;font-size:14px;color:var(--gold);margin-bottom:10px;">⚠️ RTO — Reason Required</div>
+    <textarea id="_rto-reason-inp" style="width:100%;height:80px;border-radius:7px;background:var(--navy);border:1px solid var(--navy-border);color:var(--text);padding:8px;font-size:13px;resize:none;" placeholder="e.g. Walang taong tumanggap, Incomplete address, Refusal...">${existing}</textarea>
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+      <button onclick="this.closest('div').parentElement.parentElement.remove()" style="padding:6px 14px;border-radius:6px;background:var(--navy);border:1px solid var(--navy-border);color:var(--muted);cursor:pointer;">Cancel</button>
+      <button onclick="_confirmRTO(${orderIdx},'${renderFn}')" style="padding:6px 14px;border-radius:6px;background:var(--red);border:none;color:#fff;font-weight:600;cursor:pointer;">Confirm RTO</button>
+    </div>
+  </div>`;
+  overlay.id = '_rto-overlay';
+  document.body.appendChild(overlay);
+  setTimeout(()=>document.getElementById('_rto-reason-inp')?.focus(),80);
+}
+function _confirmRTO(orderIdx, renderFn) {
+  const inp = document.getElementById('_rto-reason-inp');
+  const reason = inp?.value?.trim();
+  if(!reason) { toast('⚠️ RTO reason is required.'); inp?.focus(); return; }
+  document.getElementById('_rto-overlay')?.remove();
+  S.orders[orderIdx].rtoReason = reason;
+  S.orders[orderIdx].lbcStatus = 'RTO';
+  S.orders[orderIdx].status = 'Cancelled';
   save();
-  toast(`📦 Status → ${newStatus}`);
+  toast('↩️ Status → RTO');
+  if(renderFn==='lbc') renderLbcDelivery();
+  else if(renderFn==='ems') renderEmsDelivery();
+  else if(renderFn==='ordermgmt') renderOrderMgmt();
+  else renderFedexDelivery();
+  if(currentRole==='owner') renderDash();
+}
+function _promptDelivered(orderIdx, renderFn) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `<div style="background:var(--navy-card);border:1px solid var(--navy-border);border-radius:12px;padding:22px 24px;width:320px;max-width:95vw;">
+    <div style="font-weight:700;font-size:14px;color:var(--green);margin-bottom:10px;">✅ Date of Delivery</div>
+    <input type="date" id="_del-date-inp" style="width:100%;border-radius:7px;background:var(--navy);border:1px solid var(--navy-border);color:var(--text);padding:8px;font-size:13px;" value="${today()}">
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+      <button onclick="this.closest('div').parentElement.parentElement.remove()" style="padding:6px 14px;border-radius:6px;background:var(--navy);border:1px solid var(--navy-border);color:var(--muted);cursor:pointer;">Cancel</button>
+      <button onclick="_confirmDelivered(${orderIdx},'${renderFn}')" style="padding:6px 14px;border-radius:6px;background:var(--green);border:none;color:#fff;font-weight:600;cursor:pointer;">Confirm Delivered</button>
+    </div>
+  </div>`;
+  overlay.id = '_del-overlay';
+  document.body.appendChild(overlay);
+}
+function _confirmDelivered(orderIdx, renderFn) {
+  const inp = document.getElementById('_del-date-inp');
+  const delDate = inp?.value?.trim();
+  if(!delDate) { toast('⚠️ Date of delivery is required.'); return; }
+  document.getElementById('_del-overlay')?.remove();
+  S.orders[orderIdx].dateDelivered = delDate;
+  S.orders[orderIdx].lbcStatus = 'Delivered';
+  S.orders[orderIdx].status = 'Delivered';
+  save();
+  toast('✅ Status → Delivered — Naka-reflect na sa P&L & Daily Parcels');
+  if(renderFn==='lbc') renderLbcDelivery();
+  else if(renderFn==='ems') renderEmsDelivery();
+  else if(renderFn==='ordermgmt') renderOrderMgmt();
+  else renderFedexDelivery();
+  if(currentRole==='owner') renderDash();
+}
+
+function lbcdUpdateStatus(orderIdx, newStatus) {
+  if(newStatus === 'RTO') { _promptRTO(orderIdx,'lbc'); return; }
+  if(newStatus === 'Delivered') { _promptDelivered(orderIdx,'lbc'); return; }
+  S.orders[orderIdx].lbcStatus = newStatus;
+  S.orders[orderIdx].status = 'Preparing';
+  save();
+  toast('📦 Status → '+newStatus);
   renderLbcDelivery();
   if(currentRole==='owner') renderDash();
 }
@@ -8452,7 +8574,12 @@ function renderEmsDelivery() {
 
   const stColor = s => s==='Delivered'?'var(--green)':s==='RTO'?'var(--red)':s==='Out for Delivery'?'var(--gold)':'var(--muted)';
 
-  const UPDATE_STATUSES = ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
+  // OFD tab: checker sees OFD/Delivered/RTO; sorter sees OFD/RTO only
+  const ofdChoicesC = ['Out for Delivery','Delivered','RTO'];
+  const ofdChoicesS = ['Out for Delivery','RTO'];
+  const UPDATE_STATUSES = (emsDeliveryTab==='ofd')
+    ? (currentRole==='checker'||currentRole==='owner' ? ofdChoicesC : ofdChoicesS)
+    : ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
 
   const rows = list.map(({o,i}) => {
     const lst = o.lbcStatus || activeStatus;
@@ -8483,9 +8610,10 @@ function renderEmsDelivery() {
       <td style="font-size:11px;color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">
         ${o.dateOfDropoff||'<span style="color:var(--muted);font-size:10px;">—</span>'}
       </td>
+      <td style="font-size:11px;color:${o.dateDelivered?'var(--green)':'var(--muted)'}">${o.dateDelivered||'<span style="color:var(--muted);font-size:10px;">—</span>'}</td>
       <td style="font-size:10px;">${itemList}</td>
       <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
-      <td><span style="font-size:10px;font-weight:700;color:${stColor(lst)};padding:3px 8px;background:rgba(201,168,76,0.08);border-radius:5px;">✈️ ${lst}</span></td>
+      <td><span style="font-size:10px;font-weight:700;color:${stColor(lst)};padding:3px 8px;background:rgba(201,168,76,0.08);border-radius:5px;">✈️ ${lst}</span>${isRTO&&o.rtoReason?`<div style="font-size:9px;color:var(--red);margin-top:3px;">📝 ${o.rtoReason}</div>`:''}</td>
       <td>
         <div style="display:flex;flex-direction:column;gap:4px;">
           <select class="form-control" style="width:175px;font-size:10.5px;padding:3px 5px;" onchange="emsdUpdateStatus(${i},this.value)">
@@ -8509,26 +8637,22 @@ function renderEmsDelivery() {
       <div class="table-wrap"><table>
         <thead><tr>
           <th>Order #</th><th>Customer</th><th>Address / Landmark</th><th>Admin</th>
-          <th>Tracking #</th><th>📅 Date</th><th>💳 Date Paid</th><th>📦 Date Drop-off</th>
+          <th>Tracking #</th><th>📅 Date</th><th>💳 Date Paid</th><th>📦 Date Drop-off</th><th>✅ Date Delivered</th>
           <th>Items</th><th>Total</th>
           <th>Parcel Status</th><th>Update Status</th><th>Actions</th>
         </tr></thead>
-        <tbody>${rows||'<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:26px;">No '+activeStatus+' EMS parcels</td></tr>'}</tbody>
+        <tbody>${rows||'<tr><td colspan="14" style="text-align:center;color:var(--muted);padding:26px;">No '+activeStatus+' EMS parcels</td></tr>'}</tbody>
       </table></div>
     </div>`;
 }
 
 function emsdUpdateStatus(orderIdx, newStatus) {
+  if(newStatus === 'RTO') { _promptRTO(orderIdx,'ems'); return; }
+  if(newStatus === 'Delivered') { _promptDelivered(orderIdx,'ems'); return; }
   S.orders[orderIdx].lbcStatus = newStatus;
-  if(newStatus === 'Delivered') {
-    S.orders[orderIdx].status = 'Delivered';
-  } else if(newStatus === 'RTO') {
-    S.orders[orderIdx].status = 'Cancelled';
-  } else {
-    S.orders[orderIdx].status = 'Preparing';
-  }
+  S.orders[orderIdx].status = 'Preparing';
   save();
-  toast(`✈️ EMS Status → ${newStatus}`);
+  toast('✈️ EMS Status → '+newStatus);
   renderEmsDelivery();
   if(currentRole==='owner') renderDash();
 }
@@ -8735,7 +8859,12 @@ function renderFedexDelivery() {
     </div>`;
 
   const stColor = s => s==='Delivered'?'var(--green)':s==='RTO'?'var(--red)':'var(--gold)';
-  const UPDATE_STATUSES = ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
+  // OFD tab: checker sees OFD/Delivered/RTO; sorter sees OFD/RTO only
+  const ofdChoicesFC = ['Out for Delivery','Delivered','RTO'];
+  const ofdChoicesFS = ['Out for Delivery','RTO'];
+  const UPDATE_STATUSES = (fedexDeliveryTab==='ofd')
+    ? (currentRole==='checker'||currentRole==='owner' ? ofdChoicesFC : ofdChoicesFS)
+    : ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
 
   const rows = list.map(({o,i}) => {
     const lst = o.lbcStatus || activeStatus;
@@ -8763,9 +8892,10 @@ function renderFedexDelivery() {
       <td style="font-size:11px;color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">
         ${o.dateOfDropoff||'<span style="color:var(--muted);font-size:10px;">—</span>'}
       </td>
+      <td style="font-size:11px;color:${o.dateDelivered?'var(--green)':'var(--muted)'}">${o.dateDelivered||'<span style="color:var(--muted);font-size:10px;">—</span>'}</td>
       <td style="font-size:10px;">${itemList}</td>
       <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
-      <td><span style="font-size:10px;font-weight:700;color:${stColor(lst)};padding:3px 8px;background:rgba(201,168,76,0.08);border-radius:5px;">📦 ${lst}</span></td>
+      <td><span style="font-size:10px;font-weight:700;color:${stColor(lst)};padding:3px 8px;background:rgba(201,168,76,0.08);border-radius:5px;">📦 ${lst}</span>${isRTO&&o.rtoReason?`<div style="font-size:9px;color:var(--red);margin-top:3px;">📝 ${o.rtoReason}</div>`:''}</td>
       <td>
         <div style="display:flex;flex-direction:column;gap:4px;">
           <select class="form-control" style="width:175px;font-size:10.5px;padding:3px 5px;" onchange="fedexdUpdateStatus(${i},this.value)">
@@ -8787,22 +8917,22 @@ function renderFedexDelivery() {
       <div class="table-wrap"><table>
         <thead><tr>
           <th>Order #</th><th>Customer</th><th>Address / Landmark</th><th>Admin</th>
-          <th>Tracking #</th><th>📅 Date</th><th>💳 Date Paid</th><th>📦 Date Drop-off</th>
+          <th>Tracking #</th><th>📅 Date</th><th>💳 Date Paid</th><th>📦 Date Drop-off</th><th>✅ Date Delivered</th>
           <th>Items</th><th>Total</th>
           <th>Parcel Status</th><th>Update Status</th><th>Actions</th>
         </tr></thead>
-        <tbody>${rows||'<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:26px;">No '+activeStatus+' FedEx parcels</td></tr>'}</tbody>
+        <tbody>${rows||'<tr><td colspan="14" style="text-align:center;color:var(--muted);padding:26px;">No '+activeStatus+' FedEx parcels</td></tr>'}</tbody>
       </table></div>
     </div>`;
 }
 
 function fedexdUpdateStatus(orderIdx, newStatus) {
+  if(newStatus === 'RTO') { _promptRTO(orderIdx,'fedex'); return; }
+  if(newStatus === 'Delivered') { _promptDelivered(orderIdx,'fedex'); return; }
   S.orders[orderIdx].lbcStatus = newStatus;
-  if(newStatus === 'Delivered') S.orders[orderIdx].status = 'Delivered';
-  else if(newStatus === 'RTO') S.orders[orderIdx].status = 'Cancelled';
-  else S.orders[orderIdx].status = 'Preparing';
+  S.orders[orderIdx].status = 'Preparing';
   save();
-  toast(`📦 FedEx Status → ${newStatus}`);
+  toast('📦 FedEx Status → '+newStatus);
   renderFedexDelivery();
   if(currentRole==='owner') renderDash();
 }
@@ -8899,7 +9029,7 @@ function renderCheckerDeleted() {
 
   const tbody = document.getElementById('checker-deleted-tbody');
   if(tbody) tbody.innerHTML = rows ||
-    '<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:32px;">No cancelled orders yet. Kapag nagcancel si checker ng LBC/INTL order, makikita dito.</td></tr>';
+    '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:32px;">No cancelled orders yet. Kapag nagcancel si checker ng LBC/INTL order, makikita dito.</td></tr>';
 }
 
 
@@ -8935,9 +9065,12 @@ function renderCheckerForUpdate() {
       <td style="font-size:10.5px;color:var(--orange);">${o.riderRemarks||'<span style="color:var(--muted);">No remarks</span>'}</td>
       <td>
         <div style="display:flex;gap:5px;flex-wrap:wrap;">
-          <button class="btn btn-green btn-sm" onclick="resolveUpdate(${i},'Out for Delivery')">🔁 Re-Deliver (Tomorrow)</button>
-          <button class="btn btn-red btn-sm" onclick="resolveUpdate(${i},'Cancelled')">✕ Cancel</button>
-          <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
+          ${(currentRole==='checker'||currentRole==='owner')
+            ? `<button class="btn btn-green btn-sm" onclick="resolveUpdate(${i},'Out for Delivery')">🔁 Re-Deliver (Tomorrow)</button>
+               <button class="btn btn-red btn-sm" onclick="resolveUpdate(${i},'Cancelled')">✕ Cancel</button>
+               <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>`
+            : `<span style="font-size:10.5px;color:var(--muted);padding:4px 8px;background:rgba(201,168,76,0.07);border-radius:6px;">🔒 View only</span>
+               <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>`}
         </div>
       </td>
     </tr>`;
