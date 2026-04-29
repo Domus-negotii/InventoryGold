@@ -969,28 +969,7 @@ function _showRulesHint() {
           <button class="btn btn-outline btn-sm" onclick="document.getElementById('checker-date').value='';renderChecker()">All Dates</button>
         </div>
       </div>
-      <!-- LBC/INTL lock overlay inside checker card -->
-      <div id="lbc-checker-lock" style="display:none;padding:30px;text-align:center;background:rgba(15,27,45,0.97);border-radius:8px;">
-        <div style="font-size:24px;margin-bottom:10px;">🔐</div>
-        <div style="font-weight:700;color:var(--gold);margin-bottom:6px;">LBC / EMS / FedEx Checker</div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Separate password required. Checker ng LBC at Admin lang ang may access.</div>
-        <input type="password" class="form-control" id="lbc-checker-pw-input" placeholder="Enter LBC Checker password" style="max-width:280px;margin:0 auto 10px;text-align:center;letter-spacing:3px;" onkeydown="if(event.key==='Enter')unlockLbcChecker()">
-        <div id="lbc-checker-err" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px;"></div>
-        <button class="btn btn-gold" onclick="unlockLbcChecker()">Unlock LBC Checker</button>
-      </div>
-      <div id="checker-dup-banner" style="display:none;"></div>
-    <div id="checker-table-area">
-        <div class="table-wrap" id="checker-cod-table"><table><thead><tr>
-          <th>Order #</th><th>Customer</th><th>CP #</th><th>Date</th>
-          <th>Items Total</th><th>SF</th><th>Grand Total</th><th>Assign Rider</th>
-          <th>Checker Status</th><th>Print</th><th>Actions</th>
-        </tr></thead><tbody id="checker-tbody"></tbody></table></div>
-        <div id="checker-lbc-table" style="display:none;"><table><thead><tr>
-          <th>Order #</th><th>Customer</th><th>CP #</th><th>Date</th>
-          <th>Grand Total</th><th>💳 Payment Status</th>
-          <th>✅ Verification</th><th>📦 Parcel Status</th><th>Print</th><th>Actions</th>
-        </tr></thead><tbody id="checker-lbc-tbody"></tbody></table></div>
-      </div>
+            <!-- LBC checker lock removed -->
     </div>
     <!-- For Update panel — shown when UPDATE tab is active -->
     <div id="checker-update-panel" style="display:none;">
@@ -2062,6 +2041,17 @@ function _showRulesHint() {
         <option value="fixprice">🏷️ Fix Price (specific qty, no grams)</option>
       </select>
     </div>
+    <div class="form-group" style="margin-bottom:12px;">
+      <label>Metal Category</label>
+      <div style="display:flex;gap:8px;margin-top:4px;">
+        <label id="inv-cat-gold-lbl" style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:6px 16px;border-radius:7px;border:1.5px solid var(--gold);flex:1;justify-content:center;">
+          <input type="radio" name="inv-category" id="inv-cat-gold" value="gold" checked> 🥇 Gold
+        </label>
+        <label id="inv-cat-silver-lbl" style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:6px 16px;border-radius:7px;border:1.5px solid var(--navy-border);flex:1;justify-content:center;">
+          <input type="radio" name="inv-category" id="inv-cat-silver" value="silver"> 🥈 Silver
+        </label>
+      </div>
+    </div>
     <div class="form-grid">
       <div class="form-group"><label>Serial Code *</label><input class="form-control" id="inv-code" placeholder="e.g. 18KP10V89" onkeydown="invNextField(event,this)"></div>
       <div class="form-group"><label>Description *</label><input class="form-control" id="inv-desc" onkeydown="invNextField(event,this)"></div>
@@ -2098,7 +2088,7 @@ function _showRulesHint() {
           <option value="return">Return to Stock</option>
         </select>
       </div>
-      <div class="form-group"><label>Quantity *</label><input type="number" class="form-control" id="stock-qty" value="1" min="1"></div>
+      <div class="form-group"><label>Quantity / Grams *</label><input type="number" class="form-control" id="stock-qty" value="1" min="1"></div>
       <div class="form-group"><label>Date</label><input type="date" class="form-control" id="stock-date" oninput="validateDateInput(this)"></div>
       <div class="form-group" style="grid-column:1/-1"><label>Reference / Notes</label><input class="form-control" id="stock-notes" placeholder="Order #, supplier, reason..."></div>
     </div>
@@ -2228,7 +2218,7 @@ function _showRulesHint() {
       <div class="form-group"><label>Riders by Location Password</label><input type="password" class="form-control" id="tab-pw-riders" placeholder="Leave blank = use owner password"></div>
       <div class="form-group"><label>Riders Remit Password</label><input type="password" class="form-control" id="tab-pw-ridersremit" placeholder="Leave blank = use owner password"></div>
       <div class="form-group"><label>Cashbond Password</label><input type="password" class="form-control" id="tab-pw-cashbond" placeholder="Leave blank = use owner password"></div>
-      <div class="form-group"><label>📦 LBC/INTL Checker Password</label><input type="password" class="form-control" id="tab-pw-lbcchecker" placeholder="Separate password for LBC checker"></div>
+
     </div>
     <div style="border-top:1px solid var(--navy-border);margin:14px 0 10px;padding-top:12px;">
       <p style="font-size:12px;color:var(--gold);font-weight:600;margin-bottom:10px;">🔐 Special Role Login Passwords</p>
@@ -2418,10 +2408,7 @@ const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales 
 let _activePage = 'dashboard';
 function gotoPage(name){
   _activePage = name;
-  // Reset LBC checker lock when navigating away from checker
-  if(typeof _lbcCheckerUnlocked !== 'undefined' && name !== 'checker') {
-    _lbcCheckerUnlocked = false;
-  }
+  // LBC checker lock removed
   // CEO-only pages
   if(['dashboard','calendar'].includes(name) && currentRole !== 'owner') {
     toast('🔐 Dashboard & Calendar are CEO-only'); return;
@@ -2892,6 +2879,7 @@ function renderOrders() {
     if(mf && (o.paymentMethod||'COD') !== mf) return false;
     if(df && o.date !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q) && !(o.contact||'').includes(q)) return false;
+    if(o.status === 'Cancelled') return false; // Cancelled orders hidden from Admin Encode
     return true;
   });
 
@@ -3009,25 +2997,9 @@ function setOrdersTab(tab){ ordersViewTab=tab; initOrdersPage(); }
 
 // ============ CHECKER ============
 let checkerTab = 'COD';
-let _lbcCheckerUnlocked = false;
+// _lbcCheckerUnlocked removed — no secondary lock
 
-function unlockLbcChecker() {
-  const input = document.getElementById('lbc-checker-pw-input');
-  const err = document.getElementById('lbc-checker-err');
-  const pw = input?.value || '';
-  const tabPw = S.tabPasswords?.lbcchecker || '';
-  const ownerPw = S.ownerPassword || 'goldchelle2024';
-  if(pw === tabPw || pw === ownerPw || (!tabPw && pw === ownerPw)) {
-    _lbcCheckerUnlocked = true;
-    document.getElementById('lbc-checker-lock').style.display = 'none';
-    document.getElementById('checker-table-area').style.display = '';
-    renderChecker();
-    if(input) input.value = '';
-  } else {
-    if(err) err.textContent = '❌ Wrong password';
-    setTimeout(()=>{ if(err) err.textContent=''; }, 2000);
-  }
-}
+// unlockLbcChecker removed — no secondary lock
 
 function setCheckerTab(tab) {
   checkerTab = tab;
@@ -3044,19 +3016,12 @@ function setCheckerTab(tab) {
   const el = document.getElementById('checker-tab-label'); if(el) el.textContent = labels[tab]||tab;
   if(tab === 'DELETED') { renderCheckerDeleted(); return; }
   if(tab === 'UPDATE') { renderCheckerForUpdate(); return; }
-  // Show LBC lock if not yet unlocked
+  // No secondary lock — checker accesses LBC/EMS/FedEx directly
   const isLbc = tab === 'LBC' || tab === 'EMS' || tab === 'FedEx';
-  if(isLbc && !_lbcCheckerUnlocked) {
-    document.getElementById('lbc-checker-lock').style.display = '';
-    document.getElementById('checker-table-area').style.display = 'none';
-  } else {
-    document.getElementById('lbc-checker-lock').style.display = 'none';
-    document.getElementById('checker-table-area').style.display = '';
-    // Show correct table
-    document.getElementById('checker-cod-table').style.display = isLbc ? 'none' : '';
-    document.getElementById('checker-lbc-table').style.display = isLbc ? '' : 'none';
-    renderChecker();
-  }
+  document.getElementById('checker-table-area').style.display = '';
+  document.getElementById('checker-cod-table').style.display = isLbc ? 'none' : '';
+  document.getElementById('checker-lbc-table').style.display = isLbc ? '' : 'none';
+  renderChecker();
 }
 
 
@@ -3165,7 +3130,9 @@ function renderChecker(){
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
               ${!isLocked?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>`:''}
-              ${o.checkerStatus!=='Verified'
+              ${o.status==='Cancelled'
+                ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
+                :o.checkerStatus!=='Verified'
                 ?`<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`
                 :(isLocked
                   ?`<span style="font-size:9.5px;color:var(--muted);padding:2px 6px;">🔒 ${o.status==='Delivered'?'Delivered':'In Progress'}</span>`
@@ -3259,12 +3226,15 @@ function renderChecker(){
                 : `<button class="btn btn-outline btn-sm" onclick="togglePrinted(${i})" style="font-size:10px;padding:2px 7px;">🖨️ Print</button>`}
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
+              ${checkerCanEditODZ
+                ? '<button class="btn btn-outline btn-sm" onclick="openEditOrder('+i+')" style="font-size:10.5px;">✏️ Edit ODZ</button>'
+                : ''}
               ${isDroppedOff
                 ? '<span style="font-size:9.5px;color:var(--blue);padding:2px 6px;background:rgba(74,144,217,0.1);border-radius:4px;">🔒 Dropped Off</span>'
                 : ((!isLocked ? '<button class="btn btn-outline btn-sm" onclick="openEditOrder('+i+')">✏️</button>' : '')
                   + (canVerify && verifSt==='Verified'
                     ? '<button class="btn btn-green btn-sm" onclick="verifyOrder('+i+')">✔ Verified</button>'
-                    : canVerify
+                    : o.status==='Cancelled' ? '<span style="font-size:9px;color:var(--red);">🚫 Cancelled</span>' : canVerify
                     ? '<button class="btn btn-blue btn-sm" onclick="verifyOrder('+i+')">✔ Mark Verified</button>'
                     : '')
                   + '<button class="btn btn-print btn-sm" onclick="openInvoice('+i+')">🖨️</button>'
@@ -4179,9 +4149,9 @@ function renderSorting() {
   const sf = document.getElementById('sort-status-filter')?.value || '';
   const sq = (document.getElementById('sort-search')?.value||'').toLowerCase().trim();
 
-  // Filter orders — COD only (LBC/EMS/FedEx go through their own delivery pages)
+  // Filter orders — COD only, non-cancelled only
   let orders = S.orders.map((o,i)=>({...o,idx:i}))
-    .filter(o => !o.paymentMethod || o.paymentMethod === 'COD');
+    .filter(o => (!o.paymentMethod || o.paymentMethod === 'COD') && o.status !== 'Cancelled');
   if(df) orders = orders.filter(o=>o.date===df);
   if(sf) orders = orders.filter(o=>o.status===sf);
   // Search filter — name or contact number
@@ -4237,13 +4207,15 @@ function renderSorting() {
     const safeRider = encodeURIComponent(riderName);
 
     const cards = parcels.length ? parcels.map(o=>{
-      // Lock card if rider already set it Out for Delivery
+      // Lock card if not verified OR already OFD
       const isOFD = o.status === 'Out for Delivery';
+      const notVerified = (o.checkerStatus||'Pending') !== 'Verified';
+      const sortLocked = isOFD || notVerified;
       return `
-      <div class="sort-card${isUnassigned?' sort-unassigned':''}${isOFD?' sort-card-locked':''}"
-        draggable="${isOFD?'false':'true'}"
+      <div class="sort-card${isUnassigned?' sort-unassigned':''}${sortLocked?' sort-card-locked':''}"
+        draggable="${sortLocked?'false':'true'}"
         data-order-idx="${o.idx}"
-        ${isOFD?'':'ondragstart="sortDragStart(event,'+o.idx+')" ondragend="sortDragEnd(event)"'}>
+        ${sortLocked?'':'ondragstart="sortDragStart(event,'+o.idx+')" ondragend="sortDragEnd(event)"'}>
         <div style="display:flex;justify-content:space-between;align-items:flex-start;">
           <div>
             <div class="sort-card-order">${onum(o.idx)}</div>
@@ -4257,12 +4229,14 @@ function renderSorting() {
           <span class="sort-card-total">${p(o.grandTotal)}</span>
         </div>
         <div style="margin-top:5px;">
-          ${isOFD
-            ? `<div style="font-size:10px;color:var(--orange);background:rgba(224,138,48,0.1);
-                border:1px solid rgba(224,138,48,0.3);border-radius:5px;padding:4px 8px;text-align:center;">
-                🔒 On the way — hindi na maaari i-edit
+          ${sortLocked
+            ? `<div style="font-size:10px;color:${isOFD?'var(--orange)':'var(--red)'};background:${isOFD?'rgba(224,138,48,0.1)':'rgba(224,85,85,0.1)'};
+                border:1px solid ${isOFD?'rgba(224,138,48,0.3)':'rgba(224,85,85,0.3)'};border-radius:5px;padding:4px 8px;text-align:center;">
+                🔒 ${isOFD?'On the way — hindi na maaari i-edit':'Hindi pa na-verify ng Checker'}
                </div>`
-            : `<select style="width:100%;font-size:10px;padding:2px 5px;border-radius:5px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);"
+            : sortLocked
+              ? `<div style="font-size:10px;color:${isOFD?'var(--orange)':'var(--red)'};background:rgba(201,48,48,0.1);border:1px solid rgba(201,48,48,0.3);border-radius:5px;padding:4px 8px;text-align:center;">⏳ Pending Checker Verification</div>`
+              : `<select style="width:100%;font-size:10px;padding:2px 5px;border-radius:5px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);"
                 onchange="sortReassign(${o.idx},this.value)" onclick="event.stopPropagation()">
                 <option value="">🔀 Move to rider...</option>
                 ${S.riders.map(r=>`<option value="${encodeURIComponent(r.name)}"${r.name===o.assignedRider?' selected':''}>${r.name} (📍${r.location||'?'})</option>`).join('')}
@@ -4878,6 +4852,11 @@ function openAddInvModal() {
   // Reset type selector to default (By Grams) — fixes bug where modal reopens on wrong type
   const typeSelect = document.getElementById('inv-type');
   if(typeSelect) typeSelect.value = 'grams';
+  // Reset category to Gold
+  const goldR2 = document.getElementById('inv-cat-gold'); if(goldR2) goldR2.checked = true;
+  const silvR2 = document.getElementById('inv-cat-silver'); if(silvR2) silvR2.checked = false;
+  const goldL2 = document.getElementById('inv-cat-gold-lbl'); if(goldL2) goldL2.style.borderColor = 'var(--gold)';
+  const silvL2 = document.getElementById('inv-cat-silver-lbl'); if(silvL2) silvL2.style.borderColor = 'var(--navy-border)';
   toggleInvType();
   calcInv();
   openModal('modal-inventory');
@@ -4892,6 +4871,10 @@ function openEditInv(i){
   document.getElementById('inv-modal-title').textContent='Edit Product';
   document.getElementById('inv-code').value=it.code;
   document.getElementById('inv-desc').value=it.desc;
+  // Restore category radio
+  const catVal = it.category||'gold';
+  const catEl = document.querySelector('input[name="inv-category"][value="'+catVal+'"]');
+  if(catEl) catEl.checked = true;
   const t=it.itemType||'grams';
   document.getElementById('inv-type').value=t;
   toggleInvType();
@@ -4902,6 +4885,12 @@ function openEditInv(i){
   const cfi=document.getElementById('inv-capital-fix'); if(cfi) cfi.value=(it.capitalPerUnit||0).toFixed(2);
   document.getElementById('inv-qty').value=it.qty||0;
   document.getElementById('inv-edit-idx').value=i;
+  // Restore category radio
+  const eCat = it.category||'gold';
+  const eGR = document.getElementById('inv-cat-gold'); if(eGR) eGR.checked = eCat==='gold';
+  const eSR = document.getElementById('inv-cat-silver'); if(eSR) eSR.checked = eCat==='silver';
+  const eGL = document.getElementById('inv-cat-gold-lbl'); if(eGL) eGL.style.borderColor = eCat==='gold'?'var(--gold)':'var(--navy-border)';
+  const eSL = document.getElementById('inv-cat-silver-lbl'); if(eSL) eSL.style.borderColor = eCat==='silver'?'var(--gold)':'var(--navy-border)';
   calcInv(); openModal('modal-inventory');
 }
 function saveInv(){
@@ -4956,12 +4945,14 @@ function saveInv(){
     const qty=+document.getElementById('inv-qty').value||0;
     const fp=parseFloat(document.getElementById('inv-fixprice')?.value)||0;
     const cap=parseFloat(document.getElementById('inv-capital-fix')?.value)||0;
-    obj={code,desc,itemType:'fixprice',fixPrice:fp,capitalPerUnit:cap,qty,grams:0,pergram:0};
+    const cat2=document.querySelector('input[name="inv-category"]:checked')?.value||'gold';
+    obj={code,desc,itemType:'fixprice',fixPrice:fp,capitalPerUnit:cap,qty,grams:0,pergram:0,category:cat2};
   } else {
     const grams=+document.getElementById('inv-grams').value||0;
     const pergram=parseFloat(document.getElementById('inv-pergram').value)||0;
     const cap=parseFloat(document.getElementById('inv-capital-gram')?.value)||0;
-    obj={code,desc,itemType:'grams',grams,pergram,capitalPerGram:cap,qty:0,fixPrice:0};
+    const cat=document.querySelector('input[name="inv-category"]:checked')?.value||'gold';
+    obj={code,desc,itemType:'grams',grams,pergram,capitalPerGram:cap,qty:0,fixPrice:0,category:cat};
   }
 
   if(editIdx!=='') {
@@ -8026,8 +8017,8 @@ function renderOrderMgmt() {
   };
   // Full status list per courier type (for all non-OFD statuses)
   const ALL_STATUSES_LBC   = ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
-  const ALL_STATUSES_EMS   = ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
-  const ALL_STATUSES_FEDEX = ['Ready to Pick-up','Drop off at Courier','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
+  const ALL_STATUSES_EMS   = ['Ready to Pick-up','Drop off at EMS','Out for Delivery','Delivered','RTO'];
+  const ALL_STATUSES_FEDEX = ['Ready to Pick-up','Drop off at Courier','Out for Delivery','Delivered','RTO'];
   // OFD-specific choices per role (checker/owner: OFD+Delivered+RTO, sorter: OFD+RTO only)
   const OFD_CHOICES_FULL = ['Out for Delivery','Delivered','RTO'];
   const OFD_CHOICES_SORTER = ['Out for Delivery','RTO'];
@@ -8178,11 +8169,12 @@ function validateTrackingNum(input) {
       if(err) err.textContent = `⚠️ LBC: exactly 12 digits (${digits.length} entered)`;
     } else { if(err) err.textContent = ''; }
   } else if(method === 'EMS') {
-    // EMS: 13 chars, format: 4 letters + 9 digits (e.g. EB123456789PH)
+    // EMS: strict format: 2 letters + 9 digits + 2 letters = 13 chars
+    const vUp = v.toUpperCase();
     if(v.length !== 13) {
-      if(err) err.textContent = `⚠️ EMS: exactly 13 characters (${v.length} entered)`;
-    } else if(!/^[A-Z]{2}\d{8}[A-Z]{2}$/.test(v) && !/^[A-Za-z]{2}\d{8}[A-Za-z]{2}$/.test(v)) {
-      if(err) err.textContent = `⚠️ EMS format: 2 letters + 8 digits + 2 letters (e.g. EB12345678PH)`;
+      if(err) err.textContent = `⚠️ EMS: exactly 13 characters (${v.length} entered). Format: 2 letters + 9 digits + 2 letters`;
+    } else if(!/^[A-Z]{2}\d{9}[A-Z]{2}$/.test(vUp)) {
+      if(err) err.textContent = `⚠️ EMS format: 2 letters + 9 digits + 2 letters (e.g. EB123456789PH)`;
     } else { if(err) err.textContent = ''; }
   } else if(method === 'FedEx') {
     const digits = v.replace(/\D/g,'');
@@ -8334,7 +8326,8 @@ function renderLbcDelivery() {
   });
 
   // Stats — all 4 statuses across all LBC/INTL orders
-  const allLbcIntl = S.orders.filter(o=>o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx');
+  // LBC Delivery shows LBC orders only — EMS/FedEx have their own pages
+  const allLbcIntl = S.orders.filter(o=>o.paymentMethod==='LBC');
   const statsEl = document.getElementById('lbcd-stats');
   if(statsEl) statsEl.innerHTML = `
     <div class="stat-card orange" style="cursor:pointer;" onclick="setLbcDeliveryTab('odz')">
@@ -8366,7 +8359,7 @@ function renderLbcDelivery() {
     : ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
   const UPDATE_STATUSES_INTL = (lbcDeliveryTab==='ofd')
     ? (currentRole==='checker'||currentRole==='owner' ? ofdChoicesChecker : ofdChoicesSorter)
-    : ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
+    : ['Ready to Pick-up','Drop off at EMS','Out for Delivery','Delivered','RTO'];
 
   const stColor = s => {
     if(s==='Delivered') return 'var(--green)';
@@ -8381,8 +8374,8 @@ function renderLbcDelivery() {
     const tn  = o.trackingNumber || '—';
     const isRTO = lst === 'RTO';
     const isDelivered = lst === 'Delivered' || o.status === 'Delivered';
-    const isODZ = lst === 'ODZ/Incomplete Details';
-    const UPDATE_STATUSES = o.paymentMethod === 'EMS' ? UPDATE_STATUSES_INTL : o.paymentMethod === 'FedEx' ? UPDATE_STATUSES_INTL : UPDATE_STATUSES_LBC;
+        const isODZ = lst === 'ODZ/Incomplete Details';
+    const checkerCanEditODZ = isODZ && (currentRole==='checker'||currentRole==='owner'); const UPDATE_STATUSES = o.paymentMethod === 'EMS' ? UPDATE_STATUSES_INTL : o.paymentMethod === 'FedEx' ? UPDATE_STATUSES_INTL : UPDATE_STATUSES_LBC;
 
     const itemStatuses = o.itemStatuses || {};
     const itemList = o.items.map((it,ii) => {
@@ -8413,9 +8406,11 @@ function renderLbcDelivery() {
       <td><span style="font-size:10px;font-weight:700;color:${stColor(lst)};padding:3px 8px;background:rgba(201,168,76,0.08);border-radius:5px;">${lst}</span>${isRTO&&o.rtoReason?`<div style="font-size:9px;color:var(--red);margin-top:3px;">📝 ${o.rtoReason}</div>`:''}</td>
       <td>
         <div style="display:flex;flex-direction:column;gap:4px;">
-          <select class="form-control" style="width:175px;font-size:10.5px;padding:3px 5px;" onchange="lbcdUpdateStatus(${i},this.value)">
+          ${isDelivered
+            ? `<span style="font-size:10px;color:var(--green);font-weight:600;padding:4px 8px;background:rgba(46,204,138,0.08);border-radius:5px;">✅ Delivered — Locked</span>`
+            : `<select class="form-control" style="width:175px;font-size:10.5px;padding:3px 5px;" onchange="lbcdUpdateStatus(${i},this.value)">
             ${UPDATE_STATUSES.map(s=>`<option${lst===s?' selected':''}>${s}</option>`).join('')}
-          </select>
+          </select>`}
           ${isRTO?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" style="width:175px;font-size:10.5px;">✏️ Edit / Re-dispatch</button>`:''}
         </div>
       </td>
@@ -8579,7 +8574,7 @@ function renderEmsDelivery() {
   const ofdChoicesS = ['Out for Delivery','RTO'];
   const UPDATE_STATUSES = (emsDeliveryTab==='ofd')
     ? (currentRole==='checker'||currentRole==='owner' ? ofdChoicesC : ofdChoicesS)
-    : ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
+    : ['Ready to Pick-up','Drop off at EMS','Out for Delivery','Delivered','RTO'];
 
   const rows = list.map(({o,i}) => {
     const lst = o.lbcStatus || activeStatus;
@@ -8616,9 +8611,11 @@ function renderEmsDelivery() {
       <td><span style="font-size:10px;font-weight:700;color:${stColor(lst)};padding:3px 8px;background:rgba(201,168,76,0.08);border-radius:5px;">✈️ ${lst}</span>${isRTO&&o.rtoReason?`<div style="font-size:9px;color:var(--red);margin-top:3px;">📝 ${o.rtoReason}</div>`:''}</td>
       <td>
         <div style="display:flex;flex-direction:column;gap:4px;">
-          <select class="form-control" style="width:175px;font-size:10.5px;padding:3px 5px;" onchange="emsdUpdateStatus(${i},this.value)">
+          ${isDelivered
+            ? `<span style="font-size:10px;color:var(--green);font-weight:600;padding:4px 8px;background:rgba(46,204,138,0.08);border-radius:5px;">✅ Delivered — Locked</span>`
+            : `<select class="form-control" style="width:175px;font-size:10.5px;padding:3px 5px;" onchange="emsdUpdateStatus(${i},this.value)">
             ${UPDATE_STATUSES.map(s=>`<option${lst===s?' selected':''}>${s}</option>`).join('')}
-          </select>
+          </select>`}
           ${isRTO?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" style="width:175px;font-size:10.5px;">✏️ Edit / Re-dispatch</button>`:''}
         </div>
       </td>
@@ -8864,7 +8861,7 @@ function renderFedexDelivery() {
   const ofdChoicesFS = ['Out for Delivery','RTO'];
   const UPDATE_STATUSES = (fedexDeliveryTab==='ofd')
     ? (currentRole==='checker'||currentRole==='owner' ? ofdChoicesFC : ofdChoicesFS)
-    : ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
+    : ['Ready to Pick-up','Drop off at Courier','Out for Delivery','Delivered','RTO'];
 
   const rows = list.map(({o,i}) => {
     const lst = o.lbcStatus || activeStatus;
@@ -8898,9 +8895,11 @@ function renderFedexDelivery() {
       <td><span style="font-size:10px;font-weight:700;color:${stColor(lst)};padding:3px 8px;background:rgba(201,168,76,0.08);border-radius:5px;">📦 ${lst}</span>${isRTO&&o.rtoReason?`<div style="font-size:9px;color:var(--red);margin-top:3px;">📝 ${o.rtoReason}</div>`:''}</td>
       <td>
         <div style="display:flex;flex-direction:column;gap:4px;">
-          <select class="form-control" style="width:175px;font-size:10.5px;padding:3px 5px;" onchange="fedexdUpdateStatus(${i},this.value)">
+          ${isDelivered
+            ? `<span style="font-size:10px;color:var(--green);font-weight:600;padding:4px 8px;background:rgba(46,204,138,0.08);border-radius:5px;">✅ Delivered — Locked</span>`
+            : `<select class="form-control" style="width:175px;font-size:10.5px;padding:3px 5px;" onchange="fedexdUpdateStatus(${i},this.value)">
             ${UPDATE_STATUSES.map(s=>`<option${lst===s?' selected':''}>${s}</option>`).join('')}
-          </select>
+          </select>`}
           ${isRTO?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" style="width:175px;font-size:10.5px;">✏️ Edit / Re-dispatch</button>`:''}
         </div>
       </td>
