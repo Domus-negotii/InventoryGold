@@ -965,8 +965,34 @@ function _showRulesHint() {
           <select class="form-control" style="width:130px;font-size:11px;padding:4px 8px;" id="checker-filter" onchange="renderChecker()">
             <option value="">All Status</option><option value="Pending">Pending</option><option value="Verified">Verified</option>
           </select>
-          <input type="date" class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" id="checker-date" oninput="renderChecker()" title="Filter by date" oninput="validateDateInput(this)">
+          <input type="date" class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" id="checker-date" oninput="renderChecker()" title="Filter by date">
           <button class="btn btn-outline btn-sm" onclick="document.getElementById('checker-date').value='';renderChecker()">All Dates</button>
+        </div>
+      </div>
+      <!-- Duplicate alert banner -->
+      <div id="checker-dup-banner" style="display:none;"></div>
+      <!-- COD checker table -->
+      <div id="checker-table-area">
+        <div id="checker-cod-table">
+          <div class="table-wrap"><table>
+            <thead><tr>
+              <th>Order #</th><th>Customer</th><th>CP #</th><th>Date</th>
+              <th>Items Total</th><th>SF</th><th>Grand Total</th><th>Assign Rider</th>
+              <th>Checker Status</th><th>Print</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="checker-tbody"></tbody>
+          </table></div>
+        </div>
+        <!-- LBC / EMS / FedEx checker table -->
+        <div id="checker-lbc-table" style="display:none;">
+          <div class="table-wrap"><table id="checker-lbc-table-el">
+            <thead><tr>
+              <th>Order #</th><th>Customer</th><th>CP #</th><th>Date</th>
+              <th>Grand Total</th><th>💳 Payment Status</th>
+              <th>✅ Verification</th><th>📦 Parcel Status</th><th>Print</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="checker-lbc-tbody"></tbody>
+          </table></div>
         </div>
       </div>
             <!-- LBC checker lock removed -->
@@ -2314,8 +2340,7 @@ if(!S.govSettings)S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:
 if(!S.adminNames)S.adminNames=['PAM','CHE','JP','TIN','ANGIE','GLENDA','SALLY'];
 if(!S.bizInfo)S.bizInfo={name:'Goldchelle Online Enterprises',address:'Las Pinas City, Metro Manila, PH',contact:'0917-130-7239',social:'fb.com/goldchelleonlineenterprise'};
 // Tab-specific passwords (CEO can set independently)
-if(!S.tabPasswords)S.tabPasswords={checker:'',tracking:'',riders:'',ridersremit:'',cashbond:'',lbcchecker:''};
-if(!S.tabPasswords.lbcchecker) S.tabPasswords.lbcchecker='';
+if(!S.tabPasswords)S.tabPasswords={checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''};
 if(!S.specialPasswords) S.specialPasswords={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
 // Migrate existing inventory items that are missing itemType
 if(S.inventory) S.inventory.forEach(it=>{ if(!it.itemType) it.itemType='grams'; });
@@ -2430,7 +2455,7 @@ function gotoPage(name){
 function renderPage(n){
   ({dashboard:()=>{applyDashCeoLock();if(currentRole==='owner')renderDash();},
     riderdash:()=>{},calendar:()=>{if(currentRole==='owner')renderCalendar();else{const p2=document.getElementById('page-calendar');if(p2)p2.innerHTML='<div style="text-align:center;padding:60px;"><div style="font-size:48px;">🔐</div><div style="font-family:var(--fh);font-size:20px;color:var(--gold);margin:10px 0;">CEO Only</div><p style="color:var(--muted);">Sales Calendar is restricted to CEO access.</p></div>';}},
-    orders:initOrdersPage,checker:renderChecker,tracking:()=>{renderTracking();refreshUpdateBadge();},ordermgmt:renderOrderMgmt,lbcdelivery:renderLbcDelivery,emsdelivery:renderEmsDelivery,fedexdelivery:renderFedexDelivery,
+    orders:initOrdersPage,checker:()=>setCheckerTab(checkerTab),tracking:()=>{renderTracking();refreshUpdateBadge();},ordermgmt:renderOrderMgmt,lbcdelivery:renderLbcDelivery,emsdelivery:renderEmsDelivery,fedexdelivery:renderFedexDelivery,
     riders:renderRiders,dailyparcels:renderDailyParcels,sorting:renderSorting,returns:renderReturns,deletedorders:renderDeletedOrders,
     dailysales:renderDailySales,payroll:()=>renderPayroll(payTab),expenses:renderExpenses,
     pnl:renderPnl,inventory:()=>renderInv(invTab),adminsheets:renderAdminSheets,settings:renderSettings,
@@ -3093,12 +3118,12 @@ function renderChecker(){
 
     if(!list.length) {
       document.getElementById('checker-tbody').innerHTML =
-        `<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No COD orders found</td></tr>`;
+        `<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">No COD orders found</td></tr>`;
     } else {
       let codRows = '';
       Object.keys(codAdminGroups).sort().forEach(adm => {
         codRows += `<tr style="background:rgba(201,168,76,0.08);">
-          <td colspan="10" style="padding:7px 12px;font-weight:700;font-size:11px;color:var(--gold);
+          <td colspan="11" style="padding:7px 12px;font-weight:700;font-size:11px;color:var(--gold);
             text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--navy-border);">
             👤 ${adm}
             <span style="color:var(--muted);font-weight:400;font-size:10px;margin-left:6px;">
@@ -3159,7 +3184,7 @@ function renderChecker(){
     });
     if(!list.length) {
       document.getElementById('checker-lbc-tbody').innerHTML =
-        `<tr><td colspan="10" orders found</td></tr>`;
+        `<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No ${checkerTab} orders found</td></tr>`;
     } else {
       let rows = '';
       Object.keys(adminGroups).sort().forEach(adm => {
@@ -7044,14 +7069,13 @@ function updateRidersTableHeader() {
 // ============================================================
 function openTabPasswordsModal() {
   if(currentRole !== 'owner') { toast('🔒 CEO only ang maaaring i-set ang Tab Passwords.'); return; }
-  if(!S.tabPasswords) S.tabPasswords = {checker:'', tracking:'', riders:'', ridersremit:'', cashbond:'', lbcchecker:''};
+  if(!S.tabPasswords) S.tabPasswords = {checker:'', tracking:'', riders:'', ridersremit:'', cashbond:''};
   if(!S.specialPasswords) S.specialPasswords = {remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
-  document.getElementById('tab-pw-checker').value = S.tabPasswords.checker || '';
-  document.getElementById('tab-pw-tracking').value = S.tabPasswords.tracking || '';
-  document.getElementById('tab-pw-riders').value = S.tabPasswords.riders || '';
-  document.getElementById('tab-pw-ridersremit').value = S.tabPasswords.ridersremit || '';
-  document.getElementById('tab-pw-cashbond').value = S.tabPasswords.cashbond || '';
-  document.getElementById('tab-pw-lbcchecker').value = S.tabPasswords.lbcchecker || '';
+  document.getElementById('tab-pw-checker')?.value !== undefined && (document.getElementById('tab-pw-checker').value = S.tabPasswords.checker || '');
+  document.getElementById('tab-pw-tracking')?.value !== undefined && (document.getElementById('tab-pw-tracking').value = S.tabPasswords.tracking || '');
+  document.getElementById('tab-pw-riders')?.value !== undefined && (document.getElementById('tab-pw-riders').value = S.tabPasswords.riders || '');
+  document.getElementById('tab-pw-ridersremit')?.value !== undefined && (document.getElementById('tab-pw-ridersremit').value = S.tabPasswords.ridersremit || '');
+  document.getElementById('tab-pw-cashbond')?.value !== undefined && (document.getElementById('tab-pw-cashbond').value = S.tabPasswords.cashbond || '');
   document.getElementById('special-pw-remitter').value = S.specialPasswords.remitter || '';
   document.getElementById('special-pw-sorter').value = S.specialPasswords.sorter || '';
   document.getElementById('special-pw-checker').value = S.specialPasswords.checker || '';
@@ -7061,20 +7085,18 @@ function openTabPasswordsModal() {
 function saveTabPasswords() {
   if(!S.tabPasswords) S.tabPasswords = {};
   if(!S.specialPasswords) S.specialPasswords = {};
-  S.tabPasswords.checker = document.getElementById('tab-pw-checker').value;
-  S.tabPasswords.tracking = document.getElementById('tab-pw-tracking').value;
-  S.tabPasswords.riders = document.getElementById('tab-pw-riders').value;
-  S.tabPasswords.ridersremit = document.getElementById('tab-pw-ridersremit').value;
-  S.tabPasswords.cashbond = document.getElementById('tab-pw-cashbond').value;
-  S.tabPasswords.lbcchecker = document.getElementById('tab-pw-lbcchecker').value;
+  S.tabPasswords.checker    = document.getElementById('tab-pw-checker')?.value    || '';
+  S.tabPasswords.tracking   = document.getElementById('tab-pw-tracking')?.value   || '';
+  S.tabPasswords.riders     = document.getElementById('tab-pw-riders')?.value     || '';
+  S.tabPasswords.ridersremit= document.getElementById('tab-pw-ridersremit')?.value|| '';
+  S.tabPasswords.cashbond   = document.getElementById('tab-pw-cashbond')?.value   || '';
   // Special role passwords — only update if non-empty
-  const rp = document.getElementById('special-pw-remitter').value;
-  const sp = document.getElementById('special-pw-sorter').value;
-  const cp = document.getElementById('special-pw-checker').value;
+  const rp = document.getElementById('special-pw-remitter')?.value || '';
+  const sp = document.getElementById('special-pw-sorter')?.value   || '';
+  const cp = document.getElementById('special-pw-checker')?.value  || '';
   if(rp) S.specialPasswords.remitter = rp;
-  if(sp) S.specialPasswords.sorter = sp;
-  if(cp) S.specialPasswords.checker = cp;
-  save(); // ensure specialPasswords pushed to Firebase
+  if(sp) S.specialPasswords.sorter   = sp;
+  if(cp) S.specialPasswords.checker  = cp;
   save();
   document.getElementById('tab-pw-status').style.color = 'var(--green)';
   document.getElementById('tab-pw-status').textContent = '✅ All passwords saved!';
@@ -7857,7 +7879,7 @@ async function initApp(){
   setVal('ds-date', today());
   setVal('pnl-date', today());
   setVal('daily-date', today());
-  setVal('checker-date', today());
+  setVal('checker-date', '');  // Blank — show all orders regardless of date
   setVal('track-date', today());
   setVal('sort-date', today());
   setVal('ret-items-date', today());
