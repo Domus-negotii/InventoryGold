@@ -3103,7 +3103,7 @@ function renderChecker(){
   const pending = S.orders.filter(o=>o.checkerStatus==='Pending').length;
   document.getElementById('checker-pending-count').textContent = pending ? `⚠️ ${pending} pending` : '✅ All verified';
   // Update For Update tab badge
-  const updateCount = S.orders.filter(o=>o.status==='Update'&&(o.paymentMethod||'COD')==='COD').length;
+  const updateCount = S.orders.filter(o=>o.status==='Update').length;
   const updateBtn = document.getElementById('checker-tab-update-btn');
   if(updateBtn) updateBtn.textContent = updateCount > 0 ? `🔔 For Update (${updateCount})` : '🔔 For Update';
   // Update Recently Deleted tab badge
@@ -3237,6 +3237,8 @@ function renderChecker(){
           const canVerify = pymSt === 'Fully Paid';
           const isLocked = ['Ready','Out for Delivery','Delivered','Cancelled','Update'].includes(o.status);
           const isDroppedOff = ['Drop off at LBC','Drop off at EMS','Drop off at Courier','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'].includes(o.lbcStatus||'');
+          const isODZ = (o.lbcStatus||'') === 'ODZ/Incomplete Details';
+          const checkerCanEditODZ = isODZ && (currentRole==='checker'||currentRole==='owner');
           rows += `<tr>
             <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
             <td style="font-weight:500;">${o.name}</td>
@@ -9191,13 +9193,12 @@ function renderCheckerDeleted() {
 
 // ── For Update Tab inside Checker Verify ─────────────────────
 function renderCheckerForUpdate() {
-  const list = S.orders.map((o,i)=>({o,i})).filter(({o}) =>
-    o.status === 'Update' && (o.paymentMethod||'COD') === 'COD');
+  const list = S.orders.map((o,i)=>({o,i})).filter(({o}) => o.status === 'Update');
   const el = document.getElementById('checker-update-list');
   if(!el) return;
 
   if(!list.length) {
-    el.innerHTML = '<p style="color:var(--muted);padding:24px;text-align:center;">Walang For Update na COD parcels ngayon.</p>';
+    el.innerHTML = '<p style="color:var(--muted);padding:24px;text-align:center;">Walang For Update na parcels ngayon.</p>';
     return;
   }
 
