@@ -3689,18 +3689,55 @@ function renderForUpdateTab() {
 
 
 
+function openReDeliverPicker(orderIdx) {
+  const o = S.orders[orderIdx];
+  if(!o) return;
+  const overlay = document.createElement('div');
+  overlay.id = '_redeliver-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `<div style="background:var(--navy-card);border:1px solid var(--navy-border);border-radius:12px;padding:22px 24px;width:320px;max-width:95vw;">
+    <div style="font-weight:700;font-size:14px;color:var(--gold);margin-bottom:10px;">🔁 Re-Deliver — Select Date</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Piliin ang petsa ng re-delivery:</div>
+    <input type="date" id="_redeliver-date" style="width:100%;border-radius:7px;background:var(--navy);border:1px solid var(--navy-border);color:var(--text);padding:8px;font-size:13px;margin-bottom:12px;" oninput="validateDateInput(this)">
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button onclick="document.getElementById('_redeliver-overlay').remove()" style="padding:6px 14px;border-radius:6px;background:var(--navy);border:1px solid var(--navy-border);color:var(--muted);cursor:pointer;">Cancel</button>
+      <button onclick="confirmReDeliver(${orderIdx})" style="padding:6px 14px;border-radius:6px;background:var(--green);border:none;color:#fff;font-weight:600;cursor:pointer;">Confirm</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  // Pre-fill with tomorrow's date as suggestion
+  const inp = document.getElementById('_redeliver-date');
+  if(inp) inp.value = tomorrow();
+}
+
+function confirmReDeliver(orderIdx) {
+  const inp = document.getElementById('_redeliver-date');
+  const chosenDate = inp?.value?.trim();
+  if(!chosenDate) { toast('⚠️ Pumili ng petsa para sa re-delivery.'); return; }
+  document.getElementById('_redeliver-overlay')?.remove();
+  S.orders[orderIdx].date = chosenDate;
+  S.orders[orderIdx].status = 'Preparing';
+  S.orders[orderIdx].riderRemarks = '';
+  S.orders[orderIdx].checkerCancelledDirect = false;
+  save();
+  toast('🔁 Re-scheduled for ' + chosenDate + '. Status → Preparing.');
+  renderCheckerForUpdate(); refreshUpdateBadge();
+  if(returnTab==='update') renderUpdateOrders();
+  else renderCancelledItems();
+  renderReturns();
+  if(currentRole==='owner') renderDash();
+}
+
 function resolveUpdate(orderIdx, newStatus) {
   const o = S.orders[orderIdx];
   if(!o) return;
 
   if(newStatus === 'Out for Delivery') {
-    // ── Re-Deliver: reschedule for TOMORROW ─────────────────────
-    // Set status to Preparing — rider must go through the normal
-    // Ready for Pick-up → Out for Delivery flow again tomorrow
-    S.orders[orderIdx].date   = tomorrow();
+    // Legacy path — kept for safety, uses date picker now via openReDeliverPicker
+    S.orders[orderIdx].date = tomorrow();
     S.orders[orderIdx].status = 'Preparing';
     S.orders[orderIdx].riderRemarks = '';
-    S.orders[orderIdx].checkerCancelledDirect = false; // Allow cancelled items tracking if re-cancelled
+    S.orders[orderIdx].checkerCancelledDirect = false;
     save();
     toast('🔁 Re-scheduled for tomorrow (' + tomorrow() + '). Status → Preparing.');
   } else {
@@ -3852,22 +3889,40 @@ function setReturnTab(tab) {
 }
 
 function renderReturns() {
-  const cancelledOrders = S.orders.filter(o=>o.status==='Cancelled').length;
-  const updateOrders    = S.orders.filter(o=>o.status==='Update').length;
+  const updateOrders = S.orders.filter(o=>o.status==='Update').length;
+
+  // Compute cancelled orders and items that still need action
+  // (exclude checkerCancelledDirect — those were auto-restored, no manual log needed)
+  let cancelledOrdersWithPending = 0;
   let cancelledItemCount = 0;
-  S.orders.forEach(o=>{
+
+  S.orders.forEach((o,oi)=>{
+    if(o.checkerCancelledDirect) return; // auto-restored, skip
     const iS = o.itemStatuses||{}, iCQ = o.itemCancelQty||{};
-    // Count items from whole-cancelled orders
+    let orderHasPending = false;
+
     if(o.status==='Cancelled') {
-      cancelledItemCount += o.items.length;
+      // Whole-order cancelled — count items not yet logged
+      o.items.forEach((_,ii)=>{
+        const logged = (S.returnLog||[]).some(r=>r.orderNum===onum(oi)&&r.itemIdx===ii);
+        if(!logged) { cancelledItemCount++; orderHasPending = true; }
+      });
     } else {
-      o.items.forEach((_,ii)=>{ if(iS[ii]==='Cancelled'||(iCQ[ii]||0)>0) cancelledItemCount++; });
+      // Partial cancellations
+      o.items.forEach((_,ii)=>{
+        if(iS[ii]==='Cancelled'||(iCQ[ii]||0)>0) {
+          const logged = (S.returnLog||[]).some(r=>r.orderNum===onum(oi)&&r.itemIdx===ii);
+          if(!logged) { cancelledItemCount++; orderHasPending = true; }
+        }
+      });
     }
+    if(orderHasPending) cancelledOrdersWithPending++;
   });
+
   const returnLogCount = (S.returnLog||[]).length;
 
   document.getElementById('return-stats').innerHTML=`
-    <div class="stat-card red">   <div class="stat-label">Cancelled Orders</div><div class="stat-value">${cancelledOrders}</div><div class="stat-sub">${cancelledItemCount} items total</div></div>
+    <div class="stat-card red">   <div class="stat-label">Cancelled Orders</div><div class="stat-value">${cancelledOrdersWithPending}</div><div class="stat-sub">${cancelledItemCount} items pending log</div></div>
     <div class="stat-card orange"><div class="stat-label">For Update</div><div class="stat-value">${updateOrders}</div><div class="stat-sub">Pending resolution</div></div>
     <div class="stat-card purple"><div class="stat-label">Cancelled Items</div><div class="stat-value">${cancelledItemCount}</div><div class="stat-sub">pending return log</div></div>
     <div class="stat-card blue">  <div class="stat-label">Return Log</div><div class="stat-value">${returnLogCount}</div><div class="stat-sub">manual entries</div></div>`;
@@ -3942,7 +3997,7 @@ function renderUpdateOrders() {
             ${currentRole==='remitter'
               ? `<span style="font-size:10.5px;color:var(--muted);padding:4px 8px;background:rgba(201,168,76,0.07);border-radius:6px;">🔒 View only — Checker manages this</span>
                  <button class="btn btn-outline btn-sm" onclick="openInvoice(${o.idx})">🖨️ Invoice</button>`
-              : `<button class="btn btn-green btn-sm" onclick="resolveUpdate(${o.idx},'Out for Delivery')">🔁 Re-Deliver (Tomorrow)</button>
+              : `<button class="btn btn-green btn-sm" onclick="openReDeliverPicker(${o.idx})">🔁 Re-Deliver</button>
                  <button class="btn btn-red btn-sm" onclick="resolveUpdate(${o.idx},'Cancelled')">✕ Cancel</button>
                  <button class="btn btn-outline btn-sm" onclick="openInvoice(${o.idx})">🖨️ Invoice</button>
                  <select class="form-control" style="width:160px;font-size:10.5px;padding:3px 6px;" onchange="updateStatus(${o.idx},this.value)">
@@ -7904,6 +7959,30 @@ function _computeBaog(order) {
   if(itemCount < 10) return null;
   if(cat === 'gold' && total < 300000) return null;
   if(cat === 'silver' && total < 50000) return null;
+
+  // ── Delivery/Remit qualification ──────────────────────────────────────────
+  const isCourier = order.paymentMethod === 'LBC' || order.paymentMethod === 'EMS' || order.paymentMethod === 'FedEx';
+  if(isCourier) {
+    // LBC/EMS/FedEx: qualify as soon as checker marks payment Verified
+    if((order.verificationStatus||'Not Verified') !== 'Verified') return null;
+  } else {
+    // COD: rider must have DELIVERED AND the rider must have a Remitted entry
+    // in remitLog where the remit date >= order date (remittance covers this order)
+    if(order.status !== 'Delivered') return null;
+    const riderName = order.assignedRider;
+    const orderDate = order.date;
+    if(!riderName) return null;
+    // Check if rider has any remitLog entry with remitStatus='Remitted'
+    // and remit date >= order delivery date (the remit covers this order)
+    const hasRemitted = (S.remitLog||[]).some(r =>
+      r.riderName === riderName &&
+      r.remitStatus === 'Remitted' &&
+      r.date >= orderDate
+    );
+    if(!hasRemitted) return null;
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   const baog = cat === 'gold'
     ? (total / 9000) * 80 * 0.05
     : (total / 500) * 50 * 0.05;
@@ -7951,7 +8030,7 @@ function renderIncentivesPage() {
       + '<span style="color:var(--gold);font-weight:700;font-size:14px;">Total Baog: '+p(adminTotal)+'</span></div>'
       + '<div class="table-wrap"><table style="font-size:11.5px;"><thead><tr style="background:rgba(201,168,76,0.08);">'
       + '<th>Order #</th><th>Customer</th><th>Date</th><th>Category</th>'
-      + '<th>Items</th><th>Order Total</th><th>Formula</th><th style="color:var(--gold);">Baog</th>'
+      + '<th>Items</th><th>Order Total</th><th>Formula</th><th style="color:var(--gold);">Baog</th><th>Qual.</th>'
       + '</tr></thead><tbody>';
     orders.forEach(function(q){
       const formula = q.cat==='gold'
@@ -7969,10 +8048,11 @@ function renderIncentivesPage() {
         + '<td style="color:var(--green);font-weight:600;">'+p(q.total)+'</td>'
         + '<td style="font-size:10px;color:var(--muted);">'+formula+'</td>'
         + '<td style="color:var(--gold);font-weight:700;font-size:13px;">'+p(q.baog)+'</td>'
+        + '<td style="font-size:9.5px;">'+((q.o.paymentMethod==='LBC'||q.o.paymentMethod==='EMS'||q.o.paymentMethod==='FedEx')?'<span style="color:var(--green);">✅ Verified</span>':'<span style="color:var(--blue);">💰 Remitted</span>')+'</td>'
         + '</tr>';
     });
     html += '<tr style="background:rgba(201,168,76,0.06);font-weight:700;">'
-      + '<td colspan="7" style="color:var(--muted);">Total Baog \u2014 '+adm+'</td>'
+      + '<td colspan="8" style="color:var(--muted);">Total Baog \u2014 '+adm+'</td>'
       + '<td style="color:var(--gold);font-size:13px;">'+p(adminTotal)+'</td>'
       + '</tr></tbody></table></div></div>';
   });
@@ -8478,10 +8558,10 @@ function renderLbcDelivery() {
   const q  = (document.getElementById('lbcd-search')?.value||'').toLowerCase();
   const df = document.getElementById('lbcd-date')?.value||'';
 
-  // All LBC/INTL orders with the matching lbcStatus
+  // LBC Delivery shows LBC parcels only — EMS/FedEx have their own pages
   const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
     const pm = o.paymentMethod||'COD';
-    if(pm !== 'LBC' && pm !== 'EMS' && pm !== 'FedEx') return false;
+    if(pm !== 'LBC') return false;
     if((o.lbcStatus||'') !== activeStatus) return false;
     if(df && o.date !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q)
@@ -9228,7 +9308,7 @@ function renderCheckerForUpdate() {
       <td>
         <div style="display:flex;gap:5px;flex-wrap:wrap;">
           ${(currentRole==='checker'||currentRole==='owner')
-            ? `<button class="btn btn-green btn-sm" onclick="resolveUpdate(${i},'Out for Delivery')">🔁 Re-Deliver (Tomorrow)</button>
+            ? `<button class="btn btn-green btn-sm" onclick="openReDeliverPicker(${i})">🔁 Re-Deliver</button>
                <button class="btn btn-red btn-sm" onclick="resolveUpdate(${i},'Cancelled')">✕ Cancel</button>
                <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>`
             : `<span style="font-size:10.5px;color:var(--muted);padding:4px 8px;background:rgba(201,168,76,0.07);border-radius:6px;">🔒 View only</span>
