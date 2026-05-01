@@ -3097,6 +3097,7 @@ function getMissingFieldsWarning(o, verifSt) {
 }
 
 function renderChecker(){
+  // v2-fixed-checkerCanEditODZ
   const filt = document.getElementById('checker-filter')?.value||'';
   const q = (document.getElementById('checker-search')?.value||'').toLowerCase();
   const df = document.getElementById('checker-date')?.value||'';
@@ -3203,7 +3204,8 @@ function renderChecker(){
           </tr>`;
         });
       });
-      document.getElementById('checker-tbody').innerHTML = codRows;
+      const _codT = document.getElementById('checker-tbody');
+      if(_codT) _codT.innerHTML = codRows;
     }
   } else {
     // LBC / EMS / FedEx — payment status + verification flow
@@ -3218,8 +3220,9 @@ function renderChecker(){
       adminGroups[adm].push({o,i});
     });
     if(!list.length) {
-      document.getElementById('checker-lbc-tbody').innerHTML =
-        `<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No ${checkerTab} orders found</td></tr>`;
+      const _lbcT2 = document.getElementById('checker-lbc-tbody');
+      if(_lbcT2) _lbcT2.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">No ${checkerTab} orders found</td></tr>`;
+      else console.error('checker-lbc-tbody not found (empty)!');
     } else {
       let rows = '';
       Object.keys(adminGroups).sort().forEach(adm => {
@@ -3306,7 +3309,9 @@ function renderChecker(){
           </tr>`;
         });
       });
-      document.getElementById('checker-lbc-tbody').innerHTML = rows;
+      const _lbcT = document.getElementById('checker-lbc-tbody');
+      if(_lbcT) _lbcT.innerHTML = rows;
+      else console.error('checker-lbc-tbody not found!');
     }
   }
 }
