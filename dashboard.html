@@ -833,6 +833,7 @@ function _showRulesHint() {
       <div class="nav-item" onclick="gotoPage('ridersremit')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Riders Remit</div>
       <div class="nav-item" onclick="gotoPage('cashbond')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>Cashbond</div>
       <div class="nav-item" onclick="gotoPage('benefits')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>Benefits</div>
+      <div class="nav-item" onclick="gotoPage('incentives')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>Incentives / Baog</div>
     </div>
     <div class="nav-section">
       <div class="nav-label">Finance</div>
@@ -1072,7 +1073,7 @@ function _showRulesHint() {
               <option value="">All Status</option>
               <option>Preparing</option><option>Ready</option><option>Out for Delivery</option><option>Delivered</option><option>Cancelled</option><option>Update</option>
             </select>
-            <input type="date" class="form-control" style="width:150px;font-size:11px;" id="track-date" oninput="renderTracking()" title="Filter by date" oninput="validateDateInput(this)">
+            <input type="date" class="form-control" style="width:150px;font-size:11px;" id="track-date" oninput="renderTracking()" title="Filter by date">
           </div>
         </div>
         <div class="table-wrap"><table><thead><tr>
@@ -1122,7 +1123,7 @@ function _showRulesHint() {
     <div class="action-row no-print">
       <div style="display:flex;align-items:center;gap:9px;">
         <label style="font-size:10.5px;color:var(--muted);">Date:</label>
-        <input type="date" class="form-control" id="daily-date" style="width:148px;" oninput="renderDailyParcels()" oninput="validateDateInput(this)">
+        <input type="date" class="form-control" id="daily-date" style="width:148px;" oninput="renderDailyParcels()">
       </div>
       <span id="daily-summary" style="font-size:12px;color:var(--gold);"></span>
     </div>
@@ -1376,9 +1377,9 @@ function _showRulesHint() {
     <div class="action-row no-print">
       <div style="font-size:12px;color:var(--muted);">Per-admin order sheets — auto-pulled from main order list.</div>
       <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
-        <input type="date" class="form-control" style="width:145px;" id="as-date-from" oninput="renderAdminSheets()" oninput="validateDateInput(this)">
+        <input type="date" class="form-control" style="width:145px;" id="as-date-from" oninput="renderAdminSheets()">
         <span style="color:var(--muted);font-size:11px;">to</span>
-        <input type="date" class="form-control" style="width:145px;" id="as-date-to" oninput="renderAdminSheets()" oninput="validateDateInput(this)">
+        <input type="date" class="form-control" style="width:145px;" id="as-date-to" oninput="renderAdminSheets()">
         <button class="btn btn-print no-print" onclick="printAdminSheet()">🖨️ Print Sheet</button>
       </div>
     </div>
@@ -1545,7 +1546,7 @@ function _showRulesHint() {
       <div class="card-header">
         <span class="card-title">My Assigned Parcels</span>
         <div style="display:flex;gap:7px;flex-wrap:wrap;">
-          <input type="date" class="form-control" style="width:148px;font-size:11px;padding:4px 8px;" id="rider-date-filter" oninput="renderRiderParcels()" title="Filter by date" oninput="validateDateInput(this)">
+          <input type="date" class="form-control" style="width:148px;font-size:11px;padding:4px 8px;" id="rider-date-filter" oninput="renderRiderParcels()" title="Filter by date">
           <button class="btn btn-outline btn-sm" onclick="document.getElementById('rider-date-filter').value='';renderRiderParcels()" title="Show all dates">All</button>
           <input class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / CP#" id="rider-parcel-search" oninput="renderRiderParcels()">
           <select class="form-control" style="width:120px;font-size:11px;padding:4px 8px;" id="rider-status-filter" onchange="renderRiderParcels()">
@@ -1592,7 +1593,7 @@ function _showRulesHint() {
   <div class="action-row no-print">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <span style="font-size:12px;color:var(--muted);">Record and track all rider remittances.</span>
-      <input type="date" class="form-control" id="remit-page-date" style="width:155px;font-size:11px;" oninput="renderRemitPage()" title="Filter by date" oninput="validateDateInput(this)">
+      <input type="date" class="form-control" id="remit-page-date" style="width:155px;font-size:11px;" oninput="renderRemitPage()" title="Filter by date">
       <button class="btn btn-outline btn-sm" onclick="document.getElementById('remit-page-date').value='';renderRemitPage()">All Dates</button>
     </div>
     <button class="btn btn-gold" onclick="openRemitModal()">+ Add Remit Entry</button>
@@ -1619,13 +1620,47 @@ function _showRulesHint() {
   <div class="action-row no-print">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <span style="font-size:12px;color:var(--muted);">Track cashbond contributions.</span>
-      <input type="date" class="form-control" id="cashbond-page-date" style="width:155px;font-size:11px;" oninput="renderCashbondPage()" title="Filter by date" oninput="validateDateInput(this)">
+      <input type="date" class="form-control" id="cashbond-page-date" style="width:155px;font-size:11px;" oninput="renderCashbondPage()" title="Filter by date">
       <button class="btn btn-outline btn-sm" onclick="document.getElementById('cashbond-page-date').value='';renderCashbondPage()">All Dates</button>
     </div>
     <button class="btn btn-gold" onclick="openCashbondModal()">+ Add Cashbond Entry</button>
   </div>
   <div id="cashbond-page-content"></div>
 </div>
+<!-- INCENTIVES / BAOG PAGE -->
+<div class="page page-lockable" id="page-incentives">
+  <!-- Lock Overlay -->
+  <div class="finance-lock unlocked" id="lock-incentives">
+    <div class="lock-box">
+      <div class="lock-icon">⭐</div>
+      <div class="lock-title">Incentives / Baog</div>
+      <div class="lock-sub">Enter password to access.</div>
+      <input type="password" class="form-control" id="lock-pw-incentives" placeholder="Enter password" style="text-align:center;letter-spacing:3px;margin-bottom:8px;" onkeydown="if(event.key==='Enter')unlockPage('incentives')">
+      <div class="lock-err" id="lock-err-incentives"></div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:10px;">
+        <button class="btn btn-gold" onclick="unlockPage('incentives')">Unlock</button>
+        <button class="btn btn-outline" onclick="gotoPage('orders')">Go Back</button>
+      </div>
+    </div>
+  </div>
+  <div class="action-row no-print">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:12px;color:var(--muted);">Admin incentives — qualified baog orders (10+ items &amp; meets minimum value).</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <select class="form-control" id="incentives-admin-filter" style="width:160px;font-size:11px;" onchange="renderIncentivesPage()">
+        <option value="">All Admins</option>
+      </select>
+      <select class="form-control" id="incentives-cat-filter" style="width:130px;font-size:11px;" onchange="renderIncentivesPage()">
+        <option value="">Gold &amp; Silver</option>
+        <option value="gold">Gold Only</option>
+        <option value="silver">Silver Only</option>
+      </select>
+    </div>
+  </div>
+  <div id="incentives-page-content"></div>
+</div>
+
 
 <!-- BENEFITS PAGE -->
 <div class="page page-lockable" id="page-benefits">
@@ -2429,7 +2464,7 @@ function closeModal(id){document.getElementById(id).classList.remove('open');}
 })();
 
 // ============ NAVIGATION ============
-const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales Calendar',orders:'Admin Encode',checker:'Checker Verify',tracking:'COD Tracking',ordermgmt:'LBC/EMS/FedEx Tracking',lbcdelivery:'LBC Delivery',emsdelivery:'EMS Delivery',fedexdelivery:'FedEx Delivery',riders:'Riders by Location',dailyparcels:'Daily Parcels',sorting:'Parcel Sorting',returns:'Return / Cancel',deletedorders:'Recently Deleted',dailysales:'Daily Sales Record',payroll:'Payroll',expenses:'Expenses',pnl:'P&L Report',inventory:'Inventory',adminsheets:'Per-Admin Order Sheets',settings:'Settings',ridersremit:'Riders Remit',cashbond:'Cashbond Tracker',benefits:'Benefits'};
+const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales Calendar',orders:'Admin Encode',checker:'Checker Verify',tracking:'COD Tracking',ordermgmt:'LBC/EMS/FedEx Tracking',lbcdelivery:'LBC Delivery',emsdelivery:'EMS Delivery',fedexdelivery:'FedEx Delivery',riders:'Riders by Location',dailyparcels:'Daily Parcels',sorting:'Parcel Sorting',returns:'Return / Cancel',deletedorders:'Recently Deleted',dailysales:'Daily Sales Record',payroll:'Payroll',expenses:'Expenses',pnl:'P&L Report',inventory:'Inventory',adminsheets:'Per-Admin Order Sheets',settings:'Settings',ridersremit:'Riders Remit',cashbond:'Cashbond Tracker',benefits:'Benefits',incentives:'Incentives / Baog'};
 let _activePage = 'dashboard';
 function gotoPage(name){
   _activePage = name;
@@ -2459,7 +2494,7 @@ function renderPage(n){
     riders:renderRiders,dailyparcels:renderDailyParcels,sorting:renderSorting,returns:renderReturns,deletedorders:renderDeletedOrders,
     dailysales:renderDailySales,payroll:()=>renderPayroll(payTab),expenses:renderExpenses,
     pnl:renderPnl,inventory:()=>renderInv(invTab),adminsheets:renderAdminSheets,settings:renderSettings,
-    ridersremit:renderRemitPage,cashbond:renderCashbondPage,benefits:renderBenefitsPage
+    ridersremit:renderRemitPage,cashbond:renderCashbondPage,benefits:renderBenefitsPage,incentives:renderIncentivesPage
   })[n]?.();
 }
 
@@ -7838,6 +7873,106 @@ function renderBenefitsPage() {
   }).join('');
 }
 
+
+// ── INCENTIVES / BAOG ────────────────────────────────────────────────────────
+function _getOrderCategory(order) {
+  if(!order.items || !order.items.length) return 'gold';
+  let gold = 0, silver = 0;
+  order.items.forEach(it => {
+    const inv = S.inventory.find(iv => iv.code && it.code && iv.code.toUpperCase() === it.code.toUpperCase());
+    if(inv && (inv.category||'gold') === 'silver') silver++;
+    else gold++;
+  });
+  return gold >= silver ? 'gold' : 'silver';
+}
+
+function _computeBaog(order) {
+  const cat = _getOrderCategory(order);
+  const total = order.grandTotal || 0;
+  const itemCount = (order.items||[]).reduce((s, it) => {
+    const inv = S.inventory.find(iv => iv.code && it.code && iv.code.toUpperCase() === it.code.toUpperCase());
+    if(inv && inv.itemType === 'fixprice') return s + (it.qty || 1);
+    return s + 1;
+  }, 0);
+  if(itemCount < 10) return null;
+  if(cat === 'gold' && total < 300000) return null;
+  if(cat === 'silver' && total < 50000) return null;
+  const baog = cat === 'gold'
+    ? (total / 9000) * 80 * 0.05
+    : (total / 500) * 50 * 0.05;
+  return { cat, baog, itemCount, total };
+}
+
+function renderIncentivesPage() {
+  const el = document.getElementById('incentives-page-content');
+  if(!el) return;
+  const adminFilter = document.getElementById('incentives-admin-filter');
+  if(adminFilter) {
+    const admins = [...new Set(S.orders.map(o=>o.admin).filter(Boolean))].sort();
+    const cur = adminFilter.value;
+    adminFilter.innerHTML = '<option value="">All Admins</option>' +
+      admins.map(a=>`<option value="${a}"${a===cur?' selected':''}>${a}</option>`).join('');
+  }
+  const filterAdmin = adminFilter ? adminFilter.value : '';
+  const filterCat = (document.getElementById('incentives-cat-filter')||{}).value || '';
+  const qualified = [];
+  S.orders.forEach((o,oi) => {
+    const result = _computeBaog(o);
+    if(!result) return;
+    if(filterAdmin && o.admin !== filterAdmin) return;
+    if(filterCat && result.cat !== filterCat) return;
+    qualified.push(Object.assign({o,oi},result));
+  });
+  if(!qualified.length) {
+    el.innerHTML = '<div class="card"><p style="color:var(--muted);padding:24px;text-align:center;">Wala pang qualified na baog orders.<br><span style="font-size:11px;">Gold: 10+ items at \u20b1300,000+ &nbsp;|&nbsp; Silver: 10+ items at \u20b150,000+</span></p></div>';
+    return;
+  }
+  const byAdmin = {};
+  qualified.forEach(q => { const adm=q.o.admin||'(No Admin)'; if(!byAdmin[adm])byAdmin[adm]=[]; byAdmin[adm].push(q); });
+  const grandTotal = qualified.reduce((s,q)=>s+q.baog,0);
+  const goldCount = qualified.filter(q=>q.cat==='gold').length;
+  const silverCount = qualified.filter(q=>q.cat==='silver').length;
+  let html = '<div class="stats-grid" style="margin-bottom:13px;">'
+    + '<div class="stat-card gold"><div class="stat-label">Total Baog</div><div class="stat-value">'+p(grandTotal)+'</div></div>'
+    + '<div class="stat-card orange"><div class="stat-label">Qualified Orders</div><div class="stat-value">'+qualified.length+'</div><div class="stat-sub">'+goldCount+' Gold, '+silverCount+' Silver</div></div>'
+    + '<div class="stat-card blue"><div class="stat-label">Admins with Baog</div><div class="stat-value">'+Object.keys(byAdmin).length+'</div></div>'
+    + '</div>';
+  Object.entries(byAdmin).sort().forEach(function([adm, orders]){
+    const adminTotal = orders.reduce((s,q)=>s+q.baog,0);
+    html += '<div class="card" style="margin-bottom:11px;">'
+      + '<div class="card-header"><span class="card-title">\u{1F464} '+adm+'</span>'
+      + '<span style="color:var(--gold);font-weight:700;font-size:14px;">Total Baog: '+p(adminTotal)+'</span></div>'
+      + '<div class="table-wrap"><table style="font-size:11.5px;"><thead><tr style="background:rgba(201,168,76,0.08);">'
+      + '<th>Order #</th><th>Customer</th><th>Date</th><th>Category</th>'
+      + '<th>Items</th><th>Order Total</th><th>Formula</th><th style="color:var(--gold);">Baog</th>'
+      + '</tr></thead><tbody>';
+    orders.forEach(function(q){
+      const formula = q.cat==='gold'
+        ? p(q.total)+' \u00f7 9,000 \u00d7 80 \u00d7 5%'
+        : p(q.total)+' \u00f7 500 \u00d7 50 \u00d7 5%';
+      const catBadge = q.cat==='gold'
+        ? '<span style="background:rgba(201,168,76,0.2);color:var(--gold);padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">\u{1F947} GOLD</span>'
+        : '<span style="background:rgba(160,160,180,0.2);color:#b0b0cc;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">\u{1F948} SILVER</span>';
+      html += '<tr>'
+        + '<td style="color:var(--gold);font-weight:600;">'+onum(q.oi)+'</td>'
+        + '<td style="font-weight:500;">'+q.o.name+'</td>'
+        + '<td>'+q.o.date+'</td>'
+        + '<td>'+catBadge+'</td>'
+        + '<td style="text-align:center;font-weight:700;">'+q.itemCount+'</td>'
+        + '<td style="color:var(--green);font-weight:600;">'+p(q.total)+'</td>'
+        + '<td style="font-size:10px;color:var(--muted);">'+formula+'</td>'
+        + '<td style="color:var(--gold);font-weight:700;font-size:13px;">'+p(q.baog)+'</td>'
+        + '</tr>';
+    });
+    html += '<tr style="background:rgba(201,168,76,0.06);font-weight:700;">'
+      + '<td colspan="7" style="color:var(--muted);">Total Baog \u2014 '+adm+'</td>'
+      + '<td style="color:var(--gold);font-size:13px;">'+p(adminTotal)+'</td>'
+      + '</tr></tbody></table></div></div>';
+  });
+  el.innerHTML = html;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function delBenefits(i) {
   _confirmDel(`Delete benefits entry for "${S.benefitsLog[i]?.person}"?`, ()=>{
     S.benefitsLog.splice(i,1); save(); renderBenefitsPage(); toast('🗑️ Benefits entry deleted');
@@ -9359,4 +9494,112 @@ function confirmMerge() {
 // initApp() is called after successful doLogin()
 </script>
 </body>
-</html>
+</html
+// ── INCENTIVES / BAOG ────────────────────────────────────────────────────────
+function _getOrderCategory(order) {
+  if(!order.items || !order.items.length) return 'gold';
+  let gold = 0, silver = 0;
+  order.items.forEach(it => {
+    const inv = S.inventory.find(iv => iv.code && it.code && iv.code.toUpperCase() === it.code.toUpperCase());
+    if(inv && (inv.category||'gold') === 'silver') silver++;
+    else gold++;
+  });
+  return gold >= silver ? 'gold' : 'silver';
+}
+
+function _computeBaog(order) {
+  const cat = _getOrderCategory(order);
+  const total = order.grandTotal || 0;
+  const itemCount = (order.items||[]).reduce((s, it) => {
+    const inv = S.inventory.find(iv => iv.code && it.code && iv.code.toUpperCase() === it.code.toUpperCase());
+    if(inv && inv.itemType === 'fixprice') return s + (it.qty || 1);
+    return s + 1;
+  }, 0);
+  if(itemCount < 10) return null;
+  if(cat === 'gold' && total < 300000) return null;
+  if(cat === 'silver' && total < 50000) return null;
+  const baog = cat === 'gold'
+    ? (total / 9000) * 80 * 0.05
+    : (total / 500) * 50 * 0.05;
+  return { cat, baog, itemCount, total };
+}
+
+function renderIncentivesPage() {
+  const el = document.getElementById('incentives-page-content');
+  if(!el) return;
+  const adminFilter = document.getElementById('incentives-admin-filter');
+  if(adminFilter) {
+    const admins = [...new Set(S.orders.map(o=>o.admin).filter(Boolean))].sort();
+    const cur = adminFilter.value;
+    adminFilter.innerHTML = '<option value="">All Admins</option>' +
+      admins.map(a=>`<option value="${a}"${a===cur?' selected':''}>${a}</option>`).join('');
+  }
+  const filterAdmin = adminFilter?.value || '';
+  const filterCat = document.getElementById('incentives-cat-filter')?.value || '';
+  const qualified = [];
+  S.orders.forEach((o,oi) => {
+    const result = _computeBaog(o);
+    if(!result) return;
+    if(filterAdmin && o.admin !== filterAdmin) return;
+    if(filterCat && result.cat !== filterCat) return;
+    qualified.push({o,oi,...result});
+  });
+  if(!qualified.length) {
+    el.innerHTML = `<div class="card"><p style="color:var(--muted);padding:24px;text-align:center;">
+      Wala pang qualified na baog orders.<br>
+      <span style="font-size:11px;">🥇 Gold: 10+ items &amp; ₱300,000+ &nbsp;|&nbsp; 🥈 Silver: 10+ items &amp; ₱50,000+</span>
+    </p></div>`;
+    return;
+  }
+  const byAdmin = {};
+  qualified.forEach(q => { const adm=q.o.admin||'(No Admin)'; if(!byAdmin[adm])byAdmin[adm]=[]; byAdmin[adm].push(q); });
+  const grandTotal = qualified.reduce((s,q)=>s+q.baog,0);
+  const goldCount = qualified.filter(q=>q.cat==='gold').length;
+  const silverCount = qualified.filter(q=>q.cat==='silver').length;
+  el.innerHTML = `
+    <div class="stats-grid" style="margin-bottom:13px;">
+      <div class="stat-card gold"><div class="stat-label">Total Baog</div><div class="stat-value">${p(grandTotal)}</div></div>
+      <div class="stat-card orange"><div class="stat-label">Qualified Orders</div><div class="stat-value">${qualified.length}</div><div class="stat-sub">${goldCount} Gold, ${silverCount} Silver</div></div>
+      <div class="stat-card blue"><div class="stat-label">Admins with Baog</div><div class="stat-value">${Object.keys(byAdmin).length}</div></div>
+    </div>
+    ${Object.entries(byAdmin).sort().map(([adm,orders])=>{
+      const adminTotal = orders.reduce((s,q)=>s+q.baog,0);
+      return `<div class="card" style="margin-bottom:11px;">
+        <div class="card-header">
+          <span class="card-title">👤 ${adm}</span>
+          <span style="color:var(--gold);font-weight:700;font-size:14px;">Total Baog: ${p(adminTotal)}</span>
+        </div>
+        <div class="table-wrap"><table style="font-size:11.5px;">
+          <thead><tr style="background:rgba(201,168,76,0.08);">
+            <th>Order #</th><th>Customer</th><th>Date</th><th>Category</th>
+            <th>Items</th><th>Order Total</th><th>Formula</th><th style="color:var(--gold);">Baog</th>
+          </tr></thead>
+          <tbody>
+            ${orders.map(q=>{
+              const formula = q.cat==='gold'
+                ? p(q.total)+' ÷ 9,000 × 80 × 5%'
+                : p(q.total)+' ÷ 500 × 50 × 5%';
+              return `<tr>
+                <td style="color:var(--gold);font-weight:600;">${onum(q.oi)}</td>
+                <td style="font-weight:500;">${q.o.name}</td>
+                <td>${q.o.date}</td>
+                <td>${q.cat==='gold'
+                  ?'<span style="background:rgba(201,168,76,0.2);color:var(--gold);padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">🥇 GOLD</span>'
+                  :'<span style="background:rgba(150,150,170,0.2);color:#b0b0cc;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">🥈 SILVER</span>'}</td>
+                <td style="text-align:center;font-weight:700;">${q.itemCount}</td>
+                <td style="color:var(--green);font-weight:600;">${p(q.total)}</td>
+                <td style="font-size:10px;color:var(--muted);">${formula}</td>
+                <td style="color:var(--gold);font-weight:700;font-size:13px;">${p(q.baog)}</td>
+              </tr>`;
+            }).join('')}
+            <tr style="background:rgba(201,168,76,0.06);font-weight:700;">
+              <td colspan="7" style="color:var(--muted);">Total Baog — ${adm}</td>
+              <td style="color:var(--gold);font-size:13px;">${p(adminTotal)}</td>
+            </tr>
+          </tbody>
+        </table></div>
+      </div>`;
+    }).join('')}`;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+>
