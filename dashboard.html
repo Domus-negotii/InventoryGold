@@ -1910,6 +1910,17 @@ function _showRulesHint() {
         <label>Date of Drop-off <span style="font-size:10px;color:var(--muted);">(editable)</span></label>
         <input type="date" class="form-control enc-tab" id="enc-date-dropoff" onkeydown="encNextField(event,this)" oninput="validateDateInput(this)">
       </div>
+      <!-- Ref No. / Installment Payments (LBC/EMS/FedEx only) -->
+      <div id="enc-payments-group" style="display:none;grid-column:1/-1;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">
+            Reference No. &amp; Payment History <span style="color:var(--red);font-size:9px;">* Required when Date of Payment is set</span>
+          </label>
+          <button type="button" class="btn btn-outline btn-sm" onclick="addPaymentRow()" style="font-size:10px;">+ Add Payment</button>
+        </div>
+        <div id="enc-payments-tbody" style="display:flex;flex-direction:column;gap:5px;"></div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px;">💡 Tip: Mag-add ng payment row para sa bawat installment. Bawat ref# may kasamang amount.</div>
+      </div>
       <div class="form-group"><label>Admin Name *</label>
         <div id="enc-admin-wrapper">
           <!-- Populated by populateAdminDropdown() based on role -->
@@ -2716,6 +2727,12 @@ function openEditOrder(i){
   const pmtInp3=document.getElementById('enc-date-payment'); if(pmtInp3) pmtInp3.value=o.dateOfPayment||'';
   const dofInp3=document.getElementById('enc-date-dropoff'); if(dofInp3) dofInp3.value=o.dateOfDropoff||'';
   const hint2=document.getElementById('enc-date-hint'); if(hint2) hint2.textContent='* Required (mm/dd/yy)';
+  // Populate payments group
+  const paymentsGrp2 = document.getElementById('enc-payments-group');
+  if(paymentsGrp2) {
+    paymentsGrp2.style.display = editIsLbc ? '' : 'none';
+    if(editIsLbc) renderPayments(o.payments||[], false);
+  }
   populateAdminDropdown();
   // For owner: set the dropdown to the order's admin.
   // For admin: populateAdminDropdown already locked it to their name — don't override.
@@ -3087,13 +3104,17 @@ function setCheckerTab(tab) {
 
 function getMissingFieldsWarning(o, verifSt) {
   const isCourier = o.paymentMethod==='LBC' || o.paymentMethod==='EMS' || o.paymentMethod==='FedEx';
+  const isFedEx = o.paymentMethod==='FedEx';
   if(!isCourier || verifSt==='Verified') return '';
   const miss = [];
-  if(!o.trackingNumber) miss.push('Tracking #');
+  // LBC/EMS require tracking number; FedEx does NOT (tracking only available after drop-off)
+  if(!isFedEx && !o.trackingNumber) miss.push('Tracking #');
   if(!o.dateOfPayment)  miss.push('Date Paid');
   if(!o.dateOfDropoff)  miss.push('Date Drop-off');
-  if(!miss.length) return '';
-  return '<div style="font-size:9px;color:var(--red);font-weight:600;margin-top:2px;">⚠️ Required: ' + miss.join(', ') + '</div>';
+  if(miss.length) return '<div style="font-size:9px;color:var(--red);font-weight:600;margin-top:2px;">⚠️ Required: ' + miss.join(', ') + '</div>';
+  // For FedEx with no tracking yet — show a soft reminder, not a blocker
+  if(isFedEx && !o.trackingNumber) return '<div style="font-size:9px;color:var(--orange);font-weight:600;margin-top:2px;">ℹ️ FedEx: I-add ang Tracking # pagkatapos ng drop-off</div>';
+  return '';
 }
 
 function renderChecker(){
@@ -3337,12 +3358,15 @@ function updateVerifStatus(orderIdx, status) {
     toast('⚠️ Kailangan Fully Paid muna bago i-verify');
     return;
   }
-  // For LBC/EMS/FedEx — require tracking, date paid, and date drop-off before verifying
+  // For LBC/EMS/FedEx — require date paid and date drop-off before verifying
+  // FedEx: tracking number NOT required (generated only after drop-off at FedEx facility)
+  // LBC/EMS: tracking number IS required
   const isCourier = o.paymentMethod === 'LBC' || o.paymentMethod === 'EMS' || o.paymentMethod === 'FedEx';
+  const isFedEx = o.paymentMethod === 'FedEx';
   if(status === 'Verified') {
     if(isCourier) {
       const missing = [];
-      if(!o.trackingNumber) missing.push('Tracking Number');
+      if(!isFedEx && !o.trackingNumber) missing.push('Tracking Number');
       if(!o.dateOfPayment)  missing.push('Date of Fully Paid');
       if(!o.dateOfDropoff)  missing.push('Date of Drop-off');
       if(missing.length > 0) {
@@ -3382,11 +3406,13 @@ function assignRiderFromChecker(orderIdx, riderName) {
 }
 function verifyOrder(i){
   const o = S.orders[i];
-  // For LBC/EMS/FedEx: tracking, date paid, and date drop-off all required
+  // For LBC/EMS/FedEx: tracking required for LBC/EMS only; date paid & drop-off required for all
+  // FedEx exception: tracking number generated only AFTER drop-off at FedEx facility
   const isCourier = o.paymentMethod==='LBC' || o.paymentMethod==='EMS' || o.paymentMethod==='FedEx';
+  const isFedEx = o.paymentMethod==='FedEx';
   if(isCourier) {
     const missing = [];
-    if(!o.trackingNumber) missing.push('Tracking Number');
+    if(!isFedEx && !o.trackingNumber) missing.push('Tracking Number');
     if(!o.dateOfPayment)  missing.push('Date of Fully Paid');
     if(!o.dateOfDropoff)  missing.push('Date of Drop-off');
     if(missing.length > 0) {
@@ -3446,6 +3472,29 @@ function togglePrinted(i) {
   save();
   if(document.getElementById('checker-tbody')) renderChecker();
 }
+
+// ── Build Ref No. rows for receipt ────────────────────────────
+// Shows nothing for COD. For LBC/EMS/FedEx: shows each installment ref# + amount.
+// Falls back to legacy o.refno field if no payments array.
+function buildRefRows(o) {
+  const isCourierMethod = o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx';
+  if(!isCourierMethod) return '';
+  const fldR=(lbl,val)=>val?`<tr>
+    <td style="font-size:8.5px;font-weight:700;color:#000;padding:1px 0;white-space:nowrap;width:52px;">${lbl}</td>
+    <td style="font-size:8.5px;color:#000;padding:1px 0;">${val}</td></tr>`:'';
+  const pmts = (o.payments||[]).filter(p=>p.refno||p.amount>0);
+  if(pmts.length) {
+    const multiRef = pmts.length > 1;
+    return pmts.map((pmt,pi)=>{
+      const lbl = multiRef ? `Ref #${pi+1}:` : 'Ref No.:';
+      const val = (pmt.refno||'')+(pmt.amount>0?` \u2014 \u20b1${Number(pmt.amount).toFixed(2)}`:'');
+      return fldR(lbl, val);
+    }).join('');
+  }
+  // Legacy single refno field fallback
+  return fldR('Ref No.:', o.refno||'');
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 function openInvoice(i){
   const o=S.orders[i];
@@ -3510,9 +3559,10 @@ function openInvoice(i){
     ${fld('Admin:', o.adminList && o.adminList.length>1 ? o.adminList.join(' / ') : adminName)}
     ${fld('Date:',o.date)}
     ${fld('Method:',o.paymentMethod||'COD')}
-  ${o.trackingNumber?fld('Tracking #:',o.trackingNumber):''}
+  ${(o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||(o.paymentMethod==='FedEx'&&o.trackingNumber))?fld('Tracking #:',o.trackingNumber):''}
   ${o.dateOfPayment?fld('Date of Payment:',o.dateOfPayment):''}
   ${o.dateOfDropoff?fld('Date of Drop-off:',o.dateOfDropoff):''}
+  ${buildRefRows(o)}
   </table>
 
   ${DASH_LINE}
@@ -6684,6 +6734,45 @@ function _invDeducted(o) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Installment / Reference Number Payment Rows ───────────────
+function addPaymentRow(refno='', amount='') {
+  const tbody = document.getElementById('enc-payments-tbody');
+  if(!tbody) return;
+  const idx = tbody.children.length;
+  const row = document.createElement('div');
+  row.className = 'enc-payment-row';
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:center;';
+  row.innerHTML = `
+    <input class="form-control" style="font-size:11px;" placeholder="Reference No. *" value="${refno}" data-role="refno">
+    <input type="number" class="form-control" style="font-size:11px;" placeholder="Amount (₱)" value="${amount}" min="0" step="0.01" data-role="amount">
+    <button type="button" class="btn btn-red btn-sm" onclick="this.closest('.enc-payment-row').remove()" style="padding:3px 8px;">✕</button>`;
+  tbody.appendChild(row);
+}
+
+function getPayments() {
+  const rows = document.querySelectorAll('#enc-payments-tbody .enc-payment-row');
+  const payments = [];
+  rows.forEach(row => {
+    const refno = (row.querySelector('[data-role="refno"]')?.value||'').trim();
+    const amount = parseFloat(row.querySelector('[data-role="amount"]')?.value)||0;
+    // Skip completely blank rows (no refno and no amount entered)
+    if(refno || amount > 0) payments.push({refno, amount});
+  });
+  return payments;
+}
+
+function renderPayments(payments, addBlankIfEmpty=false) {
+  const tbody = document.getElementById('enc-payments-tbody');
+  if(!tbody) return;
+  tbody.innerHTML = '';
+  if(payments && payments.length) {
+    payments.forEach(p => addPaymentRow(p.refno||'', p.amount||''));
+  } else if(addBlankIfEmpty) {
+    addPaymentRow(); // start with one empty row for new orders
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function saveOrder() {
   const name = document.getElementById('enc-name').value.trim();
   const contact = document.getElementById('enc-contact').value.replace(/\D/g,'');
@@ -6736,6 +6825,18 @@ function saveOrder() {
   const trackingNumber = (paymentMethod === 'LBC' || paymentMethod === 'EMS' || paymentMethod === 'FedEx') ? (document.getElementById('enc-tracking-number')?.value.trim()||'') : '';
   const dateOfPayment = isLbcMethod ? (document.getElementById('enc-date-payment')?.value||'') : '';
   const dateOfDropoff = isLbcMethod ? (document.getElementById('enc-date-dropoff')?.value||'') : '';
+
+  // Installment payments
+  const payments = isLbcMethod ? getPayments() : [];
+  // Validate: if date of payment is entered, at least one ref# is required
+  if(isLbcMethod && dateOfPayment) {
+    const hasRef = payments.some(p => p.refno);
+    if(!hasRef) {
+      toast('⚠️ Reference Number required kapag may Date of Payment. Mag-add ng kahit isang Ref. No.');
+      document.getElementById('enc-payments-group')?.scrollIntoView({behavior:'smooth',block:'nearest'});
+      return;
+    }
+  }
   const o = {
     name, contact, backupContact, address,
     city: document.getElementById('enc-city').value,
@@ -6744,6 +6845,7 @@ function saveOrder() {
     admin, assignedRider, paymentMethod,
     shipping: sf2, items, itemsTotal: iT, totalDiscount, grandTotal: iT + sf2,
     trackingNumber, dateOfPayment, dateOfDropoff,
+    payments,
     status: 'Preparing', checkerStatus: 'Pending',
     paymentStatus: isLbcMethod ? 'No Payment' : 'COD',
     paymentNotes: '',
@@ -6767,6 +6869,8 @@ function saveOrder() {
     // Preserve extra LBC dates if not re-entered
     if(!o.dateOfPayment && orig.dateOfPayment) o.dateOfPayment = orig.dateOfPayment;
     if(!o.dateOfDropoff && orig.dateOfDropoff) o.dateOfDropoff = orig.dateOfDropoff;
+    // Merge payments: form wins if non-empty, else preserve orig
+    if((!o.payments || !o.payments.length) && orig.payments && orig.payments.length) o.payments = orig.payments;
 
     // ── Inventory adjustment on EDIT ─────────────────────────────
     // Only touch inventory if checker already verified this order.
@@ -6838,6 +6942,8 @@ function openEncodeModal() {
   const dofGrp3=document.getElementById('enc-date-dropoff-group'); if(dofGrp3) dofGrp3.style.display='none';
   const pmtInp4=document.getElementById('enc-date-payment'); if(pmtInp4) pmtInp4.value='';
   const dofInp4=document.getElementById('enc-date-dropoff'); if(dofInp4) dofInp4.value='';
+  const paymentsGrp4=document.getElementById('enc-payments-group'); if(paymentsGrp4) paymentsGrp4.style.display='none';
+  const pmtsTbody4=document.getElementById('enc-payments-tbody'); if(pmtsTbody4) pmtsTbody4.innerHTML='';
   const hint3=document.getElementById('enc-date-hint'); if(hint3) hint3.textContent='* Required (mm/dd/yy)';
   populateAdminDropdown();
   populateInvQuickPick();
@@ -8455,8 +8561,15 @@ function onPaymentMethodChange() {
   // Extra date fields — show for LBC, EMS & FedEx only
   const pmtGrp = document.getElementById('enc-date-payment-group');
   const dofGrp = document.getElementById('enc-date-dropoff-group');
+  const paymentsGrp = document.getElementById('enc-payments-group');
   if(pmtGrp) pmtGrp.style.display = isLbc ? '' : 'none';
   if(dofGrp) dofGrp.style.display = isLbc ? '' : 'none';
+  if(paymentsGrp) {
+    paymentsGrp.style.display = isLbc ? '' : 'none';
+    if(isLbc && document.getElementById('enc-payments-tbody')?.children.length === 0) {
+      renderPayments([], true); // seed one empty row for new encode
+    }
+  }
 
   // Date of Purchase hint + default value
   const hint = document.getElementById('enc-date-hint');
@@ -8471,6 +8584,7 @@ function onPaymentMethodChange() {
   if(!isLbc) {
     const pmtInp = document.getElementById('enc-date-payment'); if(pmtInp) pmtInp.value = '';
     const dofInp = document.getElementById('enc-date-dropoff'); if(dofInp) dofInp.value = '';
+    const pmtsTbody = document.getElementById('enc-payments-tbody'); if(pmtsTbody) pmtsTbody.innerHTML = '';
   }
 
   autoAssignRider();
