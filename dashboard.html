@@ -3239,7 +3239,7 @@ function renderChecker(){
           const verifSt = o.verificationStatus||'Not Verified';
           const canVerify = pymSt === 'Fully Paid';
           const isLocked = ['Ready','Out for Delivery','Delivered','Cancelled','Update'].includes(o.status);
-          const isDroppedOff = ['Drop off at LBC','Drop off at EMS','Drop off at Courier','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'].includes(o.lbcStatus||'');
+          const isDroppedOff = ['Drop off at LBC','Drop off at EMS','Drop off at FedEx','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'].includes(o.lbcStatus||'');
           const isODZ = (o.lbcStatus||'') === 'ODZ/Incomplete Details';
           const checkerCanEditODZ = isODZ && (currentRole==='checker'||currentRole==='owner');
           rows += `<tr>
@@ -7949,44 +7949,116 @@ function _getOrderCategory(order) {
 }
 
 function _computeBaog(order) {
-  const cat = _getOrderCategory(order);
   const total = order.grandTotal || 0;
+
+  // Count total items (qty for fixprice, 1 per grams row)
   const itemCount = (order.items||[]).reduce((s, it) => {
     const inv = S.inventory.find(iv => iv.code && it.code && iv.code.toUpperCase() === it.code.toUpperCase());
     if(inv && inv.itemType === 'fixprice') return s + (it.qty || 1);
     return s + 1;
   }, 0);
   if(itemCount < 10) return null;
-  if(cat === 'gold' && total < 300000) return null;
-  if(cat === 'silver' && total < 50000) return null;
+
+  // Compute silver-only total (exclude gold items)
+  let silverTotal = 0;
+  (order.items||[]).forEach(it => {
+    const inv = S.inventory.find(iv => iv.code && it.code && iv.code.toUpperCase() === it.code.toUpperCase());
+    if(inv && (inv.category||'gold') === 'silver') silverTotal += (it.total||0);
+  });
+
+  // Determine which category qualifies
+  // Gold: grandTotal (silver+gold) >= 290k
+  // Silver: silverTotal only >= 45k
+  const goldQualifies   = total >= 290000;
+  const silverQualifies = silverTotal >= 45000;
+
+  if(!goldQualifies && !silverQualifies) return null;
 
   // ── Delivery/Remit qualification ──────────────────────────────────────────
   const isCourier = order.paymentMethod === 'LBC' || order.paymentMethod === 'EMS' || order.paymentMethod === 'FedEx';
   if(isCourier) {
-    // LBC/EMS/FedEx: qualify as soon as checker marks payment Verified
     if((order.verificationStatus||'Not Verified') !== 'Verified') return null;
   } else {
-    // COD: rider must have DELIVERED AND the rider must have a Remitted entry
-    // in remitLog where the remit date >= order date (remittance covers this order)
     if(order.status !== 'Delivered') return null;
     const riderName = order.assignedRider;
     const orderDate = order.date;
     if(!riderName) return null;
-    // Check if rider has any remitLog entry with remitStatus='Remitted'
-    // and remit date >= order delivery date (the remit covers this order)
     const hasRemitted = (S.remitLog||[]).some(r =>
-      r.riderName === riderName &&
-      r.remitStatus === 'Remitted' &&
-      r.date >= orderDate
+      r.riderName === riderName && r.remitStatus === 'Remitted' && r.date >= orderDate
     );
     if(!hasRemitted) return null;
   }
   // ─────────────────────────────────────────────────────────────────────────
 
+  // Prefer gold if both qualify; otherwise use whichever qualifies
+  const cat = goldQualifies ? 'gold' : 'silver';
+  // Gold formula: grandTotal ÷ 9500 × 80 × 5%
+  // Silver formula: silverTotal ÷ 1000 × 80 × 5%
+  const computeTotal = cat === 'gold' ? total : silverTotal;
   const baog = cat === 'gold'
-    ? (total / 9000) * 80 * 0.05
-    : (total / 500) * 50 * 0.05;
-  return { cat, baog, itemCount, total };
+    ? (total / 9500) * 80 * 0.05
+    : (silverTotal / 1000) * 80 * 0.05;
+
+  return { cat, baog, itemCount, total, silverTotal, computeTotal,
+           goldQualifies, silverQualifies };
+}
+
+function showIncentiveDetail(oi) {
+  const o = S.orders[oi];
+  if(!o) return;
+  const result = _computeBaog(o);
+  const cat = result ? result.cat : _getOrderCategory(o);
+  const iS = o.itemStatuses||{};
+
+  const itemRows = (o.items||[]).map((it,ii) => {
+    const inv = S.inventory.find(iv => iv.code && it.code && iv.code.toUpperCase() === it.code.toUpperCase());
+    const itCat = (inv && (inv.category||'gold') === 'silver') ? '🥈 Silver' : '🥇 Gold';
+    const itCatColor = (inv && (inv.category||'gold') === 'silver') ? '#b0b0cc' : 'var(--gold)';
+    return `<tr>
+      <td style="font-family:monospace;font-size:10px;color:var(--gold);">${it.code||'—'}</td>
+      <td style="font-size:11px;">${it.desc||'—'}</td>
+      <td style="text-align:center;font-size:10px;color:${itCatColor};">${itCat}</td>
+      <td style="text-align:center;font-size:11px;">${it.pergram>0?it.grams+'g':'×'+(it.qty||1)}</td>
+      <td style="color:var(--green);text-align:right;font-size:11px;">${p(it.total)}</td>
+    </tr>`;
+  }).join('');
+
+  const formula = result ? (cat==='gold'
+    ? `${p(result.total)} ÷ 9,500 × 80 × 5% = <strong style="color:var(--gold)">${p(result.baog)}</strong>`
+    : `${p(result.silverTotal)} (silver only) ÷ 1,000 × 80 × 5% = <strong style="color:var(--gold)">${p(result.baog)}</strong>`)
+    : '—';
+
+  const overlay = document.createElement('div');
+  overlay.id = '_incentive-detail-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;overflow-y:auto;padding:20px;';
+  overlay.innerHTML = `<div style="background:var(--navy-card);border:1px solid var(--navy-border);border-radius:14px;padding:24px;width:600px;max-width:98vw;max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <div>
+        <div style="font-weight:700;font-size:16px;color:var(--gold);">${o.name}</div>
+        <div style="font-size:11px;color:var(--muted);">${onum(oi)} &nbsp;|&nbsp; ${o.date} &nbsp;|&nbsp; ${o.admin||'—'} &nbsp;|&nbsp; ${o.contact||'—'}</div>
+      </div>
+      <button onclick="document.getElementById('_incentive-detail-overlay').remove()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:4px 8px;">✕</button>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+      <div class="stat-card gold" style="flex:1;min-width:120px;padding:10px;"><div class="stat-label">Grand Total</div><div style="font-weight:700;">${p(o.grandTotal)}</div></div>
+      <div class="stat-card" style="flex:1;min-width:120px;padding:10px;"><div class="stat-label">Silver Total</div><div style="font-weight:700;color:#b0b0cc;">${p(result?.silverTotal||0)}</div></div>
+      <div class="stat-card orange" style="flex:1;min-width:120px;padding:10px;"><div class="stat-label">Items</div><div style="font-weight:700;">${result?.itemCount||0}</div></div>
+      <div class="stat-card ${cat}" style="flex:1;min-width:120px;padding:10px;background:rgba(201,168,76,0.1);"><div class="stat-label">Category</div><div style="font-weight:700;color:${cat==='gold'?'var(--gold)':'#b0b0cc'};">${cat==='gold'?'🥇 GOLD':'🥈 SILVER'}</div></div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">📦 Ordered Items</div>
+    <div class="table-wrap" style="margin-bottom:14px;"><table style="font-size:11px;width:100%;">
+      <thead><tr style="background:rgba(201,168,76,0.08);">
+        <th>Code</th><th>Description</th><th>Category</th><th>Qty/Grams</th><th>Amount</th>
+      </tr></thead>
+      <tbody>${itemRows}</tbody>
+    </table></div>
+    ${result ? `<div style="background:rgba(201,168,76,0.07);border:1px solid rgba(201,168,76,0.2);border-radius:8px;padding:12px;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">💰 Baog Formula</div>
+      <div style="font-size:13px;">${formula}</div>
+    </div>` : '<div style="color:var(--red);font-size:12px;">⚠️ Hindi pa qualified sa baog.</div>'}
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove(); });
 }
 
 function renderIncentivesPage() {
@@ -8010,49 +8082,51 @@ function renderIncentivesPage() {
     qualified.push(Object.assign({o,oi},result));
   });
   if(!qualified.length) {
-    el.innerHTML = '<div class="card"><p style="color:var(--muted);padding:24px;text-align:center;">Wala pang qualified na baog orders.<br><span style="font-size:11px;">Gold: 10+ items at \u20b1300,000+ &nbsp;|&nbsp; Silver: 10+ items at \u20b150,000+</span></p></div>';
+    el.innerHTML = '<div class="card"><p style="color:var(--muted);padding:24px;text-align:center;">Wala pang qualified na baog orders.<br><span style="font-size:11px;">🥇 Gold: 10+ items at ₱290,000+ (total) &nbsp;|&nbsp; 🥈 Silver: 10+ items at ₱45,000+ (silver items only)</span></p></div>';
     return;
   }
   const byAdmin = {};
   qualified.forEach(q => { const adm=q.o.admin||'(No Admin)'; if(!byAdmin[adm])byAdmin[adm]=[]; byAdmin[adm].push(q); });
-  const grandTotal = qualified.reduce((s,q)=>s+q.baog,0);
-  const goldCount = qualified.filter(q=>q.cat==='gold').length;
-  const silverCount = qualified.filter(q=>q.cat==='silver').length;
+  const grandTotalBaog = qualified.reduce((s,q)=>s+q.baog,0);
+  const goldCount  = qualified.filter(q=>q.cat==='gold').length;
+  const silverCount= qualified.filter(q=>q.cat==='silver').length;
   let html = '<div class="stats-grid" style="margin-bottom:13px;">'
-    + '<div class="stat-card gold"><div class="stat-label">Total Baog</div><div class="stat-value">'+p(grandTotal)+'</div></div>'
+    + '<div class="stat-card gold"><div class="stat-label">Total Baog</div><div class="stat-value">'+p(grandTotalBaog)+'</div></div>'
     + '<div class="stat-card orange"><div class="stat-label">Qualified Orders</div><div class="stat-value">'+qualified.length+'</div><div class="stat-sub">'+goldCount+' Gold, '+silverCount+' Silver</div></div>'
     + '<div class="stat-card blue"><div class="stat-label">Admins with Baog</div><div class="stat-value">'+Object.keys(byAdmin).length+'</div></div>'
     + '</div>';
   Object.entries(byAdmin).sort().forEach(function([adm, orders]){
     const adminTotal = orders.reduce((s,q)=>s+q.baog,0);
     html += '<div class="card" style="margin-bottom:11px;">'
-      + '<div class="card-header"><span class="card-title">\u{1F464} '+adm+'</span>'
+      + '<div class="card-header"><span class="card-title">👤 '+adm+'</span>'
       + '<span style="color:var(--gold);font-weight:700;font-size:14px;">Total Baog: '+p(adminTotal)+'</span></div>'
       + '<div class="table-wrap"><table style="font-size:11.5px;"><thead><tr style="background:rgba(201,168,76,0.08);">'
       + '<th>Order #</th><th>Customer</th><th>Date</th><th>Category</th>'
-      + '<th>Items</th><th>Order Total</th><th>Formula</th><th style="color:var(--gold);">Baog</th><th>Qual.</th>'
+      + '<th>Items</th><th>Grand Total</th><th>Compute Amount</th><th>Formula</th><th style="color:var(--gold);">Baog</th><th>Qual.</th>'
       + '</tr></thead><tbody>';
     orders.forEach(function(q){
       const formula = q.cat==='gold'
-        ? p(q.total)+' \u00f7 9,000 \u00d7 80 \u00d7 5%'
-        : p(q.total)+' \u00f7 500 \u00d7 50 \u00d7 5%';
+        ? p(q.total)+' ÷ 9,500 × 80 × 5%'
+        : p(q.silverTotal)+' ÷ 1,000 × 80 × 5%';
       const catBadge = q.cat==='gold'
-        ? '<span style="background:rgba(201,168,76,0.2);color:var(--gold);padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">\u{1F947} GOLD</span>'
-        : '<span style="background:rgba(160,160,180,0.2);color:#b0b0cc;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">\u{1F948} SILVER</span>';
-      html += '<tr>'
+        ? '<span style="background:rgba(201,168,76,0.2);color:var(--gold);padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">🥇 GOLD</span>'
+        : '<span style="background:rgba(160,160,180,0.2);color:#b0b0cc;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">🥈 SILVER</span>';
+      const isCourier = q.o.paymentMethod==='LBC'||q.o.paymentMethod==='EMS'||q.o.paymentMethod==='FedEx';
+      html += '<tr style="cursor:pointer;" onclick="showIncentiveDetail('+q.oi+')" title="Click to view order details">'
         + '<td style="color:var(--gold);font-weight:600;">'+onum(q.oi)+'</td>'
-        + '<td style="font-weight:500;">'+q.o.name+'</td>'
+        + '<td style="font-weight:600;color:var(--text);text-decoration:underline dotted;">'+q.o.name+'</td>'
         + '<td>'+q.o.date+'</td>'
         + '<td>'+catBadge+'</td>'
         + '<td style="text-align:center;font-weight:700;">'+q.itemCount+'</td>'
         + '<td style="color:var(--green);font-weight:600;">'+p(q.total)+'</td>'
+        + '<td style="color:'+(q.cat==='silver'?'#b0b0cc':'var(--green)')+';font-size:10px;">'+(q.cat==='silver'?p(q.silverTotal)+' (silver)':p(q.total)+' (all)')+'</td>'
         + '<td style="font-size:10px;color:var(--muted);">'+formula+'</td>'
         + '<td style="color:var(--gold);font-weight:700;font-size:13px;">'+p(q.baog)+'</td>'
-        + '<td style="font-size:9.5px;">'+((q.o.paymentMethod==='LBC'||q.o.paymentMethod==='EMS'||q.o.paymentMethod==='FedEx')?'<span style="color:var(--green);">✅ Verified</span>':'<span style="color:var(--blue);">💰 Remitted</span>')+'</td>'
+        + '<td style="font-size:9.5px;">'+(isCourier?'<span style="color:var(--green);">✅ Verified</span>':'<span style="color:var(--blue);">💰 Remitted</span>')+'</td>'
         + '</tr>';
     });
     html += '<tr style="background:rgba(201,168,76,0.06);font-weight:700;">'
-      + '<td colspan="8" style="color:var(--muted);">Total Baog \u2014 '+adm+'</td>'
+      + '<td colspan="9" style="color:var(--muted);">Total Baog — '+adm+'</td>'
       + '<td style="color:var(--gold);font-size:13px;">'+p(adminTotal)+'</td>'
       + '</tr></tbody></table></div></div>';
   });
@@ -8241,7 +8315,7 @@ function renderOrderMgmt() {
   // Stats
   const del  = list.filter(({o})=>o.status==='Delivered');
   const pend = list.filter(({o})=>['Preparing','Ready to Pick-up'].includes(o.lbcStatus||o.status));
-  const drop = list.filter(({o})=>['Drop off at LBC','Drop off at EMS','Drop off at Courier'].includes(o.lbcStatus||''));
+  const drop = list.filter(({o})=>['Drop off at LBC','Drop off at EMS','Drop off at FedEx'].includes(o.lbcStatus||''));
   const statsEl = document.getElementById('om-stats');
   if(statsEl) statsEl.innerHTML = `
     <div class="stat-card gold"><div class="stat-label">Total ${method}</div><div class="stat-value">${list.length}</div></div>
@@ -8262,7 +8336,7 @@ function renderOrderMgmt() {
   // Full status list per courier type (for all non-OFD statuses)
   const ALL_STATUSES_LBC   = ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
   const ALL_STATUSES_EMS   = ['Ready to Pick-up','Drop off at EMS','Out for Delivery','Delivered','RTO'];
-  const ALL_STATUSES_FEDEX = ['Ready to Pick-up','Drop off at Courier','Out for Delivery','Delivered','RTO'];
+  const ALL_STATUSES_FEDEX = ['Ready to Pick-up','Drop off at FedEx','Out for Delivery','Delivered','RTO'];
   // OFD-specific choices per role (checker/owner: OFD+Delivered+RTO, sorter: OFD+RTO only)
   const OFD_CHOICES_FULL = ['Out for Delivery','Delivered','RTO'];
   const OFD_CHOICES_SORTER = ['Out for Delivery','RTO'];
@@ -9105,7 +9179,7 @@ function renderFedexDelivery() {
   const ofdChoicesFS = ['Out for Delivery','RTO'];
   const UPDATE_STATUSES = (fedexDeliveryTab==='ofd')
     ? (currentRole==='checker'||currentRole==='owner' ? ofdChoicesFC : ofdChoicesFS)
-    : ['Ready to Pick-up','Drop off at Courier','Out for Delivery','Delivered','RTO'];
+    : ['Ready to Pick-up','Drop off at FedEx','Out for Delivery','Delivered','RTO'];
 
   const rows = list.map(({o,i}) => {
     const lst = o.lbcStatus || activeStatus;
@@ -9351,7 +9425,44 @@ function _nameFuzzyMatch(a, b) {
 }
 function _normContact(c) { return (c||'').replace(/\D/g,''); }
 function _normAddress(a) {
-  return (a||'').toLowerCase().replace(/[^a-z0-9\s]/g,'').trim().split(/\s+/).filter(w=>w.length>2).sort().join(' ');
+  if(!a) return '';
+  let s = a.toLowerCase();
+  // Normalize common variations before tokenizing
+  const subs = [
+    [/\bsubdivision\b/g,'subd'],
+    [/\bsubd\b/g,'subd'],
+    [/\bstreet\b/g,'st'],
+    [/\bst\.?\b/g,'st'],
+    [/\bavenue\b/g,'ave'],
+    [/\bave\.?\b/g,'ave'],
+    [/\bboulevard\b/g,'blvd'],
+    [/\bblvd\.?\b/g,'blvd'],
+    [/\bbarangay\b/g,'brgy'],
+    [/\bbrgy\.?\b/g,'brgy'],
+    [/\bpurok\b/g,'prk'],
+    [/\bcity\b/g,''],
+    [/\bvillage\b/g,'vill'],
+    [/\bvill\.?\b/g,'vill'],
+    [/\bphase\b/g,'ph'],
+    [/\bblock\b/g,'blk'],
+    [/\blot\b/g,'lot'],
+  ];
+  subs.forEach(([pat,rep]) => { s = s.replace(pat, rep); });
+  // Remove punctuation, collapse whitespace, filter short tokens, sort
+  const tokens = s.replace(/[^a-z0-9\s]/g,'').trim().split(/\s+/).filter(w=>w.length>1);
+  return tokens.sort().join(' ');
+}
+function _addressFuzzyMatch(a, b) {
+  const tA = _normAddress(a), tB = _normAddress(b);
+  if(!tA || !tB) return false;
+  if(tA === tB) return true; // exact match after normalization
+  // Fuzzy: check if all tokens of the shorter set exist in the longer set
+  const tokA = tA.split(' '), tokB = tB.split(' ');
+  const [shorter, longer] = tokA.length <= tokB.length ? [tokA, tokB] : [tokB, tokA];
+  // Require at least 70% of shorter tokens match, and both have meaningful length
+  if(shorter.length < 2) return false;
+  const matchCount = shorter.filter(t => longer.includes(t)).length;
+  return matchCount / shorter.length >= 0.75;
 }
 function detectDuplicates(orders) {
   // Build duplicate groups using Union-Find approach:
@@ -9365,13 +9476,13 @@ function detectDuplicates(orders) {
     const oi = orders[i].o;
     const dateI = oi.date||'';
     const contactI = _normContact(oi.contact);
-    const addrI = _normAddress(oi.address);
     for(let j=i+1;j<n;j++){
       const oj = orders[j].o;
-      if((oj.date||'') !== dateI) continue; // must be same date
-      const nameMatch = _nameFuzzyMatch(oi.name, oj.name);
-      const contactMatch = contactI && contactI === _normContact(oj.contact);
-      const addrMatch = addrI.length>4 && addrI === _normAddress(oj.address);
+      const dateMatch = (oj.date||'') === dateI;
+      const nameMatch  = dateMatch && _nameFuzzyMatch(oi.name, oj.name);
+      const contactMatch = dateMatch && contactI && contactI === _normContact(oj.contact);
+      // Address match works across dates — flag potential duplicate delivery location
+      const addrMatch = _addressFuzzyMatch(oi.address, oj.address);
       if(nameMatch || contactMatch || addrMatch) union(i,j);
     }
   }
