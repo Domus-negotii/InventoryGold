@@ -1261,8 +1261,8 @@ function _showRulesHint() {
   </div>
     <div class="action-row no-print">
       <div class="section-tabs" style="margin:0;" id="pay-tabs">
-        <button class="tab-btn active" onclick="switchPayTab('daily')">Daily Staff</button>
-        <button class="tab-btn" onclick="switchPayTab('weekly')">Weekly Staff</button>
+        <button class="tab-btn active" onclick="switchPayTab('daily')">Daily Payroll</button>
+        <button class="tab-btn" onclick="switchPayTab('weekly')">Weekly Payroll</button>
       </div>
       <div style="display:flex;gap:7px;">
         <button class="btn btn-print no-print" onclick="printPayroll()">🖨️ Print Payslips</button>
@@ -1316,13 +1316,16 @@ function _showRulesHint() {
     </div>
   </div>
     <div class="action-row no-print">
-      <div class="section-tabs" style="margin:0;">
-        <button class="tab-btn active" onclick="switchPnlTab('daily')">Daily</button>
-        <button class="tab-btn" onclick="switchPnlTab('weekly')">Weekly</button>
-        <button class="tab-btn" onclick="switchPnlTab('monthly')">Monthly</button>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <label style="font-size:11px;color:var(--muted);font-weight:600;">FROM</label>
+        <input type="date" class="form-control" id="pnl-from" style="width:148px;" oninput="renderPnl()">
+        <label style="font-size:11px;color:var(--muted);font-weight:600;">TO</label>
+        <input type="date" class="form-control" id="pnl-to" style="width:148px;" oninput="renderPnl()">
+        <button class="btn btn-outline btn-sm" onclick="setPnlRange('today')" style="font-size:11px;">Today</button>
+        <button class="btn btn-outline btn-sm" onclick="setPnlRange('week')" style="font-size:11px;">This Week</button>
+        <button class="btn btn-outline btn-sm" onclick="setPnlRange('month')" style="font-size:11px;">This Month</button>
       </div>
       <div style="display:flex;gap:7px;align-items:center;">
-        <input type="date" class="form-control" id="pnl-date" style="width:148px;" oninput="validateDateInput(this)">
         <button class="btn btn-print no-print" onclick="printPnl()">🖨️ Print P&L</button>
       </div>
     </div>
@@ -1918,6 +1921,10 @@ function _showRulesHint() {
           </label>
           <button type="button" class="btn btn-outline btn-sm" onclick="addPaymentRow()" style="font-size:10px;">+ Add Payment</button>
         </div>
+        <!-- Column headers -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 130px 100px auto;gap:6px;padding:0 0 3px;font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.4px;">
+          <span>Ref. No. *</span><span>Amount (₱)</span><span>Date</span><span>Time</span><span></span>
+        </div>
         <div id="enc-payments-tbody" style="display:flex;flex-direction:column;gap:5px;"></div>
         <div style="font-size:10px;color:var(--muted);margin-top:4px;">💡 Tip: Mag-add ng payment row para sa bawat installment. Bawat ref# may kasamang amount.</div>
       </div>
@@ -2002,18 +2009,19 @@ function _showRulesHint() {
 
 <!-- Rider -->
 <div class="modal-overlay" id="modal-rider">
-  <div class="modal" style="max-width:580px;">
+  <div class="modal" style="max-width:620px;">
     <div class="modal-header"><span class="modal-title" id="rider-modal-title">Add Rider</span><button class="modal-close" onclick="closeModal('modal-rider')">✕</button></div>
     <div class="form-grid">
       <div class="form-group"><label>Rider Name *</label><input class="form-control" id="rider-name"></div>
-      <div class="form-group"><label>Designated Location *</label>
-        <select class="form-control" id="rider-location">
-          <option value="">-- Select Location --</option>
-        </select>
-        <div style="font-size:10px;color:var(--muted);margin-top:2px;">Add new locations via Riders → + Add Location</div>
-      </div>
       <div class="form-group"><label>Type</label>
         <select class="form-control" id="rider-type"><option>Own Rider</option></select>
+      </div>
+      <div class="form-group" style="grid-column:1/-1;">
+        <label>Designated Locations * <span style="font-size:10px;color:var(--muted);font-weight:400;">(Select all areas this rider covers)</span></label>
+        <div id="rider-locations-checkboxes" style="display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:var(--navy-light);border:1px solid var(--navy-border);border-radius:8px;min-height:44px;margin-bottom:5px;"></div>
+        <!-- Selected locations as tags -->
+        <div id="rider-locations-tags" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;min-height:20px;"></div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px;">Add new locations via Riders → + Add Location</div>
       </div>
       <div class="form-group"><label>Contact Number (11 digits)</label>
         <input class="form-control" id="rider-contact" type="tel" maxlength="11"
@@ -2043,7 +2051,16 @@ function _showRulesHint() {
     <div class="modal-header"><span class="modal-title" id="pay-modal-title">Add Payroll Entry</span><button class="modal-close" onclick="closeModal('modal-payroll')">✕</button></div>
     <div class="form-grid">
       <div class="form-group"><label>Employee Name *</label><input class="form-control" id="pay-name" placeholder="e.g. PAM, TIN"></div>
-      <div class="form-group"><label>Role</label><select class="form-control" id="pay-role"><option>Admin</option><option>Staff</option><option>Live Seller</option><option>Asst. Live Seller</option><option>Checker</option></select></div>
+      <div class="form-group"><label>Role</label><select class="form-control" id="pay-role">
+        <option>Customer Service Representative</option>
+        <option>Live Seller</option>
+        <option>Live Selling Assistant</option>
+        <option>Order Verification Staff</option>
+        <option>Operations Assistant</option>
+        <option>Office Assistant</option>
+        <option>Gate Attendant</option>
+        <option>Order Packer</option>
+      </select></div>
       <div class="form-group"><label>Period</label><select class="form-control" id="pay-period"><option value="daily">Daily</option><option value="weekly">Weekly</option></select></div>
       <div class="form-group"><label>Pay Date</label><input type="date" class="form-control" id="pay-date" oninput="validateDateInput(this)"></div>
       <div class="form-group"><label>Daily Rate (₱)</label><input type="number" class="form-control" id="pay-rate" value="0" oninput="calcPay()"></div>
@@ -2093,7 +2110,17 @@ function _showRulesHint() {
     <div class="modal-header"><span class="modal-title" id="exp-modal-title">Add Expense</span><button class="modal-close" onclick="closeModal('modal-expense')">✕</button></div>
     <div class="form-grid">
       <div class="form-group"><label>Date</label><input type="date" class="form-control" id="exp-date" oninput="validateDateInput(this)"></div>
-      <div class="form-group"><label>Category</label><select class="form-control" id="exp-cat"><option>Shipping</option><option>Supplies</option><option>Utilities</option><option>Salaries</option><option>Marketing</option><option>Packaging</option><option>Other</option></select></div>
+      <div class="form-group"><label>Category</label><select class="form-control" id="exp-cat">
+        <option>Ads</option>
+        <option>Salaries</option>
+        <option>Incentives</option>
+        <option>Baog</option>
+        <option>Bills</option>
+        <option>Supplies</option>
+        <option>Tax</option>
+        <option>Benefits</option>
+        <option>Others</option>
+      </select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Description *</label><input class="form-control" id="exp-desc"></div>
       <div class="form-group"><label>Amount (₱) *</label><input type="number" class="form-control" id="exp-amount" min="0"></div>
     </div>
@@ -3145,7 +3172,10 @@ function renderChecker(){
   });
 
   if(isCOD) {
-    const riderOpts = '<option value="">-- Assign Rider --</option>' + S.riders.map(r=>`<option value="${r.name}">${r.name} (${r.location||'—'})</option>`).join('');
+    const riderOpts = '<option value="">-- Assign Rider --</option>' + S.riders.map(r=>{
+      const locs = r.locations && r.locations.length ? r.locations : (r.location ? [r.location] : []);
+      return `<option value="${r.name}">${r.name} (${locs.join(', ')||'—'})</option>`;
+    }).join('');
     // Group by admin
     const codAdminGroups = {};
     list.forEach(({o,i}) => {
@@ -3487,7 +3517,8 @@ function buildRefRows(o) {
     const multiRef = pmts.length > 1;
     return pmts.map((pmt,pi)=>{
       const lbl = multiRef ? `Ref #${pi+1}:` : 'Ref No.:';
-      const val = (pmt.refno||'')+(pmt.amount>0?` \u2014 \u20b1${Number(pmt.amount).toFixed(2)}`:'');
+      const dtPart = pmt.date ? ` [${pmt.date}${pmt.time?' '+pmt.time:''}]` : '';
+      const val = (pmt.refno||'')+(pmt.amount>0?` \u2014 \u20b1${Number(pmt.amount).toFixed(2)}`:'')+(dtPart);
       return fldR(lbl, val);
     }).join('');
   }
@@ -3791,9 +3822,26 @@ function resolveUpdate(orderIdx, newStatus) {
     save();
     toast('🔁 Re-scheduled for tomorrow (' + tomorrow() + '). Status → Preparing.');
   } else {
-    // ── Cancel from Checker For Update ───────────────────────────
+    // ── Cancel from Checker For Update → push to deletedOrders for audit ────
+    if(!S.deletedOrders) S.deletedOrders = [];
+    S.deletedOrders.push({
+      cancelledAt: new Date().toISOString(),
+      cancelledBy: currentUser?.name || 'Checker',
+      reason: 'Cancelled from For Update queue',
+      orderNum: onum(orderIdx),
+      name: o.name, contact: o.contact||'', backupContact: o.backupContact||'',
+      address: o.address||'', landmark: o.landmark||'', city: o.city||'',
+      admin: o.admin||'', date: o.date,
+      paymentMethod: o.paymentMethod||'COD',
+      paymentStatus: o.paymentStatus||'',
+      verificationStatus: o.verificationStatus||'',
+      trackingNumber: o.trackingNumber||'',
+      grandTotal: o.grandTotal||0, itemsTotal: o.itemsTotal||0,
+      shipping: o.shipping||0, items: o.items||[],
+      status: o.status, lbcStatus: o.lbcStatus||'',
+      checkerStatus: o.checkerStatus||'', riderRemarks: o.riderRemarks||''
+    });
     // Auto-restore inventory (checker-initiated cancel = confirmed return)
-    // and mark as checker-cancelled so it won't appear in Cancelled Items tab
     let restored = false;
     if(_invDeducted(o)) {
       restored = _restoreOrderItems(o.items||[], today(),
@@ -3802,9 +3850,9 @@ function resolveUpdate(orderIdx, newStatus) {
       S.orders[orderIdx].checkerStatus = 'Pending';
     }
     S.orders[orderIdx].status = newStatus;
-    S.orders[orderIdx].checkerCancelledDirect = true; // flag: skip Cancelled Items tab
+    S.orders[orderIdx].checkerCancelledDirect = true;
     save();
-    toast(restored ? '❌ Order Cancelled — inventory restored automatically. Hindi na lalabas sa Cancelled Items.' : '❌ Order Cancelled.');
+    toast(restored ? '❌ Order Cancelled — inventory restored automatically.' : '❌ Order Cancelled.');
   }
 
   // Refresh all relevant views
@@ -3838,7 +3886,10 @@ function delLocation(idx){
   const loc = S.locations[idx];
   if(!loc) return;
   // Check if any riders are assigned to this location
-  const ridersHere = S.riders.filter(r=>r.location===loc);
+  const ridersHere = S.riders.filter(r=>{
+    const locs = r.locations && r.locations.length ? r.locations : (r.location ? [r.location] : []);
+    return locs.includes(loc);
+  });
   if(ridersHere.length > 0){
     toast(`⚠️ Hindi mabura — may ${ridersHere.length} rider(s) pa sa "${loc}". I-reassign muna ang mga rider.`);
     return;
@@ -4411,7 +4462,7 @@ function renderSorting() {
               : `<select style="width:100%;font-size:10px;padding:2px 5px;border-radius:5px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);"
                 onchange="sortReassign(${o.idx},this.value)" onclick="event.stopPropagation()">
                 <option value="">🔀 Move to rider...</option>
-                ${S.riders.map(r=>`<option value="${encodeURIComponent(r.name)}"${r.name===o.assignedRider?' selected':''}>${r.name} (📍${r.location||'?'})</option>`).join('')}
+                ${S.riders.map(r=>`<option value="${encodeURIComponent(r.name)}"${r.name===o.assignedRider?' selected':''}>${r.name} (📍${(r.locations&&r.locations.length?r.locations:(r.location?[r.location]:[])).join(', ')||'?'})</option>`).join('')}
                 <option value="__unassigned__"${!o.assignedRider?' selected':''}>— Unassigned —</option>
               </select>`
           }
@@ -4539,14 +4590,19 @@ function addUnassignedRiderSlot() {
 function renderDailySales(){
   if(!document.getElementById('ds-date').value)document.getElementById('ds-date').value=today();
   const d=document.getElementById('ds-date').value;
-  const dayO=S.orders.filter(o=>o.date===d);
-  // COD: status Delivered. LBC/EMS/FedEx: Fully Paid + Verified (same rule as P&L)
-  const codDel = dayO.filter(o=>o.status==='Delivered'&&(o.paymentMethod||'COD')==='COD');
-  const courierDel = dayO.filter(o=>
-    (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx')&&
-    o.paymentStatus==='Fully Paid'&&o.verificationStatus==='Verified');
+  const allO=S.orders;
+  // COD: counted on delivery date (o.date) when status is Delivered
+  const codDel = allO.filter(o=>o.date===d && o.status==='Delivered' && (o.paymentMethod||'COD')==='COD');
+  // LBC/EMS/FedEx: counted on Full Payment Date (o.dateOfPayment), must be Verified
+  const courierDel = allO.filter(o=>
+    (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx') &&
+    o.paymentStatus==='Fully Paid' &&
+    o.verificationStatus==='Verified' &&
+    (o.dateOfPayment||'').slice(0,10)===d
+  );
   const del=[...codDel,...courierDel];
-  const remit=del.reduce((s,o)=>s+o.grandTotal,0);
+  // All orders encoded on this date (for the bottom table)
+  const dayO=allO.filter(o=>o.date===d);
   const adminDel={};
   del.forEach(o=>{
     const admins = o.adminList && o.adminList.length > 0 ? o.adminList : (o.admin ? [o.admin] : []);
@@ -4559,11 +4615,14 @@ function renderDailySales(){
   const bankRemit = del.filter(o=>o.paymentMethod==='Via Bank').reduce((s,o)=>s+o.grandTotal,0);
   const overall = codRemit + lbcRemit + intlRemit + bankRemit;
   document.getElementById('daily-sales-screen').innerHTML=`
+    <div style="font-size:10px;color:var(--muted);margin-bottom:8px;padding:6px 10px;background:rgba(201,168,76,0.07);border-radius:6px;">
+      📌 <strong>LBC/EMS/FedEx</strong> entries are counted by <strong>Full Payment Date</strong> (not order date), and only when <strong>Checker Verified</strong>.
+    </div>
     <div class="stats-grid">
-      <div class="stat-card gold"><div class="stat-label">Total Parcels</div><div class="stat-value">${dayO.length}</div></div>
-      <div class="stat-card green"><div class="stat-label">Delivered</div><div class="stat-value">${del.length}</div></div>
+      <div class="stat-card gold"><div class="stat-label">Encoded (${d})</div><div class="stat-value">${dayO.length}</div></div>
+      <div class="stat-card green"><div class="stat-label">Sales Recognized</div><div class="stat-value">${del.length}</div></div>
       <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${dayO.filter(o=>['Cancelled','Update'].includes(o.status)).length}</div></div>
-      <div class="stat-card blue"><div class="stat-label">Cash Remit</div><div class="stat-value">${p(overall)}</div></div>
+      <div class="stat-card blue"><div class="stat-label">Total Remit</div><div class="stat-value">${p(overall)}</div></div>
     </div>
     <div class="two-col">
       <div class="card"><div class="card-header"><span class="card-title">Remit Summary</span></div>
@@ -4574,16 +4633,16 @@ function renderDailySales(){
         <div class="info-row"><span style="color:var(--muted);">GCASH</span><strong>₱0.00</strong></div>
         <div class="info-row" style="border-bottom:none;font-size:14px;"><strong>OVERALL</strong><strong style="color:var(--green);">${p(overall)}</strong></div>
       </div>
-      <div class="card"><div class="card-header"><span class="card-title">Admin Incentives (₱25/delivered)</span></div>
+      <div class="card"><div class="card-header"><span class="card-title">Admin Incentives (₱25/parcel)</span></div>
         <table style="width:100%;border-collapse:collapse;font-size:12px;">
-          <thead><tr style="background:rgba(201,168,76,0.08);"><th style="padding:5px 8px;color:var(--gold);font-size:9.5px;">Admin</th><th style="padding:5px 8px;color:var(--gold);font-size:9.5px;">Delivered</th><th style="padding:5px 8px;color:var(--gold);font-size:9.5px;">Incentive</th></tr></thead>
-          <tbody>${Object.entries(adminDel).map(([a,c])=>`<tr><td style="padding:6px 8px;font-weight:500;">${a}</td><td style="padding:6px 8px;color:var(--blue);">${c}</td><td style="padding:6px 8px;color:var(--green);font-weight:700;">${p(c*25)}</td></tr>`).join('')||'<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:10px;">No deliveries</td></tr>'}</tbody>
+          <thead><tr style="background:rgba(201,168,76,0.08);"><th style="padding:5px 8px;color:var(--gold);font-size:9.5px;">Admin</th><th style="padding:5px 8px;color:var(--gold);font-size:9.5px;">Parcels</th><th style="padding:5px 8px;color:var(--gold);font-size:9.5px;">Incentive</th></tr></thead>
+          <tbody>${Object.entries(adminDel).map(([a,c])=>`<tr><td style="padding:6px 8px;font-weight:500;">${a}</td><td style="padding:6px 8px;color:var(--blue);">${c}</td><td style="padding:6px 8px;color:var(--green);font-weight:700;">${p(c*25)}</td></tr>`).join('')||'<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:10px;">No recognized sales</td></tr>'}</tbody>
         </table>
       </div>
     </div>
-    <div class="card" style="margin-top:13px;"><div class="card-header"><span class="card-title">All Parcels – ${d}</span></div>
-      <div class="table-wrap"><table><thead><tr><th>Parcel #</th><th>Buyer</th><th>CP</th><th>City</th><th>Admin</th><th>SF</th><th>Parcel Amt</th><th>Grand Total</th><th>Status</th></tr></thead>
-        <tbody>${dayO.length?S.orders.map((o,i)=>{if(o.date!==d)return '';return `<tr><td style="color:var(--gold);">Parcel #${i+1}</td><td style="font-weight:500;">${o.name}</td><td>${o.contact}</td><td>${o.city||'—'}</td><td>${o.admin}</td><td>${p(o.shipping)}</td><td>${p(o.itemsTotal)}</td><td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td><td><span class="status ${sclass(o.status)}">${o.status}</span></td></tr>`;}).join(''):'<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px;">No orders on this date</td></tr>'}</tbody>
+    <div class="card" style="margin-top:13px;"><div class="card-header"><span class="card-title">All Parcels Encoded on ${d}</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Parcel #</th><th>Buyer</th><th>CP</th><th>City</th><th>Admin</th><th>Method</th><th>SF</th><th>Parcel Amt</th><th>Grand Total</th><th>Status</th></tr></thead>
+        <tbody>${dayO.length?S.orders.map((o,i)=>{if(o.date!==d)return '';return `<tr><td style="color:var(--gold);">Parcel #${i+1}</td><td style="font-weight:500;">${o.name}</td><td>${o.contact}</td><td>${o.city||'—'}</td><td>${o.admin}</td><td><span style="font-size:10px;">${o.paymentMethod||'COD'}</span></td><td>${p(o.shipping)}</td><td>${p(o.itemsTotal)}</td><td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td><td><span class="status ${sclass(o.status)}">${o.status}</span></td></tr>`;}).join(''):'<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:20px;">No orders on this date</td></tr>'}</tbody>
       </table></div>
     </div>`;
 }
@@ -4703,22 +4762,61 @@ function resetAdminPw(name){
   toast('Enter new password for '+name+' above then click Add/Update');
 }
 
+// populateLocationDropdown — legacy alias, now delegates to checkbox version
 function populateLocationDropdown(){
-  const sel=document.getElementById('rider-location');if(!sel)return;
-  const cur=sel.value;
-  sel.innerHTML='<option value="">-- Select Location --</option>';
-  (S.locations||[]).sort().forEach(loc=>{ sel.innerHTML+=`<option value="${loc}"${cur===loc?' selected':''}>${loc}</option>`; });
+  populateRiderLocationCheckboxes([]); // just reset checkboxes
 }
+// ── Rider Multi-Location Checkboxes ──────────────────────────
+function populateRiderLocationCheckboxes(selectedLocs=[]) {
+  const wrap = document.getElementById('rider-locations-checkboxes');
+  const tags = document.getElementById('rider-locations-tags');
+  if(!wrap) return;
+  if(!S.locations || !S.locations.length) {
+    wrap.innerHTML = '<span style="font-size:10.5px;color:var(--muted);padding:4px;">No locations yet. Add via Riders → + Add Location.</span>';
+    if(tags) tags.innerHTML = '';
+    return;
+  }
+  wrap.innerHTML = S.locations.map(loc => {
+    const checked = selectedLocs.includes(loc);
+    return `<label style="display:flex;align-items:center;gap:5px;font-size:11.5px;cursor:pointer;padding:4px 9px;border-radius:6px;background:${checked?'rgba(201,168,76,0.18)':'rgba(255,255,255,0.04)'};border:1px solid ${checked?'var(--gold)':'var(--navy-border)'};transition:all 0.15s;" onclick="toggleRiderLoc(this,'${loc.replace(/'/g,"\\'")}')">
+      <input type="checkbox" ${checked?'checked':''} style="accent-color:var(--gold);pointer-events:none;" data-loc="${loc.replace(/"/g,'&quot;')}">
+      <span>📍 ${loc}</span>
+    </label>`;
+  }).join('');
+  updateRiderLocTags();
+}
+
+function toggleRiderLoc(labelEl, loc) {
+  const cb = labelEl.querySelector('input[type="checkbox"]');
+  cb.checked = !cb.checked;
+  const checked = cb.checked;
+  labelEl.style.background = checked ? 'rgba(201,168,76,0.18)' : 'rgba(255,255,255,0.04)';
+  labelEl.style.border = `1px solid ${checked ? 'var(--gold)' : 'var(--navy-border)'}`;
+  updateRiderLocTags();
+}
+
+function updateRiderLocTags() {
+  const tags = document.getElementById('rider-locations-tags');
+  if(!tags) return;
+  const selected = getSelectedRiderLocs();
+  tags.innerHTML = selected.length
+    ? selected.map(l => `<span style="background:var(--gold);color:#1a1a2e;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;">📍 ${l}</span>`).join('')
+    : '<span style="font-size:10px;color:var(--muted);">No locations selected yet</span>';
+}
+
+function getSelectedRiderLocs() {
+  const cbs = document.querySelectorAll('#rider-locations-checkboxes input[type="checkbox"]');
+  return [...cbs].filter(c => c.checked).map(c => c.dataset.loc);
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 function openAddRider(){
   document.getElementById('rider-modal-title').textContent='Add Rider';
-  ['rider-name','rider-contact'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  const pw=document.getElementById('rider-password');if(pw)pw.value='';
+  ['rider-name','rider-contact','rider-password'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('rider-edit-idx').value='';
   const cnt=document.getElementById('rider-contact-count');if(cnt)cnt.textContent='0/11';
-  populateLocationDropdown();
-  // Location always starts blank when adding new rider (no auto-fill from active tab)
-  const locSel=document.getElementById('rider-location');if(locSel)locSel.value='';
+  const typeSel=document.getElementById('rider-type');if(typeSel)typeSel.value='Own Rider';
+  populateRiderLocationCheckboxes([]);
   openModal('modal-rider');
 }
 
@@ -4732,8 +4830,9 @@ function openEditRider(i){
   document.getElementById('rider-type').value=r.type||'Own Rider';
   const pw=document.getElementById('rider-password');if(pw)pw.value=r.password||'';
   document.getElementById('rider-edit-idx').value=i;
-  populateLocationDropdown();
-  const locSel=document.getElementById('rider-location');if(locSel)locSel.value=r.location||'';
+  // Support both old single-location string and new locations array
+  const locs = r.locations || (r.location ? [r.location] : []);
+  populateRiderLocationCheckboxes(locs);
   openModal('modal-rider');
 }
 
@@ -4801,7 +4900,7 @@ function openEditPay(i){
 function openNewPayModal(){
   document.getElementById('pay-modal-title').textContent='Add Payroll Entry';
   document.getElementById('pay-name').value='';
-  document.getElementById('pay-role').value='Admin';
+  document.getElementById('pay-role').value='Customer Service Representative';
   document.getElementById('pay-period').value='daily';
   document.getElementById('pay-date').value=today();
   document.getElementById('pay-rate').value='0';
@@ -5525,7 +5624,7 @@ function addRiderAccount() {
   } else {
     // Create new minimal rider entry
     if(!confirm(`Rider "${name}" not found in Riders list. Add as new rider now?`)) return;
-    S.riders.push({ name, location:'', type:'Own Rider', contact:'', password:pw,
+    S.riders.push({ name, location:'', locations:[], type:'Own Rider', contact:'', password:pw,
       remit:0, sf:0, adminCut:0, benefits:0, cashbond:0,
       totalParcel:0, deductions:0, netCash:0 });
     if(!S.locations) S.locations = [];
@@ -5545,7 +5644,7 @@ function renderRiderPwList() {
       <div>
         <span style="font-size:12.5px;font-weight:600;">${r.name}</span>
         <span style="font-size:10px;margin-left:8px;">${r.password?'<span style="color:var(--green);">✅ PW Set</span>':'<span style="color:var(--red);">❌ No Password</span>'}</span>
-        <span style="font-size:10px;color:var(--muted);margin-left:6px;">📍 ${r.location||'<em>No location</em>'}</span>
+        <span style="font-size:10px;color:var(--muted);margin-left:6px;">📍 ${(r.locations&&r.locations.length?r.locations:(r.location?[r.location]:[])).join(', ')||'<em>No location</em>'}</span>
       </div>
       <div style="display:flex;gap:5px;">
         <button class="btn btn-outline btn-sm" onclick="quickSetRiderPw(${i})">🔑 Reset PW</button>
@@ -5609,116 +5708,108 @@ function clearAllData(){
 }
 
 // ============ COMPLETE P&L ============
-let pnlTab='daily';
-function switchPnlTab(t){
-  pnlTab=t;
-  document.querySelectorAll('#page-pnl .tab-btn').forEach((b,i)=>b.classList.toggle('active',['daily','weekly','monthly'][i]===t));
+function setPnlRange(preset) {
+  const now = new Date();
+  const fmt = d => d.toISOString().slice(0,10);
+  if(preset==='today') {
+    document.getElementById('pnl-from').value = fmt(now);
+    document.getElementById('pnl-to').value   = fmt(now);
+  } else if(preset==='week') {
+    const wStart = new Date(now); wStart.setDate(now.getDate()-now.getDay());
+    document.getElementById('pnl-from').value = fmt(wStart);
+    document.getElementById('pnl-to').value   = fmt(now);
+  } else if(preset==='month') {
+    document.getElementById('pnl-from').value = fmt(now).slice(0,7)+'-01';
+    document.getElementById('pnl-to').value   = fmt(now);
+  }
   renderPnl();
 }
+
 function renderPnl(){
-  if(!document.getElementById('pnl-date').value)document.getElementById('pnl-date').value=today();
-  const now=new Date(),ym=now.toISOString().slice(0,7);
-  let fO=S.orders,fE=S.expenses,fP=S.payroll,label='';
-  if(pnlTab==='daily'){
-    const d=document.getElementById('pnl-date').value;
-    fO=S.orders.filter(o=>o.date===d);
-    fE=S.expenses.filter(e=>e.date===d);
-    fP=S.payroll.filter(i=>i.date===d);
-    label=d;
-  }else if(pnlTab==='weekly'){
-    const wS=new Date(now);wS.setDate(now.getDate()-now.getDay());
-    const wSStr=wS.toISOString().split('T')[0];
-    fO=S.orders.filter(o=>o.date>=wSStr);
-    fE=S.expenses.filter(e=>e.date>=wSStr);
-    fP=S.payroll.filter(i=>i.date>=wSStr);
-    label='This Week ('+wSStr+' – '+today()+')';
-  }else{
-    fO=S.orders.filter(o=>o.date?.startsWith(ym));
-    fE=S.expenses.filter(e=>e.date?.startsWith(ym));
-    fP=S.payroll.filter(i=>i.date?.startsWith(ym));
-    label=now.toLocaleString('en-PH',{month:'long',year:'numeric'});
-  }
+  const fromEl = document.getElementById('pnl-from');
+  const toEl   = document.getElementById('pnl-to');
+  if(!fromEl || !toEl) return;
+  // Default to today if empty
+  if(!fromEl.value) fromEl.value = today();
+  if(!toEl.value)   toEl.value   = today();
+  const from = fromEl.value;
+  const to   = toEl.value;
+  const label = from===to ? from : `${from} → ${to}`;
 
-  // === INCOME ===
-  // COD: counted when Delivered
-  // LBC/EMS/FedEx: counted as soon as Fully Paid + Verified (payment-confirmed model)
-  // No need to wait for lbcStatus — payment is already confirmed, delivery is guaranteed
-  const lbcIntlPaidOrders = fO.filter(o =>
-    (o.paymentMethod==='LBC' || o.paymentMethod==='EMS' || o.paymentMethod==='FedEx') &&
-    o.paymentStatus === 'Fully Paid' &&
-    o.verificationStatus === 'Verified'
-  );
-  const deliveredOrders = fO.filter(o => o.status==='Delivered' && (o.paymentMethod||'COD')==='COD');
-  const incomeOrders = [...deliveredOrders, ...lbcIntlPaidOrders];
-  const grossRevenue=incomeOrders.reduce((s,o)=>s+o.itemsTotal,0);
-  const shippingIncome=incomeOrders.reduce((s,o)=>s+o.shipping,0);
-  const totalIncome=grossRevenue+shippingIncome;
+  // ── Filter orders/expenses/payroll within date range ────────
+  // LBC/EMS/FedEx: use dateOfPayment for revenue recognition; must be Verified
+  const fO_cod  = S.orders.filter(o=>o.date>=from && o.date<=to);
+  const fE = S.expenses.filter(e=>e.date>=from && e.date<=to);
+  const fP = S.payroll.filter(i=>i.date>=from && i.date<=to);
 
-  // === COST OF GOODS (Cancelled/Update losses) ===
-  const returnedOrders=fO.filter(o=>['Cancelled','Update'].includes(o.status));
-  const returnLoss=returnedOrders.reduce((s,o)=>s+o.itemsTotal,0);
+  // === SALES (New structure: exclude shipping from Total Sales) ===
+  const codDelivered = S.orders.filter(o=>
+    o.status==='Delivered' && (o.paymentMethod||'COD')==='COD' && o.date>=from && o.date<=to);
+  const courierVerified = S.orders.filter(o=>
+    (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx') &&
+    o.paymentStatus==='Fully Paid' && o.verificationStatus==='Verified' &&
+    (o.dateOfPayment||'').slice(0,10)>=from && (o.dateOfPayment||'').slice(0,10)<=to);
+  const incomeOrders = [...codDelivered, ...courierVerified];
 
-  // === PAYROLL ===
-  const payBase=fP.reduce((s,i)=>s+i.basePay,0);
-  const payIncentives=fP.reduce((s,i)=>s+i.parcelInc,0);
-  const payOtherInc=fP.reduce((s,i)=>s+(i.otherInc||0),0);
-  const payGovDeduct=fP.reduce((s,i)=>s+(i.totalDeduct||0),0);
-  const payNetTotal=fP.reduce((s,i)=>s+i.totalSalary,0);
+  // TOTAL SALES = product price only (itemsTotal), NO shipping fee
+  const totalSales = incomeOrders.reduce((s,o)=>s+o.itemsTotal,0);
+  // TOTAL COST = cost of goods sold (pergram × grams or pergram × qty for each item)
+  const totalCOGS = incomeOrders.reduce((s,o)=>{
+    return s + (o.items||[]).reduce((is,it)=>{
+      if(it.grams>0 && it.pergram) return is+(it.pergram*it.grams);
+      if(it.qty>0 && it.costPerPc) return is+(it.costPerPc*(it.qty||1));
+      if(it.qty>0 && it.pergram) return is+(it.pergram*(it.qty||1)); // fallback
+      return is;
+    }, 0);
+  }, 0);
+  const grossProfit = totalSales - totalCOGS;
 
-  // === OPERATING EXPENSES by category ===
-  const catMap={};fE.forEach(e=>{catMap[e.category]=(catMap[e.category]||0)+parseFloat(e.amount||0);});
-  const totalExpenses=Object.values(catMap).reduce((s,v)=>s+v,0);
+  // === OPERATING EXPENSES by standard categories ===
+  const STD_CATS = ['Ads','Salaries','Incentives','Baog','Bills','Supplies','Tax','Benefits','Others'];
+  const catMap = {};
+  fE.forEach(e=>{
+    const cat = STD_CATS.includes(e.category) ? e.category : 'Others';
+    catMap[cat] = (catMap[cat]||0) + parseFloat(e.amount||0);
+  });
+  const totalOpEx = Object.values(catMap).reduce((s,v)=>s+v,0);
+
+  // === PAYROLL (separate from operating expenses now) ===
+  const payNetTotal = fP.reduce((s,i)=>s+i.totalSalary,0);
+  // If Salaries not separately in expenses, add payroll net to operating total display
+  const totalExpIncPayroll = totalOpEx; // expenses already may include salaries
+  const netProfit = grossProfit - totalOpEx;
+  const margin = totalSales ? ((netProfit/totalSales)*100).toFixed(1) : '0.0';
 
   // === ADMIN INCENTIVES ===
-  // Admin incentives — supports merged orders (adminList splits ₱25 per admin)
   const adminDel={};
   incomeOrders.forEach(o=>{
-    const admins = o.adminList && o.adminList.length > 0 ? o.adminList : (o.admin ? [o.admin] : []);
-    const share = 25 / Math.max(1, admins.length);
-    admins.forEach(a => { if(a) adminDel[a] = (adminDel[a]||0) + share; });
+    const admins = o.adminList&&o.adminList.length>0?o.adminList:(o.admin?[o.admin]:[]);
+    const share = 25/Math.max(1,admins.length);
+    admins.forEach(a=>{if(a)adminDel[a]=(adminDel[a]||0)+share;});
   });
-  const totalAdminIncentives=Object.values(adminDel).reduce((s,v)=>s+v,0);
-
-  // === TOTALS ===
-  // Admin incentives (₱25 per delivered parcel) are a real operating cost
-  const totalCosts=returnLoss+payNetTotal+totalExpenses+totalAdminIncentives;
-  const grossProfit=totalIncome-returnLoss;
-  const netProfit=totalIncome-totalCosts;
-  const margin=totalIncome?((netProfit/totalIncome)*100).toFixed(1):'0.0';
+  const totalAdminInc = Object.values(adminDel).reduce((s,v)=>s+v,0);
 
   const row=(label,val,color,indent=false,bold=false)=>`<div style="display:flex;justify-content:space-between;padding:${bold?'9px':'6px'} ${indent?'20px':'0'} ${bold?'9px':'6px'} 0;border-bottom:1px solid var(--navy-border);font-size:${bold?'13px':'12.5px'};">
     <span style="color:${indent?'var(--muted)':'var(--white)'};">${label}</span>
     <span style="color:${color};font-weight:${bold?'700':'400'};">${val}</span>
   </div>`;
-  const sectionHead=(label)=>`<div style="font-size:10px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:0.8px;padding:12px 0 4px;border-bottom:2px solid var(--gold);">${label}</div>`;
-  const dividerRow=`<div style="border-bottom:2px solid var(--navy-border);margin:4px 0;"></div>`;
+  const sH=(l)=>`<div style="font-size:10px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:0.8px;padding:12px 0 4px;border-bottom:2px solid var(--gold);">${l}</div>`;
+  const div=`<div style="border-bottom:2px solid var(--navy-border);margin:4px 0;"></div>`;
 
   document.getElementById('pnl-main').innerHTML=`<div class="card">
     <div class="card-header">
-      <span class="card-title">Profit & Loss Statement</span>
+      <span class="card-title" style="font-size:14px;font-weight:800;letter-spacing:0.5px;">PROFIT & LOSS STATEMENT</span>
       <span style="font-size:11px;color:var(--muted);">${label}</span>
     </div>
-    ${sectionHead('INCOME')}
-    ${row('Gross Revenue (Items Sold)',p(grossRevenue),'var(--green)',true)}
-    ${row('Shipping Income',p(shippingIncome),'var(--green)',true)}
-    ${row('TOTAL INCOME',p(totalIncome),'var(--green)',false,true)}
-    ${dividerRow}
-    ${sectionHead('COST & LOSSES')}
-    ${row('Return/For Return Losses',(returnLoss?'-':'')+p(returnLoss),'var(--red)',true)}
+    ${sH('REVENUE')}
+    ${row('TOTAL SALES (Products only — excl. Shipping)',p(totalSales),'var(--green)',false,true)}
+    ${row('TOTAL COST (COGS: Cost/g×g or Cost/pc×qty)',totalCOGS?'('+p(totalCOGS)+')':'₱0.00','var(--red)',false,true)}
     ${row('GROSS PROFIT',p(grossProfit),grossProfit>=0?'var(--green)':'var(--red)',false,true)}
-    ${dividerRow}
-    ${sectionHead('PAYROLL')}
-    ${row('Base Pay (Rate × Days)',p(payBase),'var(--muted)',true)}
-    ${row('Parcel Incentives',p(payIncentives),'var(--green)',true)}
-    ${row('Other Incentives',p(payOtherInc),'var(--green)',true)}
-    ${row('Gov\'t Deductions (SSS/PhilHealth/Pag-IBIG/Tax)','-'+p(payGovDeduct),'var(--red)',true)}
-    ${row('Net Payroll (Total Salaries Paid)',p(payNetTotal),'var(--orange)',false,true)}
-    ${row('Admin Incentives (₱25 × '+deliveredOrders.length+' delivered)','-'+p(totalAdminIncentives),'var(--red)',true)}
-    ${dividerRow}
-    ${sectionHead('OPERATING EXPENSES')}
-    ${Object.entries(catMap).length?Object.entries(catMap).map(([c,a])=>row(c,'-'+p(a),'var(--red)',true)).join(''):row('No expenses recorded','₱0.00','var(--muted)',true)}
-    ${row('Total Operating Expenses','-'+p(totalExpenses),'var(--red)',false,true)}
-    ${dividerRow}
+    ${div}
+    ${sH('OPERATING EXPENSES')}
+    ${STD_CATS.map(cat=>row(cat,(catMap[cat]?'('+p(catMap[cat])+')':'₱0.00'),catMap[cat]?'var(--red)':'var(--muted)',true)).join('')}
+    ${row('TOTAL OPERATING EXPENSES',totalOpEx?'('+p(totalOpEx)+')':'₱0.00','var(--red)',false,true)}
+    ${div}
     <div style="display:flex;justify-content:space-between;padding:14px;margin-top:8px;border-radius:8px;background:${netProfit>=0?'rgba(46,204,138,0.09)':'rgba(224,85,85,0.09)'};">
       <strong style="font-size:15px;">NET ${netProfit>=0?'PROFIT':'LOSS'}</strong>
       <strong style="font-size:18px;color:${netProfit>=0?'var(--green)':'var(--red)'};">${p(Math.abs(netProfit))}</strong>
@@ -5726,106 +5817,76 @@ function renderPnl(){
     <div style="text-align:right;font-size:11px;color:var(--muted);margin-top:6px;">Net Margin: <strong style="color:var(--gold);">${margin}%</strong></div>
   </div>`;
 
-  // Right column — breakdown
   document.getElementById('pnl-breakdown').innerHTML=`
     <div class="card">
-      <div class="card-header"><span class="card-title">Orders Breakdown</span></div>
-      ${['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'].map(s=>{
-        const cnt=fO.filter(o=>o.status===s).length;
-        const val=fO.filter(o=>o.status===s).reduce((sum,o)=>sum+o.grandTotal,0);
-        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;">
-          <span class="status ${sclass(s)}">${s}</span>
-          <span style="text-align:right;"><strong>${cnt}</strong> <span style="color:var(--muted);font-size:10.5px;">${p(val)}</span></span>
-        </div>`;
-      }).join('')}
+      <div class="card-header"><span class="card-title">Sales Breakdown</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">COD Delivered</span><span><strong>${codDelivered.length}</strong> — ${p(codDelivered.reduce((s,o)=>s+o.itemsTotal,0))}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">LBC Verified</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='LBC').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='LBC').reduce((s,o)=>s+o.itemsTotal,0))}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">EMS Verified</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='EMS').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='EMS').reduce((s,o)=>s+o.itemsTotal,0))}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">FedEx Verified</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='FedEx').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='FedEx').reduce((s,o)=>s+o.itemsTotal,0))}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;font-weight:700;"><span>Total Parcels</span><span style="color:var(--green);">${incomeOrders.length}</span></div>
     </div>
     <div class="card" style="margin-top:13px;">
-      <div class="card-header"><span class="card-title">Admin Incentives</span></div>
-      ${Object.entries(adminDel).length?Object.entries(adminDel).sort((a,b)=>b[1]-a[1]).map(([a,c])=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;">
-        <span style="font-weight:600;">${a}</span>
-        <span style="color:var(--muted);">${c}×₱25 = <strong style="color:var(--green);">${p(c*25)}</strong></span>
-      </div>`).join(''):'<p style="color:var(--muted);font-size:12px;padding:8px 0;">No deliveries</p>'}
-      <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:12.5px;font-weight:600;"><span>Total Admin Incentives</span><span style="color:var(--green);">${p(totalAdminIncentives)}</span></div>
+      <div class="card-header"><span class="card-title">Admin Incentives (₱25/parcel)</span></div>
+      ${Object.entries(adminDel).length?Object.entries(adminDel).sort((a,b)=>b[1]-a[1]).map(([a,c])=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="font-weight:600;">${a}</span><span style="color:var(--muted);">${c}×₱25 = <strong style="color:var(--green);">${p(c*25)}</strong></span></div>`).join(''):'<p style="color:var(--muted);font-size:12px;padding:8px 0;">No sales in range</p>'}
+      <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:12.5px;font-weight:600;"><span>Total Admin Incentives</span><span style="color:var(--green);">${p(totalAdminInc)}</span></div>
     </div>
     <div class="card" style="margin-top:13px;">
-      <div class="card-header"><span class="card-title">Payroll Breakdown</span></div>
-      ${fP.length?fP.map(i=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:11.5px;">
-        <span><strong>${i.name}</strong> <span style="color:var(--muted);font-size:10.5px;">${i.role}</span></span>
-        <span style="color:var(--gold);font-weight:600;">${p(i.totalSalary)}</span>
-      </div>`).join(''):'<p style="color:var(--muted);font-size:12px;padding:8px 0;">No payroll for this period</p>'}
+      <div class="card-header"><span class="card-title">Payroll Summary</span></div>
+      ${fP.length?fP.map(i=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:11.5px;"><span><strong>${i.name}</strong> <span style="color:var(--muted);font-size:10.5px;">${i.role}</span></span><span style="color:var(--gold);font-weight:600;">${p(i.totalSalary)}</span></div>`).join(''):'<p style="color:var(--muted);font-size:12px;padding:8px 0;">No payroll for this range</p>'}
       ${fP.length?`<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:12.5px;font-weight:600;"><span>Total Net Payroll</span><span style="color:var(--orange);">${p(payNetTotal)}</span></div>`:''}
     </div>`;
 }
 
 function printPnl(){
-  const now=new Date(),ym=now.toISOString().slice(0,7);
-  let fO=S.orders,fE=S.expenses,fP=S.payroll,label='';
-  if(pnlTab==='daily'){const d=document.getElementById('pnl-date').value;fO=S.orders.filter(o=>o.date===d);fE=S.expenses.filter(e=>e.date===d);fP=S.payroll.filter(i=>i.date===d);label=d;}
-  else if(pnlTab==='weekly'){const wS=new Date(now);wS.setDate(now.getDate()-now.getDay());const wSStr=wS.toISOString().split('T')[0];fO=S.orders.filter(o=>o.date>=wSStr);fE=S.expenses.filter(e=>e.date>=wSStr);fP=S.payroll.filter(i=>i.date>=wSStr);label='This Week';}
-  else{fO=S.orders.filter(o=>o.date?.startsWith(ym));fE=S.expenses.filter(e=>e.date?.startsWith(ym));fP=S.payroll.filter(i=>i.date?.startsWith(ym));label=now.toLocaleString('en-PH',{month:'long',year:'numeric'});}
-  const codDel=fO.filter(o=>o.status==='Delivered'&&(o.paymentMethod||'COD')==='COD');
-  const lbcIntlPaid=fO.filter(o=>
+  const from = document.getElementById('pnl-from')?.value || today();
+  const to   = document.getElementById('pnl-to')?.value   || today();
+  const label = from===to ? from : `${from} → ${to}`;
+  const codDelivered = S.orders.filter(o=>o.status==='Delivered'&&(o.paymentMethod||'COD')==='COD'&&o.date>=from&&o.date<=to);
+  const courierVerified = S.orders.filter(o=>
     (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx')&&
-    o.paymentStatus==='Fully Paid'&&o.verificationStatus==='Verified'
-  );
-  const del=[...codDel,...lbcIntlPaid];
-  const grossRev=del.reduce((s,o)=>s+o.itemsTotal,0);
-  const sfInc=del.reduce((s,o)=>s+o.shipping,0);
-  const retLoss=fO.filter(o=>['Cancelled','Update'].includes(o.status)).reduce((s,o)=>s+o.itemsTotal,0);
-  const catMap={};fE.forEach(e=>{catMap[e.category]=(catMap[e.category]||0)+parseFloat(e.amount||0);});
-  const expTotal=Object.values(catMap).reduce((s,v)=>s+v,0);
-  const payBase=fP.reduce((s,i)=>s+i.basePay,0);
-  const payInc=fP.reduce((s,i)=>s+i.parcelInc,0);
-  const payGov=fP.reduce((s,i)=>s+(i.totalDeduct||0),0);
-  const payNet=fP.reduce((s,i)=>s+i.totalSalary,0);
-  const totalInc=grossRev+sfInc;
-  const adminDel2={};
-  del.forEach(o=>{
-    const admins=o.adminList&&o.adminList.length>0?o.adminList:(o.admin?[o.admin]:[]);
-    const share=25/Math.max(1,admins.length);
-    admins.forEach(a=>{if(a)adminDel2[a]=(adminDel2[a]||0)+share;});
-  });
-  const adminInc2=Object.values(adminDel2).reduce((s,v)=>s+v,0);
-  const totalCosts=retLoss+payNet+expTotal+adminInc2;
-  const net=totalInc-totalCosts;
-  const pw=document.getElementById('pnl-print');  const _printHTML = `<div class="print-pnl-wrap"><div class="print-pnl-header">
+    o.paymentStatus==='Fully Paid'&&o.verificationStatus==='Verified'&&
+    (o.dateOfPayment||'').slice(0,10)>=from&&(o.dateOfPayment||'').slice(0,10)<=to);
+  const incomeOrders=[...codDelivered,...courierVerified];
+  const totalSales=incomeOrders.reduce((s,o)=>s+o.itemsTotal,0);
+  const totalCOGS=incomeOrders.reduce((s,o)=>{
+    return s+(o.items||[]).reduce((is,it)=>{
+      if(it.grams>0&&it.pergram) return is+(it.pergram*it.grams);
+      if(it.qty>0&&it.costPerPc) return is+(it.costPerPc*(it.qty||1));
+      if(it.qty>0&&it.pergram) return is+(it.pergram*(it.qty||1));
+      return is;
+    },0);
+  },0);
+  const grossProfit=totalSales-totalCOGS;
+  const fE=S.expenses.filter(e=>e.date>=from&&e.date<=to);
+  const STD_CATS=['Ads','Salaries','Incentives','Baog','Bills','Supplies','Tax','Benefits','Others'];
+  const catMap={};fE.forEach(e=>{const c=STD_CATS.includes(e.category)?e.category:'Others';catMap[c]=(catMap[c]||0)+parseFloat(e.amount||0);});
+  const totalOpEx=Object.values(catMap).reduce((s,v)=>s+v,0);
+  const netProfit=grossProfit-totalOpEx;
+  const _printHTML=`<div class="print-pnl-wrap"><div class="print-pnl-header">
     <h2>${S.bizInfo?.name||'Goldchelle Online Enterprises'}</h2>
-    <p>Profit & Loss Statement — ${label}</p>
+    <p style="font-size:13px;font-weight:700;">PROFIT & LOSS STATEMENT</p>
+    <p>Period: ${label}</p>
     <p style="font-size:9.5px;color:#888;">Printed: ${new Date().toLocaleDateString('en-PH')}</p>
   </div>
-  <div class="pnl-section"><div class="pnl-section-label">INCOME</div>
-    <div class="pnl-item"><span>Gross Revenue (Items Sold)</span><span style="color:#27ae60;">${p(grossRev)}</span></div>
-    <div class="pnl-item"><span>Shipping Income</span><span style="color:#27ae60;">${p(sfInc)}</span></div>
-    <div class="pnl-item subtotal"><span>TOTAL INCOME</span><span style="color:#27ae60;">${p(totalInc)}</span></div>
-  </div>
-  <div class="pnl-section"><div class="pnl-section-label">COST & LOSSES</div>
-    <div class="pnl-item"><span>Return / For Return Losses</span><span style="color:#c0392b;">(${p(retLoss)})</span></div>
-    <div class="pnl-item subtotal"><span>GROSS PROFIT</span><span style="color:${grossRev-retLoss>=0?'#27ae60':'#c0392b'};">${p(grossRev+sfInc-retLoss)}</span></div>
-  </div>
-  <div class="pnl-section"><div class="pnl-section-label">PAYROLL</div>
-    <div class="pnl-item"><span>Base Pay</span><span>(${p(payBase)})</span></div>
-    <div class="pnl-item"><span>Parcel Incentives</span><span>(${p(payInc)})</span></div>
-    <div class="pnl-item"><span>Gov't Remittances (SSS/PhilHealth/Pag-IBIG/Tax)</span><span>${p(payGov)}</span></div>
-    <div class="pnl-item subtotal"><span>NET PAYROLL</span><span style="color:#c0392b;">(${p(payNet)})</span></div>
-  </div>
-  <div class="pnl-section"><div class="pnl-section-label">ADMIN INCENTIVES</div>
-    <div class="pnl-item"><span>₱25 × ${del.length} delivered parcels</span><span style="color:#c0392b;">(${p(adminInc2)})</span></div>
-    <div class="pnl-item subtotal"><span>TOTAL ADMIN INCENTIVES</span><span style="color:#c0392b;">(${p(adminInc2)})</span></div>
+  <div class="pnl-section"><div class="pnl-section-label">REVENUE</div>
+    <div class="pnl-item subtotal"><span>TOTAL SALES (Products Only)</span><span style="color:#27ae60;">${p(totalSales)}</span></div>
+    <div class="pnl-item"><span>TOTAL COST (COGS)</span><span style="color:#c0392b;">(${p(totalCOGS)})</span></div>
+    <div class="pnl-item subtotal"><span>GROSS PROFIT</span><span style="color:${grossProfit>=0?'#27ae60':'#c0392b'};">${p(grossProfit)}</span></div>
   </div>
   <div class="pnl-section"><div class="pnl-section-label">OPERATING EXPENSES</div>
-    ${Object.entries(catMap).map(([c,a])=>`<div class="pnl-item"><span>${c}</span><span style="color:#c0392b;">(${p(a)})</span></div>`).join('')}
-    <div class="pnl-item subtotal"><span>TOTAL EXPENSES</span><span style="color:#c0392b;">(${p(expTotal)})</span></div>
+    ${STD_CATS.map(c=>`<div class="pnl-item"><span>${c}</span><span style="color:#c0392b;">${catMap[c]?'('+p(catMap[c])+')':'₱0.00'}</span></div>`).join('')}
+    <div class="pnl-item subtotal"><span>TOTAL OPERATING EXPENSES</span><span style="color:#c0392b;">(${p(totalOpEx)})</span></div>
   </div>
-  <div class="pnl-item ${net>=0?'net':'net-loss'}"><span>NET ${net>=0?'PROFIT':'LOSS'}</span><span>${p(Math.abs(net))}</span></div>
+  <div class="pnl-item ${netProfit>=0?'net':'net-loss'}"><span>NET ${netProfit>=0?'PROFIT':'LOSS'}</span><span>${p(Math.abs(netProfit))}</span></div>
   <div style="margin-top:36px;display:flex;justify-content:space-around;">
     <div style="text-align:center;"><div style="border-bottom:1px solid #333;width:140px;height:28px;"></div><p style="font-size:10px;">Prepared by</p></div>
     <div style="text-align:center;"><div style="border-bottom:1px solid #333;width:140px;height:28px;"></div><p style="font-size:10px;">Approved by</p></div>
   </div></div>`;
-  const _win = window.open('','_blank','width=900,height=700,menubar=yes,toolbar=yes');
-  if(!_win){ toast('⚠️ Popup blocked! Allow popups then retry.'); return; }
-  _win.document.write(_printHTML);
-  _win.document.close();
-  setTimeout(()=>{ try{ _win.print(); }catch(e){} }, 400);
+  const _win=window.open('','_blank','width=900,height=700,menubar=yes,toolbar=yes');
+  if(!_win){toast('⚠️ Popup blocked! Allow popups then retry.');return;}
+  _win.document.write(_printHTML);_win.document.close();
+  setTimeout(()=>{try{_win.print();}catch(e){}},400);
 }
 function renderDash(){
   const total=S.orders.length,del=S.orders.filter(o=>o.status==='Delivered').length;
@@ -5904,7 +5965,7 @@ function selectRole(role){
     if(sel){
       sel.innerHTML='<option value="">-- Select your name --</option>';
       S.riders.forEach((r,i)=>{
-        if(r.password) sel.innerHTML+=`<option value="${i}">🏍️ ${r.name} — 📍 ${r.location||'—'}</option>`;
+        if(r.password) sel.innerHTML+=`<option value="${i}">🏍️ ${r.name} — 📍 ${(r.locations&&r.locations.length?r.locations:(r.location?[r.location]:[])).join(', ')||'—'}</option>`;
       });
     }
     document.getElementById('login-step-rider').style.display='block';
@@ -5973,7 +6034,10 @@ function doLogin(){
       const p=document.getElementById('rider-dash-login-prompt'); if(p)p.style.display='none';
       const d=document.getElementById('rider-dash-content'); if(d)d.style.display='block';
       const n=document.getElementById('rider-dash-name'); if(n)n.textContent=currentRider.name;
-      const l=document.getElementById('rider-dash-location'); if(l)l.textContent=currentRider.location||'—';
+      const l=document.getElementById('rider-dash-location'); if(l){
+        const locs2=currentRider.locations&&currentRider.locations.length?currentRider.locations:(currentRider.location?[currentRider.location]:[]);
+        l.textContent=locs2.join(', ')||'—';
+      }
       const rdf = document.getElementById('rider-date-filter');
       if(rdf && !rdf.value) rdf.value = today();
       renderRiderParcels();
@@ -6210,7 +6274,7 @@ function populateRiderDropdown() {
   if(sel.tagName !== 'SELECT') return;
   sel.innerHTML = '<option value="">-- Select Rider --</option>'
     + S.riders.map((r,i) =>
-        `<option value="${i}">🏍️ ${r.name} (📍 ${r.location||'—'} · ${r.type})</option>`
+        `<option value="${i}">🏍️ ${r.name} (📍 ${(r.locations&&r.locations.length?r.locations:(r.location?[r.location]:[])).join(', ')||'—'} · ${r.type})</option>`
       ).join('');
 }
 
@@ -6238,19 +6302,23 @@ function autoAssignRider() {
 
   if(!address) return;
 
-  // COD: match address keywords against rider locations, store rider NAME
+  // COD: match address keywords against all rider locations, store rider NAME
   let bestIdx = -1, bestScore = 0;
   S.riders.forEach((r, i) => {
-    if(!r.location) return;
-    const loc = r.location.toLowerCase();
-    const locWords = loc.split(/[\s,]+/).filter(w => w.length > 2);
+    // Support both old single location and new locations array
+    const allLocs = r.locations && r.locations.length ? r.locations : (r.location ? [r.location] : []);
+    if(!allLocs.length) return;
+    const locStr = allLocs.join(' ').toLowerCase();
+    const locWords = locStr.split(/[\s,]+/).filter(w => w.length > 2);
     let score = 0;
     locWords.forEach(word => { if(address.includes(word)) score += 2; });
     if(score > bestScore) { bestScore = score; bestIdx = i; }
   });
   if(bestIdx >= 0 && bestScore > 0) {
-    hiddenRider.value = S.riders[bestIdx].name; // store NAME not index
-    toast('📍 Auto-assigned: ' + S.riders[bestIdx].name + ' (' + S.riders[bestIdx].location + ')');
+    const r = S.riders[bestIdx];
+    const allLocs = r.locations && r.locations.length ? r.locations : (r.location ? [r.location] : []);
+    hiddenRider.value = r.name;
+    toast('📍 Auto-assigned: ' + r.name + ' (' + allLocs.join(', ') + ')');
   }
 }
 
@@ -6258,22 +6326,27 @@ function autoAssignRider() {
 // SIMPLIFIED RIDER SAVE — Name, Location, Type, Contact, Password only
 // ============================================================
 function saveRider() {
-  const name = document.getElementById('rider-name').value.trim();
-  const loc = document.getElementById('rider-location').value.trim();
+  const name = document.getElementById('rider-name').value.trim().toUpperCase();
   if(!name) { toast('Name is required'); return; }
   const contact = document.getElementById('rider-contact').value.replace(/\D/g,'');
   if(contact && contact.length !== 11) { toast('⚠️ Contact number must be exactly 11 digits'); document.getElementById('rider-contact').focus(); return; }
   const pw = document.getElementById('rider-password').value;
   const idx = document.getElementById('rider-edit-idx').value;
   const existingPw = idx !== '' ? (S.riders[+idx].password || '') : '';
+  const locations = getSelectedRiderLocs();
+  // Keep location (first area) for backward compat with dropdown references
+  const location = locations[0] || '';
   const obj = {
-    name, location: loc,
+    name,
+    location,      // legacy compat — first location
+    locations,     // new: full multi-location array
     type: document.getElementById('rider-type').value,
     contact,
     password: pw || existingPw
   };
   if(idx !== '') S.riders[+idx] = obj; else S.riders.push(obj);
-  if(loc && !S.locations.includes(loc)) S.locations.push(loc);
+  // Auto-add any new locations to S.locations
+  locations.forEach(loc => { if(loc && !S.locations.includes(loc)) S.locations.push(loc); });
   save(); closeModal('modal-rider'); toast('✅ Rider saved!');
   document.getElementById('rider-modal-title').textContent = 'Add Rider';
   document.getElementById('rider-edit-idx').value = '';
@@ -6289,7 +6362,10 @@ let currentRider = null;
 function openRiderLogin() {
   const sel = document.getElementById('rider-login-name');
   sel.innerHTML = '<option value="">-- Select Rider --</option>'
-    + S.riders.map((r,i) => `<option value="${i}">${r.name} — 📍 ${r.location||'—'}</option>`).join('');
+    + S.riders.map((r,i) => {
+      const locs = r.locations && r.locations.length ? r.locations : (r.location ? [r.location] : []);
+      return `<option value="${i}">${r.name} — 📍 ${locs.join(', ')||'—'}</option>`;
+    }).join('');
   document.getElementById('rider-login-pw').value = '';
   document.getElementById('rider-login-err').textContent = '';
   document.getElementById('rider-login-screen').classList.remove('hidden');
@@ -6309,7 +6385,8 @@ function doRiderLogin() {
   document.getElementById('rider-dash-login-prompt').style.display = 'none';
   document.getElementById('rider-dash-content').style.display = 'block';
   document.getElementById('rider-dash-name').textContent = rider.name;
-  document.getElementById('rider-dash-location').textContent = rider.location || '—';
+  const riderLocs = rider.locations && rider.locations.length ? rider.locations : (rider.location ? [rider.location] : []);
+  document.getElementById('rider-dash-location').textContent = riderLocs.join(', ') || '—';
   renderRiderParcels();
 }
 
@@ -6735,16 +6812,17 @@ function _invDeducted(o) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── Installment / Reference Number Payment Rows ───────────────
-function addPaymentRow(refno='', amount='') {
+function addPaymentRow(refno='', amount='', date='', time='') {
   const tbody = document.getElementById('enc-payments-tbody');
   if(!tbody) return;
-  const idx = tbody.children.length;
   const row = document.createElement('div');
   row.className = 'enc-payment-row';
-  row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:center;';
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 130px 100px auto;gap:6px;align-items:center;margin-bottom:3px;';
   row.innerHTML = `
     <input class="form-control" style="font-size:11px;" placeholder="Reference No. *" value="${refno}" data-role="refno">
     <input type="number" class="form-control" style="font-size:11px;" placeholder="Amount (₱)" value="${amount}" min="0" step="0.01" data-role="amount">
+    <input type="date" class="form-control" style="font-size:11px;" value="${date}" data-role="date" title="Payment Date">
+    <input type="time" class="form-control" style="font-size:11px;" value="${time}" data-role="time" title="Payment Time (24h)">
     <button type="button" class="btn btn-red btn-sm" onclick="this.closest('.enc-payment-row').remove()" style="padding:3px 8px;">✕</button>`;
   tbody.appendChild(row);
 }
@@ -6755,8 +6833,10 @@ function getPayments() {
   rows.forEach(row => {
     const refno = (row.querySelector('[data-role="refno"]')?.value||'').trim();
     const amount = parseFloat(row.querySelector('[data-role="amount"]')?.value)||0;
-    // Skip completely blank rows (no refno and no amount entered)
-    if(refno || amount > 0) payments.push({refno, amount});
+    const date   = (row.querySelector('[data-role="date"]')?.value||'').trim();
+    const time   = (row.querySelector('[data-role="time"]')?.value||'').trim();
+    // Skip completely blank rows
+    if(refno || amount > 0 || date || time) payments.push({refno, amount, date, time});
   });
   return payments;
 }
@@ -6766,9 +6846,9 @@ function renderPayments(payments, addBlankIfEmpty=false) {
   if(!tbody) return;
   tbody.innerHTML = '';
   if(payments && payments.length) {
-    payments.forEach(p => addPaymentRow(p.refno||'', p.amount||''));
+    payments.forEach(p => addPaymentRow(p.refno||'', p.amount||'', p.date||'', p.time||''));
   } else if(addBlankIfEmpty) {
-    addPaymentRow(); // start with one empty row for new orders
+    addPaymentRow();
   }
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -7226,16 +7306,26 @@ function refreshUpdateBadge() {
 function renderRiders() {
   renderLocTabs();
   const q = (document.getElementById('rider-search')?.value||'').toLowerCase();
-  let filtered = curLocation==='ALL' ? S.riders : S.riders.filter(r=>r.location===curLocation);
+  // Multi-location: rider appears in a tab if any of their locations matches
+  let filtered = curLocation==='ALL'
+    ? S.riders
+    : S.riders.filter(r=>{
+        const locs = r.locations && r.locations.length ? r.locations : (r.location ? [r.location] : []);
+        return locs.includes(curLocation);
+      });
   if(q) filtered = filtered.filter(r => r.name.toLowerCase().includes(q));
   document.getElementById('rider-loc-label').textContent = curLocation==='ALL'?'All Riders':'Riders – '+curLocation;
   document.getElementById('rider-loc-count').textContent = filtered.length+' rider(s)';
   let html = '';
   filtered.forEach(r => {
     const ri = S.riders.indexOf(r);
+    const locs = r.locations && r.locations.length ? r.locations : (r.location ? [r.location] : []);
+    const locTags = locs.length
+      ? locs.map(l=>`<span style="font-size:9.5px;padding:1px 6px;border-radius:20px;background:rgba(201,168,76,0.15);color:var(--gold);white-space:nowrap;">📍 ${l}</span>`).join(' ')
+      : '<span style="color:var(--muted);font-size:10px;">—</span>';
     html += `<tr>
       <td style="font-weight:700;color:var(--gold);">🏍️ ${r.name}</td>
-      <td><span style="font-size:10px;padding:2px 7px;border-radius:20px;background:rgba(201,168,76,0.15);color:var(--gold);">📍 ${r.location||'—'}</span></td>
+      <td style="max-width:200px;"><div style="display:flex;flex-wrap:wrap;gap:3px;">${locTags}</div></td>
       <td><span class="status ${r.type==='LBC'?'blue':'green'}">${r.type||'COD'}</span></td>
       <td>${r.contact||'—'}</td>
       <td style="font-size:10.5px;">${r.password?'<span style="color:var(--green);">✅ Set</span>':'<span style="color:var(--red);">❌ No PW</span>'}</td>
@@ -7329,7 +7419,7 @@ function onRemitStatusChange(val) {
 function openRemitModal(editIdx=null) {
   const sel = document.getElementById('remit-rider');
   sel.innerHTML = '<option value="">-- Select Rider --</option>' +
-    S.riders.map((r,i)=>`<option value="${i}">${r.name} — ${r.location||'—'}</option>`).join('');
+    S.riders.map((r,i)=>`<option value="${i}">${r.name} — ${(r.locations&&r.locations.length?r.locations:(r.location?[r.location]:[])).join(', ')||'—'}</option>`).join('');
   document.getElementById('remit-date').value = today();
   document.getElementById('remit-edit-idx').value = editIdx !== null ? editIdx : '';
   document.getElementById('remit-modal-title').textContent = editIdx !== null ? 'Edit Remit Entry' : 'Rider Remittance';
@@ -8279,7 +8369,8 @@ async function initApp(){
   // Initialize UI dates safely
   const setVal = (id,v) => { const el=document.getElementById(id); if(el) el.value=v; };
   setVal('ds-date', today());
-  setVal('pnl-date', today());
+  setVal('pnl-from', today());
+  setVal('pnl-to',   today());
   setVal('daily-date', today());
   setVal('checker-date', '');  // Blank — show all orders regardless of date
   setVal('track-date', today());
