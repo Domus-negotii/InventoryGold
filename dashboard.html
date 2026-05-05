@@ -3250,7 +3250,7 @@ function renderChecker(){
                   ?`<span style="font-size:9.5px;color:var(--muted);padding:2px 6px;">🔒 ${o.status==='Delivered'?'Delivered':'In Progress'}</span>`
                   :`<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`)}
               <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
-              ${!isLocked?`<button class="btn btn-red btn-sm" onclick="delOrder(${i})">🗑️</button>`:''}
+              ${!isLocked?`<button class="btn btn-red btn-sm" onclick="checkerCancelOrder(${i})" title="Cancel this order">✕ Cancel</button>`:''}
             </td>
           </tr>`;
         });
@@ -5754,14 +5754,29 @@ function renderPnl(){
   // TOTAL SALES = product price only (itemsTotal), NO shipping fee
   const totalSales = incomeOrders.reduce((s,o)=>s+o.itemsTotal,0);
   // TOTAL COST = cost of goods sold (pergram × grams or pergram × qty for each item)
-  const totalCOGS = incomeOrders.reduce((s,o)=>{
-    return s + (o.items||[]).reduce((is,it)=>{
-      if(it.grams>0 && it.pergram) return is+(it.pergram*it.grams);
-      if(it.qty>0 && it.costPerPc) return is+(it.costPerPc*(it.qty||1));
-      if(it.qty>0 && it.pergram) return is+(it.pergram*(it.qty||1)); // fallback
-      return is;
-    }, 0);
-  }, 0);
+  // ── COGS helper: look up capital/cost price from inventory by product code ──
+  // order items store the SELLING price (pergram / fixPrice), NOT the cost price.
+  // We must resolve cost from S.inventory using the item's serial code.
+  function calcItemCOGS(it) {
+    // Try to find the product in inventory by serial code
+    const inv = (S.inventory||[]).find(p => p.code && it.code && p.code.toUpperCase() === it.code.toUpperCase());
+    if(inv) {
+      if(inv.itemType === 'fixprice') {
+        // Fix-price: capitalPerUnit × qty sold
+        return (inv.capitalPerUnit||0) * (it.qty||1);
+      } else {
+        // Grams: capitalPerGram × grams sold
+        return (inv.capitalPerGram||0) * (it.grams||it.qty||0);
+      }
+    }
+    // Fallback: if item itself has capital fields stored (future-proofing)
+    if(it.capitalPerGram) return it.capitalPerGram * (it.grams||it.qty||0);
+    if(it.capitalPerUnit) return it.capitalPerUnit * (it.qty||1);
+    // No cost data available for this item
+    return 0;
+  }
+  const totalCOGS = incomeOrders.reduce((s,o)=>
+    s + (o.items||[]).reduce((is,it)=> is + calcItemCOGS(it), 0), 0);
   const grossProfit = totalSales - totalCOGS;
 
   // === OPERATING EXPENSES by standard categories ===
@@ -5851,9 +5866,13 @@ function printPnl(){
   const totalSales=incomeOrders.reduce((s,o)=>s+o.itemsTotal,0);
   const totalCOGS=incomeOrders.reduce((s,o)=>{
     return s+(o.items||[]).reduce((is,it)=>{
-      if(it.grams>0&&it.pergram) return is+(it.pergram*it.grams);
-      if(it.qty>0&&it.costPerPc) return is+(it.costPerPc*(it.qty||1));
-      if(it.qty>0&&it.pergram) return is+(it.pergram*(it.qty||1));
+      const inv=(S.inventory||[]).find(p=>p.code&&it.code&&p.code.toUpperCase()===it.code.toUpperCase());
+      if(inv){
+        if(inv.itemType==='fixprice') return is+(inv.capitalPerUnit||0)*(it.qty||1);
+        return is+(inv.capitalPerGram||0)*(it.grams||it.qty||0);
+      }
+      if(it.capitalPerGram) return is+it.capitalPerGram*(it.grams||it.qty||0);
+      if(it.capitalPerUnit) return is+it.capitalPerUnit*(it.qty||1);
       return is;
     },0);
   },0);
