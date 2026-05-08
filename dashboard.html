@@ -2831,7 +2831,7 @@ function _renderAdminPersonalSheet() {
     </div>`;
   // Set default date = tomorrow right after element is created
   const modf = document.getElementById('my-order-date');
-  if(modf && !modf.value) modf.value = tomorrow();
+  // Leave date blank by default — shows all orders; user can filter by date manually
   renderMyOrders();
 }
 
@@ -8397,7 +8397,7 @@ async function initApp(){
   setVal('ret-items-date', today());
   setVal('ret-update-date', today());
   setVal('remit-page-date', today());
-  setVal('my-order-date', today());
+  setVal('my-order-date', '');
   setVal('order-date-filter', tomorrow());
   setVal('rider-date-filter', today());
   setVal('enc-date', '');
