@@ -3518,7 +3518,7 @@ function buildRefRows(o) {
     return pmts.map((pmt,pi)=>{
       const lbl = multiRef ? `Ref #${pi+1}:` : 'Ref No.:';
       const dtPart = pmt.date ? ` [${pmt.date}${pmt.time?' '+pmt.time:''}]` : '';
-      const val = (pmt.refno||'')+(pmt.amount>0?` \u2014 \u20b1${Number(pmt.amount).toFixed(2)}`:'')+(dtPart);
+      const val = (pmt.refno||'')+(pmt.amount>0?` — ₱${Number(pmt.amount).toFixed(2)}`:'')+(dtPart);
       return fldR(lbl, val);
     }).join('');
   }
@@ -3552,21 +3552,21 @@ function openInvoice(i){
   const rows = o.items.map(it=>{
     const isGrams  = it.pergram > 0;
     const qtyStr   = isGrams ? `${it.grams}g` : `×${it.qty||1}`;
-    const rateStr  = isGrams ? `@\u20b1${Number(it.pergram).toFixed(2)}/g` : '';
+    const rateStr  = isGrams ? `@₱${Number(it.pergram).toFixed(2)}/g` : '';
     const disc     = it.discount||0;
-    const discStr  = disc>0 ? `<br><span style="font-size:8.5px;color:#000;">&nbsp;Disc:-\u20b1${disc.toFixed(2)}${it.discountRemark?' ('+it.discountRemark+')':''}</span>` : '';
+    const discStr  = disc>0 ? `<br><span style="font-size:8.5px;color:#000;">&nbsp;Disc:-₱${disc.toFixed(2)}${it.discountRemark?' ('+it.discountRemark+')':''}</span>` : '';
     const T='padding:2px 1px;vertical-align:top;font-size:8.5px;color:#000;';
     return `<tr>
       <td style="${T}font-weight:700;">[${it.code||'—'}]<br><span style="font-weight:400;">${it.desc||''}</span>${discStr}</td>
       <td style="${T}text-align:center;white-space:nowrap;">${qtyStr}<br><span style="font-size:7.5px;">${rateStr}</span></td>
-      <td style="${T}text-align:right;font-weight:700;">\u20b1${Number(it.total||0).toFixed(2)}</td>
+      <td style="${T}text-align:right;font-weight:700;">₱${Number(it.total||0).toFixed(2)}</td>
     </tr>`;
   }).join('');
 
   const totalDisc = o.totalDiscount||0;
   const discRow = totalDisc>0
     ? `<tr><td colspan="2" style="font-size:8px;text-align:right;padding:2px 1px;color:#000;">Total Discount:</td>
-       <td style="font-size:8px;text-align:right;padding:2px 1px;color:#000;font-weight:700;">-\u20b1${totalDisc.toFixed(2)}</td></tr>`:'';
+       <td style="font-size:8px;text-align:right;padding:2px 1px;color:#000;font-weight:700;">-₱${totalDisc.toFixed(2)}</td></tr>`:'';
 
   const fld=(lbl,val)=>val?`<tr>
     <td style="font-size:8.5px;font-weight:700;color:#000;padding:1px 0;white-space:nowrap;width:52px;">${lbl}</td>
@@ -3617,14 +3617,14 @@ function openInvoice(i){
   <table style="width:100%;border-collapse:collapse;margin-top:3px;">
     <tr>
       <td style="font-size:8.5px;color:#000;padding:2px 1px;">Shipping Fee (SF):</td>
-      <td style="font-size:8.5px;color:#000;padding:2px 1px;text-align:right;font-weight:700;">\u20b1${Number(o.shipping||0).toFixed(2)}</td>
+      <td style="font-size:8.5px;color:#000;padding:2px 1px;text-align:right;font-weight:700;">₱${Number(o.shipping||0).toFixed(2)}</td>
     </tr>
   </table>
   ${SOLID_LINE}
   <table style="width:100%;border-collapse:collapse;">
     <tr>
       <td style="font-size:13px;font-weight:900;color:#000;padding:3px 1px;">TOTAL:</td>
-      <td style="font-size:13px;font-weight:900;color:#000;padding:3px 1px;text-align:right;">\u20b1${Number(o.grandTotal||0).toFixed(2)}</td>
+      <td style="font-size:13px;font-weight:900;color:#000;padding:3px 1px;text-align:right;">₱${Number(o.grandTotal||0).toFixed(2)}</td>
     </tr>
   </table>
   ${SOLID_LINE}
@@ -5015,6 +5015,9 @@ function toggleInvType() {
   document.querySelectorAll('.inv-grams-row').forEach(el => el.style.display = t==='grams' ? '' : 'none');
   document.querySelectorAll('.inv-fixprice-row').forEach(el => el.style.display = t==='fixprice' ? '' : 'none');
 }
+// ── Inventory search state (persists across re-renders) ──────
+const _invSearch = { q:'', type:'', lowStock:false, siQ:'', soQ:'', ledQ:'' };
+
 function renderInv(tab){
   const el=document.getElementById('inventory-content');
   if(tab==='list'){
@@ -5026,12 +5029,9 @@ function renderInv(tab){
       if(it.itemType==='fixprice') return s+(it.capitalPerUnit||0)*(it.qty||0);
       return s+(it.grams||0)*(it.capitalPerGram||0);
     },0);
-
-    // ── Search / filter ─────────────────────────────────────
-    const q = (document.getElementById('inv-search-input')?.value||'').toLowerCase().trim();
-    const typeF = document.getElementById('inv-type-filter')?.value||'';
-    const lowStockF = document.getElementById('inv-lowstock-filter')?.checked||false;
-
+    const q = _invSearch.q.toLowerCase().trim();
+    const typeF = _invSearch.type;
+    const lowStockF = _invSearch.lowStock;
     let filtered = S.inventory.map((it,i)=>({it,i})).filter(({it})=>{
       if(q && !it.code.toLowerCase().includes(q) && !it.desc.toLowerCase().includes(q)) return false;
       if(typeF && it.itemType !== typeF) return false;
@@ -5041,7 +5041,6 @@ function renderInv(tab){
       }
       return true;
     });
-
     el.innerHTML=`
     <div class="stats-grid">
       <div class="stat-card gold"><div class="stat-label">Stock Value</div><div class="stat-value">${p(totalVal)}</div></div>
@@ -5057,16 +5056,18 @@ function renderInv(tab){
           <input class="form-control" id="inv-search-input"
             placeholder="Search by code or description..."
             style="padding-left:30px;font-size:12px;"
-            oninput="renderInv('list')"
-            value="${document.getElementById('inv-search-input')?.value||''}">
+            oninput="_invSearch.q=this.value;renderInv('list')"
+            value="${_invSearch.q}">
         </div>
-        <select class="form-control" id="inv-type-filter" style="width:130px;font-size:12px;" onchange="renderInv('list')">
+        <select class="form-control" id="inv-type-filter" style="width:130px;font-size:12px;"
+          onchange="_invSearch.type=this.value;renderInv('list')">
           <option value="">All Types</option>
           <option value="grams"${typeF==='grams'?' selected':''}>By Grams</option>
           <option value="fixprice"${typeF==='fixprice'?' selected':''}>Fix Price</option>
         </select>
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;white-space:nowrap;">
-          <input type="checkbox" id="inv-lowstock-filter" ${lowStockF?'checked':''} onchange="renderInv('list')" style="accent-color:var(--gold);">
+          <input type="checkbox" id="inv-lowstock-filter" ${lowStockF?'checked':''} style="accent-color:var(--gold);"
+            onchange="_invSearch.lowStock=this.checked;renderInv('list')">
           <span style="color:var(--orange);">⚠️ Low Stock Only</span>
         </label>
         ${q||typeF||lowStockF?`<button class="btn btn-outline btn-sm" onclick="clearInvFilters()" style="font-size:11px;white-space:nowrap;">✕ Clear</button>`:''}
@@ -5079,7 +5080,7 @@ function renderInv(tab){
     <tbody>${filtered.map(({it,i})=>{
       const isFix = it.itemType==='fixprice';
       const stockDisplay = isFix
-        ? `<span style="font-weight:700;color:${it.qty<=2?'var(--red)':it.qty<=5?'var(--orange)':'var(--green)'};">${it.qty} pcs ${it.qty<=2?'⚠️':''}</span>`
+        ? `<span style="font-weight:700;color:${it.qty<=2?'var(--red)':it.qty<=5?'var(--orange)':'var(--green)'}">${it.qty} pcs ${it.qty<=2?'⚠️':''}</span>`
         : `<span style="font-weight:700;color:var(--blue);">${+parseFloat(it.grams||0).toFixed(2)}g</span>`;
       const _f2=v=>+parseFloat(v||0).toFixed(2);
       const priceInfo = isFix ? `₱${_f2(it.fixPrice)}/pc` : `${it.pergram?'₱'+_f2(it.pergram)+'/g':'—'}`;
@@ -5091,7 +5092,6 @@ function renderInv(tab){
         ? (it.fixPrice||0) - (it.capitalPerUnit||0)
         : (it.pergram||0) - (it.capitalPerGram||0);
       const profitColor = profitPerUnit > 0 ? 'var(--green)' : profitPerUnit < 0 ? 'var(--red)' : 'var(--muted)';
-      // Highlight matching text
       const hl = txt => {
         if(!q) return txt;
         const re = new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi');
@@ -5112,15 +5112,36 @@ function renderInv(tab){
           <button class="btn btn-orange btn-sm" onclick="openStockModal('out',${i})">↓ Out</button>
           <button class="btn btn-red btn-sm" onclick="delInv(${i})">🗑️</button>
         </td></tr>`;
-    }).join('')||`<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:26px;">${q||typeF||lowStockF?'No items match your search. <a href="#" onclick="clearInvFilters();return false;" style="color:var(--gold);">Clear filters</a>':'No products yet'}</td></tr>`}
+    }).join('')||`<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:26px;">${q||typeF||lowStockF?'No items match your search.':'No products yet'}</td></tr>`}
     </tbody></table></div></div>`;
+    const inp = document.getElementById('inv-search-input');
+    if(inp && _invSearch.q){ inp.focus(); inp.setSelectionRange(inp.value.length,inp.value.length); }
+
   }else if(tab==='stockin'||tab==='stockout'){
     const type=tab==='stockin'?'in':'out';
-    // Stock In: show 'in' and 'return' types. Stock Out: show 'out' and 'adj' types.
-    const logs=S.stockLog.filter(l=>type==='in'?(l.type==='in'||l.type==='return'):(l.type==='out'||l.type==='adj'));
+    const allLogs=S.stockLog.filter(l=>type==='in'?(l.type==='in'||l.type==='return'):(l.type==='out'||l.type==='adj'));
     const typeLabel={'in':'↑ IN','return':'↩ RETURN','out':'↓ OUT','adj':'⚙ ADJ'};
     const typeCls={'in':'stock-in','return':'stock-in','out':'stock-out','adj':'stock-adj'};
-    el.innerHTML=`<div class="card"><div class="card-header"><span class="card-title">${tab==='stockin'?'Stock In Log':'Stock Out / Adjustment Log'}</span></div>
+    const sqKey = tab==='stockin'?'siQ':'soQ';
+    const sq = (_invSearch[sqKey]||''). toLowerCase().trim();
+    const logs = sq ? allLogs.filter(l=>{
+      const prod=S.inventory.find(it=>it.code===l.productCode);
+      const name=(prod?prod.desc:l.productCode).toLowerCase();
+      return name.includes(sq)||l.productCode.toLowerCase().includes(sq)||(l.date||'').includes(sq)||(l.notes||'').toLowerCase().includes(sq);
+    }) : allLogs;
+    el.innerHTML=`<div class="card">
+      <div class="card-header">
+        <span class="card-title">${tab==='stockin'?'Stock In Log':'Stock Out / Adjustment Log'}</span>
+        <div style="position:relative;width:220px;">
+          <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:13px;pointer-events:none;">🔍</span>
+          <input class="form-control" id="${tab}-search"
+            style="padding-left:26px;font-size:11.5px;height:32px;"
+            placeholder="Search product or date..."
+            value="${_invSearch[sqKey]||''}"
+            oninput="_invSearch['${sqKey}']=this.value;renderInv('${tab}')">
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${logs.length} of ${allLogs.length} record${allLogs.length!==1?'s':''}</div>
     <div class="table-wrap"><table><thead><tr><th>Date</th><th>Product</th><th>Type</th><th>Qty/Grams</th><th>Before</th><th>After</th><th>Notes</th><th>Actions</th></tr></thead>
     <tbody>${logs.length?[...logs].reverse().map((l)=>{
       const gi=S.stockLog.indexOf(l);
@@ -5128,20 +5149,42 @@ function renderInv(tab){
       const unit = prod?.itemType==='fixprice' ? 'pcs' : 'g';
       return `<tr><td>${l.date}</td><td style="font-weight:500;">${prod?prod.desc:l.productCode}</td>
         <td><span class="${typeCls[l.type]||'stock-out'}">${typeLabel[l.type]||l.type}</span></td>
-        <td style="font-weight:700;">${parseFloat(l.qty||0).toFixed(2)}${unit}</td><td style="color:var(--muted);">${parseFloat(l.before||0).toFixed(2)}</td>
+        <td style="font-weight:700;">${parseFloat(l.qty||0).toFixed(2)}${unit}</td>
+        <td style="color:var(--muted);">${parseFloat(l.before||0).toFixed(2)}</td>
         <td style="color:var(--gold);font-weight:600;">${parseFloat(l.after||0).toFixed(2)}</td>
         <td style="font-size:11px;">${l.notes||'—'}</td>
         <td><button class="btn btn-red btn-sm" onclick="delStockLog(${gi})">🗑️</button></td></tr>`;
-    }).join(''):'<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:26px;">No transactions</td></tr>'}
+    }).join(''): `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:26px;">${sq?'No matching records':'No transactions'}</td></tr>`}
     </tbody></table></div></div>`;
+    const si = document.getElementById(tab+'-search');
+    if(si && _invSearch[sqKey]){ si.focus(); si.setSelectionRange(si.value.length,si.value.length); }
+
   }else{
-    const logs=[...S.stockLog].sort((a,b)=>new Date(b.date)-new Date(a.date));
+    const allLogs=[...S.stockLog].sort((a,b)=>new Date(b.date)-new Date(a.date));
+    const lq = (_invSearch.ledQ||'').toLowerCase().trim();
+    const logs = lq ? allLogs.filter(l=>{
+      const prod=S.inventory.find(it=>it.code===l.productCode);
+      const name=(prod?prod.desc:l.productCode).toLowerCase();
+      return name.includes(lq)||l.productCode.toLowerCase().includes(lq)||(l.date||'').includes(lq)||(l.notes||'').toLowerCase().includes(lq);
+    }) : allLogs;
     el.innerHTML=`<div class="stats-grid">
       <div class="stat-card green"><div class="stat-label">Total In Events</div><div class="stat-value">${S.stockLog.filter(l=>l.type==='in'||l.type==='return').length}</div></div>
       <div class="stat-card red"><div class="stat-label">Total Out Events</div><div class="stat-value">${S.stockLog.filter(l=>l.type==='out'||l.type==='adj').length}</div></div>
       <div class="stat-card blue"><div class="stat-label">All Transactions</div><div class="stat-value">${S.stockLog.length}</div></div>
     </div>
-    <div class="card"><div class="card-header"><span class="card-title">Full Stock Ledger</span></div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Full Stock Ledger</span>
+        <div style="position:relative;width:220px;">
+          <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:13px;pointer-events:none;">🔍</span>
+          <input class="form-control" id="ledger-search"
+            style="padding-left:26px;font-size:11.5px;height:32px;"
+            placeholder="Search product, code or date..."
+            value="${_invSearch.ledQ||''}"
+            oninput="_invSearch.ledQ=this.value;renderInv('ledger')">
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${logs.length} of ${allLogs.length} record${allLogs.length!==1?'s':''}</div>
     <div class="table-wrap"><table><thead><tr><th>Date</th><th>Product</th><th>Code</th><th>Type</th><th>Qty</th><th>Before</th><th>After</th><th>Notes</th><th>Del</th></tr></thead>
     <tbody>${logs.length?logs.map(l=>{
       const gi=S.stockLog.indexOf(l);
@@ -5157,10 +5200,13 @@ function renderInv(tab){
         <td style="color:var(--gold);font-weight:600;">${+parseFloat(l.after||0).toFixed(2)}</td>
         <td style="font-size:11px;">${l.notes||'—'}</td>
         <td><button class="btn btn-red btn-sm" onclick="delStockLog(${gi})">🗑️</button></td></tr>`;
-    }).join(''):'<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:26px;">No transactions</td></tr>'}
+    }).join(''): `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:26px;">${lq?'No matching records':'No transactions'}</td></tr>`}
     </tbody></table></div></div>`;
+    const li = document.getElementById('ledger-search');
+    if(li && _invSearch.ledQ){ li.focus(); li.setSelectionRange(li.value.length,li.value.length); }
   }
 }
+
 function openAddInvModal() {
   document.getElementById('inv-code').value = '';
   document.getElementById('inv-desc').value = '';
