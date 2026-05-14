@@ -633,7 +633,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-admin" onclick="selectRole('admin')">
           <div class="role-icon">👤</div>
-          <div class="role-name">CSR</div>
+          <div class="role-name">CSRf</div>
           <div class="role-desc">Orders &amp; Operations</div>
         </div>
       </div>
@@ -3451,8 +3451,8 @@ function verifyOrder(i){
     }
   }
   // ── Deduct inventory on Checker Verify ────────────────────────
-  // Only deduct once — guard against re-verify clicks.
-  if(o.checkerStatus !== 'Verified') {
+  // Guard: ONLY deduct if not already deducted — prevents double entries
+  if(!S.orders[i].inventoryDeducted) {
     const didDeduct = _deductOrderItems(o.items, today(),
       'Checker verified – '+o.name+' ('+onum(i)+')');
     if(didDeduct) S.orders[i].inventoryDeducted = true;
@@ -5328,18 +5328,19 @@ function saveInv(){
     const orig = S.inventory[+editIdx];
     // Log stock change if qty or grams changed
     if(orig) {
+      const roundTo2 = v => Math.round((v||0)*100)/100;
       if(t==='fixprice' && obj.qty !== (orig.qty||0)) {
         const diff = obj.qty - (orig.qty||0);
         S.stockLog.push({productCode:code, type: diff>0?'in':'adj',
           qty:Math.abs(diff), date:today(),
           notes:`Edit adjustment (qty: ${orig.qty||0} → ${obj.qty})`,
           before:orig.qty||0, after:obj.qty});
-      } else if(t==='grams' && obj.grams !== (orig.grams||0)) {
-        const diff = obj.grams - (orig.grams||0);
+      } else if(t==='grams' && roundTo2(obj.grams) !== roundTo2(orig.grams||0)) {
+        const diff = roundTo2(obj.grams) - roundTo2(orig.grams||0);
         S.stockLog.push({productCode:code, type: diff>0?'in':'adj',
           qty:Math.abs(diff), date:today(),
-          notes:`Edit adjustment (grams: ${orig.grams||0}g → ${obj.grams}g)`,
-          before:orig.grams||0, after:obj.grams});
+          notes:`Edit adjustment (grams: ${roundTo2(orig.grams||0)}g → ${roundTo2(obj.grams)}g)`,
+          before:roundTo2(orig.grams||0), after:roundTo2(obj.grams)});
       }
     }
     S.inventory[+editIdx]=obj;
@@ -5431,6 +5432,12 @@ function updateStockPreview(){
 }
 
 function saveStock(){
+  // Guard: prevent double-submit on rapid clicks
+  const btn = document.querySelector('#modal-stock .btn-gold');
+  if(btn && btn.dataset.saving === '1') return;
+  if(btn) btn.dataset.saving = '1';
+  setTimeout(() => { if(btn) btn.dataset.saving = ''; }, 1500);
+
   const idx=document.getElementById('stock-product').value;
   const searchVal=document.getElementById('stock-product-search').value.trim();
   // If nothing selected via datalist, try to match by code typed directly
@@ -6979,9 +6986,11 @@ function _restoreOrderItems(items, orderDate, label) {
   return restored;
 }
 
-// Returns true if this order's inventory was already deducted (new flow OR old verified)
+// Returns true ONLY if inventory was actually deducted for this order.
+// Strictly checks inventoryDeducted flag — do NOT use checkerStatus as fallback
+// because old orders may have checkerStatus='Verified' but inventory was never touched.
 function _invDeducted(o) {
-  return o.inventoryDeducted === true || o.checkerStatus === 'Verified';
+  return o.inventoryDeducted === true;
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
