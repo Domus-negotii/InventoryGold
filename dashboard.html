@@ -6411,7 +6411,7 @@ function autoAssignRider() {
   const hiddenRider = document.getElementById('enc-rider');
   if(!hiddenRider) return;
 
-  // For LBC/EMS/FedEx — clear hidden rider (courier handles delivery)
+  // LBC/EMS/FedEx — courier handles delivery, no rider needed
   if(method === 'LBC' || method === 'EMS' || method === 'FedEx') {
     hiddenRider.value = '';
     return;
@@ -6419,23 +6419,80 @@ function autoAssignRider() {
 
   if(!address) return;
 
-  // COD: match address keywords against all rider locations, store rider NAME
+  // Words that appear in almost every address — must NEVER trigger a match
+  const GENERIC = new Set([
+    'city','cities','barangay','brgy','bgy','street','st','ave','avenue',
+    'road','rd','village','vill','blk','block','lot','unit','floor','flr',
+    'building','bldg','subdivision','subd','phase','zone','compound',
+    'near','beside','behind','front','corner','cor','national','highway',
+    'the','and','of','de','del','san','santa','sto','new','old','upper','lower',
+    'north','south','east','west','central'
+  ]);
+
+  // Tokenise address into whole words (3+ chars, not generic)
+  const addrWords = address.split(/[\s,.\-\/]+/)
+    .map(w => w.replace(/[^a-z0-9]/g, ''))
+    .filter(w => w.length >= 3 && !GENERIC.has(w));
+
+  // Build a normalized address string for full-phrase matching
+  const addrNorm = address.replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ');
+
   let bestIdx = -1, bestScore = 0;
+
   S.riders.forEach((r, i) => {
-    // Support both old single location and new locations array
-    const allLocs = r.locations && r.locations.length ? r.locations : (r.location ? [r.location] : []);
+    const allLocs = r.locations && r.locations.length
+      ? r.locations
+      : (r.location ? [r.location] : []);
     if(!allLocs.length) return;
-    const locStr = allLocs.join(' ').toLowerCase();
-    const locWords = locStr.split(/[\s,]+/).filter(w => w.length > 2);
+
     let score = 0;
-    locWords.forEach(word => { if(address.includes(word)) score += 2; });
+
+    allLocs.forEach(loc => {
+      const locNorm = loc.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+
+      // ── Tier 1: exact full location phrase match (highest confidence) ──
+      // e.g. "cavite city" in address and rider loc is "CAVITE" — check whole phrase
+      if(locNorm.length >= 3 && addrNorm.includes(locNorm)) {
+        // Extra check: must be a whole-word boundary match, not a substring of another word
+        const re = new RegExp('(?:^|\\s)' + locNorm.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '(?:\\s|$|,)');
+        if(re.test(addrNorm)) score += 10;
+        else score += 5; // partial phrase match still scores
+      }
+
+      // ── Tier 2: individual significant words, whole-word only ──
+      const locWords = locNorm.split(/[\s,]+/)
+        .filter(w => w.length >= 3 && !GENERIC.has(w));
+
+      locWords.forEach(lw => {
+        // Must match as a whole word — not a substring
+        // e.g. "cav" in "cavite" is fine, but "city" must NOT match "cavite city"
+        const wordRe = new RegExp('(?:^|\\s)' + lw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '(?:\\s|$|,)');
+        if(wordRe.test(addrNorm)) score += 4;
+      });
+
+      // ── Tier 3: address words matching location words ──
+      addrWords.forEach(aw => {
+        locWords.forEach(lw => {
+          // Exact word match only — no partial substrings
+          if(aw === lw && aw.length >= 4) score += 3;
+        });
+      });
+    });
+
     if(score > bestScore) { bestScore = score; bestIdx = i; }
   });
-  if(bestIdx >= 0 && bestScore > 0) {
+
+  // Minimum threshold: score must be meaningful (not just a fluke 1-word match on a 3-char word)
+  if(bestIdx >= 0 && bestScore >= 4) {
     const r = S.riders[bestIdx];
-    const allLocs = r.locations && r.locations.length ? r.locations : (r.location ? [r.location] : []);
+    const allLocs = r.locations && r.locations.length
+      ? r.locations
+      : (r.location ? [r.location] : []);
     hiddenRider.value = r.name;
     toast('📍 Auto-assigned: ' + r.name + ' (' + allLocs.join(', ') + ')');
+  } else {
+    // No confident match — clear auto-assignment so admin assigns manually
+    hiddenRider.value = '';
   }
 }
 
