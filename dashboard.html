@@ -8697,15 +8697,14 @@ async function initApp(){
           const remote=(typeof fbData[k]==='object'&&fbData[k])?fbData[k]:{};
           S[k]=Object.assign({},local,remote); // remote wins for non-password config
         });
-        // Passwords: use remote if it's non-default, otherwise keep local
+        // specialPasswords — remote always wins (owner set these in Settings intentionally)
         const defaultSpecial={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
         const localSP=S.specialPasswords||defaultSpecial;
         const remoteSP=fbData.specialPasswords||{};
-        // Remote wins only if it has been customized (different from default)
         S.specialPasswords={
-          remitter: (remoteSP.remitter&&remoteSP.remitter!==defaultSpecial.remitter)?remoteSP.remitter:localSP.remitter||defaultSpecial.remitter,
-          sorter:   (remoteSP.sorter  &&remoteSP.sorter  !==defaultSpecial.sorter  )?remoteSP.sorter  :localSP.sorter  ||defaultSpecial.sorter,
-          checker:  (remoteSP.checker &&remoteSP.checker !==defaultSpecial.checker )?remoteSP.checker :localSP.checker ||defaultSpecial.checker,
+          remitter: remoteSP.remitter||localSP.remitter||defaultSpecial.remitter,
+          sorter:   remoteSP.sorter  ||localSP.sorter  ||defaultSpecial.sorter,
+          checker:  remoteSP.checker ||localSP.checker  ||defaultSpecial.checker,
         };
         // tabPasswords: remote wins (these are set in settings and should propagate)
         const localTP=S.tabPasswords||{};
@@ -8855,14 +8854,14 @@ function startAutoRefresh(){
         const remote=(typeof fbData[k]==='object'&&fbData[k])?fbData[k]:{};
         S[k]=Object.assign({},local,remote);
       });
-      // specialPasswords — remote wins only if customized (not default)
+      // specialPasswords — remote ALWAYS wins (owner set these intentionally in Settings)
       const defSP2={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
       const lSP2=S.specialPasswords||defSP2;
       const rSP2=fbData.specialPasswords||{};
       S.specialPasswords={
-        remitter:(rSP2.remitter&&rSP2.remitter!==defSP2.remitter)?rSP2.remitter:lSP2.remitter||defSP2.remitter,
-        sorter:  (rSP2.sorter  &&rSP2.sorter  !==defSP2.sorter  )?rSP2.sorter  :lSP2.sorter  ||defSP2.sorter,
-        checker: (rSP2.checker &&rSP2.checker !==defSP2.checker )?rSP2.checker :lSP2.checker ||defSP2.checker,
+        remitter: rSP2.remitter||lSP2.remitter||defSP2.remitter,
+        sorter:   rSP2.sorter  ||lSP2.sorter  ||defSP2.sorter,
+        checker:  rSP2.checker ||lSP2.checker  ||defSP2.checker,
       };
       // tabPasswords — remote wins (set in Settings, propagates to all)
       const lTP2=S.tabPasswords||{};
@@ -10325,6 +10324,68 @@ function confirmMerge() {
   renderChecker();
   if(currentRole==='owner') renderDash();
 }
+
+// ── Pre-login: fetch latest passwords from Firebase immediately on page load ──
+// This runs BEFORE login so all devices always use the owner's latest password.
+// Only fetches the password fields — lightweight, no full data load.
+(async function preloadPasswords(){
+  try {
+    const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}&mask.fieldPaths=ownerPwHash&mask.fieldPaths=specialPasswords&mask.fieldPaths=tabPasswords&mask.fieldPaths=adminAccounts`;
+    const r = await fetch(url, {cache:'no-cache'});
+    if(!r.ok) return;
+    const doc = await r.json();
+    if(!doc.fields) return;
+
+    // ── Owner password ──
+    const ownerHash = doc.fields.ownerPwHash ? _fromFS(doc.fields.ownerPwHash) : '';
+    if(ownerHash && ownerHash !== '') {
+      localStorage.setItem('gce_pw_hash', ownerHash);
+    }
+
+    // ── Remitter / Sorter / Checker passwords ──
+    if(doc.fields.specialPasswords) {
+      const sp = _fromFS(doc.fields.specialPasswords);
+      if(sp && typeof sp === 'object') {
+        if(!S.specialPasswords) S.specialPasswords = {};
+        if(sp.remitter) S.specialPasswords.remitter = sp.remitter;
+        if(sp.sorter)   S.specialPasswords.sorter   = sp.sorter;
+        if(sp.checker)  S.specialPasswords.checker  = sp.checker;
+      }
+    }
+
+    // ── Tab passwords ──
+    if(doc.fields.tabPasswords) {
+      const tp = _fromFS(doc.fields.tabPasswords);
+      if(tp && typeof tp === 'object') {
+        S.tabPasswords = Object.assign(
+          {checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},
+          S.tabPasswords||{}, tp
+        );
+      }
+    }
+
+    // ── Admin accounts (names + password hashes) ──
+    if(doc.fields.adminAccounts) {
+      const accs = _fromFS(doc.fields.adminAccounts);
+      if(Array.isArray(accs) && accs.length > 0) {
+        // Merge with local — remote wins for each name
+        const local = S.adminAccounts||[];
+        accs.forEach(ra => {
+          const idx = local.findIndex(la => la.name === ra.name);
+          if(idx >= 0) local[idx] = ra; // update existing
+          else local.push(ra);          // add new
+        });
+        S.adminAccounts = local;
+        // Also sync adminNames
+        const names = accs.map(a=>a.name).filter(Boolean);
+        names.forEach(n => { if(!S.adminNames.includes(n)) S.adminNames.push(n); });
+      }
+    }
+  } catch(e) {
+    // Silent fail — offline, will use localStorage fallback
+    console.warn('Pre-login password fetch failed (offline?):', e.message);
+  }
+})();
 
 // Show login screen on load (login screen is visible by default)
 // initApp() is called after successful doLogin()
