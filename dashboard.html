@@ -6110,7 +6110,7 @@ function hashPw(pw){ try{return btoa(unescape(encodeURIComponent(pw+':gce_salt_2
 function getStoredHash(){
   let h = localStorage.getItem('gce_pw_hash');
   if(!h){
-    // First time on this device — initialize with default
+    // No custom password set yet — initialize with default
     h = hashPw(DEFAULT_OWNER_PW);
     localStorage.setItem('gce_pw_hash', h);
   }
@@ -6119,8 +6119,14 @@ function getStoredHash(){
 function getOwnerHash(){ return getStoredHash(); }
 function checkOwnerPw(pw){
   const h = hashPw(pw);
-  // Check against stored hash; also accept default as fallback for fresh installs
-  return h === getStoredHash() || h === hashPw(DEFAULT_OWNER_PW);
+  const stored = getStoredHash();
+  const defaultHash = hashPw(DEFAULT_OWNER_PW);
+  // If a custom password was set (stored != default), ONLY accept stored hash
+  // If no custom password yet (stored == default), accept either
+  if(stored !== defaultHash){
+    return h === stored; // custom password set — only this works
+  }
+  return h === stored; // default still active — goldchelle2024 works
 }
 function checkAdminPw(name,pw){ if(!S.adminAccounts)return false; const acc=S.adminAccounts.find(a=>a.name.toUpperCase()===name.toUpperCase()); return acc?acc.pwHash===hashPw(pw):false; }
 function checkPw(pw){ return checkOwnerPw(pw); }
@@ -6325,16 +6331,8 @@ function changePassword(){
   const conf = document.getElementById('pw-confirm').value;
   const err  = document.getElementById('pw-change-err');
 
-  // Validate current password:
-  // Try stored hash first; if that fails, try the default password as fallback
-  // This handles the case where localStorage has a stale/corrupted hash
-  const storedHash  = localStorage.getItem('gce_pw_hash');
-  const defaultHash = hashPw(DEFAULT_OWNER_PW);
-  const curHash     = hashPw(cur);
-  const matchesStored  = storedHash  && curHash === storedHash;
-  const matchesDefault = curHash === defaultHash;
-
-  if(!matchesStored && !matchesDefault){
+  // Validate current password using the same logic as login
+  if(!checkOwnerPw(cur)){
     err.textContent='❌ Current password incorrect';
     return;
   }
