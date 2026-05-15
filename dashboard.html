@@ -506,7 +506,8 @@ window.syncToFirebase = async function(S) {
     ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{ fields[k] = _toFS(S[k]||{}); });
     fields['adminAccounts'] = _toFS(S.adminAccounts||[]);
     // Sync owner password hash so ALL devices use the same password
-    const ownerHash = localStorage.getItem('gce_pw_hash') || '';
+    // Use the actual stored hash, or the default hash if never changed
+    const ownerHash = localStorage.getItem('gce_pw_hash') || hashPw(DEFAULT_OWNER_PW);
     fields['ownerPwHash']  = _toFS(ownerHash);
     // Write timestamp — used by other devices to detect changes cheaply
     fields['_lastWrite']   = _toFS(Date.now());
@@ -557,8 +558,14 @@ window.loadFromFirebase = async function() {
     if(!data.govSettings)      data.govSettings      = {sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
     if(!data.bizInfo)          data.bizInfo          = {};
     // Restore owner password hash to this device localStorage
+    // Always restore — ensures every device gets the same owner password
     if(data.ownerPwHash && data.ownerPwHash !== '') {
       localStorage.setItem('gce_pw_hash', data.ownerPwHash);
+    } else {
+      // Firebase has no hash yet — set the default so login works
+      if(!localStorage.getItem('gce_pw_hash')) {
+        localStorage.setItem('gce_pw_hash', hashPw(DEFAULT_OWNER_PW));
+      }
     }
     delete data.ownerPwHash;
     delete data._lastWrite;
@@ -1523,6 +1530,11 @@ function _showRulesHint() {
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button class="btn btn-outline" onclick="exportData()">📤 Export JSON Backup</button>
             <button class="btn btn-red" onclick="clearAllData()">🗑️ Clear All Data</button>
+          </div>
+          <div style="margin-top:14px;padding:12px;background:rgba(224,85,85,0.08);border:1.5px solid rgba(224,85,85,0.3);border-radius:8px;">
+            <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:6px;">🚀 Fresh Start — Before Operations</div>
+            <p style="font-size:11px;color:var(--muted);margin-bottom:10px;">Clears all orders, return logs, stock transaction history, payroll, and expenses. <strong style="color:var(--green);">Inventory products, riders, admins, passwords, and settings are preserved.</strong></p>
+            <button class="btn btn-red" onclick="clearAllTransactions()">🧹 Clear All Transactions (Fresh Start)</button>
           </div>
         </div>
       </div>
@@ -3267,6 +3279,7 @@ function renderChecker(){
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
               ${!isLocked?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>`:''}
+              ${currentRole==='owner'?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" title="CEO Edit">✏️ Edit</button>`:''}
               ${o.status==='Cancelled'
                 ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
                 :o.checkerStatus!=='Verified'
@@ -3276,6 +3289,7 @@ function renderChecker(){
                   :`<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`)}
               <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
               ${!isLocked?`<button class="btn btn-red btn-sm" onclick="checkerCancelOrder(${i})" title="Cancel this order">✕ Cancel</button>`:''}
+              ${currentRole==='owner'?`<button class="btn btn-red btn-sm" onclick="ownerDeleteOrder(${i})" title="CEO: Permanent Delete">🗑️ Delete</button>`:''}
             </td>
           </tr>`;
         });
@@ -3370,6 +3384,7 @@ function renderChecker(){
               ${checkerCanEditODZ
                 ? '<button class="btn btn-outline btn-sm" onclick="openEditOrder('+i+')" style="font-size:10.5px;">✏️ Edit ODZ</button>'
                 : ''}
+              ${currentRole==='owner'?'<button class="btn btn-outline btn-sm" onclick="openEditOrder('+i+')" title="CEO Edit" style="font-size:10.5px;">✏️ Edit</button>':''}
               ${isDroppedOff
                 ? '<span style="font-size:9.5px;color:var(--blue);padding:2px 6px;background:rgba(74,144,217,0.1);border-radius:4px;">🔒 Dropped Off</span>'
                 : ((!isLocked ? '<button class="btn btn-outline btn-sm" onclick="openEditOrder('+i+')">✏️</button>' : '')
@@ -3381,6 +3396,7 @@ function renderChecker(){
                   + '<button class="btn btn-print btn-sm" onclick="openInvoice('+i+')">🖨️</button>'
                   + '<button class="btn btn-red btn-sm" onclick="checkerCancelOrder('+i+')">❌ Cancel</button>')
               }
+              ${currentRole==='owner'?'<button class="btn btn-red btn-sm" onclick="ownerDeleteOrder('+i+')" title="CEO: Permanent Delete">🗑️ Delete</button>':''}
             </td>
           </tr>`;
         });
@@ -4179,7 +4195,9 @@ function renderCancelledItems() {
     </td>
     <td>${cancelType}</td>
     <td style="font-size:10.5px;color:var(--orange);">${remark||'—'}</td>
-    <td><button class="btn btn-blue btn-sm" onclick="openReturnLogModal('${onum(oi)}',${ii})">📋 Log Return</button></td>
+    <td><button class="btn btn-blue btn-sm" onclick="openReturnLogModal('${onum(oi)}',${ii})">📋 Log Return</button>
+    ${currentRole==='owner'?`<button class="btn btn-red btn-sm" style="margin-top:3px;" onclick="ownerDeleteOrder(${oi})" title="CEO: Delete this order permanently">🗑️ Delete</button>`:''}
+    </td>
   </tr>`;}).join('')
   : `<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">${df?'Walang cancelled items para sa petsang ito.':'Lahat ng cancelled items ay naka-log na sa Return Log.'}</td></tr>`;
 }
@@ -6297,15 +6315,80 @@ function changePassword(){
   if(!checkOwnerPw(cur)){err.textContent='❌ Current password incorrect';return;}
   if(nw.length<4){err.textContent='❌ At least 4 characters required';return;}
   if(nw!==conf){err.textContent='❌ Passwords do not match';return;}
-  localStorage.setItem('gce_pw_hash',hashPw(nw));
-  err.style.color='var(--green)';err.textContent='✅ Password changed!';
+  // Save hash to localStorage
+  localStorage.setItem('gce_pw_hash', hashPw(nw));
+  err.style.color='var(--green)';
+  err.textContent='✅ Password changed! Syncing to all devices...';
   ['pw-current','pw-new','pw-confirm'].forEach(id=>document.getElementById(id).value='');
-  setTimeout(()=>{err.textContent='';err.style.color='var(--red)';closeModal('modal-change-pw');},1500);
+  // Immediately push to Firebase so ALL devices get the new password
+  if(window._fbReady && window.syncToFirebase) {
+    window.syncToFirebase(S);
+  }
+  setTimeout(()=>{err.textContent='';err.style.color='var(--red)';closeModal('modal-change-pw');},1800);
 }
 
-// ============================================================
-// FIREBASE CONFIG — Save/Load from localStorage
-// ============================================================
+// ═══════════════════════════════════════════════════════════════
+// CEO-ONLY: DELETE ORDER & CLEAR ALL TRANSACTIONS
+// ═══════════════════════════════════════════════════════════════
+
+// Delete a single order permanently (CEO only)
+// Does NOT touch inventory — stock was already managed by checker flow
+function ownerDeleteOrder(i) {
+  if(currentRole !== 'owner') { toast('🔒 CEO only.'); return; }
+  const o = S.orders[i];
+  if(!o) return;
+  if(!confirm(`DELETE permanently?\n\n${onum(i)} — ${o.name}\n₱${(o.grandTotal||0).toFixed(2)}\n\nThis cannot be undone. Inventory will NOT be affected.`)) return;
+  // Push to deletedOrders for audit
+  if(!S.deletedOrders) S.deletedOrders = [];
+  S.deletedOrders.push({
+    cancelledAt: new Date().toISOString(),
+    cancelledBy: 'CEO/Owner',
+    reason: 'Permanent delete by CEO',
+    orderNum: onum(i), name: o.name, contact: o.contact||'',
+    address: o.address||'', city: o.city||'', admin: o.admin||'',
+    date: o.date, paymentMethod: o.paymentMethod||'COD',
+    grandTotal: o.grandTotal||0, items: o.items||[],
+    status: o.status
+  });
+  S.orders.splice(i, 1);
+  save(); toast('🗑️ Order deleted permanently by CEO.');
+  try { renderChecker(); } catch(e) {}
+  try { renderReturns(); } catch(e) {}
+  try { renderOrders(); } catch(e) {}
+}
+
+// Clear ALL transactions — CEO only, for fresh start before operations
+// Clears: orders, returnLog, deletedOrders, stockLog transaction history
+// PRESERVES: inventory products (items remain, stock levels kept)
+// PRESERVES: riders, admins, passwords, settings, locations
+function clearAllTransactions() {
+  if(currentRole !== 'owner') { toast('🔒 CEO only.'); return; }
+  const confirmed = prompt(
+    'WARNING: This will permanently delete ALL orders, return logs, deleted orders, and stock transaction history.\n\n' +
+    'Inventory PRODUCTS will be preserved.\n' +
+    'Riders, admins, passwords, and settings will be preserved.\n\n' +
+    'Type CLEAR to confirm:'
+  );
+  if(confirmed !== 'CLEAR') { toast('Cancelled — type CLEAR exactly to confirm.'); return; }
+  // Clear all transaction data
+  S.orders        = [];
+  S.returnLog     = [];
+  S.deletedOrders = [];
+  S.stockLog      = [];
+  S.remitLog      = [];
+  S.cashbondLog   = [];
+  S.benefitsLog   = [];
+  S.payroll       = [];
+  S.expenses      = [];
+  S.mergeLog      = [];
+  save();
+  toast('✅ All transactions cleared. System is ready for fresh operations!');
+  try { renderDash(); } catch(e) {}
+  try { renderOrders(); } catch(e) {}
+  try { renderChecker(); } catch(e) {}
+  try { renderReturns(); } catch(e) {}
+  try { renderDeletedOrders(); } catch(e) {}
+}
 function loadFbConfig(){
   const cfg = JSON.parse(localStorage.getItem('gce_fb_config')||'null');
   if(!cfg) return;
@@ -8576,13 +8659,27 @@ async function initApp(){
           S[k] = remote.length >= local.length ? remote : local;
         });
 
-        // For config objects, deep merge: Firebase wins for keys it has,
-        // keep local values for any keys Firebase is missing
-        ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
-          const local = (typeof S[k]==='object'&&S[k]) ? S[k] : {};
-          const remote = (typeof fbData[k]==='object'&&fbData[k]) ? fbData[k] : {};
-          S[k] = Object.assign({}, local, remote); // remote wins for conflicts
+        // For config objects: deep merge
+        // For passwords (specialPasswords, tabPasswords): local wins — owner sets them locally first
+        ['govSettings','bizInfo'].forEach(k=>{
+          const local=(typeof S[k]==='object'&&S[k])?S[k]:{};
+          const remote=(typeof fbData[k]==='object'&&fbData[k])?fbData[k]:{};
+          S[k]=Object.assign({},local,remote); // remote wins for non-password config
         });
+        // Passwords: use remote if it's non-default, otherwise keep local
+        const defaultSpecial={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
+        const localSP=S.specialPasswords||defaultSpecial;
+        const remoteSP=fbData.specialPasswords||{};
+        // Remote wins only if it has been customized (different from default)
+        S.specialPasswords={
+          remitter: (remoteSP.remitter&&remoteSP.remitter!==defaultSpecial.remitter)?remoteSP.remitter:localSP.remitter||defaultSpecial.remitter,
+          sorter:   (remoteSP.sorter  &&remoteSP.sorter  !==defaultSpecial.sorter  )?remoteSP.sorter  :localSP.sorter  ||defaultSpecial.sorter,
+          checker:  (remoteSP.checker &&remoteSP.checker !==defaultSpecial.checker )?remoteSP.checker :localSP.checker ||defaultSpecial.checker,
+        };
+        // tabPasswords: remote wins (these are set in settings and should propagate)
+        const localTP=S.tabPasswords||{};
+        const remoteTP=fbData.tabPasswords||{};
+        S.tabPasswords=Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},localTP,remoteTP);
 
         // adminAccounts: merge by name — add any from Firebase not in local and vice versa
         const localAccs  = S.adminAccounts||[];
@@ -8722,11 +8819,24 @@ function startAutoRefresh(){
         const remote=Array.isArray(fbData[k])?fbData[k]:[];
         S[k]=remote.length>=local.length?remote:local;
       });
-      ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
+      ['govSettings','bizInfo'].forEach(k=>{
         const local=(typeof S[k]==='object'&&S[k])?S[k]:{};
         const remote=(typeof fbData[k]==='object'&&fbData[k])?fbData[k]:{};
         S[k]=Object.assign({},local,remote);
       });
+      // specialPasswords — remote wins only if customized (not default)
+      const defSP2={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
+      const lSP2=S.specialPasswords||defSP2;
+      const rSP2=fbData.specialPasswords||{};
+      S.specialPasswords={
+        remitter:(rSP2.remitter&&rSP2.remitter!==defSP2.remitter)?rSP2.remitter:lSP2.remitter||defSP2.remitter,
+        sorter:  (rSP2.sorter  &&rSP2.sorter  !==defSP2.sorter  )?rSP2.sorter  :lSP2.sorter  ||defSP2.sorter,
+        checker: (rSP2.checker &&rSP2.checker !==defSP2.checker )?rSP2.checker :lSP2.checker ||defSP2.checker,
+      };
+      // tabPasswords — remote wins (set in Settings, propagates to all)
+      const lTP2=S.tabPasswords||{};
+      const rTP2=fbData.tabPasswords||{};
+      S.tabPasswords=Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},lTP2,rTP2);
       // Merge adminAccounts by name
       const localA=S.adminAccounts||[];
       const remoteA=fbData.adminAccounts||[];
