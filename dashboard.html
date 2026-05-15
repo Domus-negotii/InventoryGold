@@ -551,6 +551,7 @@ window.loadFromFirebase = async function() {
     if(!Array.isArray(data.deletedOrders)) data.deletedOrders = [];
     if(!Array.isArray(data.mergeLog))      data.mergeLog      = [];
     if(!Array.isArray(data.adminAccounts)) data.adminAccounts = [];
+    if(!Array.isArray(data.adminNames))    data.adminNames    = [];
     if(!data.tabPasswords)     data.tabPasswords     = {checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''};
     if(!data.specialPasswords) data.specialPasswords = {remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
     if(!data.govSettings)      data.govSettings      = {sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
@@ -2434,7 +2435,7 @@ if(!S.cashbondLog)S.cashbondLog=[];
 if(!S.benefitsLog)S.benefitsLog=[];
 if(!S.returnLog)S.returnLog=[];
 if(!S.govSettings)S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
-if(!S.adminNames)S.adminNames=['PAM','CHE','JP','TIN','ANGIE','GLENDA','SALLY'];
+if(!S.adminNames)S.adminNames=[];
 if(!S.bizInfo)S.bizInfo={name:'Goldchelle Online Enterprises',address:'Las Pinas City, Metro Manila, PH',contact:'0917-130-7239',social:'fb.com/goldchelleonlineenterprise'};
 // Tab-specific passwords (CEO can set independently)
 if(!S.tabPasswords)S.tabPasswords={checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''};
@@ -8555,22 +8556,68 @@ async function initApp(){
   const syncEl = document.getElementById('sync-indicator');
   if(syncEl){ syncEl.textContent='⬤ Offline'; syncEl.style.color='var(--muted)'; }
 
-  // Try Firebase (REST API — always ready)
+  // ── Load from Firebase and smart-merge with localStorage ──────
   if(window._fbReady && window.loadFromFirebase){
     try {
       if(syncEl){ syncEl.textContent='☁ Loading...'; syncEl.style.color='var(--orange)'; }
       const fbData = await window.loadFromFirebase();
+
       if(fbData){
-        S = Object.assign(S, fbData);
-        ['orders','riders','locations','payroll','expenses','inventory','stockLog','adminNames','remitLog','cashbondLog','benefitsLog','returnLog']
-          .forEach(k=>{ if(!Array.isArray(S[k])) S[k]=[]; });
-        if(!S.govSettings) S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
-        if(!S.bizInfo) S.bizInfo={};
-        if(!S.tabPasswords) S.tabPasswords={checker:'',tracking:'',riders:''};
-        if(!S.adminAccounts) S.adminAccounts=[];
-        persist();
+        // Smart merge: for each array field, use whichever source has MORE data.
+        // This prevents Firebase from wiping good local data (e.g. adminNames=['ARC'])
+        // when Firebase has an older/empty version of that field.
+        const arrKeys = ['orders','riders','locations','payroll','expenses','inventory',
+          'stockLog','adminNames','remitLog','cashbondLog','benefitsLog','returnLog',
+          'deletedOrders','mergeLog'];
+        arrKeys.forEach(k=>{
+          const local = Array.isArray(S[k]) ? S[k] : [];
+          const remote = Array.isArray(fbData[k]) ? fbData[k] : [];
+          // Use whichever has more entries — never lose data
+          S[k] = remote.length >= local.length ? remote : local;
+        });
+
+        // For config objects, deep merge: Firebase wins for keys it has,
+        // keep local values for any keys Firebase is missing
+        ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
+          const local = (typeof S[k]==='object'&&S[k]) ? S[k] : {};
+          const remote = (typeof fbData[k]==='object'&&fbData[k]) ? fbData[k] : {};
+          S[k] = Object.assign({}, local, remote); // remote wins for conflicts
+        });
+
+        // adminAccounts: merge by name — add any from Firebase not in local and vice versa
+        const localAccs  = S.adminAccounts||[];
+        const remoteAccs = fbData.adminAccounts||[];
+        const mergedAccs = [...localAccs];
+        remoteAccs.forEach(ra=>{
+          if(!mergedAccs.find(la=>la.name===ra.name)) mergedAccs.push(ra);
+        });
+        S.adminAccounts = mergedAccs;
+
+        // Ensure all required fields exist
+        if(!Array.isArray(S.adminNames))    S.adminNames    = [];
+        if(!Array.isArray(S.adminAccounts)) S.adminAccounts = [];
+        if(!S.govSettings)      S.govSettings      = {sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
+        if(!S.bizInfo)          S.bizInfo          = {};
+        if(!S.tabPasswords)     S.tabPasswords     = {};
+        S.tabPasswords = Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''}, S.tabPasswords);
+        if(!S.specialPasswords) S.specialPasswords = {remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
+
+        persist(); // save merged result to localStorage
         if(syncEl){ syncEl.style.color='var(--green)'; syncEl.textContent='☁ Online'; }
-        toast('☁ Loaded from Firebase!');
+        toast('☁ Synced with Firebase!');
+
+        // Push the MERGED result back to Firebase so all other devices get the best data
+        // This is critical: if this device had data Firebase didn't, now Firebase gets it
+        window.syncToFirebase(S);
+
+      } else {
+        // Firebase returned no data — but this device might have local data
+        // Push it to Firebase so other devices can get it
+        if(S.orders?.length || S.riders?.length || S.adminAccounts?.length || S.adminNames?.length) {
+          if(syncEl){ syncEl.style.color='var(--green)'; syncEl.textContent='☁ Online'; }
+          toast('☁ Online — pushing local data to Firebase...');
+          window.syncToFirebase(S);
+        }
       }
     } catch(e) {
       console.warn('Firebase load error (non-fatal):', e.message);
@@ -8666,11 +8713,33 @@ function startAutoRefresh(){
       // Something changed — do a full load and merge
       const fbData = await window.loadFromFirebase();
       if(!fbData) return;
-      _FB_MERGE_KEYS.forEach(k=>{ if(fbData[k]!==undefined) S[k]=fbData[k]; });
-      ['orders','riders','locations','payroll','expenses','inventory','stockLog',
-       'adminNames','remitLog','cashbondLog','benefitsLog','returnLog','deletedOrders','mergeLog']
-        .forEach(k=>{ if(!Array.isArray(S[k])) S[k]=[]; });
-      if(!S.govSettings) S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
+      // Smart merge — use whichever source has more data per field
+      const arrKeys2=['orders','riders','locations','payroll','expenses','inventory',
+        'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
+        'returnLog','deletedOrders','mergeLog'];
+      arrKeys2.forEach(k=>{
+        const local=Array.isArray(S[k])?S[k]:[];
+        const remote=Array.isArray(fbData[k])?fbData[k]:[];
+        S[k]=remote.length>=local.length?remote:local;
+      });
+      ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
+        const local=(typeof S[k]==='object'&&S[k])?S[k]:{};
+        const remote=(typeof fbData[k]==='object'&&fbData[k])?fbData[k]:{};
+        S[k]=Object.assign({},local,remote);
+      });
+      // Merge adminAccounts by name
+      const localA=S.adminAccounts||[];
+      const remoteA=fbData.adminAccounts||[];
+      const merged=[...localA];
+      remoteA.forEach(ra=>{if(!merged.find(la=>la.name===ra.name))merged.push(ra);});
+      S.adminAccounts=merged;
+      // Ensure required fields
+      if(!Array.isArray(S.adminNames))    S.adminNames=[];
+      if(!S.adminAccounts)    S.adminAccounts=[];
+      if(!S.govSettings)      S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
+      if(!S.specialPasswords) S.specialPasswords={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
+      if(!S.tabPasswords)     S.tabPasswords={};
+      S.tabPasswords=Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},S.tabPasswords);
       persist();
       // Re-render active page silently
       const renderMap = {
