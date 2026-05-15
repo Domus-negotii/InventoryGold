@@ -657,7 +657,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-admin" onclick="selectRole('admin')">
           <div class="role-icon">👤</div>
-          <div class="role-name">CSR/div>
+          <div class="role-name">Admin / Staff</div>
           <div class="role-desc">Orders &amp; Operations</div>
         </div>
       </div>
@@ -680,7 +680,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-checker" onclick="selectRole('checker')" style="padding:10px 8px;text-align:center;">
           <div style="font-size:20px;">✅</div>
-          <div class="role-name" style="font-size:11px;">OVS/Checker</div>
+          <div class="role-name" style="font-size:11px;">Checker</div>
           <div class="role-desc" style="font-size:9px;">Verify Orders</div>
         </div>
       </div>
@@ -700,7 +700,7 @@ function _showRulesHint() {
 
     <!-- Step 2b: Admin -->
     <div id="login-step-admin" style="display:none;">
-      <div style="font-size:13px;color:var(--blue);font-weight:600;margin-bottom:14px;">👤 Admin / Staff Login</div>
+      <div style="font-size:13px;color:var(--blue);font-weight:600;margin-bottom:14px;">👤 CSR Login</div>
       <div class="form-group" style="margin-bottom:9px;"><label>Your Name</label>
         <select class="form-control" id="login-admin-name"><option value="">-- Select your name --</option></select>
       </div>
@@ -754,7 +754,7 @@ function _showRulesHint() {
 
     <!-- Checker login -->
     <div id="login-step-checker" style="display:none;">
-      <div style="font-size:13px;color:var(--orange);font-weight:600;margin-bottom:14px;">✅ Checker Login</div>
+      <div style="font-size:13px;color:var(--orange);font-weight:600;margin-bottom:14px;">✅ OVS/Checker Login</div>
       <div class="form-group" style="margin-bottom:10px;"><label>Password</label>
         <input type="password" class="form-control" id="login-checker-pw" placeholder="Checker password"
           style="text-align:center;letter-spacing:3px;font-size:16px;" onkeydown="if(event.key==='Enter')doLogin()">
@@ -5029,6 +5029,11 @@ function switchInvTab(t){
   renderInv(t);
 }
 function clearInvFilters(){
+  // Reset state object first (renderInv reads from this, not the DOM)
+  _invSearch.q = '';
+  _invSearch.type = '';
+  _invSearch.lowStock = false;
+  // Also clear DOM elements
   const s=document.getElementById('inv-search-input'); if(s)s.value='';
   const t=document.getElementById('inv-type-filter'); if(t)t.value='';
   const l=document.getElementById('inv-lowstock-filter'); if(l)l.checked=false;
