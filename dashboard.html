@@ -8732,17 +8732,25 @@ async function initApp(){
       const fbData = await window.loadFromFirebase();
 
       if(fbData){
-        // Smart merge: for each array field, use whichever source has MORE data.
-        // This prevents Firebase from wiping good local data (e.g. adminNames=['ARC'])
-        // when Firebase has an older/empty version of that field.
+        // ── Smart merge respecting fresh start ──────────────────────────
+        // If fresh start v2 ran on this device, we keep our cleared local data
+        // for transaction fields — this prevents old Firebase data (old orders,
+        // old admin names like JP/PAM) from being pulled back in.
+        const freshRan = !!localStorage.getItem(_FRESH_FLAG);
+        const TX_KEYS = ['orders','returnLog','deletedOrders','stockLog','remitLog',
+          'cashbondLog','benefitsLog','payroll','expenses','mergeLog','adminNames'];
+
         const arrKeys = ['orders','riders','locations','payroll','expenses','inventory',
           'stockLog','adminNames','remitLog','cashbondLog','benefitsLog','returnLog',
           'deletedOrders','mergeLog'];
         arrKeys.forEach(k=>{
-          const local = Array.isArray(S[k]) ? S[k] : [];
+          const local  = Array.isArray(S[k])      ? S[k]      : [];
           const remote = Array.isArray(fbData[k]) ? fbData[k] : [];
-          // Use whichever has more entries — never lose data
-          S[k] = remote.length >= local.length ? remote : local;
+          if(freshRan && TX_KEYS.includes(k)){
+            S[k] = local; // keep cleared local — don't restore old Firebase data
+          } else {
+            S[k] = remote.length >= local.length ? remote : local;
+          }
         });
 
         // For config objects: deep merge
@@ -8766,13 +8774,18 @@ async function initApp(){
         const remoteTP=fbData.tabPasswords||{};
         S.tabPasswords=Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},localTP,remoteTP);
 
-        // adminAccounts: merge by name — add any from Firebase not in local and vice versa
+        // adminAccounts: if fresh start ran, keep empty; else merge by name
         const localAccs  = S.adminAccounts||[];
         const remoteAccs = fbData.adminAccounts||[];
-        const mergedAccs = [...localAccs];
-        remoteAccs.forEach(ra=>{
-          if(!mergedAccs.find(la=>la.name===ra.name)) mergedAccs.push(ra);
-        });
+        if(freshRan) {
+          S.adminAccounts = localAccs; // keep empty — don't restore JP/PAM etc.
+        } else {
+          const mergedAccs = [...localAccs];
+          remoteAccs.forEach(ra=>{
+            if(!mergedAccs.find(la=>la.name===ra.name)) mergedAccs.push(ra);
+          });
+          S.adminAccounts = mergedAccs;
+        }
         S.adminAccounts = mergedAccs;
 
         // Ensure all required fields exist
@@ -8914,14 +8927,21 @@ function startAutoRefresh(){
       // Something changed — do a full load and merge
       const fbData = await window.loadFromFirebase();
       if(!fbData) return;
-      // Smart merge — use whichever source has more data per field
+      // Smart merge — respect fresh start: don't restore old transaction data
+      const freshRan2 = !!localStorage.getItem(_FRESH_FLAG);
+      const TX_KEYS2 = ['orders','returnLog','deletedOrders','stockLog','remitLog',
+        'cashbondLog','benefitsLog','payroll','expenses','mergeLog','adminNames'];
       const arrKeys2=['orders','riders','locations','payroll','expenses','inventory',
         'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
         'returnLog','deletedOrders','mergeLog'];
       arrKeys2.forEach(k=>{
         const local=Array.isArray(S[k])?S[k]:[];
         const remote=Array.isArray(fbData[k])?fbData[k]:[];
-        S[k]=remote.length>=local.length?remote:local;
+        if(freshRan2 && TX_KEYS2.includes(k)){
+          S[k]=local; // keep cleared — don't pull back old Firebase transactions
+        } else {
+          S[k]=remote.length>=local.length?remote:local;
+        }
       });
       ['govSettings','bizInfo'].forEach(k=>{
         const local=(typeof S[k]==='object'&&S[k])?S[k]:{};
@@ -8941,11 +8961,16 @@ function startAutoRefresh(){
       const lTP2=S.tabPasswords||{};
       const rTP2=fbData.tabPasswords||{};
       S.tabPasswords=Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},lTP2,rTP2);
-      // Merge adminAccounts by name
+      // adminAccounts: if fresh start ran, keep local; else merge by name
       const localA=S.adminAccounts||[];
       const remoteA=fbData.adminAccounts||[];
-      const merged=[...localA];
-      remoteA.forEach(ra=>{if(!merged.find(la=>la.name===ra.name))merged.push(ra);});
+      if(freshRan2){
+        S.adminAccounts=localA; // keep empty — don't restore old admin accounts
+      } else {
+        const merged=[...localA];
+        remoteA.forEach(ra=>{if(!merged.find(la=>la.name===ra.name))merged.push(ra);});
+        S.adminAccounts=merged;
+      }
       S.adminAccounts=merged;
       // Ensure required fields
       if(!Array.isArray(S.adminNames))    S.adminNames=[];
@@ -10461,16 +10486,19 @@ function confirmMerge() {
   }
 })();
 
-// ── ONE-TIME FRESH START — clears all transactions on first deploy ──────────
-// This runs exactly ONCE ever (keyed by 'gce_fresh_start_v1').
-// Clears all orders, logs, payroll, expenses — PRESERVES inventory, riders, admins.
-// After clearing, pushes clean state to Firebase so ALL devices start fresh.
-(function oneFreshStart(){
-  const FLAG = 'gce_fresh_start_v1';
-  if(localStorage.getItem(FLAG)) return; // already ran on this device
-  localStorage.setItem(FLAG, '1');
+// ── NUCLEAR FRESH START v2 ──────────────────────────────────────────────────
+// Bumped to v2 — forces ALL devices to re-run even if they ran v1.
+// Clears ALL transactions AND admin names/accounts (JP, PAM, etc. removed).
+// PRESERVES: inventory products + stock levels, riders, locations, settings.
+// Pushes clean state to Firebase so every device gets it regardless of cache.
+const _FRESH_FLAG = 'gce_fresh_start_v2';
+const _freshStartDone = !!localStorage.getItem(_FRESH_FLAG);
 
-  // Clear all transaction arrays
+(function oneFreshStart(){
+  if(_freshStartDone) return;
+  localStorage.setItem(_FRESH_FLAG, '1');
+
+  // ── Clear ALL transaction data ──
   S.orders        = [];
   S.returnLog     = [];
   S.deletedOrders = [];
@@ -10482,16 +10510,26 @@ function confirmMerge() {
   S.expenses      = [];
   S.mergeLog      = [];
 
-  persist(); // save clean state to localStorage
+  // ── Clear admin names and accounts (remove JP, PAM, etc.) ──
+  S.adminNames    = [];
+  S.adminAccounts = [];
 
-  // Push clean state to Firebase so all 30 devices get it
-  // Wait 5s for everything to initialize (hashPw, _FB_BASE, etc.)
+  persist(); // save clean state to localStorage immediately
+
+  // Push to Firebase after 4 seconds — overrides ANY old data there
   setTimeout(async ()=>{
     try {
-      await _directWriteFirebase(S);
-      console.log('✅ Fresh start pushed to Firebase — all devices start clean.');
-    } catch(e) { console.warn('Fresh start Firebase push failed:', e.message); }
-  }, 5000);
+      const success = await _directWriteFirebase(S);
+      if(success) console.log('✅ Fresh start v2 pushed to Firebase. All devices will see clean state.');
+      else {
+        // Retry once more after 5 more seconds if first attempt failed
+        setTimeout(()=>_directWriteFirebase(S), 5000);
+      }
+    } catch(e) {
+      console.warn('Fresh start push failed, retrying...', e.message);
+      setTimeout(()=>_directWriteFirebase(S).catch(()=>{}), 5000);
+    }
+  }, 4000);
 })();
 
 // Show login screen on load (login screen is visible by default)
@@ -10503,27 +10541,34 @@ function confirmMerge() {
 document.addEventListener('visibilitychange', async ()=>{
   if(document.visibilityState !== 'visible') return;
   if(!window._fbReady || !window.loadFromFirebase) return;
-  if(!currentRole) return; // not logged in yet
+  if(!currentRole) return;
   try {
-    _lastKnownWriteTs = 0; // force full refresh
+    _lastKnownWriteTs = 0;
     const fbData = await window.loadFromFirebase();
     if(!fbData) return;
-    // Smart merge
+    const freshRan3 = !!localStorage.getItem(_FRESH_FLAG);
+    const TX_KEYS3 = ['orders','returnLog','deletedOrders','stockLog','remitLog',
+      'cashbondLog','benefitsLog','payroll','expenses','mergeLog','adminNames'];
     const arrKeys=['orders','riders','locations','payroll','expenses','inventory',
       'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
       'returnLog','deletedOrders','mergeLog'];
     arrKeys.forEach(k=>{
       const local=Array.isArray(S[k])?S[k]:[];
       const remote=Array.isArray(fbData[k])?fbData[k]:[];
-      S[k]=remote.length>=local.length?remote:local;
+      if(freshRan3 && TX_KEYS3.includes(k)) S[k]=local;
+      else S[k]=remote.length>=local.length?remote:local;
     });
     if(fbData.adminAccounts){
-      const loc=S.adminAccounts||[];
-      (fbData.adminAccounts||[]).forEach(ra=>{
-        const idx=loc.findIndex(la=>la.name===ra.name);
-        if(idx>=0)loc[idx]=ra;else loc.push(ra);
-      });
-      S.adminAccounts=loc;
+      if(freshRan3){
+        S.adminAccounts=S.adminAccounts||[];
+      } else {
+        const loc=S.adminAccounts||[];
+        (fbData.adminAccounts||[]).forEach(ra=>{
+          const idx=loc.findIndex(la=>la.name===ra.name);
+          if(idx>=0)loc[idx]=ra;else loc.push(ra);
+        });
+        S.adminAccounts=loc;
+      }
     }
     if(fbData.specialPasswords){
       const r=fbData.specialPasswords,l=S.specialPasswords||{};
@@ -10531,7 +10576,6 @@ document.addEventListener('visibilitychange', async ()=>{
     }
     if(fbData.tabPasswords) S.tabPasswords=Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},S.tabPasswords||{},fbData.tabPasswords);
     persist();
-    // Re-render active page
     try{({dashboard:renderDash,orders:renderOrders,checker:renderChecker,
       riders:renderRiders,dailysales:renderDailySales,payroll:renderPayroll,
       expenses:renderExpenses,inventory:()=>renderInv(invTab),pnl:renderPnl,
