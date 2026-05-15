@@ -495,43 +495,54 @@ let _syncPending = false;
 window.syncToFirebase = async function(S) {
   _syncPending = true;
   clearTimeout(_syncDebounceTimer);
-  _syncDebounceTimer = setTimeout(async ()=>{
-    if(!_syncPending) return;
-    _syncPending = false;
-    _setSyncStatus('syncing','var(--orange)','⬆ Saving...');
-    const fields = {};
-    ['orders','riders','locations','payroll','expenses','inventory','stockLog',
-     'adminNames','remitLog','cashbondLog','benefitsLog','returnLog',
-     'deletedOrders','mergeLog'].forEach(k=>{ fields[k] = _toFS(S[k]||[]); });
-    ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{ fields[k] = _toFS(S[k]||{}); });
-    fields['adminAccounts'] = _toFS(S.adminAccounts||[]);
-    // Sync owner password hash so ALL devices use the same password
-    // Use the actual stored hash, or the default hash if never changed
-    const ownerHash = localStorage.getItem('gce_pw_hash') || hashPw(DEFAULT_OWNER_PW);
-    fields['ownerPwHash']  = _toFS(ownerHash);
-    // Write timestamp — used by other devices to detect changes cheaply
-    fields['_lastWrite']   = _toFS(Date.now());
-
-    const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
-    try {
-      const r = await fetch(url, {
-        method:'PATCH',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({fields})
-      });
-      if(r.ok){
-        _setSyncStatus('online','var(--green)','☁ Synced ✓');
-        setTimeout(()=>_setSyncStatus('online','var(--green)','☁ Online'),2500);
-      } else {
-        console.warn('Firestore PATCH error:',r.status, await r.text());
-        _setSyncStatus('error','var(--orange)','☁ Sync Error');
-      }
-    } catch(e) {
-      console.warn('Firebase sync error:',e.message);
-      _setSyncStatus('offline','var(--muted)','● Offline');
-    }
-  }, 800); // 800ms debounce — groups rapid saves into one write
+  _syncDebounceTimer = setTimeout(()=>_directWriteFirebase(S), 800);
 };
+
+// ── Direct write — no debounce, used by Save button and password change ──
+// NOTE: hashPw and DEFAULT_OWNER_PW are defined later in the file.
+// We use window references to avoid hoisting issues.
+async function _directWriteFirebase(data){
+  _syncPending = false;
+  _setSyncStatus('syncing','var(--orange)','⬆ Saving...');
+  const S2 = data || S;
+  const fields = {};
+  ['orders','riders','locations','payroll','expenses','inventory','stockLog',
+   'adminNames','remitLog','cashbondLog','benefitsLog','returnLog',
+   'deletedOrders','mergeLog'].forEach(k=>{ fields[k] = _toFS(S2[k]||[]); });
+  ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{ fields[k] = _toFS(S2[k]||{}); });
+  fields['adminAccounts'] = _toFS(S2.adminAccounts||[]);
+  // Owner password hash — resolve lazily so hashPw is definitely defined
+  try {
+    const _hp = window.hashPw || (typeof hashPw !== 'undefined' ? hashPw : null);
+    const _dp = window.DEFAULT_OWNER_PW || (typeof DEFAULT_OWNER_PW !== 'undefined' ? DEFAULT_OWNER_PW : 'goldchelle2024');
+    const ownerHash = localStorage.getItem('gce_pw_hash') || (_hp ? _hp(_dp) : '');
+    fields['ownerPwHash'] = _toFS(ownerHash);
+  } catch(e) { fields['ownerPwHash'] = _toFS(''); }
+  fields['_lastWrite'] = _toFS(Date.now());
+  fields['_pwVersion'] = _toFS(localStorage.getItem('gce_pw_version')||'0');
+
+  const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
+  try {
+    const r = await fetch(url, {
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({fields})
+    });
+    if(r.ok){
+      _setSyncStatus('online','var(--green)','☁ Synced ✓');
+      setTimeout(()=>_setSyncStatus('online','var(--green)','☁ Online'),2500);
+      return true;
+    } else {
+      console.warn('Firestore PATCH error:',r.status, await r.text());
+      _setSyncStatus('error','var(--orange)','☁ Sync Error');
+      return false;
+    }
+  } catch(e) {
+    console.warn('Firebase sync error:',e.message);
+    _setSyncStatus('offline','var(--muted)','● Offline');
+    return false;
+  }
+}
 
 // ── READ from Firestore ───────────────────────────────────────
 window.loadFromFirebase = async function() {
@@ -568,6 +579,20 @@ window.loadFromFirebase = async function() {
       }
     }
     delete data.ownerPwHash;
+    // ── Password version check — if changed, force logout all devices ──
+    const remotePwVer = String(data._pwVersion||'0');
+    const localPwVer  = localStorage.getItem('gce_pw_version')||'0';
+    if(remotePwVer !== '0' && remotePwVer !== localPwVer && currentRole) {
+      // Owner changed password — store new version and force logout
+      localStorage.setItem('gce_pw_version', remotePwVer);
+      setTimeout(()=>{
+        alert('🔐 Password was changed by the Owner/CEO.\n\nYou have been logged out. Please log in again with the new password.');
+        try{ logoutUser(); }catch(e){ location.reload(); }
+      }, 500);
+    } else if(remotePwVer !== '0') {
+      localStorage.setItem('gce_pw_version', remotePwVer);
+    }
+    delete data._pwVersion;
     delete data._lastWrite;
     // Status migration for old records
     const SM={'In Transit':'Preparing','Delivering':'Out for Delivery','For Return':'Update','Returned':'Cancelled'};
@@ -6320,25 +6345,24 @@ async function manualSaveSync(){
   const btn = document.getElementById('btn-manual-save');
   if(btn){ btn.textContent='💾 Saving...'; btn.disabled=true; }
   persist(); // save to localStorage first
-  // Force immediate sync — bypass debounce
-  if(window._fbReady && window.syncToFirebase){
-    _syncPending = false;          // reset debounce flag
-    clearTimeout(_syncDebounceTimer); // cancel any pending debounce
-    await window.syncToFirebase(S);
-  }
-  if(btn){ btn.textContent='✅ Saved!'; btn.disabled=false; }
-  setTimeout(()=>{ if(btn) btn.textContent='💾 Save'; },2000);
-  toast('✅ Saved & synced to all devices!');
+  _setSyncStatus('syncing','var(--orange)','⬆ Saving...');
+  // Direct write — no debounce, writes immediately to Firebase
+  clearTimeout(_syncDebounceTimer);
+  _syncPending = false;
+  const success = await _directWriteFirebase(S);
+  if(btn){ btn.textContent = success ? '✅ Saved!' : '⚠️ Error'; btn.disabled=false; }
+  setTimeout(()=>{ if(btn) btn.textContent='💾 Save'; },2500);
+  if(success) toast('✅ Saved! All 30 devices will see your latest changes.');
+  else toast('⚠️ Could not reach Firebase. Check internet connection.');
 }
 
 function logoutUser(){
   if(!confirm('Logout?'))return;
   // Save & sync before logout so next user/device sees latest data
   persist();
-  if(window._fbReady && window.syncToFirebase){
-    _syncPending=false; clearTimeout(_syncDebounceTimer);
-    window.syncToFirebase(S);
-  }
+  clearTimeout(_syncDebounceTimer);
+  _syncPending = false;
+  _directWriteFirebase(S); // fire-and-forget instant write
   currentRole=null;currentUser=null;currentRider=null;selectedRole=null;unlockedPages=new Set();
   backToRoleSelect();
   document.getElementById('login-screen').classList.remove('hidden');
@@ -6349,7 +6373,7 @@ function logoutUser(){
   toast('Logged out — data saved');
 }
 
-function changePassword(){
+async function changePassword(){
   if(currentRole !== 'owner') { toast('🔒 CEO only ang maaaring mag-change ng password.'); closeModal('modal-change-pw'); return; }
   const cur  = document.getElementById('pw-current').value;
   const nw   = document.getElementById('pw-new').value;
@@ -6370,17 +6394,23 @@ function changePassword(){
   const newHash = hashPw(nw);
   localStorage.setItem('gce_pw_hash', newHash);
 
+  // Increment password version — other devices detect this and force-logout
+  const newVer = String(Date.now());
+  localStorage.setItem('gce_pw_version', newVer);
+
   err.style.color = 'var(--green)';
-  err.textContent = '✅ Password changed! Syncing to all devices...';
+  err.textContent = '✅ Password changed! All devices will be logged out automatically...';
   ['pw-current','pw-new','pw-confirm'].forEach(id=>{
     const el = document.getElementById(id); if(el) el.value='';
   });
 
-  // Immediately push to Firebase so ALL 30 devices get the new password
-  if(window._fbReady && window.syncToFirebase) {
-    window.syncToFirebase(S);
-  }
-  setTimeout(()=>{ err.textContent=''; err.style.color='var(--red)'; closeModal('modal-change-pw'); }, 1800);
+  // Immediately push to Firebase — includes new ownerPwHash + new _pwVersion
+  // All other devices will detect the version change and force-logout within 10s
+  clearTimeout(_syncDebounceTimer);
+  _syncPending = false;
+  await _directWriteFirebase(S);
+
+  setTimeout(()=>{ err.textContent=''; err.style.color='var(--red)'; closeModal('modal-change-pw'); }, 2000);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -6476,9 +6506,9 @@ function saveFbConfig(){
 
 
 async function save(){
-  // Write to localStorage immediately (fast)
+  // Write to localStorage immediately (fast, always works offline)
   localStorage.setItem(KEY, JSON.stringify(S));
-  // Non-blocking sync to Firebase if connected
+  // Non-blocking sync to Firebase (debounced 800ms to group rapid saves)
   if(window._fbReady && window.syncToFirebase){
     window.syncToFirebase(S);
   }
@@ -8852,13 +8882,32 @@ function startAutoRefresh(){
     if(!window._fbReady || !window.loadFromFirebase) return;
     if(_syncPending) return; // skip if we are mid-write to avoid race
     try {
-      // Lightweight check: fetch ONLY the _lastWrite timestamp field
-      const checkUrl = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}&mask.fieldPaths=_lastWrite`;
+      // Lightweight check: fetch ONLY the _lastWrite and _pwVersion fields
+      const checkUrl = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}&mask.fieldPaths=_lastWrite&mask.fieldPaths=_pwVersion`;
       const checkR = await fetch(checkUrl, {cache:'no-cache'});
       if(!checkR.ok) return;
       const checkDoc = await checkR.json();
-      const remoteTs = checkDoc.fields?._lastWrite ? _fromFS(checkDoc.fields._lastWrite) : 0;
-      // Nothing changed since last refresh — skip
+      const remoteTs  = checkDoc.fields?._lastWrite  ? _fromFS(checkDoc.fields._lastWrite)  : 0;
+      const remotePwV = checkDoc.fields?._pwVersion  ? _fromFS(checkDoc.fields._pwVersion)  : '0';
+      const localPwV  = localStorage.getItem('gce_pw_version')||'0';
+
+      // ── Force logout if password version changed ──
+      if(remotePwV && remotePwV !== '0' && remotePwV !== localPwV && currentRole) {
+        localStorage.setItem('gce_pw_version', remotePwV);
+        // Fetch new password hash immediately
+        try {
+          const phUrl = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}&mask.fieldPaths=ownerPwHash`;
+          const phR = await fetch(phUrl,{cache:'no-cache'});
+          if(phR.ok){ const phDoc=await phR.json(); const h=phDoc.fields?.ownerPwHash?_fromFS(phDoc.fields.ownerPwHash):''; if(h) localStorage.setItem('gce_pw_hash',h); }
+        } catch(e){}
+        alert('🔐 Password was changed by the Owner/CEO.\n\nYou have been logged out. Please log in again with the new password.');
+        try{ logoutUser(); }catch(e){ location.reload(); }
+        return;
+      } else if(remotePwV && remotePwV !== '0') {
+        localStorage.setItem('gce_pw_version', remotePwV);
+      }
+
+      // Nothing changed — skip full re-fetch
       if(remoteTs && remoteTs <= _lastKnownWriteTs) return;
       _lastKnownWriteTs = remoteTs || Date.now();
 
@@ -10436,14 +10485,13 @@ function confirmMerge() {
   persist(); // save clean state to localStorage
 
   // Push clean state to Firebase so all 30 devices get it
+  // Wait 5s for everything to initialize (hashPw, _FB_BASE, etc.)
   setTimeout(async ()=>{
-    if(window._fbReady && window.syncToFirebase){
-      _syncPending=false;
-      clearTimeout(_syncDebounceTimer);
-      await window.syncToFirebase(S);
-      console.log('✅ Fresh start complete — all transactions cleared across all devices.');
-    }
-  }, 3000); // wait 3s for Firebase to initialize
+    try {
+      await _directWriteFirebase(S);
+      console.log('✅ Fresh start pushed to Firebase — all devices start clean.');
+    } catch(e) { console.warn('Fresh start Firebase push failed:', e.message); }
+  }, 5000);
 })();
 
 // Show login screen on load (login screen is visible by default)
