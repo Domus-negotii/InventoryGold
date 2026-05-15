@@ -501,14 +501,17 @@ window.syncToFirebase = async function(S) {
 // ── Direct write — no debounce, used by Save button and password change ──
 // NOTE: hashPw and DEFAULT_OWNER_PW are defined later in the file.
 // We use window references to avoid hoisting issues.
-async function _directWriteFirebase(data){
+async function _directWriteFirebase(data, opts){
   _syncPending = false;
   _setSyncStatus('syncing','var(--orange)','⬆ Saving...');
   const S2 = data || S;
+  const skipKeys = new Set(opts?.skip||[]);
   const fields = {};
   ['orders','riders','locations','payroll','expenses','inventory','stockLog',
    'adminNames','remitLog','cashbondLog','benefitsLog','returnLog',
-   'deletedOrders','mergeLog'].forEach(k=>{ fields[k] = _toFS(S2[k]||[]); });
+   'deletedOrders','mergeLog'].forEach(k=>{
+    if(!skipKeys.has(k)) fields[k] = _toFS(S2[k]||[]);
+  });
   ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{ fields[k] = _toFS(S2[k]||{}); });
   fields['adminAccounts'] = _toFS(S2.adminAccounts||[]);
   // Owner password hash — resolve lazily so hashPw is definitely defined
@@ -8747,7 +8750,10 @@ async function initApp(){
           const local  = Array.isArray(S[k])      ? S[k]      : [];
           const remote = Array.isArray(fbData[k]) ? fbData[k] : [];
           if(freshRan && TX_KEYS.includes(k)){
-            S[k] = local; // keep cleared local — don't restore old Firebase data
+            S[k] = local; // keep cleared local — don't restore old transactions/admins
+          } else if(k === 'inventory' || k === 'riders' || k === 'locations'){
+            // Always prefer Firebase for these — they contain real setup data
+            S[k] = remote.length > 0 ? remote : local;
           } else {
             S[k] = remote.length >= local.length ? remote : local;
           }
@@ -8939,6 +8945,8 @@ function startAutoRefresh(){
         const remote=Array.isArray(fbData[k])?fbData[k]:[];
         if(freshRan2 && TX_KEYS2.includes(k)){
           S[k]=local; // keep cleared — don't pull back old Firebase transactions
+        } else if(k==='inventory'||k==='riders'||k==='locations'){
+          S[k]=remote.length>0?remote:local; // always prefer Firebase for setup data
         } else {
           S[k]=remote.length>=local.length?remote:local;
         }
@@ -10516,18 +10524,17 @@ const _freshStartDone = !!localStorage.getItem(_FRESH_FLAG);
 
   persist(); // save clean state to localStorage immediately
 
-  // Push to Firebase after 4 seconds — overrides ANY old data there
+  // Push to Firebase after 4 seconds — clears old transactions
+  // IMPORTANT: skip inventory & stockLog — never overwrite Firebase inventory
+  // with a potentially empty local array on a new device
   setTimeout(async ()=>{
     try {
-      const success = await _directWriteFirebase(S);
-      if(success) console.log('✅ Fresh start v2 pushed to Firebase. All devices will see clean state.');
-      else {
-        // Retry once more after 5 more seconds if first attempt failed
-        setTimeout(()=>_directWriteFirebase(S), 5000);
-      }
+      const success = await _directWriteFirebase(S, {skip:['inventory','stockLog']});
+      if(success) console.log('✅ Fresh start v2 pushed to Firebase. All devices clean.');
+      else setTimeout(()=>_directWriteFirebase(S, {skip:['inventory','stockLog']}), 5000);
     } catch(e) {
       console.warn('Fresh start push failed, retrying...', e.message);
-      setTimeout(()=>_directWriteFirebase(S).catch(()=>{}), 5000);
+      setTimeout(()=>_directWriteFirebase(S, {skip:['inventory','stockLog']}).catch(()=>{}), 5000);
     }
   }, 4000);
 })();
@@ -10556,6 +10563,7 @@ document.addEventListener('visibilitychange', async ()=>{
       const local=Array.isArray(S[k])?S[k]:[];
       const remote=Array.isArray(fbData[k])?fbData[k]:[];
       if(freshRan3 && TX_KEYS3.includes(k)) S[k]=local;
+      else if(k==='inventory'||k==='riders'||k==='locations') S[k]=remote.length>0?remote:local;
       else S[k]=remote.length>=local.length?remote:local;
     });
     if(fbData.adminAccounts){
