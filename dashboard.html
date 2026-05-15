@@ -905,6 +905,7 @@ function _showRulesHint() {
       <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Light/Dark Mode">🌙</button>
       <span class="user-role-tag" id="user-role-tag">Admin</span>
       <span class="badge-pill" id="user-name-badge">Goldchelle</span>
+      <button class="btn btn-gold btn-sm" onclick="manualSaveSync()" title="Save & sync to all devices" style="font-size:10px;padding:3px 10px;" id="btn-manual-save">💾 Save</button>
       <button class="btn btn-outline btn-sm" onclick="logoutUser()" style="font-size:10px;padding:3px 8px;">Logout</button>
     </div>
   </div>
@@ -6312,8 +6313,32 @@ function unlockPage(page){
   const inp=document.getElementById('lock-pw-'+page); if(inp)inp.value='';
 }
 
+// ── Manual Save & Sync — button next to Logout ───────────────
+// Forces an immediate Firebase sync regardless of debounce timer.
+// Use this before handing device to another employee.
+async function manualSaveSync(){
+  const btn = document.getElementById('btn-manual-save');
+  if(btn){ btn.textContent='💾 Saving...'; btn.disabled=true; }
+  persist(); // save to localStorage first
+  // Force immediate sync — bypass debounce
+  if(window._fbReady && window.syncToFirebase){
+    _syncPending = false;          // reset debounce flag
+    clearTimeout(_syncDebounceTimer); // cancel any pending debounce
+    await window.syncToFirebase(S);
+  }
+  if(btn){ btn.textContent='✅ Saved!'; btn.disabled=false; }
+  setTimeout(()=>{ if(btn) btn.textContent='💾 Save'; },2000);
+  toast('✅ Saved & synced to all devices!');
+}
+
 function logoutUser(){
   if(!confirm('Logout?'))return;
+  // Save & sync before logout so next user/device sees latest data
+  persist();
+  if(window._fbReady && window.syncToFirebase){
+    _syncPending=false; clearTimeout(_syncDebounceTimer);
+    window.syncToFirebase(S);
+  }
   currentRole=null;currentUser=null;currentRider=null;selectedRole=null;unlockedPages=new Set();
   backToRoleSelect();
   document.getElementById('login-screen').classList.remove('hidden');
@@ -6321,7 +6346,7 @@ function logoutUser(){
   FIN_PAGES.forEach(p=>{const el=document.getElementById('lock-'+p);if(el)el.classList.remove('unlocked');});
   const dp=document.getElementById('rider-dash-login-prompt');const dd=document.getElementById('rider-dash-content');
   if(dp)dp.style.display='block';if(dd)dd.style.display='none';
-  toast('Logged out');
+  toast('Logged out — data saved');
 }
 
 function changePassword(){
@@ -10387,8 +10412,86 @@ function confirmMerge() {
   }
 })();
 
+// ── ONE-TIME FRESH START — clears all transactions on first deploy ──────────
+// This runs exactly ONCE ever (keyed by 'gce_fresh_start_v1').
+// Clears all orders, logs, payroll, expenses — PRESERVES inventory, riders, admins.
+// After clearing, pushes clean state to Firebase so ALL devices start fresh.
+(function oneFreshStart(){
+  const FLAG = 'gce_fresh_start_v1';
+  if(localStorage.getItem(FLAG)) return; // already ran on this device
+  localStorage.setItem(FLAG, '1');
+
+  // Clear all transaction arrays
+  S.orders        = [];
+  S.returnLog     = [];
+  S.deletedOrders = [];
+  S.stockLog      = [];
+  S.remitLog      = [];
+  S.cashbondLog   = [];
+  S.benefitsLog   = [];
+  S.payroll       = [];
+  S.expenses      = [];
+  S.mergeLog      = [];
+
+  persist(); // save clean state to localStorage
+
+  // Push clean state to Firebase so all 30 devices get it
+  setTimeout(async ()=>{
+    if(window._fbReady && window.syncToFirebase){
+      _syncPending=false;
+      clearTimeout(_syncDebounceTimer);
+      await window.syncToFirebase(S);
+      console.log('✅ Fresh start complete — all transactions cleared across all devices.');
+    }
+  }, 3000); // wait 3s for Firebase to initialize
+})();
+
 // Show login screen on load (login screen is visible by default)
 // initApp() is called after successful doLogin()
+
+// ── Instant sync on page visibility (phone unlock, tab switch) ──
+// When a user picks up their phone or switches back to this tab,
+// immediately pull latest data from Firebase instead of waiting 10s.
+document.addEventListener('visibilitychange', async ()=>{
+  if(document.visibilityState !== 'visible') return;
+  if(!window._fbReady || !window.loadFromFirebase) return;
+  if(!currentRole) return; // not logged in yet
+  try {
+    _lastKnownWriteTs = 0; // force full refresh
+    const fbData = await window.loadFromFirebase();
+    if(!fbData) return;
+    // Smart merge
+    const arrKeys=['orders','riders','locations','payroll','expenses','inventory',
+      'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
+      'returnLog','deletedOrders','mergeLog'];
+    arrKeys.forEach(k=>{
+      const local=Array.isArray(S[k])?S[k]:[];
+      const remote=Array.isArray(fbData[k])?fbData[k]:[];
+      S[k]=remote.length>=local.length?remote:local;
+    });
+    if(fbData.adminAccounts){
+      const loc=S.adminAccounts||[];
+      (fbData.adminAccounts||[]).forEach(ra=>{
+        const idx=loc.findIndex(la=>la.name===ra.name);
+        if(idx>=0)loc[idx]=ra;else loc.push(ra);
+      });
+      S.adminAccounts=loc;
+    }
+    if(fbData.specialPasswords){
+      const r=fbData.specialPasswords,l=S.specialPasswords||{};
+      S.specialPasswords={remitter:r.remitter||l.remitter,sorter:r.sorter||l.sorter,checker:r.checker||l.checker};
+    }
+    if(fbData.tabPasswords) S.tabPasswords=Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},S.tabPasswords||{},fbData.tabPasswords);
+    persist();
+    // Re-render active page
+    try{({dashboard:renderDash,orders:renderOrders,checker:renderChecker,
+      riders:renderRiders,dailysales:renderDailySales,payroll:renderPayroll,
+      expenses:renderExpenses,inventory:()=>renderInv(invTab),pnl:renderPnl,
+      tracking:renderTracking,sorting:renderSorting,returns:renderReturns,
+      deletedorders:renderDeletedOrders}[_activePage]||(() =>{}))();}catch(e){}
+    if(currentRole==='rider')try{renderRiderParcels();}catch(e){}
+  } catch(e){ console.warn('Visibility sync error:',e.message); }
+});
 </script>
 </body>
 </html>
