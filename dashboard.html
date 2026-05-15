@@ -445,18 +445,20 @@ select.form-control{cursor:pointer;}
 <!-- Firebase Compat SDK (works without ES modules) -->
 <!-- Firebase: No SDK needed — uses REST API directly -->
 <script>
-// ── Firestore REST API (no external scripts required) ──────────────
+// ═══════════════════════════════════════════════════════════════
+// FIREBASE SYNC ENGINE — optimized for 30+ devices
+// ═══════════════════════════════════════════════════════════════
+
 const _FB_PROJECT = 'goldchelle-logistics';
 const _FB_APIKEY  = 'AIzaSyBXs5CPYgUUWlwwnO99IObzlgyyglEP9Xg';
 const _FB_BASE    = `https://firestore.googleapis.com/v1/projects/${_FB_PROJECT}/databases/(default)/documents`;
 
-window._fbReady = true; // always ready — uses fetch()
-window._db      = null; // not used with REST approach
+window._fbReady = true;
+window._db      = null;
+function _loadFirebaseSDK(cb){ cb(); }
+window.initFirebase = function(){ return true; };
 
-function _loadFirebaseSDK(cb){ cb(); } // no-op, kept for compatibility
-window.initFirebase = function(){ return true; }; // no-op, kept for compatibility
-
-// ── Convert JS value → Firestore typed value ──────────────────────
+// ── Firestore value converters ────────────────────────────────
 function _toFS(val) {
   if(val === null || val === undefined) return {nullValue: null};
   if(typeof val === 'boolean') return {booleanValue: val};
@@ -466,100 +468,122 @@ function _toFS(val) {
   if(typeof val === 'object')  return {mapValue: {fields: Object.fromEntries(Object.entries(val).map(([k,v])=>[k,_toFS(v)]))}};
   return {stringValue: String(val)};
 }
-
-// ── Convert Firestore typed value → JS value ──────────────────────
 function _fromFS(fv) {
   if(!fv) return null;
-  if('nullValue'     in fv) return null;
-  if('booleanValue'  in fv) return fv.booleanValue;
-  if('integerValue'  in fv) return Number(fv.integerValue);
-  if('doubleValue'   in fv) return fv.doubleValue;
-  if('stringValue'   in fv) return fv.stringValue;
-  if('arrayValue'    in fv) return (fv.arrayValue.values||[]).map(_fromFS);
-  if('mapValue'      in fv) return Object.fromEntries(Object.entries(fv.mapValue.fields||{}).map(([k,v])=>[k,_fromFS(v)]));
+  if('nullValue'    in fv) return null;
+  if('booleanValue' in fv) return fv.booleanValue;
+  if('integerValue' in fv) return Number(fv.integerValue);
+  if('doubleValue'  in fv) return fv.doubleValue;
+  if('stringValue'  in fv) return fv.stringValue;
+  if('arrayValue'   in fv) return (fv.arrayValue.values||[]).map(_fromFS);
+  if('mapValue'     in fv) return Object.fromEntries(Object.entries(fv.mapValue.fields||{}).map(([k,v])=>[k,_fromFS(v)]));
   return null;
 }
 
-// ── WRITE to Firestore ────────────────────────────────────────────
-window.syncToFirebase = async function(S) {
-  const fields = {};
-  ['orders','riders','locations','payroll','expenses','inventory','stockLog',
-   'adminNames','remitLog','cashbondLog','benefitsLog','returnLog',
-   'deletedOrders','mergeLog'].forEach(k=>{
-    fields[k] = _toFS(S[k]||[]);
-  });
-  ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
-    fields[k] = _toFS(S[k]||{});
-  });
-  fields['adminAccounts'] = _toFS(S.adminAccounts||[]);
+// ── Sync indicator helper ─────────────────────────────────────
+function _setSyncStatus(status, color, text) {
+  const el = document.getElementById('sync-indicator');
+  if(!el) return;
+  el.textContent = text;
+  el.style.color  = color;
+}
 
-  const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
-  try {
-    const r = await fetch(url, {
-      method: 'PATCH',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({fields})
-    });
-    const el = document.getElementById('sync-indicator');
-    if(r.ok){
-      if(el){ el.style.color='var(--green)'; el.textContent='☁ Synced'; }
-      setTimeout(()=>{ const e=document.getElementById('sync-indicator'); if(e&&e.textContent==='☁ Synced') e.textContent='☁ Online'; },2000);
-    } else {
-      if(el){ el.style.color='var(--orange)'; el.textContent='☁ Sync Error'; }
-      console.warn('Firestore PATCH error:', r.status, await r.text());
+// ── Debounced write — prevents Firestore quota exhaustion on 30 devices ──
+let _syncDebounceTimer = null;
+let _syncPending = false;
+
+window.syncToFirebase = async function(S) {
+  _syncPending = true;
+  clearTimeout(_syncDebounceTimer);
+  _syncDebounceTimer = setTimeout(async ()=>{
+    if(!_syncPending) return;
+    _syncPending = false;
+    _setSyncStatus('syncing','var(--orange)','⬆ Saving...');
+    const fields = {};
+    ['orders','riders','locations','payroll','expenses','inventory','stockLog',
+     'adminNames','remitLog','cashbondLog','benefitsLog','returnLog',
+     'deletedOrders','mergeLog'].forEach(k=>{ fields[k] = _toFS(S[k]||[]); });
+    ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{ fields[k] = _toFS(S[k]||{}); });
+    fields['adminAccounts'] = _toFS(S.adminAccounts||[]);
+    // Sync owner password hash so ALL devices use the same password
+    const ownerHash = localStorage.getItem('gce_pw_hash') || '';
+    fields['ownerPwHash']  = _toFS(ownerHash);
+    // Write timestamp — used by other devices to detect changes cheaply
+    fields['_lastWrite']   = _toFS(Date.now());
+
+    const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
+    try {
+      const r = await fetch(url, {
+        method:'PATCH',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({fields})
+      });
+      if(r.ok){
+        _setSyncStatus('online','var(--green)','☁ Synced ✓');
+        setTimeout(()=>_setSyncStatus('online','var(--green)','☁ Online'),2500);
+      } else {
+        console.warn('Firestore PATCH error:',r.status, await r.text());
+        _setSyncStatus('error','var(--orange)','☁ Sync Error');
+      }
+    } catch(e) {
+      console.warn('Firebase sync error:',e.message);
+      _setSyncStatus('offline','var(--muted)','● Offline');
     }
-  } catch(e) { console.warn('Firebase sync error:', e.message); }
+  }, 800); // 800ms debounce — groups rapid saves into one write
 };
 
-// ── READ from Firestore ───────────────────────────────────────────
+// ── READ from Firestore ───────────────────────────────────────
 window.loadFromFirebase = async function() {
   const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
-  const _syncEl = ()=>document.getElementById('sync-indicator');
   try {
     const r = await fetch(url, {cache:'no-cache'});
-
-    // 404 = fresh database, no data yet — OK
-    if(r.status === 404) {
-      const el=_syncEl(); if(el){el.style.color='var(--green)';el.textContent='☁ Online';}
-      return null;
-    }
-    // 403 = Firestore rules blocking unauthenticated access
-    if(r.status === 403) {
-      const el=_syncEl(); if(el){el.style.color='var(--orange)';el.textContent='☁ Rules!';}
-      _showRulesHint();
-      return null;
-    }
-    if(!r.ok) {
-      const el=_syncEl(); if(el){el.style.color='var(--orange)';el.textContent='☁ Error '+r.status;}
-      return null;
-    }
+    if(r.status === 404) { _setSyncStatus('online','var(--green)','☁ Online'); return null; }
+    if(r.status === 403) { _setSyncStatus('rules','var(--red)','☁ Rules!'); _showRulesHint(); return null; }
+    if(!r.ok) { _setSyncStatus('error','var(--orange)','☁ Error '+r.status); return null; }
     const doc = await r.json();
-    if(!doc.fields) {
-      const el=_syncEl(); if(el){el.style.color='var(--green)';el.textContent='☁ Online';}
-      return null;
-    }
+    if(!doc.fields) { _setSyncStatus('online','var(--green)','☁ Online'); return null; }
     const data = Object.fromEntries(Object.entries(doc.fields).map(([k,v])=>[k,_fromFS(v)]));
-    if(!data.remitLog)         data.remitLog = [];
-    if(!data.cashbondLog)      data.cashbondLog = [];
-    if(!data.benefitsLog)      data.benefitsLog = [];
-    if(!data.tabPasswords)     data.tabPasswords = {};
+    // Defaults for any missing fields
+    if(!Array.isArray(data.remitLog))      data.remitLog      = [];
+    if(!Array.isArray(data.cashbondLog))   data.cashbondLog   = [];
+    if(!Array.isArray(data.benefitsLog))   data.benefitsLog   = [];
+    if(!Array.isArray(data.returnLog))     data.returnLog     = [];
+    if(!Array.isArray(data.deletedOrders)) data.deletedOrders = [];
+    if(!Array.isArray(data.mergeLog))      data.mergeLog      = [];
+    if(!Array.isArray(data.adminAccounts)) data.adminAccounts = [];
+    if(!data.tabPasswords)     data.tabPasswords     = {checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''};
     if(!data.specialPasswords) data.specialPasswords = {remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
-    if(!data.adminAccounts)    data.adminAccounts = [];
-    if(!data.returnLog)        data.returnLog = [];
-    if(!data.deletedOrders)    data.deletedOrders = [];
-    if(!data.mergeLog)         data.mergeLog = [];
+    if(!data.govSettings)      data.govSettings      = {sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
+    if(!data.bizInfo)          data.bizInfo          = {};
+    // Restore owner password hash to this device localStorage
+    if(data.ownerPwHash && data.ownerPwHash !== '') {
+      localStorage.setItem('gce_pw_hash', data.ownerPwHash);
+    }
+    delete data.ownerPwHash;
+    delete data._lastWrite;
+    // Status migration for old records
     const SM={'In Transit':'Preparing','Delivering':'Out for Delivery','For Return':'Update','Returned':'Cancelled'};
     if(data.orders) data.orders.forEach(o=>{ if(SM[o.status]) o.status=SM[o.status]; });
-    const el=_syncEl(); if(el){el.style.color='var(--green)';el.textContent='☁ Online';}
+    _setSyncStatus('online','var(--green)','☁ Online');
     return data;
   } catch(e) {
-    // Network error or CORS — most likely Firestore Rules issue
-    console.warn('Firebase load error:', e.message);
-    const el=_syncEl(); if(el){el.style.color='var(--orange)';el.textContent='☁ Rules!';}
+    console.warn('Firebase load error:',e.message);
+    _setSyncStatus('rules','var(--orange)','☁ Rules!');
     _showRulesHint();
     return null;
   }
 };
+
+// All data keys to merge during auto-refresh
+const _FB_MERGE_KEYS = [
+  'orders','riders','locations','payroll','expenses','inventory',
+  'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
+  'returnLog','govSettings','bizInfo','tabPasswords','specialPasswords',
+  'adminAccounts','deletedOrders','mergeLog'
+];
+
+// Track last known write timestamp to avoid redundant full re-fetches
+let _lastKnownWriteTs = 0;
 
 function _showRulesHint() {
   if(window._rulesHintShown) return;
@@ -633,7 +657,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-admin" onclick="selectRole('admin')">
           <div class="role-icon">👤</div>
-          <div class="role-name">CSR</div>
+          <div class="role-name">CSR/div>
           <div class="role-desc">Orders &amp; Operations</div>
         </div>
       </div>
@@ -8614,54 +8638,66 @@ document.querySelectorAll('.nav-item').forEach(el=>{
   });
 });
 
-// ── Auto-refresh from Firebase every 30 seconds ─────────────────────────
+// ── Auto-refresh ─────────────────────────────────────────────────────────
+// Checks for changes every 10 seconds using a lightweight timestamp check.
+// Only does a full data load when something actually changed — saves bandwidth.
 let _autoRefreshTimer = null;
 function startAutoRefresh(){
-  if(_autoRefreshTimer) return;
+  if(_autoRefreshTimer) clearInterval(_autoRefreshTimer);
   _autoRefreshTimer = setInterval(async ()=>{
     if(!window._fbReady || !window.loadFromFirebase) return;
+    if(_syncPending) return; // skip if we are mid-write to avoid race
     try {
+      // Lightweight check: fetch ONLY the _lastWrite timestamp field
+      const checkUrl = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}&mask.fieldPaths=_lastWrite`;
+      const checkR = await fetch(checkUrl, {cache:'no-cache'});
+      if(!checkR.ok) return;
+      const checkDoc = await checkR.json();
+      const remoteTs = checkDoc.fields?._lastWrite ? _fromFS(checkDoc.fields._lastWrite) : 0;
+      // Nothing changed since last refresh — skip
+      if(remoteTs && remoteTs <= _lastKnownWriteTs) return;
+      _lastKnownWriteTs = remoteTs || Date.now();
+
+      // Something changed — do a full load and merge
       const fbData = await window.loadFromFirebase();
       if(!fbData) return;
-      // Merge new data silently (don't reset UI)
-      const keys = ['orders','riders','locations','payroll','expenses','inventory',
-                    'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
-                    'returnLog','govSettings','bizInfo','tabPasswords','adminAccounts'];
-      keys.forEach(k=>{ if(fbData[k]!==undefined) S[k]=fbData[k]; });
+      _FB_MERGE_KEYS.forEach(k=>{ if(fbData[k]!==undefined) S[k]=fbData[k]; });
+      ['orders','riders','locations','payroll','expenses','inventory','stockLog',
+       'adminNames','remitLog','cashbondLog','benefitsLog','returnLog','deletedOrders','mergeLog']
+        .forEach(k=>{ if(!Array.isArray(S[k])) S[k]=[]; });
       if(!S.govSettings) S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
       persist();
-      // Silently re-render current active page
+      // Re-render active page silently
       const renderMap = {
-        dashboard: ()=>renderDash?.(),
-        orders: ()=>renderOrders?.(),
-        checker: ()=>renderChecker?.(),
-        tracking: ()=>renderTracking?.(),
-        riders: ()=>renderRiders?.(),
-        dailyparcels: ()=>renderDailyParcels?.(),
-        sorting: ()=>renderSorting?.(),
-        returns: ()=>renderCancelledItems?.(),
-        dailysales: ()=>renderDailySales?.(),
-        payroll: ()=>renderPayroll?.(),
-        expenses: ()=>renderExpenses?.(),
-        pnl: ()=>renderPnl?.(),
-        inventory: ()=>renderInventory?.(),
-        adminsheets: ()=>renderAdminSheets?.(),
-        ridersremit: ()=>renderRemitPage?.(),
-        cashbond: ()=>renderCashbondPage?.(),
-        benefits: ()=>renderBenefitsPage?.(),
-        riderdash: ()=>renderRiderDash?.(),
-        calendar: ()=>renderCalendar?.(),
-        ordermgmt: ()=>renderOrderMgmt?.(),
-        deletedorders: ()=>renderDeletedOrders?.(),
-        lbcdelivery: ()=>renderLbcDelivery?.(),
-        emsdelivery: ()=>renderEmsDelivery?.(),
-        fedexdelivery: ()=>renderFedexDelivery?.(),
+        dashboard:()=>renderDash?.(),
+        orders:()=>renderOrders?.(),
+        checker:()=>renderChecker?.(),
+        tracking:()=>renderTracking?.(),
+        riders:()=>renderRiders?.(),
+        dailyparcels:()=>renderDailyParcels?.(),
+        sorting:()=>renderSorting?.(),
+        returns:()=>renderCancelledItems?.(),
+        dailysales:()=>renderDailySales?.(),
+        payroll:()=>renderPayroll?.(),
+        expenses:()=>renderExpenses?.(),
+        pnl:()=>renderPnl?.(),
+        inventory:()=>()=>renderInv(invTab),
+        adminsheets:()=>renderAdminSheets?.(),
+        ridersremit:()=>renderRemitPage?.(),
+        cashbond:()=>renderCashbondPage?.(),
+        benefits:()=>renderBenefitsPage?.(),
+        riderdash:()=>renderRiderDash?.(),
+        calendar:()=>renderCalendar?.(),
+        ordermgmt:()=>renderOrderMgmt?.(),
+        deletedorders:()=>renderDeletedOrders?.(),
+        lbcdelivery:()=>renderLbcDelivery?.(),
+        emsdelivery:()=>renderEmsDelivery?.(),
+        fedexdelivery:()=>renderFedexDelivery?.(),
       };
       try { renderMap[_activePage]?.(); } catch(e){}
-      // If rider, always refresh their parcels too
       if(currentRole==='rider') try{renderRiderParcels();}catch(e){}
     } catch(e){ console.warn('Auto-refresh error:',e.message); }
-  }, 30000); // every 30 seconds
+  }, 10000); // every 10 seconds
 }
 
 // ============================================================
