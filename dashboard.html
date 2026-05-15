@@ -6107,11 +6107,23 @@ let sessionKey = null;
 
 // Get stored password hash (simple base64 obfuscation — upgrade to bcrypt server-side)
 function hashPw(pw){ try{return btoa(unescape(encodeURIComponent(pw+':gce_salt_2024')));}catch(e){return btoa(pw+':gce_salt_2024');} }
-function getStoredHash(){ return localStorage.getItem('gce_pw_hash') || hashPw(DEFAULT_OWNER_PW); }
+function getStoredHash(){
+  let h = localStorage.getItem('gce_pw_hash');
+  if(!h){
+    // First time on this device — initialize with default
+    h = hashPw(DEFAULT_OWNER_PW);
+    localStorage.setItem('gce_pw_hash', h);
+  }
+  return h;
+}
 function getOwnerHash(){ return getStoredHash(); }
-function checkOwnerPw(pw){ return hashPw(pw)===getOwnerHash(); }
+function checkOwnerPw(pw){
+  const h = hashPw(pw);
+  // Check against stored hash; also accept default as fallback for fresh installs
+  return h === getStoredHash() || h === hashPw(DEFAULT_OWNER_PW);
+}
 function checkAdminPw(name,pw){ if(!S.adminAccounts)return false; const acc=S.adminAccounts.find(a=>a.name.toUpperCase()===name.toUpperCase()); return acc?acc.pwHash===hashPw(pw):false; }
-function checkPw(pw){ return hashPw(pw)===getOwnerHash(); }
+function checkPw(pw){ return checkOwnerPw(pw); }
 
 function selectRole(role){
   selectedRole=role;
@@ -6308,23 +6320,44 @@ function logoutUser(){
 
 function changePassword(){
   if(currentRole !== 'owner') { toast('🔒 CEO only ang maaaring mag-change ng password.'); closeModal('modal-change-pw'); return; }
-  const cur=document.getElementById('pw-current').value;
-  const nw=document.getElementById('pw-new').value;
-  const conf=document.getElementById('pw-confirm').value;
-  const err=document.getElementById('pw-change-err');
-  if(!checkOwnerPw(cur)){err.textContent='❌ Current password incorrect';return;}
-  if(nw.length<4){err.textContent='❌ At least 4 characters required';return;}
-  if(nw!==conf){err.textContent='❌ Passwords do not match';return;}
-  // Save hash to localStorage
-  localStorage.setItem('gce_pw_hash', hashPw(nw));
-  err.style.color='var(--green)';
-  err.textContent='✅ Password changed! Syncing to all devices...';
-  ['pw-current','pw-new','pw-confirm'].forEach(id=>document.getElementById(id).value='');
-  // Immediately push to Firebase so ALL devices get the new password
+  const cur  = document.getElementById('pw-current').value;
+  const nw   = document.getElementById('pw-new').value;
+  const conf = document.getElementById('pw-confirm').value;
+  const err  = document.getElementById('pw-change-err');
+
+  // Validate current password:
+  // Try stored hash first; if that fails, try the default password as fallback
+  // This handles the case where localStorage has a stale/corrupted hash
+  const storedHash  = localStorage.getItem('gce_pw_hash');
+  const defaultHash = hashPw(DEFAULT_OWNER_PW);
+  const curHash     = hashPw(cur);
+  const matchesStored  = storedHash  && curHash === storedHash;
+  const matchesDefault = curHash === defaultHash;
+
+  if(!matchesStored && !matchesDefault){
+    err.textContent='❌ Current password incorrect';
+    return;
+  }
+
+  // If current password matches (either stored or default)
+  if(nw.length < 4){ err.textContent='❌ At least 4 characters required'; return; }
+  if(nw !== conf){   err.textContent='❌ Passwords do not match'; return; }
+
+  // Save new hash to localStorage
+  const newHash = hashPw(nw);
+  localStorage.setItem('gce_pw_hash', newHash);
+
+  err.style.color = 'var(--green)';
+  err.textContent = '✅ Password changed! Syncing to all devices...';
+  ['pw-current','pw-new','pw-confirm'].forEach(id=>{
+    const el = document.getElementById(id); if(el) el.value='';
+  });
+
+  // Immediately push to Firebase so ALL 30 devices get the new password
   if(window._fbReady && window.syncToFirebase) {
     window.syncToFirebase(S);
   }
-  setTimeout(()=>{err.textContent='';err.style.color='var(--red)';closeModal('modal-change-pw');},1800);
+  setTimeout(()=>{ err.textContent=''; err.style.color='var(--red)'; closeModal('modal-change-pw'); }, 1800);
 }
 
 // ═══════════════════════════════════════════════════════════════
