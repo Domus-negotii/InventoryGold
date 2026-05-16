@@ -2803,16 +2803,33 @@ function getItems(id) {
     const code = inp[0]?.value||'';
     const desc = inp[1]?.value||'';
     if(!code && !desc) return; // skip empty rows
-    const qgVal = parseFloat(r.querySelector('.row-qg-input')?.value)||0;
-    const pg = parseFloat(r.querySelector('.row-pg-input')?.value)||0;
-    const discount = parseFloat(r.querySelector('.row-discount-input')?.value)||0;
+    const qgVal   = parseFloat(r.querySelector('.row-qg-input')?.value)    || 0;
+    const pg      = parseFloat(r.querySelector('.row-pg-input')?.value)     || 0;
+    const discount= parseFloat(r.querySelector('.row-discount-input')?.value)|| 0;
     const discountRemark = r.querySelector('.row-discount-remark')?.value||'';
-    const totalInput = r.querySelector('.row-total-input');
-    const totalVal = parseFloat(totalInput?.value)||0;
+
     // qty vs grams: if pergram > 0 it's gram-based, else qty-based
     const grams = pg > 0 ? qgVal : 0;
-    const qty = pg > 0 ? 1 : (qgVal||1);
-    rows.push({code, desc, qty, grams, pergram:pg, discount, discountRemark, total:totalVal, fixPrice: pg === 0});
+    const qty   = pg > 0 ? 1     : Math.max(1, qgVal||1);
+
+    // Compute total from first principles — never trust stale DOM total field
+    let subtotal = 0;
+    if(pg > 0 && qgVal > 0){
+      // Gram-based
+      subtotal = parseFloat((qgVal * pg).toFixed(2));
+    } else if(r.dataset.unitPrice){
+      // Fix-price: unitPrice × qty
+      const unitPrice = parseFloat(r.dataset.unitPrice)||0;
+      subtotal = parseFloat((unitPrice * qty).toFixed(2));
+    } else {
+      // Manual: read from subtotal input if available, else from total+discount
+      const si = r.querySelector('.row-subtotal-input');
+      const ti = r.querySelector('.row-total-input');
+      subtotal = parseFloat(si?.value) || parseFloat((parseFloat(ti?.value||0) + discount).toFixed(2));
+    }
+    const total = parseFloat(Math.max(0, subtotal - discount).toFixed(2));
+
+    rows.push({code, desc, qty, grams, pergram:pg, discount, discountRemark, total, fixPrice: pg === 0});
   });
   return rows;
 }
@@ -3151,7 +3168,7 @@ function _renderOwnerOrdersView() {
 
 function renderOrders() {
   // ── Guard: filter out pre-clear orders before rendering ─────────────────────
-  if(typeof _filterClearedOrders==='function') S.orders=_filterClearedOrders(S.orders||[]);
+  if(typeof _filterClearedOrders==='function') S.orders=_dedupeOrders(_filterClearedOrders(S.orders||[]));
   const q  = (document.getElementById('order-search')?.value||'').toLowerCase();
   const mf = document.getElementById('order-method-filter')?.value||'';
   const df = document.getElementById('order-date-filter')?.value||'';
@@ -3326,7 +3343,7 @@ function getMissingFieldsWarning(o, verifSt) {
 
 function renderChecker(){
   // ── Guard: filter out pre-clear orders before rendering ─────────────────────
-  if(typeof _filterClearedOrders==='function') S.orders=_filterClearedOrders(S.orders||[]);
+  if(typeof _filterClearedOrders==='function') S.orders=_dedupeOrders(_filterClearedOrders(S.orders||[]));
   // v2-fixed-checkerCanEditODZ
   const filt = document.getElementById('checker-filter')?.value||'';
   const q = (document.getElementById('checker-search')?.value||'').toLowerCase();
@@ -4565,7 +4582,7 @@ let _extraRiderSlots = []; // manually added empty rider slots
 
 function renderSorting() {
   // ── Guard: filter out pre-clear orders before rendering ─────────────────────
-  if(typeof _filterClearedOrders==='function') S.orders=_filterClearedOrders(S.orders||[]);
+  if(typeof _filterClearedOrders==='function') S.orders=_dedupeOrders(_filterClearedOrders(S.orders||[]));
   const board = document.getElementById('sort-board');
   const statsEl = document.getElementById('sort-stats');
   if(!board) return;
@@ -6308,7 +6325,7 @@ function printPnl(){
 }
 function renderDash(){
   // ── Guard: filter out pre-clear orders before rendering ─────────────────────
-  if(typeof _filterClearedOrders==='function') S.orders=_filterClearedOrders(S.orders||[]);
+  if(typeof _filterClearedOrders==='function') S.orders=_dedupeOrders(_filterClearedOrders(S.orders||[]));
   const total=S.orders.length,del=S.orders.filter(o=>o.status==='Delivered').length;
   const revenue=S.orders.filter(o=>o.status==='Delivered').reduce((s,o)=>s+o.grandTotal,0);
   const pending=S.orders.filter(o=>o.checkerStatus==='Pending').length;
@@ -6610,7 +6627,7 @@ async function manualRefresh(){
         if(refreshOrderDocs && refreshOrderDocs.length>0){
           const _dIds2=Array.isArray(fbData.deletedOrders)?fbData.deletedOrders:[];
           // Filter orders that predate the last clear (prevents cache resurrection)
-          S.orders=_filterClearedOrders(_mergeOrderDocs(S.orders,refreshOrderDocs,_dIds2));
+          S.orders=_dedupeOrders(_filterClearedOrders(_mergeOrderDocs(S.orders,refreshOrderDocs,_dIds2)));
         }
       }
 
@@ -6829,16 +6846,10 @@ function saveFbConfig(){
 async function save(){
   const _now = new Date().toISOString();
 
-  // ── Apply global clear first — if Owner cleared, wipe before stamping ──────
-  // This prevents the Checker's old S.orders from being re-uploaded to Firebase
-  if(typeof _applyGlobalClear === 'function' && typeof S !== 'undefined'){
+  // Apply global clear first — filter pre-clear orders before stamping
+  if(typeof S !== 'undefined' && typeof _filterClearedOrders === 'function'){
     const _lc = S.lastGlobalClear || localStorage.getItem('gce_last_clear') || '0';
-    if(_lc && _lc !== '0'){
-      // Already cleared — filter out pre-clear orders from local state
-      if(typeof _filterClearedOrders === 'function'){
-        S.orders = _filterClearedOrders(S.orders||[]);
-      }
-    }
+    if(_lc && _lc !== '0') S.orders = _filterClearedOrders(S.orders||[]);
   }
 
   // Stamp all TX records with _id and _updatedAt
@@ -6846,39 +6857,36 @@ async function save(){
     const _TX=['orders','payroll','expenses','remitLog','cashbondLog','benefitsLog',
                'returnLog','stockLog','deletedOrders','mergeLog'];
     _TX.forEach(k=>{
-      if(Array.isArray(S[k])) S[k].forEach(item=>{
-        _stamp(item);
-        item._updatedAt = _now;
-      });
+      if(Array.isArray(S[k])) S[k].forEach(item=>{ _stamp(item); item._updatedAt = _now; });
     });
   }
+
   // Write to localStorage immediately
   if(typeof S !== 'undefined') localStorage.setItem(KEY, JSON.stringify(S));
 
-  // Push orders as individual Firestore docs — only post-clear orders
-  // _filterClearedOrders ensures pre-clear orders never get re-uploaded
-  if(window._fbReady && Array.isArray(S.orders)){
-    const ordersToSync = (typeof _filterClearedOrders==='function')
-      ? _filterClearedOrders(S.orders).filter(o=>o&&o._id)
-      : S.orders.filter(o=>o&&o._id);
-    if(ordersToSync.length>0){
-      Promise.allSettled(ordersToSync.map(o=>_writeOrderDoc(o))).catch(()=>{});
-    }
-  }
-  // Push payroll and expense docs individually (prevents array overwrites)
   if(window._fbReady){
-    if(Array.isArray(S.payroll)&&S.payroll.length){
-      Promise.allSettled(S.payroll.filter(o=>o&&o._id).map(o=>_writePayrollDoc(o))).catch(()=>{});
+    const docWrites = [];
+    // Orders — per-doc, only post-clear, deduplicated
+    if(Array.isArray(S.orders)){
+      const toSync = (typeof _filterClearedOrders==='function')
+        ? _filterClearedOrders(S.orders).filter(o=>o&&o._id)
+        : S.orders.filter(o=>o&&o._id);
+      if(toSync.length) docWrites.push(Promise.allSettled(toSync.map(o=>_writeOrderDoc(o))));
     }
-    if(Array.isArray(S.expenses)&&S.expenses.length){
-      Promise.allSettled(S.expenses.filter(o=>o&&o._id).map(o=>_writeExpenseDoc(o))).catch(()=>{});
-    }
+    // Payroll — per-doc
+    if(Array.isArray(S.payroll)&&S.payroll.length)
+      docWrites.push(Promise.allSettled(S.payroll.filter(o=>o&&o._id).map(o=>_writePayrollDoc(o))));
+    // Expenses — per-doc
+    if(Array.isArray(S.expenses)&&S.expenses.length)
+      docWrites.push(Promise.allSettled(S.expenses.filter(o=>o&&o._id).map(o=>_writeExpenseDoc(o))));
+
+    // AWAIT all per-doc writes before bumping _lastWrite
+    // This ensures Owner's 5s poll finds data already in Firebase when _lastWrite changes
+    if(docWrites.length) await Promise.allSettled(docWrites);
   }
 
-  // Sync all other state to Firebase (orders excluded — handled above per-doc)
-  if(window._fbReady && window.syncToFirebase){
-    window.syncToFirebase();
-  }
+  // Bump _lastWrite in main doc — Owner device polls this to detect changes
+  if(window._fbReady && window.syncToFirebase) window.syncToFirebase();
 }
 
 function persist(){
@@ -7646,9 +7654,9 @@ function saveOrder() {
     }
   }
 
-  const sf2 = parseFloat(document.getElementById('enc-shipping').value)||0;
-  const iT = items.reduce((s,it) => s+it.total, 0);
-  const totalDiscount = items.reduce((s,it) => s+(it.discount||0), 0);
+  const sf2 = parseFloat((parseFloat(document.getElementById('enc-shipping').value)||0).toFixed(2));
+  const iT  = parseFloat(items.reduce((s,it) => s + (parseFloat(it.total)||0), 0).toFixed(2));
+  const totalDiscount = parseFloat(items.reduce((s,it) => s + (parseFloat(it.discount)||0), 0).toFixed(2));
   const editIdx = document.getElementById('enc-edit-idx').value;
   const isLbcMethod = paymentMethod === 'LBC' || paymentMethod === 'EMS' || paymentMethod === 'FedEx';
   const trackingNumber = (paymentMethod === 'LBC' || paymentMethod === 'EMS' || paymentMethod === 'FedEx') ? (document.getElementById('enc-tracking-number')?.value.trim()||'') : '';
@@ -7672,7 +7680,7 @@ function saveOrder() {
     landmark: document.getElementById('enc-landmark').value,
     date: date || today(),
     admin, assignedRider, paymentMethod,
-    shipping: sf2, items, itemsTotal: iT, totalDiscount, grandTotal: iT + sf2,
+    shipping: sf2, items, itemsTotal: iT, totalDiscount, grandTotal: parseFloat((iT + sf2).toFixed(2)),
     trackingNumber, dateOfPayment, dateOfDropoff,
     payments,
     status: 'Preparing', checkerStatus: 'Pending',
@@ -7746,12 +7754,8 @@ function saveOrder() {
     return; // skip the save() below for new orders (already handled above)
   }
   save(); closeModal('modal-encode');
-  // Also write this specific order as its own Firestore document
-  // This prevents array-level race conditions when multiple admins encode simultaneously
-  const _savedOrder = editIdx !== null ? S.orders[+editIdx] : S.orders[S.orders.length-1];
-  if(_savedOrder && _savedOrder._id && window._fbReady) {
-    _writeOrderDoc(_savedOrder).catch(()=>{});
-  }
+  // save() already writes all order docs via _writeOrderDoc internally
+  // No need for a second call here — would cause duplicate writes
   initOrdersPage();
   renderDash();
 }
@@ -9145,7 +9149,7 @@ async function initApp(){
         if(orderDocs && orderDocs.length > 0){
           const dIds = Array.isArray(fbData.deletedOrders)?fbData.deletedOrders:[];
           // Filter orders that predate the last clear (prevents cache resurrection)
-          fbData.orders = _filterClearedOrders(_mergeOrderDocs(fbData.orders||[], orderDocs, dIds));
+          fbData.orders = _dedupeOrders(_filterClearedOrders(_mergeOrderDocs(fbData.orders||[], orderDocs, dIds)));
         }
 
         // ── Union-by-ID merge — Firebase authoritative, local offline entries preserved ──
@@ -9402,7 +9406,7 @@ function startAutoRefresh(){
       if(orderDocs && orderDocs.length > 0){
         const deletedIds = Array.isArray(fbData.deletedOrders)?fbData.deletedOrders:[];
         // Filter orders that predate the last clear (prevents cache resurrection)
-        S.orders = _filterClearedOrders(_mergeOrderDocs(S.orders, orderDocs, deletedIds));
+        S.orders = _dedupeOrders(_filterClearedOrders(_mergeOrderDocs(S.orders, orderDocs, deletedIds)));
         fbData.orders = S.orders; // use merged result for subsequent processing
       }
       // Smart merge — Firebase is source of truth after fresh start cleaned it
@@ -9503,7 +9507,7 @@ function setOmTab(tab) {
 
 function renderOrderMgmt() {
   // ── Guard: filter out pre-clear orders before rendering ─────────────────────
-  if(typeof _filterClearedOrders==='function') S.orders=_filterClearedOrders(S.orders||[]);
+  if(typeof _filterClearedOrders==='function') S.orders=_dedupeOrders(_filterClearedOrders(S.orders||[]));
   const q  = (document.getElementById('om-search')?.value||'').toLowerCase();
   const df = document.getElementById('om-date')?.value||'';
   const method = omTab === 'lbc' ? 'LBC' : omTab === 'ems' ? 'EMS' : 'FedEx';
@@ -11176,11 +11180,29 @@ function _mergeOrderDocs(localOrders, remoteOrders, deletedIds){
       if(lTs>rTs) map.set(o._id,o);
     } else {
       // Local-only — this order is new (just encoded) or Firebase hasn't received it yet
-      // Keep it — it will be written to Firebase via _writeOrderDoc
       map.set(o._id,o);
     }
   });
   return [...map.values()].filter(o=>!dead.has(o._id||''));
+}
+
+// Deduplicate S.orders by _id — keeps newest version of each
+// Called after merges to eliminate any ghost duplicates
+function _dedupeOrders(orders){
+  if(!Array.isArray(orders)) return [];
+  const map=new Map();
+  orders.forEach(o=>{
+    if(!o._id){ return; } // skip unidentified
+    if(map.has(o._id)){
+      const existing=map.get(o._id);
+      const exTs=existing._updatedAt||'0';
+      const newTs=o._updatedAt||'0';
+      if(newTs>exTs) map.set(o._id,o); // keep newer
+    } else {
+      map.set(o._id,o);
+    }
+  });
+  return [...map.values()];
 }
 
 // ── 1. BACKGROUND DATA PREFETCH ─────────────────────────────────────────────
@@ -11227,7 +11249,7 @@ setTimeout(async function(){
         const _pDocs = await _loadOrderDocs();
         if(_pDocs&&_pDocs.length>0){
           const _pd=Array.isArray(fbData.deletedOrders)?fbData.deletedOrders:[];
-          S.orders=_filterClearedOrders(_mergeOrderDocs(S.orders||[], _pDocs, _pd));
+          S.orders=_dedupeOrders(_filterClearedOrders(_mergeOrderDocs(S.orders||[], _pDocs, _pd)));
         }
       }
     } catch(_pe){ console.warn('[GCE] Prefetch orderDocs:',_pe.message); }
