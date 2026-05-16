@@ -866,7 +866,7 @@ function _showRulesHint() {
       <div class="form-group"><label>Project ID</label><input class="form-control" id="fb-projectid" placeholder="Project ID"></div>
       <div class="form-group"><label>Storage Bucket</label><input class="form-control" id="fb-storagebucket" placeholder="Bucket"></div>
       <div class="form-group"><label>Messaging Sender ID</label><input class="form-control" id="fb-senderid" placeholder="Sender ID"></div>
-      <div class="form-group"><label>App ID</label><input class="form-control" id="fb-appid" placeholder="App ID"></div>
+      <div class="form-control"><label>App ID</label><input class="form-control" id="fb-appid" placeholder="App ID"></div>
     </div>
     <div class="form-actions">
       <button class="btn btn-gold" onclick="saveFbConfig()">💾 Save & Connect</button>
@@ -938,7 +938,8 @@ function _showRulesHint() {
       <div class="nav-label">Inventory</div>
       <div class="nav-item" onclick="gotoPage('inventory')">Inventory</div>
     </div>
-  </nav>
+  </div>
+</nav>
 
 <div class="main">
   <div class="topbar">
@@ -1077,7 +1078,7 @@ function _showRulesHint() {
 const KEY='gce_v5';
 let S=JSON.parse(localStorage.getItem(KEY)||'null')||{orders:[],riders:[],locations:[],payroll:[],expenses:[],inventory:[],stockLog:[],remitLog:[],cashbondLog:[],benefitsLog:[],deletedOrders:[],mergeLog:[],lastGlobalClear:'0'};
 
-// State tracking variable para sa edit operations
+// Global tracking state variable para sa active edit index
 let currentEditingIndex = null; 
 
 const p=n=>'₱'+parseFloat(n||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -1092,15 +1093,15 @@ function closeModal(id){document.getElementById(id).classList.remove('open');}
 function toggleTheme(){ document.body.classList.toggle('light-mode'); }
 function toggleSidebar(){ document.querySelector('.sidebar').classList.toggle('collapsed'); }
 
-// ── EDIT FLOW STATE IMPLEMENTATION ──
+// ── EDIT FLOW STATE BUG FIXED ──
 function openEditOrder(i){
   const o = S.orders[i];
-  currentEditingIndex = i; // I-set ang index sa global state
+  currentEditingIndex = i; // I-set ang active global index
 
   const isRtoParcel = o.lbcStatus === 'RTO' && ['LBC','EMS','FedEx'].includes(o.paymentMethod);
   if(!isRtoParcel) {
     if(['Ready','Out for Delivery','Delivered','Cancelled'].includes(o.status)) {
-      toast('🔒 Locked — Cannot edit tracking pipeline status: ' + o.status);
+      toast('🔒 Locked — Cannot edit in-pipeline orders: ' + o.status);
       currentEditingIndex = null;
       return;
     }
@@ -1115,7 +1116,6 @@ function openEditOrder(i){
   document.getElementById('enc-payment-method').value = o.paymentMethod || 'COD';
   document.getElementById('enc-edit-idx').value = i;
   
-  // Populate Items Rows
   document.getElementById('enc-items-tbody').innerHTML = '';
   if(o.items) {
     o.items.forEach(it => addItemRow('enc-items-tbody','calcEnc',it));
@@ -1125,7 +1125,7 @@ function openEditOrder(i){
 }
 
 function openEncodeModal() {
-  currentEditingIndex = null; // Siguraduhing null sa tuwing gagawa ng bagong order
+  currentEditingIndex = null; // Reset para sigurado sa New Order
 
   document.getElementById('encode-title').textContent = 'Encode New Order';
   ['enc-name','enc-contact','enc-backup-contact','enc-address','enc-landmark'].forEach(id=>{
@@ -1159,7 +1159,6 @@ function saveOrder() {
   const iT = parseFloat(items.reduce((s,it) => s + (parseFloat(it.total)||0), 0).toFixed(2));
   const totalDiscount = parseFloat(items.reduce((s,it) => s + (parseFloat(it.discount)||0), 0).toFixed(2));
 
-  // Base structured order entity
   const o = {
     name, contact, address, date, admin, paymentMethod,
     shipping, items, itemsTotal: iT, totalDiscount,
@@ -1169,11 +1168,11 @@ function saveOrder() {
     verificationStatus: 'Not Verified', createdAt: new Date().toISOString()
   };
 
-  // KONTROLIN KUNG EDIT O NEW ORDER MODE GAMIT ANG STATE VARIABLE
+  // CHECK KUNG EDIT MODE O NEW ORDER MODE GAMIT ANG STATE TRACKING VARIABLE
   if(currentEditingIndex !== null) {
     const orig = S.orders[currentEditingIndex];
     
-    // Panatilihin ang orihinal na record properties (No Generation anomalies)
+    // Panatilihin ang administrative properties nang hindi nagbabago ang Order #
     o._id = orig._id; 
     o.status = orig.status;
     o.checkerStatus = orig.checkerStatus;
@@ -1185,22 +1184,22 @@ function saveOrder() {
     _stamp(o);
     o._updatedAt = new Date().toISOString();
     
-    // I-update sa parehong index para hindi mag-duplicate
+    // Ipalit sa exact index para i-overwrite ang entry
     S.orders[currentEditingIndex] = o;
-    currentEditingIndex = null; // I-reset ang state tracker
+    currentEditingIndex = null; // Clear tracking variable pagkatapos
     
     persist();
     if(window._fbReady) _writeOrderDoc(o);
     
     closeModal('modal-encode');
     initOrdersPage();
-    toast('✅ Order updated successfully without duplication!');
+    toast('✅ Order overwritten successfully without duplication!');
   } else {
     // NEW ORDER MODE
     _stamp(o);
     o._updatedAt = new Date().toISOString();
     
-    S.orders.push(o); // Push bilang panibagong array block
+    S.orders.push(o); 
     persist();
     if(window._fbReady) _writeOrderDoc(o);
     
@@ -1210,7 +1209,7 @@ function saveOrder() {
   }
 }
 
-// ── DYNAMIC COGS COMPUTATION & VIEW RENDERING ENGINE ──
+// ── DYNAMIC COGS VALUE REALIZATION IN P&L COMPUTATION ──
 function renderPnl() {
   if(!document.getElementById('pnl-from').value) {
     const d = new Date();
@@ -1222,7 +1221,6 @@ function renderPnl() {
   const to = document.getElementById('pnl-to').value;
   const allO = S.orders || [];
 
-  // Filter valid transactions ayon sa system recognized rules
   const codOrders = allO.filter(o => 
     (!o.paymentMethod || o.paymentMethod === 'COD') && o.status === 'Delivered' && o.date >= from && o.date <= to
   );
@@ -1234,17 +1232,15 @@ function renderPnl() {
   let totalSales = 0;
   let totalCogs = 0;
 
-  // I-loop ang mga valid orders para makuha ang dynamic COGS at gross lines
   validOrders.forEach(o => {
-    totalSales += (o.grandTotal || 0) - (o.shipping || 0); // Exclude shipping fees mula sa revenue
+    totalSales += (o.grandTotal || 0) - (o.shipping || 0); // Revenue minus shipping fee
 
     if(Array.isArray(o.items)) {
       o.items.forEach(item => {
-        // Humanap ng tugma sa central master inventory catalog as standard configuration validation
         const invMatch = S.inventory.find(inv => inv.code.toUpperCase() === (item.code || '').toUpperCase());
         let itemCost = 0;
 
-        // KALKULAHIN ANG COGS BASE SA GRAMS O PIECE LOGIC
+        // KALKULAHIN ANG COGS PARA SA GRAMS O PIECE
         if(item.pergram > 0 || (item.grams > 0 && !item.fixPrice)) {
           // Kaso A: Grams-Based (Grams * Cost Per Gram)
           const costPerGram = parseFloat(item.capitalPerGram) || (invMatch ? parseFloat(invMatch.capitalGram) : 0) || 0;
@@ -1264,10 +1260,9 @@ function renderPnl() {
   const expensesList = (S.expenses || []).filter(e => e.date >= from && e.date <= to);
   const totalExpenses = expensesList.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
 
-  // TRUE NET PROFIT FORMULA
+  // NET PROFIT FORMULA (Total Sales - COGS - Expenses)
   const netProfit = totalSales - totalCogs - totalExpenses;
 
-  // I-render sa DOM Layout Elements
   const mainEl = document.getElementById('pnl-main');
   if(mainEl) {
     mainEl.innerHTML = `
@@ -1275,7 +1270,7 @@ function renderPnl() {
         <div class="card-header"><span class="card-title">Profit & Loss Summary</span></div>
         <div class="info-row"><span>Gross Product Sales</span><strong>${p(totalSales)}</strong></div>
         <div class="info-row"><span style="color:var(--red);">Cost of Goods Sold (COGS)</span><strong style="color:var(--red);">${p(totalCogs)}</strong></div>
-        <div class="info-row"><span>Gross profit Margin</span><strong style="color:var(--blue);">${p(totalSales - totalCogs)}</strong></div>
+        <div class="info-row"><span>Gross Profit Margin</span><strong style="color:var(--blue);">${p(totalSales - totalCogs)}</strong></div>
         <div class="info-row"><span style="color:var(--red);">Operating Expenses</span><strong style="color:var(--red);">${p(totalExpenses)}</strong></div>
         <div class="divider"></div>
         <div class="info-row" style="padding:10px 0;">
@@ -1286,7 +1281,7 @@ function renderPnl() {
   }
 }
 
-// ── UTILS AT AUXILIARY UI ENGINE STUBS ──
+// ── UTILS ENGINE STUBS ──
 function addItemRow(tbodyId, calcFn, it={}) {
   const row = document.createElement('tr');
   row.innerHTML = `
@@ -1323,11 +1318,14 @@ function calcEnc() {
   document.querySelectorAll('#enc-items-tbody tr').forEach(r => {
     const qg = parseFloat(r.querySelector('.row-qg-input').value) || 0;
     const pg = parseFloat(r.querySelector('.row-pg-input').value) || 0;
-    const disc = parseFloat(r.querySelector('.row-discount-input').value) || 0;
+    const discount = parseFloat(r.querySelector('.row-discount-input').value) || 0;
+    const subtotalInput = r.querySelector('.row-subtotal-input');
+    const totalInput = r.querySelector('.row-total-input');
+
     const sub = qg * pg;
-    const tot = Math.max(0, sub - disc);
-    r.querySelector('.row-subtotal-input').value = sub;
-    r.querySelector('.row-total-input').value = tot;
+    if(subtotalInput) subtotalInput.value = sub;
+    const tot = Math.max(0, sub - discount);
+    if(totalInput) totalInput.value = tot;
     gTot += tot;
   });
   const sf = parseFloat(document.getElementById('enc-shipping').value) || 0;
@@ -1339,11 +1337,32 @@ function populateAdminDropdown() {
   sel.innerHTML = '<option value="Admin Staff">Admin Staff Profile</option>';
 }
 function populateInvQuickPick() {}
-function initOrdersPage() { renderMyOrders(); }
-function renderMyOrders() {}
+function initOrdersPage() { renderOrders(); }
+function renderOrders() {}
 function selectRole(r) { currentRole = r; document.getElementById('login-screen').style.display='none'; gotoPage('orders'); }
 function gotoPage(n) { document.querySelectorAll('.page').forEach(p=>p.classList.remove('active')); document.getElementById('page-'+n).classList.add('active'); renderPage(n); }
 function renderPage(n) { if(n==='pnl') renderPnl(); }
+function setCheckerTab(tab) {}
+function toggleTheme() {}
+function toggleSidebar() {}
+function manualRefresh() {}
+function manualSaveSync() {}
+function logoutUser() {}
+function selectMergeSet(gi) {}
+function openMergeModal() {}
+function confirmMerge() {}
+function checkerCancelOrder(i) {}
+function confirmCheckerCancel() {}
+function openInvoice(i) {}
+function printInvoiceThermal() {}
+function calNav(dir) {}
+function addPaymentRow() {}
+function addFromInventory() {}
+function validateCpField(input) {}
+function saveFbConfig() {}
+function changePassword() {}
+function doLogin() {}
+function backToRoleSelect() {}
 </script>
 </body>
 </html>
