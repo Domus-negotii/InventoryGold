@@ -505,44 +505,11 @@ window.syncToFirebase = async function() {
 // ── Atomic order append — prevents race condition when multiple encoders save simultaneously ──
 // Uses Firestore's arrayUnion transform: atomically appends to the orders array
 // WITHOUT reading then writing the whole array. Two devices can safely append at the same time.
-async function _atomicAppendOrder(newOrder){
-  try {
-    // Ensure the order has _id and _updatedAt before appending
-    if(typeof _stamp !== 'undefined') _stamp(newOrder);
-    if(!newOrder._updatedAt) newOrder._updatedAt = new Date().toISOString();
-
-    const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
-    // Firestore REST API field transform: arrayUnion atomically appends without overwriting
-    const body = {
-      writes: [{
-        transform: {
-          document: `projects/${_FB_PROJECT}/databases/(default)/documents/gce_state/main`,
-          fieldTransforms: [{
-            fieldPath: 'orders',
-            appendMissingElements: {
-              values: [_toFS(newOrder)]
-            }
-          }]
-        }
-      }]
-    };
-    const commitUrl = `https://firestore.googleapis.com/v1/projects/${_FB_PROJECT}/databases/(default)/documents:commit?key=${_FB_APIKEY}`;
-    const r = await fetch(commitUrl, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(body)
-    });
-    if(r.ok){
-      console.log('[GCE] Order atomically appended to Firebase — race-condition safe.');
-      return true;
-    } else {
-      console.warn('[GCE] Atomic append failed, falling back to full write:', r.status);
-      return false;
-    }
-  } catch(e){
-    console.warn('[GCE] Atomic append error:', e.message);
-    return false;
-  }
+async function _atomicAppendOrder(order){
+  // DEPRECATED — use _writeOrderDoc(order) instead
+  // Kept as stub to avoid ReferenceError if called from old code paths
+  if(window._fbReady && order && order._id) return _writeOrderDoc(order);
+  return Promise.resolve(false);
 }
 
 // ── Atomic order update — updates a single order by _id without touching others ──
@@ -6859,11 +6826,11 @@ async function save(){
   // Write to localStorage immediately
   if(typeof S !== 'undefined') localStorage.setItem(KEY, JSON.stringify(S));
 
-  // Push order documents individually — prevents array-level race conditions
-  // Each order goes to its own Firestore doc (gce_orders/{_id}) independently
+  // Push ALL orders as individual Firestore documents
+  // This is called on status updates, rider assignments, etc.
+  // Each order writes to gce_orders/{_id} — concurrent writes never conflict
   if(window._fbReady && Array.isArray(S.orders)){
-    const ordersToSync = S.orders.filter(o=>o&&o._id&&o._updatedAt===_now);
-    // Write changed orders in parallel — each to its own doc, no interference between devices
+    const ordersToSync = S.orders.filter(o=>o&&o._id);
     if(ordersToSync.length>0){
       Promise.allSettled(ordersToSync.map(o=>_writeOrderDoc(o))).catch(()=>{});
     }
@@ -7721,18 +7688,18 @@ function saveOrder() {
     // ── New order: use atomic append to Firebase to prevent race conditions ──
     // When multiple staff encode simultaneously, each order goes to Firebase
     // independently without overwriting others' work.
-    _stamp(o); // ensure _id exists before append
+    _stamp(o); // ensure _id and _updatedAt exist
     o._updatedAt = new Date().toISOString();
     o.inventoryDeducted = false;
-    S.orders.push(o); // add to local state immediately (UI shows it now)
+    S.orders.push(o); // add to local state immediately
     persist();        // save to localStorage
-    // Atomic append to Firebase — race-condition safe
-    _atomicAppendOrder(o).then(success=>{
-      if(!success){
-        // Fallback: full write if atomic append fails
-        window.syncToFirebase && window.syncToFirebase();
-      }
-    });
+    // Write this order as its own Firestore document — race-condition safe
+    // Each admin's order goes to gce_orders/{_id}, completely independent path
+    if(window._fbReady){
+      _writeOrderDoc(o).then(ok=>{
+        if(!ok) window.syncToFirebase && window.syncToFirebase(); // fallback
+      }).catch(()=>{ window.syncToFirebase && window.syncToFirebase(); });
+    }
     closeModal('modal-encode');
     initOrdersPage();
     renderDash();
@@ -11139,6 +11106,16 @@ setTimeout(async function(){
     });
     if(fbData.ownerPwHash && fbData.ownerPwHash!=='')
       localStorage.setItem('gce_pw_hash', fbData.ownerPwHash);
+    // Load per-document orders for accurate prefetch state
+    try {
+      if(typeof _loadOrderDocs==='function'&&typeof _mergeOrderDocs==='function'){
+        const _pDocs = await _loadOrderDocs();
+        if(_pDocs&&_pDocs.length>0){
+          const _pd=Array.isArray(fbData.deletedOrders)?fbData.deletedOrders:[];
+          S.orders=_mergeOrderDocs(S.orders||[], _pDocs, _pd);
+        }
+      }
+    } catch(_pe){ console.warn('[GCE] Prefetch orderDocs:',_pe.message); }
     if(typeof KEY!=='undefined') localStorage.setItem(KEY, JSON.stringify(S));
 
     console.log('[GCE] Background prefetch done — data ready for instant login render.');
