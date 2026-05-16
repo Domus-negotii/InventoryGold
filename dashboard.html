@@ -2611,6 +2611,7 @@ if(S.orders) S.orders.forEach(o=>{ if(STATUS_MAP[o.status]) o.status=STATUS_MAP[
 let currentUser = null;
 
 let currentRole = null;
+let currentEditingIndex = null; // tracks index of order being edited (null = new order mode)
 
 // No seed data — app starts clean
 // save() now defined in auth section above (async dual-write)
@@ -2964,6 +2965,7 @@ function openEditOrder(i){
   }
   document.getElementById('enc-shipping').value=o.shipping;
   document.getElementById('enc-edit-idx').value=i;
+  currentEditingIndex = i; // track which order is being edited
   const pm=document.getElementById('enc-payment-method'); if(pm) pm.value=o.paymentMethod||'COD';
   // Restore tracking number + show/hide tracking field
   const tnInp=document.getElementById('enc-tracking-number'); if(tnInp) tnInp.value=o.trackingNumber||'';
@@ -3176,6 +3178,11 @@ function renderOrders() {
   const pm2cls = m => m==='EMS'||m==='FedEx'?'green':m==='LBC'?'blue':'delivering';
 
   const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
+    // Fix 2 & 3: Role isolation — non-owner admins see only their own orders
+    if(currentRole !== 'owner' && currentUser?.role !== 'owner'){
+      const myName = (currentUser?.name || adminName || '').toUpperCase();
+      if(myName && (o.admin||'').toUpperCase() !== myName) return false;
+    }
     if(_ownerAdminTab !== 'ALL' && o.admin.toUpperCase() !== _ownerAdminTab.toUpperCase()) return false;
     if(mf && (o.paymentMethod||'COD') !== mf) return false;
     if(df && o.date !== df) return false;
@@ -6156,39 +6163,55 @@ function renderPnl(){
     o.paymentStatus==='Fully Paid' && o.verificationStatus==='Verified' &&
     (o.dateOfPayment||'').slice(0,10)>=from && (o.dateOfPayment||'').slice(0,10)<=to);
   const incomeOrders = [...codDelivered, ...courierVerified];
+  // Fix 2 & 3: Role isolation — non-owners see only their own orders in P&L
+  const _pnlOrders = (currentRole !== 'owner' && currentUser?.role !== 'owner')
+    ? (()=>{ const myName=(currentUser?.name||adminName||'').toUpperCase(); return myName ? incomeOrders.filter(o=>(o.admin||'').toUpperCase()===myName) : incomeOrders; })()
+    : incomeOrders;
 
   // TOTAL SALES = product price only (itemsTotal), NO shipping fee
-  const totalSales = incomeOrders.reduce((s,o)=>s+o.itemsTotal,0);
+  const totalSales = _pnlOrders.reduce((s,o)=>s+o.itemsTotal,0);
   // TOTAL COST = cost of goods sold (pergram × grams or pergram × qty for each item)
   // ── COGS helper — looks up capital cost from inventory, never uses selling price ──
   // Order items store SELLING price (pergram / fixPrice) — NOT cost.
   // We resolve cost from S.inventory by product code (case-insensitive, trimmed).
   function calcItemCOGS(it) {
-    if(!it.code || !it.code.trim()) return 0; // no code = no COGS data
-    const code = it.code.trim().toUpperCase();
-    const inv = (S.inventory||[]).find(p => p.code && p.code.trim().toUpperCase() === code);
-    if(inv) {
-      if(inv.itemType === 'fixprice') {
-        // Fix-price product: capitalPerUnit × quantity sold
-        const cost = Math.max(0, inv.capitalPerUnit||0);
-        const qty  = Math.max(0, it.qty||1);
-        return cost * qty;
-      } else {
-        // Weight-based: capitalPerGram × grams sold
-        const cost  = Math.max(0, inv.capitalPerGram||0);
-        const grams = Math.max(0, it.grams||0);
-        return cost * grams;
+    // ── Fix 4: Dynamic COGS — inventory lookup with item-level fallback ──────
+    const code = (it.code||'').trim().toUpperCase();
+
+    // Step 1: try inventory lookup by code
+    if(code){
+      const inv = (S.inventory||[]).find(p => p.code && p.code.trim().toUpperCase() === code);
+      if(inv){
+        if(inv.itemType === 'fixprice'){
+          // Fix-price / piece-based: capitalPerUnit × qty
+          const cost = Math.max(0, inv.capitalPerUnit || inv.capitalPerPiece || 0);
+          const qty  = Math.max(0, it.qty || 1);
+          return parseFloat((cost * qty).toFixed(2));
+        } else {
+          // Weight-based: capitalPerGram × grams
+          const cost  = Math.max(0, inv.capitalPerGram || 0);
+          const grams = Math.max(0, it.grams || 0);
+          return parseFloat((cost * grams).toFixed(2));
+        }
       }
     }
-    // Fallback: item object may carry capital cost fields (forward-compatibility)
-    if(typeof it.capitalPerGram === 'number' && it.capitalPerGram > 0)
-      return it.capitalPerGram * Math.max(0, it.grams||0);
-    if(typeof it.capitalPerUnit === 'number' && it.capitalPerUnit > 0)
-      return it.capitalPerUnit * Math.max(0, it.qty||1);
-    // No cost data — COGS = 0 (do NOT fall back to selling price)
+
+    // Step 2: item-level capital fields (stored directly on item)
+    // Grams-based fallback
+    if(it.grams > 0){
+      const cpg = it.capitalPerGram || it.capitalPerG || 0;
+      if(cpg > 0) return parseFloat((cpg * it.grams).toFixed(2));
+    }
+    // Piece-based fallback
+    if(it.qty > 0){
+      const cpp = it.capitalPerUnit || it.capitalPerPiece || it.capitalPerP || 0;
+      if(cpp > 0) return parseFloat((cpp * it.qty).toFixed(2));
+    }
+
+    // Step 3: no cost data — COGS = 0 (never use selling price)
     return 0;
   }
-  const totalCOGS = incomeOrders.reduce((s,o)=>
+  const totalCOGS = _pnlOrders.reduce((s,o)=>
     s + (o.items||[]).reduce((is,it)=> is + calcItemCOGS(it), 0), 0);
   const grossProfit = totalSales - totalCOGS;
 
@@ -7170,12 +7193,14 @@ function renderRiderParcels() {
       .map(r => r.date)
   );
   const myOrders = allMyOrders.filter(o => {
-    // Hide ALL orders whose date matches a remitted date — rider already submitted these
-    if(remittedDates.has(o.date)) return false;
+    // Fix 5: Only hide Delivered orders on remitted dates (already settled)
+    // Keep all other statuses visible so rider sees their active deliveries
+    if(o.status === 'Delivered' && remittedDates.has(o.date)) return false;
     return true;
   });
-  // Apply date filter (default = today)
-  let filtered = df ? myOrders.filter(o => o.date === df) : myOrders.filter(o => o.date === today());
+  // Fix 5: Default shows ALL active assigned orders (not just today's)
+  // Rider needs to see packages from previous days that weren't delivered yet
+  let filtered = df ? myOrders.filter(o => o.date === df) : myOrders;
   if(filt) filtered = filtered.filter(o => o.status === filt);
   if(q) filtered = filtered.filter(o =>
     o.name.toLowerCase().includes(q) || (o.contact||'').includes(q) || onum(o.idx).includes(q));
@@ -7747,6 +7772,7 @@ function saveOrder() {
     initOrdersPage();
     renderDash();
     toast(wasRto ? '✅ Order updated & ready for re-dispatch!' : hadDeducted ? '✅ Order updated! Inventory adjusted.' : '✅ Order updated!');
+    currentEditingIndex = null; // clear edit tracker
     return; // done — skip the save() below
   } else {
     // ── New order: use atomic append to Firebase to prevent race conditions ──
@@ -7768,6 +7794,7 @@ function saveOrder() {
     initOrdersPage();
     renderDash();
     toast('✅ Order saved! Inventory will be deducted upon Checker verification.');
+    currentEditingIndex = null; // clear edit tracker
     return; // skip the save() below for new orders (already handled above)
   }
   // Both edit and new-order paths have explicit returns above.
@@ -7802,7 +7829,7 @@ function openEncodeModal() {
   document.getElementById('enc-date').value = '';
   document.getElementById('enc-shipping').value = '0';
   document.getElementById('enc-items-tbody').innerHTML = '';
-  document.getElementById('enc-edit-idx').value = '';
+  document.getElementById('enc-edit-idx').value = ''; currentEditingIndex = null;
   document.getElementById('enc-rider').value = '';
   const pm = document.getElementById('enc-payment-method'); if(pm) pm.value = 'COD';
   // Reset tracking number field (COD = hidden)
