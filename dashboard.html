@@ -695,7 +695,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-admin" onclick="selectRole('admin')">
           <div class="role-icon">👤</div>
-          <div class="role-name">CSR</div>
+          <div class="role-name">Admin / Staff</div>
           <div class="role-desc">Orders &amp; Operations</div>
         </div>
       </div>
@@ -718,7 +718,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-checker" onclick="selectRole('checker')" style="padding:10px 8px;text-align:center;">
           <div style="font-size:20px;">✅</div>
-          <div class="role-name" style="font-size:11px;">OVS/Checker</div>
+          <div class="role-name" style="font-size:11px;">Checker</div>
           <div class="role-desc" style="font-size:9px;">Verify Orders</div>
         </div>
       </div>
@@ -8749,8 +8749,13 @@ async function initApp(){
           const local  = Array.isArray(S[k])      ? S[k]      : [];
           const remote = Array.isArray(fbData[k]) ? fbData[k] : [];
           if(k==='inventory'||k==='riders'||k==='locations'){
+            // Always use Firebase if it has data (preserves setup data)
             S[k] = remote.length > 0 ? remote : local;
+          } else if(k==='adminNames'){
+            // adminNames: Firebase always wins — deletions must propagate
+            S[k] = remote; // even if empty — that means owner cleared all admins
           } else {
+            // Transactions: use whichever has more entries
             S[k] = remote.length >= local.length ? remote : local;
           }
         });
@@ -8776,15 +8781,9 @@ async function initApp(){
         const remoteTP=fbData.tabPasswords||{};
         S.tabPasswords=Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},localTP,remoteTP);
 
-        // adminAccounts: always merge by name — Firebase wins per account
-        const localAccs  = S.adminAccounts||[];
-        const remoteAccs = fbData.adminAccounts||[];
-        const mergedAccs = [...localAccs];
-        remoteAccs.forEach(ra=>{
-          const idx=mergedAccs.findIndex(la=>la.name===ra.name);
-          if(idx>=0) mergedAccs[idx]=ra; else mergedAccs.push(ra);
-        });
-        S.adminAccounts = mergedAccs;
+        // adminAccounts: Firebase is ALWAYS the source of truth
+        // Never merge — replace completely so deletions propagate to all devices
+        S.adminAccounts = Array.isArray(fbData.adminAccounts) ? fbData.adminAccounts : (S.adminAccounts||[]);
         S.adminAccounts = mergedAccs;
 
         // Ensure all required fields exist
@@ -8935,6 +8934,8 @@ function startAutoRefresh(){
         const remote=Array.isArray(fbData[k])?fbData[k]:[];
         if(k==='inventory'||k==='riders'||k==='locations'){
           S[k]=remote.length>0?remote:local;
+        } else if(k==='adminNames'){
+          S[k]=remote; // Firebase always wins — deletions propagate
         } else {
           S[k]=remote.length>=local.length?remote:local;
         }
@@ -8957,15 +8958,8 @@ function startAutoRefresh(){
       const lTP2=S.tabPasswords||{};
       const rTP2=fbData.tabPasswords||{};
       S.tabPasswords=Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},lTP2,rTP2);
-      // adminAccounts: always merge by name — Firebase wins
-      const localA=S.adminAccounts||[];
-      const remoteA=fbData.adminAccounts||[];
-      const mergedA=[...localA];
-      remoteA.forEach(ra=>{
-        const idx=mergedA.findIndex(la=>la.name===ra.name);
-        if(idx>=0) mergedA[idx]=ra; else mergedA.push(ra);
-      });
-      S.adminAccounts=mergedA;
+      // adminAccounts: Firebase is ALWAYS the source of truth — replace, never merge
+      S.adminAccounts=Array.isArray(fbData.adminAccounts)?fbData.adminAccounts:(S.adminAccounts||[]);
       S.adminAccounts=merged;
       // Ensure required fields
       if(!Array.isArray(S.adminNames))    S.adminNames=[];
@@ -10486,7 +10480,7 @@ function confirmMerge() {
 // Clears ALL transactions AND admin names/accounts (JP, PAM, etc. removed).
 // PRESERVES: inventory products + stock levels, riders, locations, settings.
 // Pushes clean state to Firebase so every device gets it regardless of cache.
-const _FRESH_FLAG = 'gce_fresh_start_v3';
+const _FRESH_FLAG = 'gce_fresh_start_v4';
 const _freshStartDone = !!localStorage.getItem(_FRESH_FLAG);
 
 (function oneFreshStart(){
@@ -10550,15 +10544,12 @@ document.addEventListener('visibilitychange', async ()=>{
       const local=Array.isArray(S[k])?S[k]:[];
       const remote=Array.isArray(fbData[k])?fbData[k]:[];
       if(k==='inventory'||k==='riders'||k==='locations') S[k]=remote.length>0?remote:local;
+      else if(k==='adminNames') S[k]=remote; // Firebase always wins — deletions propagate
       else S[k]=remote.length>=local.length?remote:local;
     });
     if(fbData.adminAccounts){
-      const loc=S.adminAccounts||[];
-      (fbData.adminAccounts||[]).forEach(ra=>{
-        const idx=loc.findIndex(la=>la.name===ra.name);
-        if(idx>=0)loc[idx]=ra;else loc.push(ra);
-      });
-      S.adminAccounts=loc;
+      // adminAccounts: Firebase replaces local completely — deletions must propagate
+      if(fbData.adminAccounts!==undefined) S.adminAccounts=fbData.adminAccounts||[];
     }
     if(fbData.specialPasswords){
       const r=fbData.specialPasswords,l=S.specialPasswords||{};
