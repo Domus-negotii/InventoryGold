@@ -6507,30 +6507,36 @@ function ownerDeleteOrder(i) {
 function clearAllTransactions() {
   if(currentRole !== 'owner') { toast('🔒 CEO only.'); return; }
   const confirmed = prompt(
-    'WARNING: This will permanently delete ALL orders, return logs, deleted orders, and stock transaction history.\n\n' +
-    'Inventory PRODUCTS will be preserved.\n' +
-    'Riders, admins, passwords, and settings will be preserved.\n\n' +
+    'WARNING: Ire-reset ang lahat ng transaksyon.\n\n' +
+    'Mabubura: Orders, Payroll, Expenses, Remit logs, Cashbond, Benefits, Return logs, Stock logs.\n\n' +
+    'HINDI mabubura: Inventory, Riders, Locations, Admins, Passwords, Settings.\n\n' +
     'Type CLEAR to confirm:'
   );
-  if(confirmed !== 'CLEAR') { toast('Cancelled — type CLEAR exactly to confirm.'); return; }
-  // Clear all transaction data
-  S.orders        = [];
-  S.returnLog     = [];
-  S.deletedOrders = [];
-  S.stockLog      = [];
-  S.remitLog      = [];
-  S.cashbondLog   = [];
-  S.benefitsLog   = [];
-  S.payroll       = [];
-  S.expenses      = [];
-  S.mergeLog      = [];
-  save();
-  toast('✅ All transactions cleared. System is ready for fresh operations!');
-  try { renderDash(); } catch(e) {}
-  try { renderOrders(); } catch(e) {}
-  try { renderChecker(); } catch(e) {}
-  try { renderReturns(); } catch(e) {}
-  try { renderDeletedOrders(); } catch(e) {}
+  if(confirmed !== 'CLEAR') { toast('Cancelled.'); return; }
+
+  // Clear ONLY transactional arrays
+  const TX_RESET = ['orders','returnLog','deletedOrders','stockLog','remitLog',
+                    'cashbondLog','benefitsLog','payroll','expenses','mergeLog'];
+  TX_RESET.forEach(k=>{ S[k] = []; });
+
+  // Save to localStorage immediately
+  persist();
+
+  // Push to Firebase immediately — no debounce — so all 30 devices see it right away
+  clearTimeout(_syncDebounceTimer);
+  _syncPending = false;
+  _directWriteFirebase(S, {skip:['inventory']}).then(()=>{
+    toast('✅ All transactions cleared! All devices updated.');
+    try{ renderDash(); }catch(e){}
+    try{ renderOrders(); }catch(e){}
+    try{ renderChecker(); }catch(e){}
+    try{ renderReturns(); }catch(e){}
+    try{ renderDeletedOrders(); }catch(e){}
+  }).catch(()=>{
+    // Even if Firebase push fails, local is clean. Auto-retry in 10s.
+    toast('✅ Cleared locally. Will sync to Firebase shortly.');
+    save();
+  });
 }
 function loadFbConfig(){
   const cfg = JSON.parse(localStorage.getItem('gce_fb_config')||'null');
@@ -8961,7 +8967,8 @@ function startAutoRefresh(){
   if(_autoRefreshTimer) clearInterval(_autoRefreshTimer);
   _autoRefreshTimer = setInterval(async ()=>{
     if(!window._fbReady || !window.loadFromFirebase) return;
-    if(_syncPending) return; // skip if we are mid-write to avoid race
+    // NOTE: do NOT block on _syncPending — reads are independent of writes.
+    // All 30 devices can refresh simultaneously regardless of who is writing.
     try {
       // Lightweight check: fetch ONLY the _lastWrite and _pwVersion fields
       const checkUrl = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}&mask.fieldPaths=_lastWrite&mask.fieldPaths=_pwVersion`;
