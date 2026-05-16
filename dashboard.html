@@ -523,8 +523,9 @@ async function _directWriteFirebase(data, opts){
     const ownerHash = localStorage.getItem('gce_pw_hash') || (_hp ? _hp(_dp) : '');
     fields['ownerPwHash'] = _toFS(ownerHash);
   } catch(e) { fields['ownerPwHash'] = _toFS(''); }
-  fields['_lastWrite'] = _toFS(Date.now());
-  fields['_pwVersion'] = _toFS(localStorage.getItem('gce_pw_version')||'0');
+  fields['_lastWrite']       = _toFS(Date.now());
+  fields['_pwVersion']       = _toFS(localStorage.getItem('gce_pw_version')||'0');
+  fields['lastGlobalClear']  = _toFS(localStorage.getItem('gce_last_clear')||'0');
 
   const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
   try {
@@ -6519,6 +6520,11 @@ function clearAllTransactions() {
                     'cashbondLog','benefitsLog','payroll','expenses','mergeLog'];
   TX_RESET.forEach(k=>{ S[k] = []; });
 
+  // Stamp the global clear timestamp — all other devices will detect this
+  // and wipe their local transaction cache when they next sync
+  const clearTs = new Date().toISOString();
+  localStorage.setItem('gce_last_clear', clearTs);
+
   // Save to localStorage immediately
   persist();
 
@@ -8970,14 +8976,16 @@ function startAutoRefresh(){
     // NOTE: do NOT block on _syncPending — reads are independent of writes.
     // All 30 devices can refresh simultaneously regardless of who is writing.
     try {
-      // Lightweight check: fetch ONLY the _lastWrite and _pwVersion fields
-      const checkUrl = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}&mask.fieldPaths=_lastWrite&mask.fieldPaths=_pwVersion`;
+      // Lightweight check: fetch _lastWrite, _pwVersion, lastGlobalClear
+      const checkUrl = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}&mask.fieldPaths=_lastWrite&mask.fieldPaths=_pwVersion&mask.fieldPaths=lastGlobalClear`;
       const checkR = await fetch(checkUrl, {cache:'no-cache'});
       if(!checkR.ok) return;
       const checkDoc = await checkR.json();
-      const remoteTs  = checkDoc.fields?._lastWrite  ? _fromFS(checkDoc.fields._lastWrite)  : 0;
-      const remotePwV = checkDoc.fields?._pwVersion  ? _fromFS(checkDoc.fields._pwVersion)  : '0';
-      const localPwV  = localStorage.getItem('gce_pw_version')||'0';
+      const remoteTs      = checkDoc.fields?._lastWrite       ? _fromFS(checkDoc.fields._lastWrite)      : 0;
+      const remotePwV     = checkDoc.fields?._pwVersion       ? _fromFS(checkDoc.fields._pwVersion)      : '0';
+      const remoteClearTs = checkDoc.fields?.lastGlobalClear  ? _fromFS(checkDoc.fields.lastGlobalClear) : '0';
+      const localPwV      = localStorage.getItem('gce_pw_version')||'0';
+      const localClearTs  = localStorage.getItem('gce_last_clear')||'0';
 
       // ── Force logout if password version changed ──
       if(remotePwV && remotePwV !== '0' && remotePwV !== localPwV && currentRole) {
@@ -8995,7 +9003,21 @@ function startAutoRefresh(){
         localStorage.setItem('gce_pw_version', remotePwV);
       }
 
-      // Nothing changed — skip full re-fetch
+      // ── Owner cleared transactions — wipe this device's local TX cache ──
+      if(remoteClearTs && remoteClearTs !== '0' && remoteClearTs > localClearTs) {
+        localStorage.setItem('gce_last_clear', remoteClearTs);
+        const TX_KEYS_CLEAR = ['orders','returnLog','deletedOrders','stockLog','remitLog',
+                               'cashbondLog','benefitsLog','payroll','expenses','mergeLog'];
+        TX_KEYS_CLEAR.forEach(k=>{ S[k] = []; });
+        persist();
+        toast('🧹 Transactions cleared by Owner — all devices updated.');
+        try{ renderDash(); }catch(e){}
+        try{ renderOrders(); }catch(e){}
+        try{ renderChecker(); }catch(e){}
+        // DON'T clear inventory, riders, locations, adminAccounts, adminNames
+      }
+
+      // Nothing else changed — skip full re-fetch
       if(remoteTs && remoteTs <= _lastKnownWriteTs) return;
       _lastKnownWriteTs = remoteTs || Date.now();
 
