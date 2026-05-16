@@ -754,7 +754,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-admin" onclick="selectRole('admin')">
           <div class="role-icon">👤</div>
-          <div class="role-name">Admin / Staff</div>
+          <div class="role-name">CSR</div>
           <div class="role-desc">Orders &amp; Operations</div>
         </div>
       </div>
@@ -777,7 +777,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-checker" onclick="selectRole('checker')" style="padding:10px 8px;text-align:center;">
           <div style="font-size:20px;">✅</div>
-          <div class="role-name" style="font-size:11px;">Checker</div>
+          <div class="role-name" style="font-size:11px;">OVS/Checker</div>
           <div class="role-desc" style="font-size:9px;">Verify Orders</div>
         </div>
       </div>
@@ -994,6 +994,7 @@ function _showRulesHint() {
       <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Light/Dark Mode">🌙</button>
       <span class="user-role-tag" id="user-role-tag">Admin</span>
       <span class="badge-pill" id="user-name-badge">Goldchelle</span>
+      <button class="btn btn-outline btn-sm" onclick="manualRefresh()" title="Refresh — pull latest data from Firebase" style="font-size:10px;padding:3px 8px;" id="btn-refresh">🔄 Refresh</button>
       <button class="btn btn-gold btn-sm" onclick="manualSaveSync()" title="Save & sync to all devices" style="font-size:10px;padding:3px 10px;" id="btn-manual-save">💾 Save</button>
       <button class="btn btn-outline btn-sm" onclick="logoutUser()" style="font-size:10px;padding:3px 8px;">Logout</button>
     </div>
@@ -3457,11 +3458,30 @@ function renderChecker(){
               ${(canVerify && verifSt === 'Verified')
                 ? isDroppedOff
                   ? `<span style="font-size:9.5px;color:var(--blue);padding:2px 8px;background:rgba(74,144,217,0.1);border-radius:4px;">🔒 ${o.lbcStatus}</span>`
-                  : `<select class="form-control" style="width:150px;font-size:10.5px;padding:3px 5px;"
-                      onchange="updateLbcStatus(${i},this.value)">
-                      <option${(!o.lbcStatus||o.lbcStatus==='Preparing')?' selected':''}>Preparing</option>
-                      <option${o.lbcStatus==='Ready to Pick-up'?' selected':''}>Ready to Pick-up</option>
-                    </select>`
+                  : (() => {
+                      // Conditional options based on current lbcStatus sub-category
+                      const cur = o.lbcStatus || 'Preparing';
+                      let opts = '';
+                      if(cur === 'ODZ/Incomplete Details' || cur === 'ODZ/incomplete details'){
+                        opts = `<option${cur==='ODZ/Incomplete Details'||cur==='ODZ/incomplete details'?' selected':''}>ODZ/Incomplete Details</option>
+                                <option${cur==='Ready to Pick-up'?' selected':''}>Ready to Pick-up</option>`;
+                      } else if(cur === 'Out for Delivery'){
+                        opts = `<option selected>Out for Delivery</option>
+                                <option${cur==='Delivered'?' selected':''}>Delivered</option>`;
+                      } else if(cur === 'RTO'){
+                        opts = `<option selected>RTO</option>
+                                <option${cur==='Ready to Pick-up'?' selected':''}>Ready to Pick-up</option>`;
+                      } else {
+                        opts = `<option${(!cur||cur==='Preparing')?' selected':''}>Preparing</option>
+                                <option${cur==='ODZ/Incomplete Details'?' selected':''}>ODZ/Incomplete Details</option>
+                                <option${cur==='Out for Delivery'?' selected':''}>Out for Delivery</option>
+                                <option${cur==='RTO'?' selected':''}>RTO</option>
+                                <option${cur==='Ready to Pick-up'?' selected':''}>Ready to Pick-up</option>
+                                <option${cur==='Delivered'?' selected':''}>Delivered</option>`;
+                      }
+                      return `<select class="form-control" style="width:165px;font-size:10.5px;padding:3px 5px;"
+                        onchange="updateLbcStatus(${i},this.value)">${opts}</select>`;
+                    })()
                 : `<span style="font-size:9.5px;color:var(--muted);">—</span>`
               }
             </td>
@@ -6405,6 +6425,70 @@ function unlockPage(page){
 // ── Manual Save & Sync — button next to Logout ───────────────
 // Forces an immediate Firebase sync regardless of debounce timer.
 // Use this before handing device to another employee.
+// ── Manual Refresh — pull latest Firebase data instantly ─────────────────────
+// Forces a full fetch + merge + re-render without reloading the browser page.
+// Applies _applyGlobalClear so Owner's clear command is detected immediately.
+async function manualRefresh(){
+  const btn = document.getElementById('btn-refresh');
+  if(btn){ btn.textContent='🔄 Refreshing...'; btn.disabled=true; }
+  try {
+    if(!window.loadFromFirebase){ if(btn){btn.textContent='🔄 Refresh';btn.disabled=false;} return; }
+    const fbData = await window.loadFromFirebase();
+    if(fbData){
+      // ── Apply global clear FIRST ──────────────────────────────────────
+      const wasCleared = _applyGlobalClear(fbData);
+
+      // ── Union-by-ID merge ─────────────────────────────────────────────
+      const _dIds = Array.isArray(fbData.deletedOrders) ? fbData.deletedOrders : [];
+      const _SU   = new Set(['inventory','riders','locations']);
+      ['orders','riders','locations','payroll','expenses','inventory',
+       'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
+       'returnLog','deletedOrders','mergeLog'].forEach(k=>{
+        const local  = Array.isArray(S[k])      ? S[k]      : [];
+        const remote = Array.isArray(fbData[k]) ? fbData[k] : [];
+        if(_SU.has(k)){
+          S[k] = (fbData[k]!==undefined&&fbData[k]!==null) ? remote : local;
+        } else if(k==='adminNames'){
+          S[k] = remote;
+        } else {
+          S[k] = _unionMerge(local, remote, _dIds);
+        }
+      });
+      if(fbData.adminAccounts!==undefined)
+        S.adminAccounts = Array.isArray(fbData.adminAccounts) ? fbData.adminAccounts : [];
+      ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
+        if(fbData[k]!==undefined) S[k]=fbData[k];
+      });
+      // Preserve lastGlobalClear
+      const _lc=S.lastGlobalClear||'0', _rc=fbData.lastGlobalClear||'0';
+      S.lastGlobalClear = _rc>_lc ? _rc : _lc;
+      localStorage.setItem('gce_last_clear', S.lastGlobalClear);
+      persist();
+
+      // ── Re-render current page ─────────────────────────────────────────
+      const renderMap = {
+        dashboard:renderDash, orders:renderOrders, checker:renderChecker,
+        riders:renderRiders, dailysales:renderDailySales, payroll:renderPayroll,
+        expenses:renderExpenses, inventory:()=>renderInv(invTab), pnl:renderPnl,
+        tracking:renderTracking, sorting:renderSorting, returns:renderReturns,
+        deletedorders:renderDeletedOrders,
+      };
+      try{ (renderMap[_activePage]||(() =>{}))(); }catch(e){}
+      if(currentRole==='rider') try{ renderRiderParcels(); }catch(e){}
+
+      _setSyncStatus('online','var(--green)','☁ Online');
+      toast(wasCleared ? '🧹 Refreshed — transactions cleared by Owner.' : '🔄 Refreshed! Latest data loaded.');
+    } else {
+      toast('⚠️ Could not reach Firebase. Check connection.');
+    }
+  } catch(e){
+    console.warn('manualRefresh error:', e.message);
+    toast('⚠️ Refresh failed: '+e.message);
+  } finally {
+    if(btn){ btn.textContent='🔄 Refresh'; btn.disabled=false; }
+  }
+}
+
 async function manualSaveSync(){
   const btn = document.getElementById('btn-manual-save');
   if(btn){ btn.textContent='💾 Saving...'; btn.disabled=true; }
@@ -7748,17 +7832,27 @@ function renderTracking() {
 
 
 function updateLbcStatus(orderIdx, newStatus) {
-  S.orders[orderIdx].lbcStatus = newStatus;
+  const o = S.orders[orderIdx];
+  if(!o) return;
+  o.lbcStatus = newStatus;
+  o._updatedAt = new Date().toISOString();
   // Sync main status so P&L, Daily Parcels, Dashboard reflect correctly
-  if(newStatus === 'Delivered') {
-    S.orders[orderIdx].status = 'Delivered';
+  if(newStatus === 'Delivered'){
+    o.status = 'Delivered';
+  } else if(newStatus === 'RTO'){
+    o.status = 'Preparing'; // RTO = parcel returned, still processing
+  } else if(newStatus === 'Out for Delivery'){
+    o.status = 'Preparing';
+  } else if(newStatus === 'ODZ/Incomplete Details'){
+    o.status = 'Preparing';
+  } else if(newStatus === 'Ready to Pick-up'){
+    o.status = 'Ready';
   } else {
-    // Any non-Delivered status means parcel is still in transit
-    S.orders[orderIdx].status = 'Preparing';
+    o.status = 'Preparing';
   }
   save();
-  toast(`📦 Parcel Status → ${newStatus}${newStatus==='Delivered'?' ✅ Naka-reflect na sa P&L & Daily Parcels':''}`);
-  // LBC/INTL now managed via Order Management page
+  renderChecker();
+  toast(`📦 Status → ${newStatus}${newStatus==='Delivered'?' ✅ Naka-reflect na sa P&L':''}`);
   if(currentRole==='owner') renderDash();
 }
 
