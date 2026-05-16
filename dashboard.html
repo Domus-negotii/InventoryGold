@@ -639,31 +639,38 @@ function _stamp(obj){ if(!obj._id) obj._id=_uuid(); return obj; }
 //      Items only in local (offline/unsaved) are KEPT — not lost
 //      Soft-delete: items whose _id is in deletedIds are filtered out
 function _unionMerge(local, remote, deletedIds){
-  // Build a set of deleted IDs to filter out
+  // Build set of deleted IDs to filter out
   const dead = new Set((deletedIds||[]).map(d=>d._id||d.orderNum||d.id||'').filter(Boolean));
 
-  // If Firebase is non-empty: Firebase is authoritative.
-  // Items in Firebase = current valid records.
-  // Items only in local but NOT in Firebase = deleted remotely, don't restore them.
   if(remote && remote.length > 0){
-    // Build map from Firebase (authoritative)
+    // Start with Firebase as the base map
     const map = new Map();
     remote.forEach(item=>{ if(item._id) map.set(item._id, item); });
-    // Add local items that have NO _id yet (new unsaved records being typed right now)
-    // These are safe to keep because they can't conflict with Firebase records
+
     local.forEach(item=>{
-      if(!item._id) map.set('_new_'+Math.random(), item); // brand new, no ID yet
+      if(!item._id){
+        // No _id yet — record being typed, not yet saved. Keep it.
+        map.set('_new_'+Math.random(), item);
+      } else if(map.has(item._id)){
+        // Same _id exists in both local and Firebase — resolve by timestamp
+        const remoteTs = map.get(item._id)._updatedAt || '0';
+        const localTs  = item._updatedAt              || '0';
+        if(localTs > remoteTs){
+          // Local is newer (e.g. rider just assigned, not yet synced) — local wins
+          map.set(item._id, item);
+        }
+        // else: Firebase version stays (tie or older local → remote wins)
+      }
+      // item._id not in map = deleted from Firebase → do not restore
     });
-    // Filter out soft-deleted items
+
     return [...map.values()].filter(item=>!dead.has(item._id||''));
   }
 
-  // Firebase is empty: could be fresh start OR offline.
-  // Safe to keep local items (offline protection) — fresh start handles cleanup.
+  // Firebase empty = offline or fresh start. Keep local to protect offline work.
   const localMap = new Map();
   local.forEach(item=>{
-    const key = item._id || ('_noid_'+Math.random());
-    localMap.set(key, item);
+    localMap.set(item._id||('_noid_'+Math.random()), item);
   });
   return [...localMap.values()].filter(item=>!dead.has(item._id||''));
 }
@@ -740,7 +747,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-admin" onclick="selectRole('admin')">
           <div class="role-icon">👤</div>
-          <div class="role-name">CSR</div>
+          <div class="role-name">Admin / Staff</div>
           <div class="role-desc">Orders &amp; Operations</div>
         </div>
       </div>
@@ -763,7 +770,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-checker" onclick="selectRole('checker')" style="padding:10px 8px;text-align:center;">
           <div style="font-size:20px;">✅</div>
-          <div class="role-name" style="font-size:11px;">OVS/Checker</div>
+          <div class="role-name" style="font-size:11px;">Checker</div>
           <div class="role-desc" style="font-size:9px;">Verify Orders</div>
         </div>
       </div>
@@ -6556,11 +6563,17 @@ function saveFbConfig(){
 
 
 async function save(){
-  // Stamp all records with _id before saving (safe no-op if already stamped)
+  // Stamp all TX records with _id (for union merge) and _updatedAt (for conflict resolution)
   if(typeof S !== 'undefined' && typeof _stamp !== 'undefined'){
+    const _now = new Date().toISOString();
     const _TX=['orders','payroll','expenses','remitLog','cashbondLog','benefitsLog',
                'returnLog','stockLog','deletedOrders','mergeLog'];
-    _TX.forEach(k=>{ if(Array.isArray(S[k])) S[k].forEach(_stamp); });
+    _TX.forEach(k=>{
+      if(Array.isArray(S[k])) S[k].forEach(item=>{
+        _stamp(item);                  // ensures _id exists
+        item._updatedAt = _now;        // always update timestamp on every save
+      });
+    });
   }
   // Write to localStorage immediately
   if(typeof S !== 'undefined') localStorage.setItem(KEY, JSON.stringify(S));
