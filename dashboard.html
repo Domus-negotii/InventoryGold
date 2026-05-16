@@ -7730,7 +7730,23 @@ function saveOrder() {
     }
     S.orders[+editIdx] = o;
     const wasRto = orig.lbcStatus === 'RTO';
+
+    // ── Edit: stamp ONLY the edited order, write ONLY that one doc ───────────
+    // Do NOT call save() — it would re-stamp and re-upload ALL orders (duplication bug)
+    _stamp(o);
+    o._updatedAt = new Date().toISOString();
+    persist(); // save local state
+    if(window._fbReady){
+      _writeOrderDoc(o).then(ok=>{
+        if(!ok) window.syncToFirebase && window.syncToFirebase();
+      }).catch(()=>{ window.syncToFirebase && window.syncToFirebase(); });
+      window.syncToFirebase && window.syncToFirebase(); // bump _lastWrite for other devices
+    }
+    closeModal('modal-encode');
+    initOrdersPage();
+    renderDash();
     toast(wasRto ? '✅ Order updated & ready for re-dispatch!' : hadDeducted ? '✅ Order updated! Inventory adjusted.' : '✅ Order updated!');
+    return; // done — skip the save() below
   } else {
     // ── New order: use atomic append to Firebase to prevent race conditions ──
     // When multiple staff encode simultaneously, each order goes to Firebase
@@ -7753,9 +7769,9 @@ function saveOrder() {
     toast('✅ Order saved! Inventory will be deducted upon Checker verification.');
     return; // skip the save() below for new orders (already handled above)
   }
+  // Both edit and new-order paths return early above.
+  // This line is a safety fallback only.
   save(); closeModal('modal-encode');
-  // save() already writes all order docs via _writeOrderDoc internally
-  // No need for a second call here — would cause duplicate writes
   initOrdersPage();
   renderDash();
 }
