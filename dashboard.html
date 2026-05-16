@@ -5305,6 +5305,7 @@ function renderInv(tab){
           <span style="color:var(--orange);">⚠️ Low Stock Only</span>
         </label>
         ${q||typeF||lowStockF?`<button class="btn btn-outline btn-sm" onclick="clearInvFilters()" style="font-size:11px;white-space:nowrap;">✕ Clear</button>`:''}
+        <button class="btn btn-outline btn-sm" onclick="exportInventoryToExcel()" style="font-size:11px;white-space:nowrap;">📥 Export Excel</button>
         <span style="font-size:11px;color:var(--muted);white-space:nowrap;">${filtered.length} of ${S.inventory.length} item${S.inventory.length!==1?'s':''}</span>
       </div>
     </div>
@@ -6028,6 +6029,49 @@ function renderSettingsSummary(){
     <div class="info-row"><span style="color:var(--muted);">Inventory Products</span><strong>${S.inventory.length}</strong></div>
     <div class="info-row" style="border-bottom:none;"><span style="color:var(--muted);">Stock Transactions</span><strong>${S.stockLog.length}</strong></div>`;
 }
+// ── Export Inventory to Excel (CSV) ──────────────────────────────────────────
+function exportInventoryToExcel(){
+  if(!S.inventory||!S.inventory.length){ toast('⚠️ Walang inventory data.'); return; }
+  const SEP=',', NL='\n';
+  const esc=v=>{
+    if(v===null||v===undefined) return '';
+    const s=String(v);
+    return (s.includes(',')||s.includes('"')||s.includes('\n'))?'"'+s.replace(/"/g,'""')+'"':s;
+  };
+  const headers=['Serial Code','Description','Type','Category',
+    'Stock (g / pcs)','Selling Price','Capital Cost',
+    'Stock Value (Capital)','Profit/Unit','Low Stock?'];
+  const rows=[headers];
+  S.inventory.forEach(it=>{
+    const isFix = it.itemType==='fixprice';
+    const stock       = isFix ? (it.qty||0) : (it.grams||0);
+    const unit        = isFix ? 'pcs' : 'g';
+    const sellPrice   = isFix ? (it.fixPrice||0) : (it.pergram||0);
+    const capital     = isFix ? (it.capitalPerUnit||0) : (it.capitalPerGram||0);
+    const stockVal    = isFix ? capital*(it.qty||0) : capital*(it.grams||0);
+    const profitUnit  = sellPrice - capital;
+    const LOW_GRAMS=10, LOW_QTY=3;
+    const isLow       = isFix ? (it.qty||0)<=LOW_QTY : (it.grams||0)<=LOW_GRAMS;
+    rows.push([
+      esc(it.code), esc(it.desc), esc(isFix?'Fix Price':'By Grams'),
+      esc(it.category||'—'),
+      esc(stock+' '+unit),
+      esc('₱'+sellPrice.toFixed(2)+'/'+unit),
+      esc('₱'+capital.toFixed(2)+'/'+unit),
+      esc('₱'+stockVal.toFixed(2)),
+      esc('₱'+profitUnit.toFixed(2)+'/'+unit),
+      esc(isLow?'⚠️ LOW':'OK')
+    ]);
+  });
+  const csv=rows.map(r=>Array.isArray(r)?r.join(SEP):r).join(NL);
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download='goldchelle-inventory-'+today()+'.csv'; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),3000);
+  toast('✅ Inventory exported! Open with Excel or Google Sheets.');
+}
+
 function exportData(){
   const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
@@ -7193,8 +7237,9 @@ function renderRiderParcels() {
       .map(r => r.date)
   );
   const myOrders = allMyOrders.filter(o => {
-    // Fix 5: Only hide Delivered orders on remitted dates (already settled)
-    // Keep all other statuses visible so rider sees their active deliveries
+    // Fix 5 + Fix 2: Only hide Delivered orders on remitted dates (already settled)
+    // Also hide orders explicitly marked Remitted on the order itself
+    if(o.remitStatus === 'Remitted') return false;
     if(o.status === 'Delivered' && remittedDates.has(o.date)) return false;
     return true;
   });
@@ -8389,6 +8434,7 @@ function populateRemitParcels() {
       <td style="color:var(--gold);font-size:10px;white-space:nowrap;">${onum(o.idx)}</td>
       <td style="font-size:10.5px;font-weight:500;${isWholeOrderCancelled?'color:var(--muted);':''}">${o.name}</td>
       <td style="font-size:10px;">${itemList}</td>
+      <td style="font-size:10.5px;color:var(--orange);text-align:center;">${o.totalDiscount>0?`-${p(o.totalDiscount)}`:'<span style="color:var(--muted);">—</span>'}</td>
       <td style="font-size:10.5px;color:var(--blue);">${p(o.shipping)}</td>
       <td style="font-size:10.5px;">${remitAmtDisplay}</td>
       <td><span class="status ${sclass(o.status)}" style="font-size:9px;">${o.status}</span></td>
@@ -8414,9 +8460,9 @@ function populateRemitParcels() {
     <div class="table-wrap" style="max-height:280px;overflow-y:auto;">
       <table style="font-size:11px;">
         <thead><tr style="background:rgba(201,168,76,0.08);">
-          <th>Order#</th><th>Customer</th><th>Items</th><th>SF</th><th>Total Remit</th><th>Status</th>
+          <th>Order#</th><th>Customer</th><th>Items</th><th>Discount</th><th>SF</th><th>Total Remit</th><th>Status</th>
         </tr></thead>
-        <tbody>${rows||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:12px;">No parcels</td></tr>'}</tbody>
+        <tbody>${rows||'<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:12px;">No parcels</td></tr>'}</tbody>
       </table>
     </div>
     ${cancelled.length ? `<div style="margin-top:7px;padding:7px 10px;background:rgba(224,85,85,0.08);border:1px solid rgba(224,85,85,0.25);border-radius:6px;font-size:11px;">
@@ -8684,17 +8730,20 @@ function renderRemitPage() {
     const grandNet      = entries.reduce((s,e)=>s+(e.netTotal||e.netEarn||0),0);
     const totalCancelled= entries.reduce((s,e)=>s+(e.cancelledCount||0),0);
     const remittedCount = entries.filter(e=>e.remitStatus==='Remitted').length;
+    const allRemitted   = remittedCount === entries.length;
+    const accordionId   = 'remit-acc-'+riderName.replace(/\s+/g,'_');
     return `<div class="card" style="margin-bottom:13px;">
-      <div class="card-header">
-        <span class="card-title">🏍️ ${riderName}</span>
+      <div class="card-header" onclick="(()=>{const b=document.getElementById('${accordionId}');const isOpen=b.style.display!=='none';b.style.display=isOpen?'none':'';this.querySelector('.remit-acc-icon').textContent=isOpen?'▶':'▼';})()" style="cursor:pointer;user-select:none;">
+        <span class="card-title">🏍️ ${riderName} <span class="remit-acc-icon" style="font-size:10px;margin-left:4px;color:var(--muted);">▼</span></span>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <span style="font-size:11px;color:var(--muted);">${entries.length} entry/entries · ${remittedCount} Remitted</span>
+          <span style="font-size:11px;color:var(--muted);">${entries.length} entry/entries · ${remittedCount} Remitted${allRemitted?' ✅':''}</span>
           ${totalCancelled?`<span style="font-size:11px;color:var(--red);font-weight:600;">⚠️ ${totalCancelled} cancelled order(s)</span>`:''}
           <span style="font-size:11.5px;color:var(--blue);font-weight:600;">Subtotal: ${p(grandSubtotal)}</span>
           <span style="font-size:11.5px;color:var(--gold);font-weight:700;">Net Total: ${p(grandNet)}</span>
-          <button class="btn btn-gold btn-sm" onclick="openRemitModal()">+ Add</button>
+          <button class="btn btn-gold btn-sm" onclick="event.stopPropagation();openRemitModal()">+ Add</button>
         </div>
       </div>
+      <div id="${accordionId}">
       <div class="table-wrap"><table style="font-size:11px;">
         <thead><tr style="background:rgba(201,168,76,0.08);">
           <th>Date</th><th>Parcels</th><th>Delivered</th>
@@ -8741,6 +8790,7 @@ function renderRemitPage() {
           </tr>
         </tbody>
       </table></div>
+      </div>
     </div>`;
   }).join('');
 }
