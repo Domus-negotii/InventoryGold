@@ -6396,10 +6396,18 @@ function printPnl(){
 function renderDash(){
   // ── Guard: filter out pre-clear orders before rendering ─────────────────────
   if(typeof _filterClearedOrders==='function') S.orders=_dedupeOrders(_filterClearedOrders(S.orders||[]));
-  const total=S.orders.length,del=S.orders.filter(o=>o.status==='Delivered').length;
-  const revenue=S.orders.filter(o=>o.status==='Delivered').reduce((s,o)=>s+o.grandTotal,0);
-  const pending=S.orders.filter(o=>o.checkerStatus==='Pending').length;
-  const todayO=S.orders.filter(o=>o.date===today()).length;
+
+  // ── Role-scoped order pool ────────────────────────────────────────────────────
+  // Admin sees only their own orders in dashboard stats
+  // Owner/Checker see ALL orders
+  const _dashOrders = (currentRole !== 'owner' && currentRole !== 'checker' && currentUser?.role !== 'owner' && currentUser?.name)
+    ? S.orders.filter(o=>(o.admin||'').trim().toUpperCase() === currentUser.name.trim().toUpperCase())
+    : S.orders;
+
+  const total=_dashOrders.length,del=_dashOrders.filter(o=>o.status==='Delivered').length;
+  const revenue=_dashOrders.filter(o=>o.status==='Delivered').reduce((s,o)=>s+o.grandTotal,0);
+  const pending=_dashOrders.filter(o=>o.checkerStatus==='Pending').length;
+  const todayO=_dashOrders.filter(o=>o.date===today()).length;
   const expTotal=S.expenses.reduce((s,e)=>s+parseFloat(e.amount||0),0);
   document.getElementById('dash-stats').innerHTML=`
     <div class="stat-card gold"><div class="stat-label">Total Orders</div><div class="stat-value">${total}</div><div class="stat-sub">All time</div></div>
@@ -6410,19 +6418,19 @@ function renderDash(){
     <div class="stat-card purple"><div class="stat-label">Expenses</div><div class="stat-value">${p(expTotal)}</div><div class="stat-sub">Total recorded</div></div>`;
   const statuses=['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'];
   document.getElementById('dash-status').innerHTML=statuses.map(s=>{
-    const cnt=S.orders.filter(o=>o.status===s).length,pct=total?Math.round(cnt/total*100):0;
+    const cnt=_dashOrders.filter(o=>o.status===s).length,pct=total?Math.round(cnt/total*100):0;
     const sc = {'Preparing':'orange','Ready':'blue','Out for Delivery':'gold','Delivered':'green','Cancelled':'red','Update':'return'}[s]||'transit';
     return `<div style="margin-bottom:8px;"><div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px;"><span class="status ${sc}">${s}</span><span style="color:var(--muted);">${cnt} (${pct}%)</span></div><div style="background:var(--navy-border);border-radius:3px;height:4px;"><div style="background:var(--gold);width:${pct}%;height:4px;border-radius:3px;"></div></div></div>`;
   }).join('');
   const adminDel={};
-  S.orders.filter(o=>o.status==='Delivered').forEach(o=>{
+  _dashOrders.filter(o=>o.status==='Delivered').forEach(o=>{
     const admins = o.adminList && o.adminList.length > 0 ? o.adminList : (o.admin ? [o.admin] : []);
     const share = 1 / Math.max(1, admins.length);
     admins.forEach(a => { if(a) adminDel[a] = (adminDel[a]||0) + share; });
   });
   const aList=Object.entries(adminDel).sort((a,b)=>b[1]-a[1]);
   document.getElementById('dash-admins').innerHTML=aList.length?`<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:rgba(201,168,76,0.08);"><th style="padding:5px 7px;color:var(--gold);font-size:9px;">Admin</th><th style="padding:5px 7px;color:var(--gold);font-size:9px;">Delivered</th><th style="padding:5px 7px;color:var(--gold);font-size:9px;">Incentive</th></tr></thead><tbody>${aList.map(([a,c])=>`<tr><td style="padding:6px 7px;font-weight:500;">${a}</td><td style="padding:6px 7px;color:var(--blue);">${Number(c)%1===0?Number(c):Number(c).toFixed(1)}</td><td style="padding:6px 7px;color:var(--green);font-weight:700;">${p(c*25)}</td></tr>`).join('')}</tbody></table>`:'<p style="color:var(--muted);font-size:12px;padding:8px 0;">No delivered parcels yet</p>';
-  document.getElementById('dash-recent').innerHTML=`<table><thead><tr><th>Order #</th><th>Customer</th><th>Admin</th><th>Date</th><th>Total</th><th>Status</th></tr></thead><tbody>${[...S.orders].slice(-7).reverse().map(o=>{const i=S.orders.indexOf(o);return `<tr><td style="color:var(--gold);">${onum(i)}</td><td style="font-weight:500;">${o.name}</td><td>${o.admin||'—'}</td><td>${o.date}</td><td style="color:var(--green);">${p(o.grandTotal)}</td><td><span class="status ${sclass(o.status)}">${o.status}</span></td></tr>`;}).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px;">No orders</td></tr>'}</tbody></table>`;
+  document.getElementById('dash-recent').innerHTML=`<table><thead><tr><th>Order #</th><th>Customer</th><th>Admin</th><th>Date</th><th>Total</th><th>Status</th></tr></thead><tbody>${[..._dashOrders].slice(-7).reverse().map(o=>{const i=S.orders.indexOf(o);return `<tr><td style="color:var(--gold);">${onum(i)}</td><td style="font-weight:500;">${o.name}</td><td>${o.admin||'—'}</td><td>${o.date}</td><td style="color:var(--green);">${p(o.grandTotal)}</td><td><span class="status ${sclass(o.status)}">${o.status}</span></td></tr>`;}).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px;">No orders</td></tr>'}</tbody></table>`;
 }
 
 
