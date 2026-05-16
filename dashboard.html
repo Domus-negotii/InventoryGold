@@ -8815,11 +8815,13 @@ async function initApp(){
       _prefetchedData = null; _prefetchDone = false; // clear after use
 
       if(fbData){
-        // ── Smart merge — Firebase is source of truth ────────────────
-        // Fresh start already cleaned Firebase (v3). Any data now in Firebase
-        // was written AFTER the clean — so we should always use it.
-        // inventory/riders/locations: Firebase wins if non-empty.
-        // All other fields: use whichever has more entries.
+        // ── Check if owner cleared transactions before merging ────────────
+        // Must run BEFORE _unionMerge so cleared local TX don't get pushed back
+        if(_applyGlobalClear(fbData)){
+          toast('🧹 Transactions cleared by Owner.');
+          try{ renderDash(); }catch(e){}
+        }
+
         // ── Union-by-ID merge — Firebase authoritative, local offline entries preserved ──
         const _deletedIds = Array.isArray(fbData.deletedOrders) ? fbData.deletedOrders : [];
         const _SETUP_KEYS = new Set(['inventory','riders','locations']);
@@ -8969,6 +8971,23 @@ document.querySelectorAll('.nav-item').forEach(el=>{
 // Checks for changes every 10 seconds using a lightweight timestamp check.
 // Only does a full data load when something actually changed — saves bandwidth.
 let _autoRefreshTimer = null;
+// ── Global clear helper — called by ALL 3 merge points ───────────────────────
+// If owner cleared transactions in Firebase, wipe this device's local TX cache.
+// NEVER touches inventory, riders, locations, adminAccounts, passwords.
+function _applyGlobalClear(fbData){
+  if(!fbData) return false;
+  const remoteClearTs = fbData.lastGlobalClear || fbData._lastGlobalClear || '0';
+  const localClearTs  = localStorage.getItem('gce_last_clear') || '0';
+  if(!remoteClearTs || remoteClearTs === '0' || remoteClearTs <= localClearTs) return false;
+  // Remote clear is newer — wipe TX on this device
+  localStorage.setItem('gce_last_clear', remoteClearTs);
+  const TX=['orders','returnLog','deletedOrders','stockLog','remitLog',
+            'cashbondLog','benefitsLog','payroll','expenses','mergeLog'];
+  TX.forEach(k=>{ S[k]=[]; });
+  persist();
+  return true; // caller can show toast or re-render
+}
+
 function startAutoRefresh(){
   if(_autoRefreshTimer) clearInterval(_autoRefreshTimer);
   _autoRefreshTimer = setInterval(async ()=>{
@@ -9004,17 +9023,11 @@ function startAutoRefresh(){
       }
 
       // ── Owner cleared transactions — wipe this device's local TX cache ──
-      if(remoteClearTs && remoteClearTs !== '0' && remoteClearTs > localClearTs) {
-        localStorage.setItem('gce_last_clear', remoteClearTs);
-        const TX_KEYS_CLEAR = ['orders','returnLog','deletedOrders','stockLog','remitLog',
-                               'cashbondLog','benefitsLog','payroll','expenses','mergeLog'];
-        TX_KEYS_CLEAR.forEach(k=>{ S[k] = []; });
-        persist();
+      if(_applyGlobalClear({lastGlobalClear: remoteClearTs})){
         toast('🧹 Transactions cleared by Owner — all devices updated.');
         try{ renderDash(); }catch(e){}
         try{ renderOrders(); }catch(e){}
         try{ renderChecker(); }catch(e){}
-        // DON'T clear inventory, riders, locations, adminAccounts, adminNames
       }
 
       // Nothing else changed — skip full re-fetch
@@ -10685,10 +10698,11 @@ document.addEventListener('visibilitychange', async ()=>{
     _lastKnownWriteTs = 0;
     const fbData = await window.loadFromFirebase();
     if(!fbData) return;
-    const freshRan3 = !!localStorage.getItem(_FRESH_FLAG);
-    const TX_KEYS3 = ['orders','returnLog','deletedOrders','stockLog','remitLog',
-      'cashbondLog','benefitsLog','payroll','expenses','mergeLog','adminNames'];
-    // ── Union-by-ID merge — Firebase authoritative, local offline entries preserved ──
+    // ── Check if owner cleared transactions before merging ────────────
+    if(_applyGlobalClear(fbData)){
+      try{ renderDash(); }catch(e){}
+      try{ renderOrders(); }catch(e){}
+    }
     const _deletedIds3 = Array.isArray(fbData.deletedOrders) ? fbData.deletedOrders : [];
     const _SETUP_KEYS3 = new Set(['inventory','riders','locations']);
     const _arrKeys3 = ['orders','riders','locations','payroll','expenses','inventory',
