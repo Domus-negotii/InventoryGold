@@ -8395,11 +8395,16 @@ function populateRemitParcels() {
       const remainAmt = it.total - cancelledAmt;
       const remainQty = totalQty - cancelledQty;
       const unit = it.pergram > 0 ? 'g' : 'pcs';
+      // Show gross price (before discount) in baseStr
+      const grossTotal = it.total + (it.discount||0);
       const baseStr = it.pergram > 0
-        ? `${it.code}: ${it.desc} (${it.grams}g × ${p(it.pergram)}/g = ${p(it.total)})`
-        : `${it.code}: ${it.desc} ×${it.qty} = ${p(it.total)}`;
-      const discRemark = it.discountRemark ? `<span style="color:var(--orange);font-size:9px;"> [Disc: ${it.discountRemark}]</span>` : '';
-      const fullStr = baseStr + (it.discount>0?` -₱${it.discount.toFixed(2)}${it.discountRemark?' ('+it.discountRemark+')':''}`:'')
+        ? `${it.code}: ${it.desc} (${it.grams}g × ${p(it.pergram)}/g = ${p(grossTotal)})`
+        : `${it.code}: ${it.desc} ×${it.qty} = ${p(grossTotal)}`;
+      // Prominent discount line — clearly shows how much was deducted
+      const discStr = (it.discount>0)
+        ? `<br><span style="color:var(--orange);font-size:9.5px;font-weight:600;">&nbsp;🏷️ Discount: -${p(it.discount)}${it.discountRemark?' <em style="opacity:0.8;">('+it.discountRemark+')</em>':''}</span><span style="color:var(--green);font-size:9.5px;font-weight:600;"> → Net: ${p(it.total)}</span>`
+        : '';
+      const fullStr = baseStr + discStr;
 
       if(isWholeOrderCancelled || isItemCancelled) {
         return `<span style="text-decoration:line-through;color:var(--muted);opacity:0.7;">${baseStr}</span>
@@ -8742,7 +8747,20 @@ function renderRemitPage() {
   const statusColor = s => s==='Remitted'?'var(--green)':s==='Remitting'?'var(--orange)':'var(--muted)';
   const statusIcon  = s => s==='Remitted'?'✅':s==='Remitting'?'🏃':'⏳';
 
-  el.innerHTML = Object.entries(byRider).map(([riderName, entries])=>{
+  // ── Overall NET total bar (all riders, current filter) ────────────────────
+  const _overallNet      = filteredLog.reduce((s,e)=>s+(e.netTotal||e.netEarn||0),0);
+  const _overallSubtotal = filteredLog.reduce((s,e)=>s+(e.codSubtotal||e.subtotal||0),0);
+  const _overallRemitted = filteredLog.filter(e=>e.remitStatus==='Remitted').length;
+  const _overallTotal    = filteredLog.length;
+  const _overallBar = filteredLog.length ? `
+    <div style="background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.25);border-radius:8px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;flex-wrap:wrap;gap:14px;">
+      <span style="font-size:12px;font-weight:700;color:var(--gold);">📊 Overall Summary${df?' — '+df:''}</span>
+      <span style="font-size:11.5px;color:var(--muted);">${_overallTotal} entries · ${_overallRemitted} Remitted</span>
+      <span style="font-size:12px;color:var(--blue);font-weight:600;">COD Subtotal: ${p(_overallSubtotal)}</span>
+      <span style="font-size:13px;color:var(--gold);font-weight:700;margin-left:auto;">🏦 Net Total (All Riders): ${p(_overallNet)}</span>
+    </div>` : '';
+
+  el.innerHTML = _overallBar + Object.entries(byRider).map(([riderName, entries])=>{
     const grandSubtotal = entries.reduce((s,e)=>s+(e.codSubtotal||e.subtotal||0),0);
     const grandNet      = entries.reduce((s,e)=>s+(e.netTotal||e.netEarn||0),0);
     const totalCancelled= entries.reduce((s,e)=>s+(e.cancelledCount||0),0);
@@ -8751,7 +8769,7 @@ function renderRemitPage() {
     const accordionId   = 'remit-acc-'+riderName.replace(/\s+/g,'_');
     return `<div class="card" style="margin-bottom:13px;">
       <div class="card-header" onclick="(()=>{const b=document.getElementById('${accordionId}');const isOpen=b.style.display!=='none';b.style.display=isOpen?'none':'';this.querySelector('.remit-acc-icon').textContent=isOpen?'▶':'▼';})()" style="cursor:pointer;user-select:none;">
-        <span class="card-title">🏍️ ${riderName} <span class="remit-acc-icon" style="font-size:10px;margin-left:4px;color:var(--muted);">▼</span></span>
+        <span class="card-title">🏍️ ${riderName} <span class="remit-acc-icon" style="font-size:10px;margin-left:4px;color:var(--muted);">▶</span></span>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <span style="font-size:11px;color:var(--muted);">${entries.length} entry/entries · ${remittedCount} Remitted${allRemitted?' ✅':''}</span>
           ${totalCancelled?`<span style="font-size:11px;color:var(--red);font-weight:600;">⚠️ ${totalCancelled} cancelled order(s)</span>`:''}
@@ -8760,7 +8778,7 @@ function renderRemitPage() {
           <button class="btn btn-gold btn-sm" onclick="event.stopPropagation();openRemitModal()">+ Add</button>
         </div>
       </div>
-      <div id="${accordionId}">
+      <div id="${accordionId}" style="display:none;">
       <div class="table-wrap"><table style="font-size:11px;">
         <thead><tr style="background:rgba(201,168,76,0.08);">
           <th>Date</th><th>Parcels</th><th>Delivered</th>
