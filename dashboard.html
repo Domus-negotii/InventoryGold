@@ -623,6 +623,51 @@ const _FB_MERGE_KEYS = [
 // Track last known write timestamp to avoid redundant full re-fetches
 let _lastKnownWriteTs = 0;
 
+// ── UUID generator for record identity ───────────────────────────────────────
+function _uuid(){
+  return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>
+    (c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
+}
+// Stamp a _id on any object that doesn't have one yet
+function _stamp(obj){ if(!obj._id) obj._id=_uuid(); return obj; }
+
+
+// ── Union-by-ID merge — safe for multi-device with offline support ────────────
+// Rules:
+//   1. inventory/riders/locations: Firebase wins if non-empty (setup data)
+//   2. Transaction keys: union of local+remote by _id, Firebase version wins on conflict
+//      Items only in local (offline/unsaved) are KEPT — not lost
+//      Soft-delete: items whose _id is in deletedIds are filtered out
+function _unionMerge(local, remote, deletedIds){
+  // Build a set of deleted IDs to filter out
+  const dead = new Set((deletedIds||[]).map(d=>d._id||d.orderNum||d.id||'').filter(Boolean));
+
+  // If Firebase is non-empty: Firebase is authoritative.
+  // Items in Firebase = current valid records.
+  // Items only in local but NOT in Firebase = deleted remotely, don't restore them.
+  if(remote && remote.length > 0){
+    // Build map from Firebase (authoritative)
+    const map = new Map();
+    remote.forEach(item=>{ if(item._id) map.set(item._id, item); });
+    // Add local items that have NO _id yet (new unsaved records being typed right now)
+    // These are safe to keep because they can't conflict with Firebase records
+    local.forEach(item=>{
+      if(!item._id) map.set('_new_'+Math.random(), item); // brand new, no ID yet
+    });
+    // Filter out soft-deleted items
+    return [...map.values()].filter(item=>!dead.has(item._id||''));
+  }
+
+  // Firebase is empty: could be fresh start OR offline.
+  // Safe to keep local items (offline protection) — fresh start handles cleanup.
+  const localMap = new Map();
+  local.forEach(item=>{
+    const key = item._id || ('_noid_'+Math.random());
+    localMap.set(key, item);
+  });
+  return [...localMap.values()].filter(item=>!dead.has(item._id||''));
+}
+
 function _showRulesHint() {
   if(window._rulesHintShown) return;
   window._rulesHintShown = true;
@@ -695,7 +740,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-admin" onclick="selectRole('admin')">
           <div class="role-icon">👤</div>
-          <div class="role-name">Admin / Staff</div>
+          <div class="role-name">CSR</div>
           <div class="role-desc">Orders &amp; Operations</div>
         </div>
       </div>
@@ -718,7 +763,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-checker" onclick="selectRole('checker')" style="padding:10px 8px;text-align:center;">
           <div style="font-size:20px;">✅</div>
-          <div class="role-name" style="font-size:11px;">Checker</div>
+          <div class="role-name" style="font-size:11px;">OVS/Checker</div>
           <div class="role-desc" style="font-size:9px;">Verify Orders</div>
         </div>
       </div>
@@ -6511,6 +6556,12 @@ function saveFbConfig(){
 
 
 async function save(){
+  // Stamp all records with _id before saving (safe no-op if already stamped)
+  if(typeof S !== 'undefined' && typeof _stamp !== 'undefined'){
+    const _TX=['orders','payroll','expenses','remitLog','cashbondLog','benefitsLog',
+               'returnLog','stockLog','deletedOrders','mergeLog'];
+    _TX.forEach(k=>{ if(Array.isArray(S[k])) S[k].forEach(_stamp); });
+  }
   // Write to localStorage immediately
   if(typeof S !== 'undefined') localStorage.setItem(KEY, JSON.stringify(S));
   // Sync to Firebase — debounced 800ms, always writes current global S
@@ -8742,21 +8793,24 @@ async function initApp(){
         // was written AFTER the clean — so we should always use it.
         // inventory/riders/locations: Firebase wins if non-empty.
         // All other fields: use whichever has more entries.
-        const arrKeys = ['orders','riders','locations','payroll','expenses','inventory',
-          'stockLog','adminNames','remitLog','cashbondLog','benefitsLog','returnLog',
-          'deletedOrders','mergeLog'];
-        arrKeys.forEach(k=>{
+        // ── Union-by-ID merge — Firebase authoritative, local offline entries preserved ──
+        const _deletedIds = Array.isArray(fbData.deletedOrders) ? fbData.deletedOrders : [];
+        const _SETUP_KEYS = new Set(['inventory','riders','locations']);
+        const _arrKeys = ['orders','riders','locations','payroll','expenses','inventory',
+          'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
+          'returnLog','deletedOrders','mergeLog'];
+        _arrKeys.forEach(k=>{
           const local  = Array.isArray(S[k])      ? S[k]      : [];
           const remote = Array.isArray(fbData[k]) ? fbData[k] : [];
-          if(k==='inventory'||k==='riders'||k==='locations'){
-            // Always use Firebase if it has data (preserves setup data)
+          if(_SETUP_KEYS.has(k)){
+            // Setup data: Firebase wins if non-empty, protect from empty-device overwrite
             S[k] = remote.length > 0 ? remote : local;
-          } else if(k==='adminNames'){
-            // adminNames: Firebase always wins — deletions must propagate
-            S[k] = remote; // even if empty — that means owner cleared all admins
+          } else if(k === 'adminNames'){
+            // adminNames: Firebase always wins — deletions propagate
+            S[k] = remote;
           } else {
-            // Transactions: use whichever has more entries
-            S[k] = remote.length >= local.length ? remote : local;
+            // Transaction keys: union merge — keeps offline local entries, Firebase wins on conflicts
+            S[k] = _unionMerge(local, remote, _deletedIds);
           }
         });
 
@@ -8926,18 +8980,24 @@ function startAutoRefresh(){
       const fbData = await window.loadFromFirebase();
       if(!fbData) return;
       // Smart merge — Firebase is source of truth after fresh start cleaned it
-      const arrKeys2=['orders','riders','locations','payroll','expenses','inventory',
+      // ── Union-by-ID merge — Firebase authoritative, local offline entries preserved ──
+      const _deletedIds = Array.isArray(fbData.deletedOrders) ? fbData.deletedOrders : [];
+      const _SETUP_KEYS = new Set(['inventory','riders','locations']);
+      const _arrKeys = ['orders','riders','locations','payroll','expenses','inventory',
         'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
         'returnLog','deletedOrders','mergeLog'];
-      arrKeys2.forEach(k=>{
-        const local=Array.isArray(S[k])?S[k]:[];
-        const remote=Array.isArray(fbData[k])?fbData[k]:[];
-        if(k==='inventory'||k==='riders'||k==='locations'){
-          S[k]=remote.length>0?remote:local;
-        } else if(k==='adminNames'){
-          S[k]=remote; // Firebase always wins — deletions propagate
+      _arrKeys.forEach(k=>{
+        const local  = Array.isArray(S[k])      ? S[k]      : [];
+        const remote = Array.isArray(fbData[k]) ? fbData[k] : [];
+        if(_SETUP_KEYS.has(k)){
+          // Setup data: Firebase wins if non-empty, protect from empty-device overwrite
+          S[k] = remote.length > 0 ? remote : local;
+        } else if(k === 'adminNames'){
+          // adminNames: Firebase always wins — deletions propagate
+          S[k] = remote;
         } else {
-          S[k]=remote.length>=local.length?remote:local;
+          // Transaction keys: union merge — keeps offline local entries, Firebase wins on conflicts
+          S[k] = _unionMerge(local, remote, _deletedIds);
         }
       });
       ['govSettings','bizInfo'].forEach(k=>{
@@ -10537,15 +10597,22 @@ document.addEventListener('visibilitychange', async ()=>{
     const freshRan3 = !!localStorage.getItem(_FRESH_FLAG);
     const TX_KEYS3 = ['orders','returnLog','deletedOrders','stockLog','remitLog',
       'cashbondLog','benefitsLog','payroll','expenses','mergeLog','adminNames'];
-    const arrKeys=['orders','riders','locations','payroll','expenses','inventory',
+    // ── Union-by-ID merge — Firebase authoritative, local offline entries preserved ──
+    const _deletedIds3 = Array.isArray(fbData.deletedOrders) ? fbData.deletedOrders : [];
+    const _SETUP_KEYS3 = new Set(['inventory','riders','locations']);
+    const _arrKeys3 = ['orders','riders','locations','payroll','expenses','inventory',
       'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
       'returnLog','deletedOrders','mergeLog'];
-    arrKeys.forEach(k=>{
+    _arrKeys3.forEach(k=>{
       const local=Array.isArray(S[k])?S[k]:[];
       const remote=Array.isArray(fbData[k])?fbData[k]:[];
-      if(k==='inventory'||k==='riders'||k==='locations') S[k]=remote.length>0?remote:local;
-      else if(k==='adminNames') S[k]=remote; // Firebase always wins — deletions propagate
-      else S[k]=remote.length>=local.length?remote:local;
+      if(_SETUP_KEYS3.has(k)){
+        S[k]=remote.length>0?remote:local;
+      } else if(k==='adminNames'){
+        S[k]=remote;
+      } else {
+        S[k]=_unionMerge(local,remote,_deletedIds3);
+      }
     });
     if(fbData.adminAccounts){
       // adminAccounts: Firebase replaces local completely — deletions must propagate
