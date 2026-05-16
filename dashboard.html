@@ -3150,11 +3150,7 @@ function _renderOwnerOrdersView() {
 // _ownerAdminTab always stays 'ALL' now (declared above)
 
 function renderOrders() {
-  // ── Guard: apply global clear if Owner cleared since last sync ──────────────
-  if(typeof _applyGlobalClear==='function'){
-    const _gcFbSnap={lastGlobalClear:S.lastGlobalClear||localStorage.getItem('gce_last_clear')||'0'};
-    if(_applyGlobalClear(_gcFbSnap)) persist();
-  }
+  // ── Guard: filter out pre-clear orders before rendering ─────────────────────
   if(typeof _filterClearedOrders==='function') S.orders=_filterClearedOrders(S.orders||[]);
   const q  = (document.getElementById('order-search')?.value||'').toLowerCase();
   const mf = document.getElementById('order-method-filter')?.value||'';
@@ -3329,11 +3325,7 @@ function getMissingFieldsWarning(o, verifSt) {
 }
 
 function renderChecker(){
-  // ── Guard: apply global clear if Owner cleared since last sync ──────────────
-  if(typeof _applyGlobalClear==='function'){
-    const _gcFbSnap={lastGlobalClear:S.lastGlobalClear||localStorage.getItem('gce_last_clear')||'0'};
-    if(_applyGlobalClear(_gcFbSnap)) persist();
-  }
+  // ── Guard: filter out pre-clear orders before rendering ─────────────────────
   if(typeof _filterClearedOrders==='function') S.orders=_filterClearedOrders(S.orders||[]);
   // v2-fixed-checkerCanEditODZ
   const filt = document.getElementById('checker-filter')?.value||'';
@@ -4572,11 +4564,7 @@ let _sortDragIdx = null;  // order index being dragged
 let _extraRiderSlots = []; // manually added empty rider slots
 
 function renderSorting() {
-  // ── Guard: apply global clear if Owner cleared since last sync ──────────────
-  if(typeof _applyGlobalClear==='function'){
-    const _gcFbSnap={lastGlobalClear:S.lastGlobalClear||localStorage.getItem('gce_last_clear')||'0'};
-    if(_applyGlobalClear(_gcFbSnap)) persist();
-  }
+  // ── Guard: filter out pre-clear orders before rendering ─────────────────────
   if(typeof _filterClearedOrders==='function') S.orders=_filterClearedOrders(S.orders||[]);
   const board = document.getElementById('sort-board');
   const statsEl = document.getElementById('sort-stats');
@@ -6319,11 +6307,7 @@ function printPnl(){
   setTimeout(()=>{try{_win.print();}catch(e){}},400);
 }
 function renderDash(){
-  // ── Guard: apply global clear if Owner cleared since last sync ──────────────
-  if(typeof _applyGlobalClear==='function'){
-    const _gcFbSnap={lastGlobalClear:S.lastGlobalClear||localStorage.getItem('gce_last_clear')||'0'};
-    if(_applyGlobalClear(_gcFbSnap)) persist();
-  }
+  // ── Guard: filter out pre-clear orders before rendering ─────────────────────
   if(typeof _filterClearedOrders==='function') S.orders=_filterClearedOrders(S.orders||[]);
   const total=S.orders.length,del=S.orders.filter(o=>o.status==='Delivered').length;
   const revenue=S.orders.filter(o=>o.status==='Delivered').reduce((s,o)=>s+o.grandTotal,0);
@@ -6787,9 +6771,13 @@ function clearAllTransactions() {
 
   toast('🧹 Clearing all data from cloud...');
 
-  // 3. Delete ALL order documents from gce_orders/ collection
-  //    This prevents _loadOrderDocs() from resurrecting deleted orders on admin devices
-  _deleteAllOrderDocs().then(()=>{
+  // 3. Delete ALL transaction documents from all collections
+  //    This prevents any device from resurrecting cleared data via _loadOrderDocs etc.
+  Promise.allSettled([
+    _deleteAllOrderDocs(),
+    _deleteCollectionDocs('gce_payroll'),
+    _deleteCollectionDocs('gce_expenses'),
+  ]).then(()=>{
     // 4. Push cleared state + lastGlobalClear to Firebase main doc
     clearTimeout(_syncDebounceTimer);
     _syncPending = false;
@@ -6875,6 +6863,15 @@ async function save(){
       : S.orders.filter(o=>o&&o._id);
     if(ordersToSync.length>0){
       Promise.allSettled(ordersToSync.map(o=>_writeOrderDoc(o))).catch(()=>{});
+    }
+  }
+  // Push payroll and expense docs individually (prevents array overwrites)
+  if(window._fbReady){
+    if(Array.isArray(S.payroll)&&S.payroll.length){
+      Promise.allSettled(S.payroll.filter(o=>o&&o._id).map(o=>_writePayrollDoc(o))).catch(()=>{});
+    }
+    if(Array.isArray(S.expenses)&&S.expenses.length){
+      Promise.allSettled(S.expenses.filter(o=>o&&o._id).map(o=>_writeExpenseDoc(o))).catch(()=>{});
     }
   }
 
@@ -9505,11 +9502,7 @@ function setOmTab(tab) {
 }
 
 function renderOrderMgmt() {
-  // ── Guard: apply global clear if Owner cleared since last sync ──────────────
-  if(typeof _applyGlobalClear==='function'){
-    const _gcFbSnap={lastGlobalClear:S.lastGlobalClear||localStorage.getItem('gce_last_clear')||'0'};
-    if(_applyGlobalClear(_gcFbSnap)) persist();
-  }
+  // ── Guard: filter out pre-clear orders before rendering ─────────────────────
   if(typeof _filterClearedOrders==='function') S.orders=_filterClearedOrders(S.orders||[]);
   const q  = (document.getElementById('om-search')?.value||'').toLowerCase();
   const df = document.getElementById('om-date')?.value||'';
@@ -11056,6 +11049,46 @@ const _freshStartDone = !!localStorage.getItem(_FRESH_FLAG);
     }
   }, 4000);
 })();
+
+// ── Per-Document Write for Payroll and Expenses ───────────────────────────────
+async function _writePayrollDoc(item){
+  if(!item||!item._id) return false;
+  try{
+    const docId=item._id.replace(/[^a-zA-Z0-9_-]/g,'_');
+    const fields={};
+    Object.entries(item).forEach(([k,v])=>{fields[k]=_toFS(v);});
+    const r=await fetch(`${_FB_BASE}/gce_payroll/${docId}?key=${_FB_APIKEY}`,{
+      method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields})
+    });
+    return r.ok;
+  }catch(e){console.warn('[GCE] _writePayrollDoc:',e.message);return false;}
+}
+async function _writeExpenseDoc(item){
+  if(!item||!item._id) return false;
+  try{
+    const docId=item._id.replace(/[^a-zA-Z0-9_-]/g,'_');
+    const fields={};
+    Object.entries(item).forEach(([k,v])=>{fields[k]=_toFS(v);});
+    const r=await fetch(`${_FB_BASE}/gce_expenses/${docId}?key=${_FB_APIKEY}`,{
+      method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields})
+    });
+    return r.ok;
+  }catch(e){console.warn('[GCE] _writeExpenseDoc:',e.message);return false;}
+}
+async function _deleteCollectionDocs(collectionName){
+  try{
+    const url=`${_FB_BASE}/${collectionName}?key=${_FB_APIKEY}&pageSize=500`;
+    const r=await fetch(url,{cache:'no-cache'});
+    if(!r.ok) return;
+    const data=await r.json();
+    if(!data.documents||!data.documents.length) return;
+    await Promise.allSettled(data.documents.map(doc=>{
+      const docUrl=`https://firestore.googleapis.com/v1/${doc.name}?key=${_FB_APIKEY}`;
+      return fetch(docUrl,{method:'DELETE'}).catch(()=>{});
+    }));
+    console.log(`[GCE] Deleted ${data.documents.length} docs from ${collectionName}/`);
+  }catch(e){console.warn('[GCE] _deleteCollectionDocs('+collectionName+'):',e.message);}
+}
 
 // ── Per-Document Order Write — eliminates array race conditions ───────────────
 // Each order is its own Firestore document under gce_orders/{_id}.
