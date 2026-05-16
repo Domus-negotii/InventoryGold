@@ -586,6 +586,10 @@ async function _directWriteFirebase(data, opts){
   // Always use the current global S — never a stale snapshot
   const S2 = (typeof S !== 'undefined') ? S : (data||{});
   const skipKeys = new Set(opts?.skip||[]);
+  // CRITICAL: 'orders' is EXCLUDED from the main document write.
+  // Each order is written as its own Firestore document via _writeOrderDoc.
+  // This prevents array-level race conditions when multiple devices save simultaneously.
+  skipKeys.add('orders');
   const fields = {};
   ['orders','riders','locations','payroll','expenses','inventory','stockLog',
    'adminNames','remitLog','cashbondLog','benefitsLog','returnLog',
@@ -6600,7 +6604,8 @@ async function manualRefresh(){
       // ── Union-by-ID merge ─────────────────────────────────────────────
       const _dIds = Array.isArray(fbData.deletedOrders) ? fbData.deletedOrders : [];
       const _SU   = new Set(['inventory','riders','locations']);
-      ['orders','riders','locations','payroll','expenses','inventory',
+      // 'orders' handled via _loadOrderDocs — not from main doc array
+      ['riders','locations','payroll','expenses','inventory',
        'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
        'returnLog','deletedOrders','mergeLog'].forEach(k=>{
         const local  = Array.isArray(S[k])      ? S[k]      : [];
@@ -6623,6 +6628,15 @@ async function manualRefresh(){
       S.lastGlobalClear = _rc>_lc ? _rc : _lc;
       localStorage.setItem('gce_last_clear', S.lastGlobalClear);
       persist();
+
+      // ── Load and merge order documents (race-condition-free) ─────────────
+      if(window._fbReady){
+        const refreshOrderDocs = await _loadOrderDocs();
+        if(refreshOrderDocs && refreshOrderDocs.length>0){
+          const _dIds2=Array.isArray(fbData.deletedOrders)?fbData.deletedOrders:[];
+          S.orders=_mergeOrderDocs(S.orders,refreshOrderDocs,_dIds2);
+        }
+      }
 
       // ── Re-render current page ─────────────────────────────────────────
       const renderMap = {
@@ -6830,21 +6844,32 @@ function saveFbConfig(){
 
 
 async function save(){
-  // Stamp all TX records with _id (for union merge) and _updatedAt (for conflict resolution)
+  const _now = new Date().toISOString();
+  // Stamp all TX records with _id and _updatedAt
   if(typeof S !== 'undefined' && typeof _stamp !== 'undefined'){
-    const _now = new Date().toISOString();
     const _TX=['orders','payroll','expenses','remitLog','cashbondLog','benefitsLog',
                'returnLog','stockLog','deletedOrders','mergeLog'];
     _TX.forEach(k=>{
       if(Array.isArray(S[k])) S[k].forEach(item=>{
-        _stamp(item);                  // ensures _id exists
-        item._updatedAt = _now;        // always update timestamp on every save
+        _stamp(item);
+        item._updatedAt = _now;
       });
     });
   }
   // Write to localStorage immediately
   if(typeof S !== 'undefined') localStorage.setItem(KEY, JSON.stringify(S));
-  // Sync to Firebase — debounced 800ms, always writes current global S
+
+  // Push order documents individually — prevents array-level race conditions
+  // Each order goes to its own Firestore doc (gce_orders/{_id}) independently
+  if(window._fbReady && Array.isArray(S.orders)){
+    const ordersToSync = S.orders.filter(o=>o&&o._id&&o._updatedAt===_now);
+    // Write changed orders in parallel — each to its own doc, no interference between devices
+    if(ordersToSync.length>0){
+      Promise.allSettled(ordersToSync.map(o=>_writeOrderDoc(o))).catch(()=>{});
+    }
+  }
+
+  // Sync all other state to Firebase (orders array excluded — handled above per-doc)
   if(window._fbReady && window.syncToFirebase){
     window.syncToFirebase();
   }
@@ -9119,7 +9144,9 @@ async function initApp(){
         // ── Union-by-ID merge — Firebase authoritative, local offline entries preserved ──
         const _deletedIds = Array.isArray(fbData.deletedOrders) ? fbData.deletedOrders : [];
         const _SETUP_KEYS = new Set(['inventory','riders','locations']);
-        const _arrKeys = ['orders','riders','locations','payroll','expenses','inventory',
+        // 'orders' excluded — handled exclusively via _loadOrderDocs/_mergeOrderDocs
+        // to prevent array-level race conditions from multiple concurrent writers
+        const _arrKeys = ['riders','locations','payroll','expenses','inventory',
           'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
           'returnLog','deletedOrders','mergeLog'];
         _arrKeys.forEach(k=>{
@@ -9360,7 +9387,8 @@ function startAutoRefresh(){
       // ── Union-by-ID merge — Firebase authoritative, local offline entries preserved ──
       const _deletedIds = Array.isArray(fbData.deletedOrders) ? fbData.deletedOrders : [];
       const _SETUP_KEYS = new Set(['inventory','riders','locations']);
-      const _arrKeys = ['orders','riders','locations','payroll','expenses','inventory',
+      // 'orders' excluded — handled exclusively via _loadOrderDocs/_mergeOrderDocs
+      const _arrKeys = ['riders','locations','payroll','expenses','inventory',
         'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
         'returnLog','deletedOrders','mergeLog'];
       _arrKeys.forEach(k=>{
@@ -11017,6 +11045,14 @@ async function _writeOrderDoc(order) {
   } catch(e){ console.warn('[GCE] _writeOrderDoc:',e.message); return false; }
 }
 
+// Push ALL local orders to Firebase as individual documents (used after bulk ops)
+async function _syncAllOrderDocs(){
+  if(!window._fbReady || !Array.isArray(S.orders)) return;
+  const batch = S.orders.filter(o=>o&&o._id);
+  // Write in parallel — each to its own document, no interference
+  await Promise.allSettled(batch.map(o=>_writeOrderDoc(o)));
+}
+
 async function _deleteOrderDoc(orderId) {
   if(!orderId) return;
   try {
@@ -11132,7 +11168,8 @@ document.addEventListener('visibilitychange', async ()=>{
     }
     const _deletedIds3 = Array.isArray(fbData.deletedOrders) ? fbData.deletedOrders : [];
     const _SETUP_KEYS3 = new Set(['inventory','riders','locations']);
-    const _arrKeys3 = ['orders','riders','locations','payroll','expenses','inventory',
+    // 'orders' excluded — handled exclusively via _loadOrderDocs/_mergeOrderDocs
+    const _arrKeys3 = ['riders','locations','payroll','expenses','inventory',
       'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
       'returnLog','deletedOrders','mergeLog'];
     _arrKeys3.forEach(k=>{
