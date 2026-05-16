@@ -525,7 +525,12 @@ async function _directWriteFirebase(data, opts){
   } catch(e) { fields['ownerPwHash'] = _toFS(''); }
   fields['_lastWrite']       = _toFS(Date.now());
   fields['_pwVersion']       = _toFS(localStorage.getItem('gce_pw_version')||'0');
-  fields['lastGlobalClear']  = _toFS(localStorage.getItem('gce_last_clear')||'0');
+  // lastGlobalClear — written every sync so all devices can detect Owner's clear command
+  // Read from S first (set by clearAllTransactions), fallback to localStorage
+  const _clearTs = (typeof S!=='undefined'&&S.lastGlobalClear)
+    ? S.lastGlobalClear
+    : (localStorage.getItem('gce_last_clear')||'0');
+  fields['lastGlobalClear']  = _toFS(_clearTs);
 
   const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
   try {
@@ -574,6 +579,7 @@ window.loadFromFirebase = async function() {
     if(!data.specialPasswords) data.specialPasswords = {remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
     if(!data.govSettings)      data.govSettings      = {sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
     if(!data.bizInfo)          data.bizInfo          = {};
+    if(!data.lastGlobalClear)  data.lastGlobalClear  = '0';
     // Restore owner password hash to this device localStorage
     // Always restore — ensures every device gets the same owner password
     if(data.ownerPwHash && data.ownerPwHash !== '') {
@@ -2521,7 +2527,7 @@ function _showRulesHint() {
 const KEY='gce_v5';
 // Clear old version keys on load
 ['gce_v3','gce_v4'].forEach(k=>{ try{localStorage.removeItem(k);}catch(e){} });
-let S=JSON.parse(localStorage.getItem(KEY)||'null')||{orders:[],riders:[],locations:[],payroll:[],expenses:[],inventory:[],stockLog:[],remitLog:[],cashbondLog:[],benefitsLog:[],deletedOrders:[],mergeLog:[],specialPasswords:{remitter:'remit2026',sorter:'sort2026',checker:'check2026'}};
+let S=JSON.parse(localStorage.getItem(KEY)||'null')||{orders:[],riders:[],locations:[],payroll:[],expenses:[],inventory:[],stockLog:[],remitLog:[],cashbondLog:[],benefitsLog:[],deletedOrders:[],mergeLog:[],lastGlobalClear:'0',specialPasswords:{remitter:'remit2026',sorter:'sort2026',checker:'check2026'}};
 if(!S.locations)S.locations=[];
 if(!S.deletedOrders)S.deletedOrders=[];
 if(!S.mergeLog)S.mergeLog=[];
@@ -6520,9 +6526,11 @@ function clearAllTransactions() {
                     'cashbondLog','benefitsLog','payroll','expenses','mergeLog'];
   TX_RESET.forEach(k=>{ S[k] = []; });
 
-  // Stamp the global clear timestamp — all other devices will detect this
-  // and wipe their local transaction cache when they next sync
+  // Stamp the global clear timestamp in BOTH S and localStorage
+  // S.lastGlobalClear → gets written to Firebase via _directWriteFirebase
+  // localStorage → used by _applyGlobalClear on this device
   const clearTs = new Date().toISOString();
+  S.lastGlobalClear = clearTs;
   localStorage.setItem('gce_last_clear', clearTs);
 
   // Save to localStorage immediately
@@ -8878,6 +8886,11 @@ async function initApp(){
         if(!S.tabPasswords)     S.tabPasswords     = {};
         S.tabPasswords = Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''}, S.tabPasswords);
         if(!S.specialPasswords) S.specialPasswords = {remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
+        // Preserve lastGlobalClear — use the newer of local vs remote
+        const _localCl = S.lastGlobalClear || localStorage.getItem('gce_last_clear') || '0';
+        const _remoteCl = fbData.lastGlobalClear || '0';
+        S.lastGlobalClear = _remoteCl > _localCl ? _remoteCl : _localCl;
+        localStorage.setItem('gce_last_clear', S.lastGlobalClear);
 
         persist(); // save merged result to localStorage
         if(syncEl){ syncEl.style.color='var(--green)'; syncEl.textContent='☁ Online'; }
@@ -8976,16 +8989,27 @@ let _autoRefreshTimer = null;
 // NEVER touches inventory, riders, locations, adminAccounts, passwords.
 function _applyGlobalClear(fbData){
   if(!fbData) return false;
-  const remoteClearTs = fbData.lastGlobalClear || fbData._lastGlobalClear || '0';
-  const localClearTs  = localStorage.getItem('gce_last_clear') || '0';
-  if(!remoteClearTs || remoteClearTs === '0' || remoteClearTs <= localClearTs) return false;
-  // Remote clear is newer — wipe TX on this device
+  const remoteClearTs = fbData.lastGlobalClear || '0';
+  if(!remoteClearTs || remoteClearTs === '0') return false;
+  // Compare against BOTH S.lastGlobalClear and localStorage
+  const localClearTs = S.lastGlobalClear || localStorage.getItem('gce_last_clear') || '0';
+  if(remoteClearTs <= localClearTs) return false;
+
+  // Remote clear is newer — wipe ALL transaction arrays on this device
+  const TX = ['orders','returnLog','deletedOrders','stockLog','remitLog',
+               'cashbondLog','benefitsLog','payroll','expenses','mergeLog'];
+  TX.forEach(k=>{ S[k] = []; });
+
+  // Sync the clear marker so this device doesn't re-wipe on next refresh
+  S.lastGlobalClear = remoteClearTs;
   localStorage.setItem('gce_last_clear', remoteClearTs);
-  const TX=['orders','returnLog','deletedOrders','stockLog','remitLog',
-            'cashbondLog','benefitsLog','payroll','expenses','mergeLog'];
-  TX.forEach(k=>{ S[k]=[]; });
-  persist();
-  return true; // caller can show toast or re-render
+
+  // NEVER touch these — setup and credentials are preserved
+  // inventory ✅  riders ✅  locations ✅
+  // adminAccounts ✅  adminNames ✅  specialPasswords ✅  tabPasswords ✅
+
+  persist(); // flush to localStorage
+  return true;
 }
 
 function startAutoRefresh(){
