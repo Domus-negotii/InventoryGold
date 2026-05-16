@@ -7731,8 +7731,10 @@ function saveOrder() {
     const wasRto = orig.lbcStatus === 'RTO';
 
     // ── Edit: stamp ONLY the edited order, write ONLY that one doc ───────────
-    // Do NOT call save() — it would re-stamp and re-upload ALL orders (duplication bug)
-    _stamp(o);
+    // CRITICAL: copy orig._id BEFORE _stamp — otherwise _stamp generates a new UUID
+    // which creates a second gce_orders/{newId} document alongside the original!
+    o._id = orig._id;  // preserve exact same document ID
+    _stamp(o);         // no-op for _id since it's already set; sets _updatedAt
     o._updatedAt = new Date().toISOString();
     persist(); // save local state
     if(window._fbReady){
