@@ -9506,8 +9506,9 @@ function renderOrderMgmt() {
   };
 
   const rows = list.map(({o,i}) => {
-    // Migrate 'Preparing' to 'Ready to Pick-up' for display consistency with Parcel Tracking
-    const lbcSt = (!o.lbcStatus || o.lbcStatus === 'Preparing') ? 'Ready to Pick-up' : o.lbcStatus;
+    // Show EXACT status from Checker — never override or "migrate" display
+    // Sorter sees what Checker set, no UI tricks
+    const lbcSt = o.lbcStatus || 'Preparing';
     const trackNum = o.trackingNumber || '—';
     return `<tr>
       <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
