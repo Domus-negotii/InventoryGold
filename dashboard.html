@@ -502,6 +502,84 @@ window.syncToFirebase = async function() {
 // ── Direct write — no debounce, used by Save button and password change ──
 // NOTE: hashPw and DEFAULT_OWNER_PW are defined later in the file.
 // We use window references to avoid hoisting issues.
+// ── Atomic order append — prevents race condition when multiple encoders save simultaneously ──
+// Uses Firestore's arrayUnion transform: atomically appends to the orders array
+// WITHOUT reading then writing the whole array. Two devices can safely append at the same time.
+async function _atomicAppendOrder(newOrder){
+  try {
+    // Ensure the order has _id and _updatedAt before appending
+    if(typeof _stamp !== 'undefined') _stamp(newOrder);
+    if(!newOrder._updatedAt) newOrder._updatedAt = new Date().toISOString();
+
+    const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
+    // Firestore REST API field transform: arrayUnion atomically appends without overwriting
+    const body = {
+      writes: [{
+        transform: {
+          document: `projects/${_FB_PROJECT}/databases/(default)/documents/gce_state/main`,
+          fieldTransforms: [{
+            fieldPath: 'orders',
+            appendMissingElements: {
+              values: [_toFS(newOrder)]
+            }
+          }]
+        }
+      }]
+    };
+    const commitUrl = `https://firestore.googleapis.com/v1/projects/${_FB_PROJECT}/databases/(default)/documents:commit?key=${_FB_APIKEY}`;
+    const r = await fetch(commitUrl, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    if(r.ok){
+      console.log('[GCE] Order atomically appended to Firebase — race-condition safe.');
+      return true;
+    } else {
+      console.warn('[GCE] Atomic append failed, falling back to full write:', r.status);
+      return false;
+    }
+  } catch(e){
+    console.warn('[GCE] Atomic append error:', e.message);
+    return false;
+  }
+}
+
+// ── Atomic order update — updates a single order by _id without touching others ──
+async function _atomicUpdateOrder(orderObj){
+  try {
+    if(!orderObj._id) return false;
+    if(!orderObj._updatedAt) orderObj._updatedAt = new Date().toISOString();
+    // We can't do a targeted sub-array update via REST API arrayUnion for an existing element.
+    // Instead, use a short read-modify-write scoped to ONLY the orders field.
+    const readUrl = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}&mask.fieldPaths=orders`;
+    const readR = await fetch(readUrl, {cache:'no-cache'});
+    if(!readR.ok) return false;
+    const readDoc = await readR.json();
+    const firebaseOrders = readDoc.fields?.orders ? _fromFS(readDoc.fields.orders) : [];
+    // Merge: replace matching _id, keep all others
+    let merged = [...firebaseOrders];
+    const idx = merged.findIndex(o=>o._id===orderObj._id);
+    if(idx>=0){
+      // Only replace if our version is newer
+      const remoteTs = merged[idx]._updatedAt || '0';
+      if(orderObj._updatedAt >= remoteTs) merged[idx] = orderObj;
+    } else {
+      merged.push(orderObj); // new order not yet in Firebase
+    }
+    const writeUrl = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}&updateMask.fieldPaths=orders&updateMask.fieldPaths=_lastWrite`;
+    const writeR = await fetch(writeUrl, {
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({fields:{orders:_toFS(merged),_lastWrite:_toFS(Date.now())}})
+    });
+    return writeR.ok;
+  } catch(e){
+    console.warn('[GCE] Atomic update error:', e.message);
+    return false;
+  }
+}
+
 async function _directWriteFirebase(data, opts){
   _syncPending = false;
   _setSyncStatus('syncing','var(--orange)','⬆ Saving...');
@@ -6665,8 +6743,12 @@ function ownerDeleteOrder(i) {
     grandTotal: o.grandTotal||0, items: o.items||[],
     status: o.status
   });
+  const deletedId = o._id;
   S.orders.splice(i, 1);
-  save(); toast('🗑️ Order deleted permanently by CEO.');
+  save();
+  // Also delete the individual order document to prevent it from reappearing
+  if(deletedId && window._fbReady) _deleteOrderDoc(deletedId).catch(()=>{});
+  toast('🗑️ Order deleted permanently by CEO.');
   try { renderChecker(); } catch(e) {}
   try { renderReturns(); } catch(e) {}
   try { renderOrders(); } catch(e) {}
@@ -7611,12 +7693,34 @@ function saveOrder() {
     const wasRto = orig.lbcStatus === 'RTO';
     toast(wasRto ? '✅ Order updated & ready for re-dispatch!' : hadDeducted ? '✅ Order updated! Inventory adjusted.' : '✅ Order updated!');
   } else {
-    // ── NO deduction on new order — inventory deducted only when Checker VERIFIES ──
+    // ── New order: use atomic append to Firebase to prevent race conditions ──
+    // When multiple staff encode simultaneously, each order goes to Firebase
+    // independently without overwriting others' work.
+    _stamp(o); // ensure _id exists before append
+    o._updatedAt = new Date().toISOString();
     o.inventoryDeducted = false;
-    S.orders.push(o);
+    S.orders.push(o); // add to local state immediately (UI shows it now)
+    persist();        // save to localStorage
+    // Atomic append to Firebase — race-condition safe
+    _atomicAppendOrder(o).then(success=>{
+      if(!success){
+        // Fallback: full write if atomic append fails
+        window.syncToFirebase && window.syncToFirebase();
+      }
+    });
+    closeModal('modal-encode');
+    initOrdersPage();
+    renderDash();
     toast('✅ Order saved! Inventory will be deducted upon Checker verification.');
+    return; // skip the save() below for new orders (already handled above)
   }
   save(); closeModal('modal-encode');
+  // Also write this specific order as its own Firestore document
+  // This prevents array-level race conditions when multiple admins encode simultaneously
+  const _savedOrder = editIdx !== null ? S.orders[+editIdx] : S.orders[S.orders.length-1];
+  if(_savedOrder && _savedOrder._id && window._fbReady) {
+    _writeOrderDoc(_savedOrder).catch(()=>{});
+  }
   initOrdersPage();
   renderDash();
 }
@@ -9005,6 +9109,13 @@ async function initApp(){
           try{ renderDash(); }catch(e){}
         }
 
+        // ── Load per-document orders for race-condition-free merge ─────────
+        const orderDocs = await _loadOrderDocs();
+        if(orderDocs && orderDocs.length > 0){
+          const dIds = Array.isArray(fbData.deletedOrders)?fbData.deletedOrders:[];
+          fbData.orders = _mergeOrderDocs(fbData.orders||[], orderDocs, dIds);
+        }
+
         // ── Union-by-ID merge — Firebase authoritative, local offline entries preserved ──
         const _deletedIds = Array.isArray(fbData.deletedOrders) ? fbData.deletedOrders : [];
         const _SETUP_KEYS = new Set(['inventory','riders','locations']);
@@ -9236,6 +9347,15 @@ function startAutoRefresh(){
       // Something changed — do a full load and merge
       const fbData = await window.loadFromFirebase();
       if(!fbData) return;
+
+      // ── Load per-document orders (race-condition-free) ──────────────────────
+      // Each order has its own Firestore doc — concurrent saves don't overwrite each other
+      const orderDocs = await _loadOrderDocs();
+      if(orderDocs && orderDocs.length > 0){
+        const deletedIds = Array.isArray(fbData.deletedOrders)?fbData.deletedOrders:[];
+        S.orders = _mergeOrderDocs(S.orders, orderDocs, deletedIds);
+        fbData.orders = S.orders; // use merged result for subsequent processing
+      }
       // Smart merge — Firebase is source of truth after fresh start cleaned it
       // ── Union-by-ID merge — Firebase authoritative, local offline entries preserved ──
       const _deletedIds = Array.isArray(fbData.deletedOrders) ? fbData.deletedOrders : [];
@@ -10876,6 +10996,73 @@ const _freshStartDone = !!localStorage.getItem(_FRESH_FLAG);
     }
   }, 4000);
 })();
+
+// ── Per-Document Order Write — eliminates array race conditions ───────────────
+// Each order is its own Firestore document under gce_orders/{_id}.
+// Two admins encoding simultaneously write to DIFFERENT documents → no conflict.
+// The main gce_state/main document still holds all other arrays (inventory, riders, etc.)
+
+async function _writeOrderDoc(order) {
+  if(!order||!order._id) return false;
+  try {
+    const docId = order._id.replace(/[^a-zA-Z0-9_-]/g,'_');
+    const fields = {};
+    Object.entries(order).forEach(([k,v])=>{ fields[k]=_toFS(v); });
+    const r = await fetch(`${_FB_BASE}/gce_orders/${docId}?key=${_FB_APIKEY}`,{
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({fields})
+    });
+    return r.ok;
+  } catch(e){ console.warn('[GCE] _writeOrderDoc:',e.message); return false; }
+}
+
+async function _deleteOrderDoc(orderId) {
+  if(!orderId) return;
+  try {
+    const docId = orderId.replace(/[^a-zA-Z0-9_-]/g,'_');
+    await fetch(`${_FB_BASE}/gce_orders/${docId}?key=${_FB_APIKEY}`,{method:'DELETE'});
+  } catch(e){ console.warn('[GCE] _deleteOrderDoc:',e.message); }
+}
+
+async function _loadOrderDocs() {
+  try {
+    const url = `${_FB_BASE}/gce_orders?key=${_FB_APIKEY}&pageSize=500`;
+    const r = await fetch(url,{cache:'no-cache'});
+    if(!r.ok) return null;
+    const data = await r.json();
+    if(!data.documents) return [];
+    return data.documents.map(doc=>{
+      const o={};
+      Object.entries(doc.fields||{}).forEach(([k,v])=>{ o[k]=_fromFS(v); });
+      return o;
+    }).filter(o=>o&&o._id);
+  } catch(e){ console.warn('[GCE] _loadOrderDocs:',e.message); return null; }
+}
+
+// Merge fetched order docs with local S.orders — timestamp wins on conflict
+// Unlike _unionMerge for the main array, local-only orders ARE preserved here
+// because a local order not yet in Firebase = just encoded, not yet synced
+function _mergeOrderDocs(localOrders, remoteOrders, deletedIds){
+  if(!remoteOrders||remoteOrders.length===0) return localOrders;
+  const dead=new Set((deletedIds||[]).map(d=>d._id||'').filter(Boolean));
+  const map=new Map();
+  // Start with remote as base
+  remoteOrders.forEach(o=>{if(o._id)map.set(o._id,o);});
+  // For local orders: add if not in remote (new, just encoded) OR if newer timestamp
+  localOrders.forEach(o=>{
+    if(!o._id){map.set('_new_'+Math.random(),o);return;}
+    if(map.has(o._id)){
+      // Both exist — newer timestamp wins
+      const rTs=map.get(o._id)._updatedAt||'0', lTs=o._updatedAt||'0';
+      if(lTs>rTs) map.set(o._id,o);
+    } else {
+      // Local-only — this order is new (just encoded) or Firebase hasn't received it yet
+      // Keep it — it will be written to Firebase via _writeOrderDoc
+      map.set(o._id,o);
+    }
+  });
+  return [...map.values()].filter(o=>!dead.has(o._id||''));
+}
 
 // ── 1. BACKGROUND DATA PREFETCH ─────────────────────────────────────────────
 // Fetches full Firebase data immediately on page load (before login).
