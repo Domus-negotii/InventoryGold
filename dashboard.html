@@ -3178,10 +3178,11 @@ function renderOrders() {
   const pm2cls = m => m==='EMS'||m==='FedEx'?'green':m==='LBC'?'blue':'delivering';
 
   const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
-    // Fix 2 & 3: Role isolation — non-owner admins see only their own orders
+    // Role isolation — non-owner admins STRICTLY see only their own orders
     if(currentRole !== 'owner' && currentUser?.role !== 'owner'){
-      const myName = (currentUser?.name || adminName || '').toUpperCase();
-      if(myName && (o.admin||'').toUpperCase() !== myName) return false;
+      const myName = (currentUser?.name || '').trim().toUpperCase();
+      if(!myName) return false; // no identity = show nothing
+      if((o.admin||'').trim().toUpperCase() !== myName) return false;
     }
     if(_ownerAdminTab !== 'ALL' && o.admin.toUpperCase() !== _ownerAdminTab.toUpperCase()) return false;
     if(mf && (o.paymentMethod||'COD') !== mf) return false;
@@ -6207,9 +6208,12 @@ function renderPnl(){
     o.paymentStatus==='Fully Paid' && o.verificationStatus==='Verified' &&
     (o.dateOfPayment||'').slice(0,10)>=from && (o.dateOfPayment||'').slice(0,10)<=to);
   const incomeOrders = [...codDelivered, ...courierVerified];
-  // Fix 2 & 3: Role isolation — non-owners see only their own orders in P&L
+  // Fix 3: Role isolation — non-owners see only their own orders in P&L
   const _pnlOrders = (currentRole !== 'owner' && currentUser?.role !== 'owner')
-    ? (()=>{ const myName=(currentUser?.name||adminName||'').toUpperCase(); return myName ? incomeOrders.filter(o=>(o.admin||'').toUpperCase()===myName) : incomeOrders; })()
+    ? (()=>{
+        const myName=(currentUser?.name||'').trim().toUpperCase();
+        return myName ? incomeOrders.filter(o=>(o.admin||'').trim().toUpperCase()===myName) : [];
+      })()
     : incomeOrders;
 
   // TOTAL SALES = product price only (itemsTotal), NO shipping fee
@@ -7237,10 +7241,11 @@ function renderRiderParcels() {
       .map(r => r.date)
   );
   const myOrders = allMyOrders.filter(o => {
-    // Fix 5 + Fix 2: Only hide Delivered orders on remitted dates (already settled)
-    // Also hide orders explicitly marked Remitted on the order itself
+    // Hide orders explicitly marked Remitted on the order itself
     if(o.remitStatus === 'Remitted') return false;
-    if(o.status === 'Delivered' && remittedDates.has(o.date)) return false;
+    // Hide ALL orders (Delivered AND Cancelled) from remitted dates
+    // Cancelled orders in a remitted batch are already settled — rider shouldn't see them
+    if(remittedDates.has(o.date)) return false;
     return true;
   });
   // Fix 5: Default shows ALL active assigned orders (not just today's)
@@ -7684,7 +7689,11 @@ function saveOrder() {
   const contact = document.getElementById('enc-contact').value.replace(/\D/g,'');
   const backupContact = (document.getElementById('enc-backup-contact')?.value||'').replace(/\D/g,'');
   const address = document.getElementById('enc-address').value.trim();
-  const admin = document.getElementById('enc-admin').value.trim();
+  // Admin is locked to their own name — never trust the form field alone
+  // For admin role: force-use currentUser.name to prevent any cross-contamination
+  const admin = (currentRole !== 'owner' && currentUser?.role !== 'owner' && currentUser?.name)
+    ? currentUser.name.trim()
+    : document.getElementById('enc-admin').value.trim();
   const date = document.getElementById('enc-date').value;
   if(!date) { toast('⚠️ Date is required. Please enter the date of purchase.'); document.getElementById('enc-date').focus(); return; }
   const shipping = document.getElementById('enc-shipping').value;
