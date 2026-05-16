@@ -3440,8 +3440,7 @@ function renderChecker(){
                 : `<button class="btn btn-outline btn-sm" onclick="togglePrinted(${i})" style="font-size:10px;padding:2px 7px;">🖨️ Print</button>`}
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
-              ${!isLocked?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>`:''}
-              ${currentRole==='owner'?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" title="CEO Edit">✏️ Edit</button>`:''}
+              ${(!isLocked&&(currentRole==='owner'||currentRole==='admin'||currentRole==='checker'))?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" title="Edit Order">${currentRole==='owner'?'✏️ Edit':'✏️'}</button>`:''}
               ${o.status==='Cancelled'
                 ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
                 :o.checkerStatus!=='Verified'
@@ -7769,9 +7768,9 @@ function saveOrder() {
     toast('✅ Order saved! Inventory will be deducted upon Checker verification.');
     return; // skip the save() below for new orders (already handled above)
   }
-  // Both edit and new-order paths return early above.
-  // This line is a safety fallback only.
-  save(); closeModal('modal-encode');
+  // Both edit and new-order paths have explicit returns above.
+  // If somehow we reach here, just close the modal safely.
+  closeModal('modal-encode');
   initOrdersPage();
   renderDash();
 }
