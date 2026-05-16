@@ -754,7 +754,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-admin" onclick="selectRole('admin')">
           <div class="role-icon">👤</div>
-          <div class="role-name">CSR</div>
+          <div class="role-name">Admin / Staff</div>
           <div class="role-desc">Orders &amp; Operations</div>
         </div>
       </div>
@@ -777,7 +777,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-checker" onclick="selectRole('checker')" style="padding:10px 8px;text-align:center;">
           <div style="font-size:20px;">✅</div>
-          <div class="role-name" style="font-size:11px;">OVS/Checker</div>
+          <div class="role-name" style="font-size:11px;">Checker</div>
           <div class="role-desc" style="font-size:9px;">Verify Orders</div>
         </div>
       </div>
@@ -9359,14 +9359,15 @@ function renderOrderMgmt() {
     if(s==='Out for Delivery') return 'var(--gold)';
     return 'var(--muted)';
   };
-  // Full status list per courier type (for all non-OFD statuses)
-  const ALL_STATUSES_LBC   = ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
-  const ALL_STATUSES_EMS   = ['Ready to Pick-up','Drop off at EMS','Out for Delivery','Delivered','RTO'];
-  const ALL_STATUSES_FEDEX = ['Ready to Pick-up','Drop off at FedEx','Out for Delivery','Delivered','RTO'];
-  // OFD-specific choices per role (checker/owner: OFD+Delivered+RTO, sorter: OFD+RTO only)
-  const OFD_CHOICES_FULL = ['Out for Delivery','Delivered','RTO'];
+  // Status lists per carrier — NO Delivered for Sorter (prevents accidental tap)
+  // Checker/Owner can still mark Delivered via the LBC/EMS/FedEx Delivery pages
+  const ALL_STATUSES_LBC   = ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery','RTO'];
+  const ALL_STATUSES_EMS   = ['Ready to Pick-up','Drop off at EMS','ODZ/Incomplete Details','Out for Delivery','RTO'];
+  const ALL_STATUSES_FEDEX = ['Ready to Pick-up','Drop off at FedEx','ODZ/Incomplete Details','Out for Delivery','RTO'];
+  // OFD-specific choices — checker can mark Delivered from OFD, sorter cannot
+  const OFD_CHOICES_FULL   = ['Out for Delivery','Delivered','RTO'];
   const OFD_CHOICES_SORTER = ['Out for Delivery','RTO'];
-  // OM_STATUSES is a function of the parcel's current status (computed per row below)
+  // OM_STATUSES per parcel's current status
   const getOmStatuses = (currentLbcSt, method) => {
     const isOFD = currentLbcSt === 'Out for Delivery';
     if(isOFD) return (currentRole==='checker'||currentRole==='owner') ? OFD_CHOICES_FULL : OFD_CHOICES_SORTER;
@@ -9797,6 +9798,9 @@ function renderLbcDelivery() {
             : `<select class="form-control" style="width:175px;font-size:10.5px;padding:3px 5px;" onchange="lbcdUpdateStatus(${i},this.value)">
             ${UPDATE_STATUSES.map(s=>`<option${lst===s?' selected':''}>${s}</option>`).join('')}
           </select>`}
+          ${isODZ && (currentRole==='checker'||currentRole==='owner')
+            ? `<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" style="width:175px;font-size:10.5px;margin-top:3px;">✏️ Edit ODZ Details</button>`
+            : ''}
           ${isRTO?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" style="width:175px;font-size:10.5px;">✏️ Edit / Re-dispatch</button>`:''}
         </div>
       </td>
