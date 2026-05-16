@@ -3150,6 +3150,12 @@ function _renderOwnerOrdersView() {
 // _ownerAdminTab always stays 'ALL' now (declared above)
 
 function renderOrders() {
+  // ── Guard: apply global clear if Owner cleared since last sync ──────────────
+  if(typeof _applyGlobalClear==='function'){
+    const _gcFbSnap={lastGlobalClear:S.lastGlobalClear||localStorage.getItem('gce_last_clear')||'0'};
+    if(_applyGlobalClear(_gcFbSnap)) persist();
+  }
+  if(typeof _filterClearedOrders==='function') S.orders=_filterClearedOrders(S.orders||[]);
   const q  = (document.getElementById('order-search')?.value||'').toLowerCase();
   const mf = document.getElementById('order-method-filter')?.value||'';
   const df = document.getElementById('order-date-filter')?.value||'';
@@ -3323,6 +3329,12 @@ function getMissingFieldsWarning(o, verifSt) {
 }
 
 function renderChecker(){
+  // ── Guard: apply global clear if Owner cleared since last sync ──────────────
+  if(typeof _applyGlobalClear==='function'){
+    const _gcFbSnap={lastGlobalClear:S.lastGlobalClear||localStorage.getItem('gce_last_clear')||'0'};
+    if(_applyGlobalClear(_gcFbSnap)) persist();
+  }
+  if(typeof _filterClearedOrders==='function') S.orders=_filterClearedOrders(S.orders||[]);
   // v2-fixed-checkerCanEditODZ
   const filt = document.getElementById('checker-filter')?.value||'';
   const q = (document.getElementById('checker-search')?.value||'').toLowerCase();
@@ -4560,6 +4572,12 @@ let _sortDragIdx = null;  // order index being dragged
 let _extraRiderSlots = []; // manually added empty rider slots
 
 function renderSorting() {
+  // ── Guard: apply global clear if Owner cleared since last sync ──────────────
+  if(typeof _applyGlobalClear==='function'){
+    const _gcFbSnap={lastGlobalClear:S.lastGlobalClear||localStorage.getItem('gce_last_clear')||'0'};
+    if(_applyGlobalClear(_gcFbSnap)) persist();
+  }
+  if(typeof _filterClearedOrders==='function') S.orders=_filterClearedOrders(S.orders||[]);
   const board = document.getElementById('sort-board');
   const statsEl = document.getElementById('sort-stats');
   if(!board) return;
@@ -6301,6 +6319,12 @@ function printPnl(){
   setTimeout(()=>{try{_win.print();}catch(e){}},400);
 }
 function renderDash(){
+  // ── Guard: apply global clear if Owner cleared since last sync ──────────────
+  if(typeof _applyGlobalClear==='function'){
+    const _gcFbSnap={lastGlobalClear:S.lastGlobalClear||localStorage.getItem('gce_last_clear')||'0'};
+    if(_applyGlobalClear(_gcFbSnap)) persist();
+  }
+  if(typeof _filterClearedOrders==='function') S.orders=_filterClearedOrders(S.orders||[]);
   const total=S.orders.length,del=S.orders.filter(o=>o.status==='Delivered').length;
   const revenue=S.orders.filter(o=>o.status==='Delivered').reduce((s,o)=>s+o.grandTotal,0);
   const pending=S.orders.filter(o=>o.checkerStatus==='Pending').length;
@@ -6816,6 +6840,19 @@ function saveFbConfig(){
 
 async function save(){
   const _now = new Date().toISOString();
+
+  // ── Apply global clear first — if Owner cleared, wipe before stamping ──────
+  // This prevents the Checker's old S.orders from being re-uploaded to Firebase
+  if(typeof _applyGlobalClear === 'function' && typeof S !== 'undefined'){
+    const _lc = S.lastGlobalClear || localStorage.getItem('gce_last_clear') || '0';
+    if(_lc && _lc !== '0'){
+      // Already cleared — filter out pre-clear orders from local state
+      if(typeof _filterClearedOrders === 'function'){
+        S.orders = _filterClearedOrders(S.orders||[]);
+      }
+    }
+  }
+
   // Stamp all TX records with _id and _updatedAt
   if(typeof S !== 'undefined' && typeof _stamp !== 'undefined'){
     const _TX=['orders','payroll','expenses','remitLog','cashbondLog','benefitsLog',
@@ -6830,17 +6867,18 @@ async function save(){
   // Write to localStorage immediately
   if(typeof S !== 'undefined') localStorage.setItem(KEY, JSON.stringify(S));
 
-  // Push ALL orders as individual Firestore documents
-  // This is called on status updates, rider assignments, etc.
-  // Each order writes to gce_orders/{_id} — concurrent writes never conflict
+  // Push orders as individual Firestore docs — only post-clear orders
+  // _filterClearedOrders ensures pre-clear orders never get re-uploaded
   if(window._fbReady && Array.isArray(S.orders)){
-    const ordersToSync = S.orders.filter(o=>o&&o._id);
+    const ordersToSync = (typeof _filterClearedOrders==='function')
+      ? _filterClearedOrders(S.orders).filter(o=>o&&o._id)
+      : S.orders.filter(o=>o&&o._id);
     if(ordersToSync.length>0){
       Promise.allSettled(ordersToSync.map(o=>_writeOrderDoc(o))).catch(()=>{});
     }
   }
 
-  // Sync all other state to Firebase (orders array excluded — handled above per-doc)
+  // Sync all other state to Firebase (orders excluded — handled above per-doc)
   if(window._fbReady && window.syncToFirebase){
     window.syncToFirebase();
   }
@@ -9467,6 +9505,12 @@ function setOmTab(tab) {
 }
 
 function renderOrderMgmt() {
+  // ── Guard: apply global clear if Owner cleared since last sync ──────────────
+  if(typeof _applyGlobalClear==='function'){
+    const _gcFbSnap={lastGlobalClear:S.lastGlobalClear||localStorage.getItem('gce_last_clear')||'0'};
+    if(_applyGlobalClear(_gcFbSnap)) persist();
+  }
+  if(typeof _filterClearedOrders==='function') S.orders=_filterClearedOrders(S.orders||[]);
   const q  = (document.getElementById('om-search')?.value||'').toLowerCase();
   const df = document.getElementById('om-date')?.value||'';
   const method = omTab === 'lbc' ? 'LBC' : omTab === 'ems' ? 'EMS' : 'FedEx';
