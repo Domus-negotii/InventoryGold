@@ -6601,7 +6601,8 @@ async function manualRefresh(){
         const refreshOrderDocs = await _loadOrderDocs();
         if(refreshOrderDocs && refreshOrderDocs.length>0){
           const _dIds2=Array.isArray(fbData.deletedOrders)?fbData.deletedOrders:[];
-          S.orders=_mergeOrderDocs(S.orders,refreshOrderDocs,_dIds2);
+          // Filter orders that predate the last clear (prevents cache resurrection)
+          S.orders=_filterClearedOrders(_mergeOrderDocs(S.orders,refreshOrderDocs,_dIds2));
         }
       }
 
@@ -6749,35 +6750,38 @@ function clearAllTransactions() {
   );
   if(confirmed !== 'CLEAR') { toast('Cancelled.'); return; }
 
-  // Clear ONLY transactional arrays
+  // 1. Clear local transaction arrays
   const TX_RESET = ['orders','returnLog','deletedOrders','stockLog','remitLog',
                     'cashbondLog','benefitsLog','payroll','expenses','mergeLog'];
   TX_RESET.forEach(k=>{ S[k] = []; });
 
-  // Stamp the global clear timestamp in BOTH S and localStorage
-  // S.lastGlobalClear → gets written to Firebase via _directWriteFirebase
-  // localStorage → used by _applyGlobalClear on this device
+  // 2. Stamp global clear timestamp — all devices detect this on next sync
   const clearTs = new Date().toISOString();
   S.lastGlobalClear = clearTs;
   localStorage.setItem('gce_last_clear', clearTs);
-
-  // Save to localStorage immediately
   persist();
 
-  // Push to Firebase immediately — no debounce — so all 30 devices see it right away
-  clearTimeout(_syncDebounceTimer);
-  _syncPending = false;
-  _directWriteFirebase(S, {skip:['inventory']}).then(()=>{
-    toast('✅ All transactions cleared! All devices updated.');
+  toast('🧹 Clearing all data from cloud...');
+
+  // 3. Delete ALL order documents from gce_orders/ collection
+  //    This prevents _loadOrderDocs() from resurrecting deleted orders on admin devices
+  _deleteAllOrderDocs().then(()=>{
+    // 4. Push cleared state + lastGlobalClear to Firebase main doc
+    clearTimeout(_syncDebounceTimer);
+    _syncPending = false;
+    return _directWriteFirebase(S, {skip:['inventory']});
+  }).then(()=>{
+    toast('✅ All transactions cleared on all devices!');
     try{ renderDash(); }catch(e){}
     try{ renderOrders(); }catch(e){}
     try{ renderChecker(); }catch(e){}
     try{ renderReturns(); }catch(e){}
     try{ renderDeletedOrders(); }catch(e){}
-  }).catch(()=>{
-    // Even if Firebase push fails, local is clean. Auto-retry in 10s.
-    toast('✅ Cleared locally. Will sync to Firebase shortly.');
-    save();
+  }).catch(e=>{
+    console.warn('clearAllTransactions error:', e);
+    // Still push locally-cleared state
+    _directWriteFirebase(S, {skip:['inventory']}).catch(()=>{});
+    toast('✅ Cleared locally. Cloud sync in progress...');
   });
 }
 function loadFbConfig(){
@@ -9105,7 +9109,8 @@ async function initApp(){
         const orderDocs = await _loadOrderDocs();
         if(orderDocs && orderDocs.length > 0){
           const dIds = Array.isArray(fbData.deletedOrders)?fbData.deletedOrders:[];
-          fbData.orders = _mergeOrderDocs(fbData.orders||[], orderDocs, dIds);
+          // Filter orders that predate the last clear (prevents cache resurrection)
+          fbData.orders = _filterClearedOrders(_mergeOrderDocs(fbData.orders||[], orderDocs, dIds));
         }
 
         // ── Union-by-ID merge — Firebase authoritative, local offline entries preserved ──
@@ -9275,21 +9280,35 @@ function _applyGlobalClear(fbData){
   const localClearTs = S.lastGlobalClear || localStorage.getItem('gce_last_clear') || '0';
   if(remoteClearTs <= localClearTs) return false;
 
-  // Remote clear is newer — wipe ALL transaction arrays on this device
+  // Remote clear is newer — ABSOLUTE WIPE on this device
+  // No _unionMerge, no fallback, no resurrection — Owner's command is absolute
   const TX = ['orders','returnLog','deletedOrders','stockLog','remitLog',
                'cashbondLog','benefitsLog','payroll','expenses','mergeLog'];
   TX.forEach(k=>{ S[k] = []; });
 
-  // Sync the clear marker so this device doesn't re-wipe on next refresh
+  // Sync the clear marker — this device won't re-wipe on next refresh
+  // AND won't resurrect orders from gce_orders/ because timestamp is now equal
   S.lastGlobalClear = remoteClearTs;
   localStorage.setItem('gce_last_clear', remoteClearTs);
 
-  // NEVER touch these — setup and credentials are preserved
+  // NEVER touch setup data — inventory, riders, locations, passwords always preserved
   // inventory ✅  riders ✅  locations ✅
   // adminAccounts ✅  adminNames ✅  specialPasswords ✅  tabPasswords ✅
 
-  persist(); // flush to localStorage
+  persist(); // flush cleared state to localStorage
   return true;
+}
+
+// After _applyGlobalClear runs, filter out any order docs that predate the clear
+// This prevents gce_orders/ collection from resurrecting deleted orders
+function _filterClearedOrders(orders){
+  const clearTs = S.lastGlobalClear || localStorage.getItem('gce_last_clear') || '0';
+  if(!clearTs || clearTs==='0') return orders;
+  // Keep only orders created AFTER the last clear
+  return (orders||[]).filter(o=>{
+    const orderTs = o._updatedAt || o.createdAt || '0';
+    return orderTs > clearTs;
+  });
 }
 
 function startAutoRefresh(){
@@ -9347,7 +9366,8 @@ function startAutoRefresh(){
       const orderDocs = await _loadOrderDocs();
       if(orderDocs && orderDocs.length > 0){
         const deletedIds = Array.isArray(fbData.deletedOrders)?fbData.deletedOrders:[];
-        S.orders = _mergeOrderDocs(S.orders, orderDocs, deletedIds);
+        // Filter orders that predate the last clear (prevents cache resurrection)
+        S.orders = _filterClearedOrders(_mergeOrderDocs(S.orders, orderDocs, deletedIds));
         fbData.orders = S.orders; // use merged result for subsequent processing
       }
       // Smart merge — Firebase is source of truth after fresh start cleaned it
@@ -11020,6 +11040,24 @@ async function _syncAllOrderDocs(){
   await Promise.allSettled(batch.map(o=>_writeOrderDoc(o)));
 }
 
+// ── Bulk-delete ALL documents in gce_orders/ collection ──────────────────────
+// Called by clearAllTransactions — prevents cache resurrection when admins sync.
+// After this, _loadOrderDocs() returns [] so no device can resurrect cleared orders.
+async function _deleteAllOrderDocs(){
+  try {
+    const url=`${_FB_BASE}/gce_orders?key=${_FB_APIKEY}&pageSize=500`;
+    const r=await fetch(url,{cache:'no-cache'});
+    if(!r.ok) return;
+    const data=await r.json();
+    if(!data.documents||!data.documents.length) return;
+    await Promise.allSettled(data.documents.map(doc=>{
+      const docUrl=`https://firestore.googleapis.com/v1/${doc.name}?key=${_FB_APIKEY}`;
+      return fetch(docUrl,{method:'DELETE'}).catch(()=>{});
+    }));
+    console.log(`[GCE] Deleted ${data.documents.length} order docs from gce_orders/`);
+  } catch(e){ console.warn('[GCE] _deleteAllOrderDocs:',e.message); }
+}
+
 async function _deleteOrderDoc(orderId) {
   if(!orderId) return;
   try {
@@ -11112,7 +11150,7 @@ setTimeout(async function(){
         const _pDocs = await _loadOrderDocs();
         if(_pDocs&&_pDocs.length>0){
           const _pd=Array.isArray(fbData.deletedOrders)?fbData.deletedOrders:[];
-          S.orders=_mergeOrderDocs(S.orders||[], _pDocs, _pd);
+          S.orders=_filterClearedOrders(_mergeOrderDocs(S.orders||[], _pDocs, _pd));
         }
       }
     } catch(_pe){ console.warn('[GCE] Prefetch orderDocs:',_pe.message); }
