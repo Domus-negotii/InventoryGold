@@ -496,7 +496,7 @@ window.syncToFirebase = async function() {
   // Always write the CURRENT global S when debounce fires — not a stale snapshot
   _syncPending = true;
   clearTimeout(_syncDebounceTimer);
-  _syncDebounceTimer = setTimeout(()=>_directWriteFirebase(), 800);
+  _syncDebounceTimer = setTimeout(()=>_directWriteFirebase(), 500); // 500ms debounce
 };
 
 // ── Direct write — no debounce, used by Save button and password change ──
@@ -6089,25 +6089,32 @@ function renderPnl(){
   // TOTAL SALES = product price only (itemsTotal), NO shipping fee
   const totalSales = incomeOrders.reduce((s,o)=>s+o.itemsTotal,0);
   // TOTAL COST = cost of goods sold (pergram × grams or pergram × qty for each item)
-  // ── COGS helper: look up capital/cost price from inventory by product code ──
-  // order items store the SELLING price (pergram / fixPrice), NOT the cost price.
-  // We must resolve cost from S.inventory using the item's serial code.
+  // ── COGS helper — looks up capital cost from inventory, never uses selling price ──
+  // Order items store SELLING price (pergram / fixPrice) — NOT cost.
+  // We resolve cost from S.inventory by product code (case-insensitive, trimmed).
   function calcItemCOGS(it) {
-    // Try to find the product in inventory by serial code
-    const inv = (S.inventory||[]).find(p => p.code && it.code && p.code.toUpperCase() === it.code.toUpperCase());
+    if(!it.code || !it.code.trim()) return 0; // no code = no COGS data
+    const code = it.code.trim().toUpperCase();
+    const inv = (S.inventory||[]).find(p => p.code && p.code.trim().toUpperCase() === code);
     if(inv) {
       if(inv.itemType === 'fixprice') {
-        // Fix-price: capitalPerUnit × qty sold
-        return (inv.capitalPerUnit||0) * (it.qty||1);
+        // Fix-price product: capitalPerUnit × quantity sold
+        const cost = Math.max(0, inv.capitalPerUnit||0);
+        const qty  = Math.max(0, it.qty||1);
+        return cost * qty;
       } else {
-        // Grams: capitalPerGram × grams sold
-        return (inv.capitalPerGram||0) * (it.grams||it.qty||0);
+        // Weight-based: capitalPerGram × grams sold
+        const cost  = Math.max(0, inv.capitalPerGram||0);
+        const grams = Math.max(0, it.grams||0);
+        return cost * grams;
       }
     }
-    // Fallback: if item itself has capital fields stored (future-proofing)
-    if(it.capitalPerGram) return it.capitalPerGram * (it.grams||it.qty||0);
-    if(it.capitalPerUnit) return it.capitalPerUnit * (it.qty||1);
-    // No cost data available for this item
+    // Fallback: item object may carry capital cost fields (forward-compatibility)
+    if(typeof it.capitalPerGram === 'number' && it.capitalPerGram > 0)
+      return it.capitalPerGram * Math.max(0, it.grams||0);
+    if(typeof it.capitalPerUnit === 'number' && it.capitalPerUnit > 0)
+      return it.capitalPerUnit * Math.max(0, it.qty||1);
+    // No cost data — COGS = 0 (do NOT fall back to selling price)
     return 0;
   }
   const totalCOGS = incomeOrders.reduce((s,o)=>
@@ -6201,14 +6208,16 @@ function printPnl(){
   const totalSales=incomeOrders.reduce((s,o)=>s+o.itemsTotal,0);
   const totalCOGS=incomeOrders.reduce((s,o)=>{
     return s+(o.items||[]).reduce((is,it)=>{
-      const inv=(S.inventory||[]).find(p=>p.code&&it.code&&p.code.toUpperCase()===it.code.toUpperCase());
+      if(!it.code||!it.code.trim()) return is;
+      const code=it.code.trim().toUpperCase();
+      const inv=(S.inventory||[]).find(p=>p.code&&p.code.trim().toUpperCase()===code);
       if(inv){
-        if(inv.itemType==='fixprice') return is+(inv.capitalPerUnit||0)*(it.qty||1);
-        return is+(inv.capitalPerGram||0)*(it.grams||it.qty||0);
+        if(inv.itemType==='fixprice') return is+Math.max(0,inv.capitalPerUnit||0)*Math.max(0,it.qty||1);
+        return is+Math.max(0,inv.capitalPerGram||0)*Math.max(0,it.grams||0);
       }
-      if(it.capitalPerGram) return is+it.capitalPerGram*(it.grams||it.qty||0);
-      if(it.capitalPerUnit) return is+it.capitalPerUnit*(it.qty||1);
-      return is;
+      if(typeof it.capitalPerGram==='number'&&it.capitalPerGram>0) return is+it.capitalPerGram*Math.max(0,it.grams||0);
+      if(typeof it.capitalPerUnit==='number'&&it.capitalPerUnit>0) return is+it.capitalPerUnit*Math.max(0,it.qty||1);
+      return is; // no cost data — never use selling price
     },0);
   },0);
   const grossProfit=totalSales-totalCOGS;
@@ -9307,7 +9316,7 @@ function startAutoRefresh(){
       try { renderMap[_activePage]?.(); } catch(e){}
       if(currentRole==='rider') try{renderRiderParcels();}catch(e){}
     } catch(e){ console.warn('Auto-refresh error:',e.message); }
-  }, 10000); // every 10 seconds
+  }, 5000); // every 5 seconds — faster cross-device reflection
 }
 
 // ============================================================
