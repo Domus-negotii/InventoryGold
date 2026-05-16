@@ -8794,11 +8794,13 @@ async function initApp(){
   const syncEl = document.getElementById('sync-indicator');
   if(syncEl){ syncEl.textContent='⬤ Offline'; syncEl.style.color='var(--muted)'; }
 
-  // ── Load from Firebase and smart-merge with localStorage ──────
+  // ── Load from Firebase — use prefetched data if available (instant), else fetch ──
   if(window._fbReady && window.loadFromFirebase){
     try {
       if(syncEl){ syncEl.textContent='☁ Loading...'; syncEl.style.color='var(--orange)'; }
-      const fbData = await window.loadFromFirebase();
+      // If background prefetch already ran, use that data — no extra network call needed
+      const fbData = (_prefetchDone && _prefetchedData) ? _prefetchedData : await window.loadFromFirebase();
+      _prefetchedData = null; _prefetchDone = false; // clear after use
 
       if(fbData){
         // ── Smart merge — Firebase is source of truth ────────────────
@@ -10593,6 +10595,52 @@ const _freshStartDone = !!localStorage.getItem(_FRESH_FLAG);
     }
   }, 4000);
 })();
+
+// ── 1. BACKGROUND DATA PREFETCH ─────────────────────────────────────────────
+// Fetches full Firebase data immediately on page load (before login).
+// When user logs in, data is already in S → instant render, no waiting.
+// setTimeout(0) ensures all script blocks have finished parsing first.
+let _prefetchedData = null;
+let _prefetchDone   = false;
+
+setTimeout(async function(){
+  try {
+    if(!window.loadFromFirebase) return;
+    const fbData = await window.loadFromFirebase();
+    if(!fbData) return;
+    _prefetchedData = fbData;
+    _prefetchDone   = true;
+
+    // Merge into S now — data ready the moment user logs in
+    const _dIds = Array.isArray(fbData.deletedOrders) ? fbData.deletedOrders : [];
+    const _SU   = new Set(['inventory','riders','locations']);
+    ['orders','riders','locations','payroll','expenses','inventory',
+     'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
+     'returnLog','deletedOrders','mergeLog'].forEach(k=>{
+      const local  = Array.isArray(S[k])      ? S[k]      : [];
+      const remote = Array.isArray(fbData[k]) ? fbData[k] : [];
+      if(_SU.has(k)){
+        S[k] = (fbData[k]!==undefined&&fbData[k]!==null) ? remote : local;
+      } else if(k==='adminNames'){
+        S[k] = remote;
+      } else {
+        S[k] = (typeof _unionMerge==='function') ? _unionMerge(local,remote,_dIds) : remote;
+      }
+    });
+    if(fbData.adminAccounts!==undefined)
+      S.adminAccounts = Array.isArray(fbData.adminAccounts) ? fbData.adminAccounts : [];
+    ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
+      if(fbData[k]!==undefined) S[k]=fbData[k];
+    });
+    if(fbData.ownerPwHash && fbData.ownerPwHash!=='')
+      localStorage.setItem('gce_pw_hash', fbData.ownerPwHash);
+    if(typeof KEY!=='undefined') localStorage.setItem(KEY, JSON.stringify(S));
+
+    console.log('[GCE] Background prefetch done — data ready for instant login render.');
+  } catch(e){
+    console.warn('[GCE] Prefetch failed (offline?):', e.message);
+  }
+}, 0);
 
 // Show login screen on load (login screen is visible by default)
 // initApp() is called after successful doLogin()
