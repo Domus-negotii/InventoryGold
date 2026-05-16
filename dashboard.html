@@ -8803,8 +8803,9 @@ async function initApp(){
           const local  = Array.isArray(S[k])      ? S[k]      : [];
           const remote = Array.isArray(fbData[k]) ? fbData[k] : [];
           if(_SETUP_KEYS.has(k)){
-            // Setup data: Firebase wins if non-empty, protect from empty-device overwrite
-            S[k] = remote.length > 0 ? remote : local;
+            // Setup data: Firebase wins if key is defined (even if empty array — means cleared)
+            // Only fall back to local if Firebase has no data for this key at all
+            S[k] = (fbData[k] !== undefined && fbData[k] !== null) ? remote : local;
           } else if(k === 'adminNames'){
             // adminNames: Firebase always wins — deletions propagate
             S[k] = remote;
@@ -8990,8 +8991,8 @@ function startAutoRefresh(){
         const local  = Array.isArray(S[k])      ? S[k]      : [];
         const remote = Array.isArray(fbData[k]) ? fbData[k] : [];
         if(_SETUP_KEYS.has(k)){
-          // Setup data: Firebase wins if non-empty, protect from empty-device overwrite
-          S[k] = remote.length > 0 ? remote : local;
+          // Setup data: Firebase wins if key is defined (even empty = intentionally cleared)
+          S[k] = (fbData[k] !== undefined && fbData[k] !== null) ? remote : local;
         } else if(k === 'adminNames'){
           // adminNames: Firebase always wins — deletions propagate
           S[k] = remote;
@@ -10607,7 +10608,7 @@ document.addEventListener('visibilitychange', async ()=>{
       const local=Array.isArray(S[k])?S[k]:[];
       const remote=Array.isArray(fbData[k])?fbData[k]:[];
       if(_SETUP_KEYS3.has(k)){
-        S[k]=remote.length>0?remote:local;
+        S[k]=(fbData[k]!==undefined&&fbData[k]!==null)?remote:local;
       } else if(k==='adminNames'){
         S[k]=remote;
       } else {
