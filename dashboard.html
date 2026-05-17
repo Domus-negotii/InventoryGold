@@ -1712,7 +1712,13 @@ function _showRulesHint() {
       <input type="date" class="form-control" id="remit-page-date" style="width:155px;font-size:11px;" oninput="renderRemitPage()" title="Filter by date">
       <button class="btn btn-outline btn-sm" onclick="document.getElementById('remit-page-date').value='';renderRemitPage()">All Dates</button>
     </div>
-    <button class="btn btn-gold" onclick="openRemitModal()">+ Add Remit Entry</button>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div id="remit-page-total-net" style="display:none;background:rgba(46,204,138,0.1);border:1px solid var(--green);border-radius:8px;padding:6px 14px;font-size:12px;">
+        <span style="color:var(--muted);">Total Net (All Riders):</span>
+        <strong id="remit-page-total-net-val" style="color:var(--green);font-size:15px;margin-left:6px;">₱0.00</strong>
+      </div>
+      <button class="btn btn-gold" onclick="openRemitModal()">+ Add Remit Entry</button>
+    </div>
   </div>
   <div id="remit-page-content"></div>
 </div>
@@ -3531,6 +3537,12 @@ function updateVerifStatus(orderIdx, status) {
     }
     o.verificationStatus = 'Verified';
     o.checkerStatus = 'Verified';
+    // ── Set lbcStatus so Sorter sees Ready to Pick-up immediately ────────
+    const _advStUV=['Drop off at LBC','Drop off at EMS','Drop off at FedEx',
+      'Out for Delivery','Delivered','RTO','ODZ/Incomplete Details'];
+    if(!_advStUV.includes(o.lbcStatus)){
+      S.orders[orderIdx].lbcStatus = 'Ready to Pick-up';
+    }
   } else {
     // ── Restore inventory on Un-verify ───────────────────────────
     if(_invDeducted(o)) {
@@ -3540,6 +3552,10 @@ function updateVerifStatus(orderIdx, status) {
     }
     o.verificationStatus = 'Not Verified';
     o.checkerStatus = 'Pending';
+    // Reset lbcStatus back to Preparing when un-verified
+    if(o.lbcStatus === 'Ready to Pick-up'){
+      S.orders[orderIdx].lbcStatus = 'Preparing';
+    }
   }
   save(); renderChecker();
   toast(`✅ Verification: ${status}${status==='Verified'?' — Inventory deducted.':' — Inventory restored.'}`);
@@ -3576,15 +3592,21 @@ function verifyOrder(i){
   }
   S.orders[i].checkerStatus='Verified';
   S.orders[i].verificationStatus='Verified';
-  // ── Set lbcStatus so Sorter sees "Ready to Pick-up" immediately ──────────
-  const _advancedStatuses=['Drop off at LBC','Drop off at EMS','Drop off at FedEx',
-    'Out for Delivery','Delivered','RTO','ODZ/Incomplete Details'];
-  if(!_advancedStatuses.includes(S.orders[i].lbcStatus)){
-    S.orders[i].lbcStatus = 'Ready to Pick-up';
+  // ── Set lbcStatus so Sorter sees "Ready to Pick-up" (LBC/EMS/FedEx only) ─
+  const _isCourierOrder = o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx';
+  if(_isCourierOrder) {
+    const _advancedStatuses=['Drop off at LBC','Drop off at EMS','Drop off at FedEx',
+      'Out for Delivery','Delivered','RTO','ODZ/Incomplete Details'];
+    if(!_advancedStatuses.includes(S.orders[i].lbcStatus)){
+      S.orders[i].lbcStatus = 'Ready to Pick-up';
+    }
   }
   persist();
   save();
-  toast('✅ Order verified! Ready to Pick-up. Sorter can now assign rider.');
+  const _toastMsg = _isCourierOrder
+    ? '✅ Order verified! Ready to Pick-up. Sorter can now assign rider.'
+    : '✅ Order verified! Inventory deducted. Rider can now pick-up.';
+  toast(_toastMsg);
   renderChecker();
 }
 function unverifyOrder(i){
@@ -3618,6 +3640,11 @@ function unverifyOrder(i){
   }
   S.orders[i].checkerStatus='Pending';
   S.orders[i].verificationStatus='Not Verified';
+  // ── Reset lbcStatus for courier orders back to Preparing ─────────────────
+  const _isCourierUnv = o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx';
+  if(_isCourierUnv && S.orders[i].lbcStatus === 'Ready to Pick-up'){
+    S.orders[i].lbcStatus = 'Preparing';
+  }
   save(); toast('↩ Set back to Pending. Inventory restored.'); renderChecker();
 }
 
@@ -5126,7 +5153,15 @@ function switchInvTab(t){
   invTab=t;
   document.querySelectorAll('#inv-tabs .tab-btn').forEach((b,i)=>b.classList.toggle('active',['list','stockin','stockout','ledger'][i]===t));
   const btn=document.getElementById('inv-action-btn');
-  if(t==='list')btn.innerHTML=`<button class="btn btn-gold" onclick="openAddInvModal()">+ Add Product</button>`;
+  if(t==='list')btn.innerHTML=`
+    <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;">
+      <button class="btn btn-gold" onclick="openAddInvModal()">+ Add Product</button>
+      <button class="btn btn-outline" onclick="exportInventoryToExcel()" title="Export inventory to CSV/Excel">📥 Export Excel</button>
+      <label class="btn btn-outline" style="cursor:pointer;margin:0;" title="Import inventory from CSV">
+        📤 Import Excel
+        <input type="file" accept=".csv,.xlsx,.xls" style="display:none;" onchange="importInventoryFromExcel(this)">
+      </label>
+    </div>`;
   else if(t==='stockin')btn.innerHTML=`<button class="btn btn-green" onclick="openStockModal('in')">+ Stock In</button>`;
   else if(t==='stockout')btn.innerHTML=`<button class="btn btn-orange" onclick="openStockModal('out')">↓ Stock Out</button><button class="btn btn-outline" style="margin-left:6px;" onclick="openStockModal('adj')">⚙ Adjustment</button>`;
   else btn.innerHTML='';
@@ -5338,6 +5373,110 @@ function renderInv(tab){
     const li = document.getElementById('ledger-search');
     if(li && _invSearch.ledQ){ li.focus(); li.setSelectionRange(li.value.length,li.value.length); }
   }
+}
+
+// ── INVENTORY EXPORT / IMPORT (CSV/Excel) ──────────────────────────────────
+function exportInventoryToExcel() {
+  if(!S.inventory.length){ toast('⚠️ Walang inventory na i-export'); return; }
+  const rows = [
+    ['Serial Code','Description','Type','Category','Grams','Per Gram (₱)','Capital/Gram (₱)',
+     'Fix Price (₱)','Capital/Unit (₱)','Qty (pcs)','Stock Value (₱)','Capital Value (₱)']
+  ];
+  S.inventory.forEach(it => {
+    const isFix = it.itemType === 'fixprice';
+    const stockVal   = isFix ? (it.fixPrice||0)*(it.qty||0) : (it.grams||0)*(it.pergram||0);
+    const capVal     = isFix ? (it.capitalPerUnit||0)*(it.qty||0) : (it.grams||0)*(it.capitalPerGram||0);
+    rows.push([
+      it.code||'',
+      it.desc||'',
+      isFix ? 'Fix Price' : 'By Grams',
+      it.category||'gold',
+      isFix ? '' : (it.grams||0),
+      isFix ? '' : (it.pergram||0),
+      isFix ? '' : (it.capitalPerGram||0),
+      isFix ? (it.fixPrice||0) : '',
+      isFix ? (it.capitalPerUnit||0) : '',
+      isFix ? (it.qty||0) : '',
+      stockVal.toFixed(2),
+      capVal.toFixed(2)
+    ]);
+  });
+  // BOM for Excel UTF-8 compatibility
+  const BOM = '\uFEFF';
+  const csv = BOM + rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = 'goldchelle-inventory-'+today()+'.csv'; a.click();
+  URL.revokeObjectURL(url);
+  toast('✅ Inventory exported! Open sa Excel or Google Sheets.');
+}
+
+function importInventoryFromExcel(input) {
+  const file = input.files[0]; if(!file){ return; }
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const text = e.target.result.replace(/^\uFEFF/,''); // strip BOM
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if(lines.length < 2){ toast('⚠️ CSV is empty or invalid'); input.value=''; return; }
+    // Parse CSV — handle quoted fields
+    const parseRow = row => {
+      const result = []; let cur = '', inQ = false;
+      for(let i=0;i<row.length;i++){
+        const c=row[i];
+        if(c==='"' && !inQ){ inQ=true; }
+        else if(c==='"' && inQ && row[i+1]==='"'){ cur+='"'; i++; }
+        else if(c==='"' && inQ){ inQ=false; }
+        else if(c===',' && !inQ){ result.push(cur.trim()); cur=''; }
+        else { cur+=c; }
+      }
+      result.push(cur.trim());
+      return result;
+    };
+    const headers = parseRow(lines[0]).map(h=>h.toLowerCase());
+    const codeIdx  = headers.findIndex(h=>h.includes('code'));
+    const descIdx  = headers.findIndex(h=>h.includes('desc'));
+    const typeIdx  = headers.findIndex(h=>h.includes('type'));
+    const catIdx   = headers.findIndex(h=>h.includes('categ'));
+    const gramsIdx = headers.findIndex(h=>h.includes('gram') && !h.includes('per') && !h.includes('cap'));
+    const perGIdx  = headers.findIndex(h=>h.includes('per gram'));
+    const capGIdx  = headers.findIndex(h=>h.includes('capital') && h.includes('gram'));
+    const fpIdx    = headers.findIndex(h=>h.includes('fix price'));
+    const capUIdx  = headers.findIndex(h=>h.includes('capital') && h.includes('unit'));
+    const qtyIdx   = headers.findIndex(h=>h.includes('qty'));
+
+    let added=0, updated=0, skipped=0;
+    lines.slice(1).forEach(line => {
+      if(!line.trim()) return;
+      const cols = parseRow(line);
+      const code = (cols[codeIdx]||'').trim().toUpperCase();
+      if(!code){ skipped++; return; }
+      const desc    = (cols[descIdx]||'').trim();
+      const typeStr = (cols[typeIdx]||'').trim().toLowerCase();
+      const isFix   = typeStr.includes('fix');
+      const cat     = (cols[catIdx]||'gold').trim().toLowerCase();
+      const obj = {
+        code, desc,
+        itemType   : isFix ? 'fixprice' : 'grams',
+        category   : (cat==='silver'||cat==='🥈 silver') ? 'silver' : 'gold',
+        grams      : isFix ? 0 : parseFloat(cols[gramsIdx]||0)||0,
+        pergram    : isFix ? 0 : parseFloat(cols[perGIdx]||0)||0,
+        capitalPerGram: isFix ? 0 : parseFloat(cols[capGIdx]||0)||0,
+        fixPrice   : isFix ? parseFloat(cols[fpIdx]||0)||0 : 0,
+        capitalPerUnit: isFix ? parseFloat(cols[capUIdx]||0)||0 : 0,
+        qty        : isFix ? parseInt(cols[qtyIdx]||0)||0 : 0
+      };
+      const existing = S.inventory.findIndex(it => it.code === code);
+      if(existing >= 0){ S.inventory[existing] = {...S.inventory[existing], ...obj}; updated++; }
+      else { S.inventory.push(obj); added++; }
+    });
+    save();
+    input.value = '';
+    toast(`✅ Import done! ${added} added, ${updated} updated, ${skipped} skipped.`);
+    renderInv(invTab);
+  };
+  reader.onerror = () => { toast('⚠️ File read error'); input.value=''; };
+  reader.readAsText(file, 'UTF-8');
 }
 
 function openAddInvModal() {
@@ -8225,7 +8364,28 @@ function renderRemitPage() {
   });
   if(!filteredLog.length) {
     el.innerHTML = `<div class="card"><p style="color:var(--muted);padding:20px;text-align:center;">Walang remit entries${df?' para sa petsang ito':''}.</p></div>`;
+    // Hide total net when empty
+    const tEl=document.getElementById('remit-page-total-net'); if(tEl) tEl.style.display='none';
     return;
+  }
+
+  // ── Compute & display grand total net (all riders) ────────────────────────
+  const grandAllNet = filteredLog.reduce((s,e) => s + (e.netTotal||e.netEarn||0), 0);
+  const grandAllSub = filteredLog.reduce((s,e) => s + (e.codSubtotal||e.subtotal||0), 0);
+  const grandPending= filteredLog.filter(e=>(e.remitStatus||'For Remittance')!=='Remitted').length;
+  const totEl  = document.getElementById('remit-page-total-net');
+  const totVal = document.getElementById('remit-page-total-net-val');
+  if(totEl) {
+    totEl.style.display = 'flex';
+    totEl.style.flexDirection = 'column';
+    totEl.style.gap = '2px';
+    totEl.innerHTML = `
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Total Net — All Riders${df?' ('+df+')':''}</div>
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
+        <span style="font-size:15px;font-weight:700;color:var(--green);">${p(grandAllNet)}</span>
+        <span style="font-size:10.5px;color:var(--muted);">Subtotal: <strong style="color:var(--blue);">${p(grandAllSub)}</strong></span>
+        ${grandPending>0?`<span style="font-size:10.5px;color:var(--orange);">⏳ ${grandPending} pending</span>`:'<span style="font-size:10.5px;color:var(--green);">✅ All Remitted</span>'}
+      </div>`;
   }
 
   // Helper: build cancelled items detail for a remit entry
@@ -9062,7 +9222,6 @@ function startAutoRefresh(){
       S.tabPasswords=Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},lTP2,rTP2);
       // adminAccounts: Firebase is ALWAYS the source of truth — replace, never merge
       S.adminAccounts=Array.isArray(fbData.adminAccounts)?fbData.adminAccounts:(S.adminAccounts||[]);
-      S.adminAccounts=merged;
       // Ensure required fields
       if(!Array.isArray(S.adminNames))    S.adminNames=[];
       if(!S.adminAccounts)    S.adminAccounts=[];
@@ -9074,23 +9233,24 @@ function startAutoRefresh(){
       // Re-render active page silently
       const renderMap = {
         dashboard:()=>renderDash?.(),
-        orders:()=>renderOrders?.(),
+        orders:()=>{ try{initOrdersPage();}catch(e){} },
         checker:()=>renderChecker?.(),
         tracking:()=>renderTracking?.(),
         riders:()=>renderRiders?.(),
         dailyparcels:()=>renderDailyParcels?.(),
         sorting:()=>renderSorting?.(),
-        returns:()=>renderCancelledItems?.(),
+        returns:()=>renderReturns?.(),
         dailysales:()=>renderDailySales?.(),
-        payroll:()=>renderPayroll?.(),
+        payroll:()=>renderPayroll(payTab),
         expenses:()=>renderExpenses?.(),
         pnl:()=>renderPnl?.(),
-        inventory:()=>()=>renderInv(invTab),
+        inventory:()=>renderInv(invTab),
         adminsheets:()=>renderAdminSheets?.(),
         ridersremit:()=>renderRemitPage?.(),
         cashbond:()=>renderCashbondPage?.(),
         benefits:()=>renderBenefitsPage?.(),
-        riderdash:()=>renderRiderDash?.(),
+        incentives:()=>renderIncentivesPage?.(),
+        riderdash:()=>renderRiderParcels?.(),
         calendar:()=>renderCalendar?.(),
         ordermgmt:()=>renderOrderMgmt?.(),
         deletedorders:()=>renderDeletedOrders?.(),
