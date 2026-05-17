@@ -515,11 +515,16 @@ window.syncToFirebase = async function(S, _retryCount) {
     const rA = await _patch(fieldsA);
 
     if(rA.status === 429){
-      // Trip the circuit breaker — pause ALL writes for 60s
-      const e=el(); if(e){e.style.color='var(--orange)';e.textContent='☁ Quota (60s)';}
-      console.warn('[GCE] 429 on Chunk A — circuit open for 60s, queuing write');
-      _fbQueuedWrite = JSON.parse(JSON.stringify(S)); // queue current state
-      _openCircuit(60000); // 60s cooldown
+      // Rate limited — exponential backoff: 2s → 4s → 8s, max 3 retries
+      const e=el(); if(e){e.style.color='var(--orange)';e.textContent='☁ Retrying...';}
+      if(_retryCount < 3){
+        const delay = Math.pow(2, _retryCount+1) * 1000;
+        console.warn(`[GCE] 429 — retrying in ${delay/1000}s (attempt ${_retryCount+1}/3)`);
+        setTimeout(()=>window.syncToFirebase(S, _retryCount+1), delay);
+      } else {
+        const e2=el(); if(e2){e2.style.color='var(--red)';e2.textContent='☁ Sync Error';}
+        console.warn('[GCE] 429 persists after 3 retries');
+      }
       return;
     }
 
@@ -535,10 +540,14 @@ window.syncToFirebase = async function(S, _retryCount) {
     const rB = await _patch(fieldsB);
 
     if(rB.status === 429){
-      // Chunk B rate limited — open circuit, queue the full state for retry
-      console.warn('[GCE] 429 on Chunk B — circuit open for 60s');
-      _fbQueuedWrite = JSON.parse(JSON.stringify(S));
-      _openCircuit(60000);
+      // Chunk B rate limited — schedule retry for just Chunk B
+      if(_retryCount < 3){
+        const delay = Math.pow(2, _retryCount+1) * 1000;
+        setTimeout(async ()=>{
+          const rRetry = await _patch(fieldsB);
+          if(!rRetry.ok) console.warn('[GCE] Chunk B retry failed:', rRetry.status);
+        }, delay);
+      }
     }
 
     // Both done — update indicator
@@ -556,38 +565,24 @@ window.syncToFirebase = async function(S, _retryCount) {
 window.loadFromFirebase = async function() {
   const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
   const _syncEl = ()=>document.getElementById('sync-indicator');
-
-  // ── Throttle reads: skip if last successful read was <25s ago ───────────────
-  const _now = Date.now();
-  if(window._lastFbRead && (_now - window._lastFbRead) < 25000) return null;
-
   try {
     const r = await fetch(url, {cache:'no-cache'});
 
     // 404 = fresh database, no data yet — OK
     if(r.status === 404) {
       const el=_syncEl(); if(el){el.style.color='var(--green)';el.textContent='☁ Online';}
-      window._lastFbRead = _now;
       return null;
     }
     // 403 = Firestore rules blocking unauthenticated access
     if(r.status === 403) {
       const el=_syncEl(); if(el){el.style.color='var(--orange)';el.textContent='☁ Rules!';}
-      _showRulesHint?.();
-      return null;
-    }
-    // 429 = rate limited — back off, do not count as successful read
-    if(r.status === 429) {
-      const el=_syncEl(); if(el){el.style.color='var(--orange)';el.textContent='☁ Quota...';}
-      console.warn('[GCE] loadFromFirebase 429 — throttling reads for 60s');
-      window._lastFbRead = _now + 35000; // force 60s+ wait before next read
+      _showRulesHint();
       return null;
     }
     if(!r.ok) {
       const el=_syncEl(); if(el){el.style.color='var(--orange)';el.textContent='☁ Error '+r.status;}
       return null;
     }
-    window._lastFbRead = _now; // mark successful read time
     const doc = await r.json();
     if(!doc.fields) {
       const el=_syncEl(); if(el){el.style.color='var(--green)';el.textContent='☁ Online';}
@@ -925,8 +920,6 @@ function _showRulesHint() {
     <div class="user-badge">
       <span id="topbar-date" style="font-size:11px;color:var(--muted);"></span>
       <span id="sync-indicator" class="sync-indicator" style="color:var(--muted);">⬤ Offline</span>
-      <button class="btn btn-outline btn-sm no-print" id="btn-refresh" onclick="manualRefresh()" title="Pull latest data from Firebase" style="font-size:10px;padding:3px 8px;">🔄 Refresh</button>
-      <button class="btn btn-gold btn-sm no-print" id="btn-manual-save" onclick="manualSaveSync()" title="Force save & sync to Firebase now" style="font-size:10px;padding:3px 8px;">💾 Save</button>
       <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Light/Dark Mode">🌙</button>
       <span class="user-role-tag" id="user-role-tag">Admin</span>
       <span class="badge-pill" id="user-name-badge">Goldchelle</span>
@@ -1551,7 +1544,6 @@ function _showRulesHint() {
           <p style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Export backup or clear all data. Cannot be undone.</p>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button class="btn btn-outline" onclick="exportData()">📤 Export JSON Backup</button>
-            <button class="btn btn-orange" onclick="clearAllTransactions()">🧹 Clear Transactions</button>
             <button class="btn btn-red" onclick="clearAllData()">🗑️ Clear All Data</button>
           </div>
         </div>
@@ -4907,7 +4899,7 @@ function switchInvTab(t){
   invTab=t;
   document.querySelectorAll('#inv-tabs .tab-btn').forEach((b,i)=>b.classList.toggle('active',['list','stockin','stockout','ledger'][i]===t));
   const btn=document.getElementById('inv-action-btn');
-  if(t==='list')btn.innerHTML=`<button class="btn btn-gold" onclick="openAddInvModal()">+ Add Product</button><button class="btn btn-outline btn-sm" onclick="exportInventoryToExcel()" style="font-size:11px;">📥 Export Excel</button><label class="btn btn-outline btn-sm" style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;" title="Import CSV backup">📤 Import Excel<input type="file" accept=".csv" style="display:none;" onchange="importInventoryFromExcel(this)"></label>`;
+  if(t==='list')btn.innerHTML=`<button class="btn btn-gold" onclick="openAddInvModal()">+ Add Product</button>`;
   else if(t==='stockin')btn.innerHTML=`<button class="btn btn-green" onclick="openStockModal('in')">+ Stock In</button>`;
   else if(t==='stockout')btn.innerHTML=`<button class="btn btn-orange" onclick="openStockModal('out')">↓ Stock Out</button><button class="btn btn-outline" style="margin-left:6px;" onclick="openStockModal('adj')">⚙ Adjustment</button>`;
   else btn.innerHTML='';
@@ -5598,107 +5590,6 @@ function renderSettingsSummary(){
     <div class="info-row"><span style="color:var(--muted);">Inventory Products</span><strong>${S.inventory.length}</strong></div>
     <div class="info-row" style="border-bottom:none;"><span style="color:var(--muted);">Stock Transactions</span><strong>${S.stockLog.length}</strong></div>`;
 }
-// ── Export Inventory to Excel (CSV) ──────────────────────────────────────────
-function exportInventoryToExcel(){
-  if(!S.inventory||!S.inventory.length){ toast('⚠️ Walang inventory data.'); return; }
-  const esc=v=>{
-    const s=String(v==null?'':v);
-    return(s.includes(',')||s.includes('"')||s.includes('\n'))?'"'+s.replace(/"/g,'""')+'"':s;
-  };
-  const rows=[['Serial Code','Description','Type','Category','Stock','Selling Price','Capital Cost','Stock Value','Profit/Unit']];
-  S.inventory.forEach(it=>{
-    const isFix=it.itemType==='fixprice';
-    const stock   = isFix?(it.qty||0):(it.grams||0);
-    const unit    = isFix?'pcs':'g';
-    const sell    = isFix?(it.fixPrice||0):(it.pergram||0);
-    const cap     = isFix?(it.capitalPerUnit||0):(it.capitalPerGram||0);
-    const stockVal= parseFloat((cap*stock).toFixed(2));
-    const profit  = parseFloat((sell-cap).toFixed(2));
-    rows.push([esc(it.code),esc(it.desc),esc(isFix?'Fix Price':'By Grams'),
-      esc(it.category||'—'),esc(stock+' '+unit),
-      esc('₱'+sell.toFixed(2)+'/'+unit),esc('₱'+cap.toFixed(2)+'/'+unit),
-      esc('₱'+stockVal.toFixed(2)),esc('₱'+profit.toFixed(2)+'/'+unit)]);
-  });
-  const csv=rows.map(r=>r.join(',')).join('\n');
-  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;a.download='goldchelle-inventory-'+today()+'.csv';a.click();
-  setTimeout(()=>URL.revokeObjectURL(url),3000);
-  toast('✅ Inventory exported!');
-}
-
-// ── Import Inventory from CSV Backup ─────────────────────────────────────────
-function importInventoryFromExcel(input){
-  const file=input.files[0]; if(!file)return;
-  input.value='';
-  const ext=file.name.split('.').pop().toLowerCase();
-  if(ext!=='csv'){ toast('⚠️ I-save muna as .csv sa Excel bago mag-import.'); return; }
-  const reader=new FileReader();
-  reader.onload=function(e){
-    try{
-      const text=e.target.result.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
-      const lines=text.split('\n').filter(l=>l.trim());
-      if(lines.length<2){toast('⚠️ Walang data sa file.');return;}
-      const parseRow=line=>{
-        const cols=[];let cur='',inQ=false;
-        for(const c of line){
-          if(c==='"'){inQ=!inQ;}
-          else if(c===','&&!inQ){cols.push(cur.trim());cur='';}
-          else cur+=c;
-        }
-        cols.push(cur.trim());return cols;
-      };
-      const header=parseRow(lines[0]).map(h=>h.toLowerCase().replace(/[^a-z0-9]/g,''));
-      const col=(...names)=>{for(const n of names){const i=header.findIndex(h=>h.includes(n));if(i>=0)return i;}return -1;};
-      const cCode=col('serialcode','code');
-      const cDesc=col('desc','name','description');
-      const cType=col('type');
-      const cCat =col('cat','category');
-      const cStock=col('stock');
-      const cSell =col('selling','price','pergram','fixprice');
-      const cCap  =col('capital');
-      if(cCode<0||cDesc<0){toast('⚠️ Hindi mahanap ang Code/Description column.');return;}
-      let added=0,updated=0,skipped=0;
-      lines.slice(1).forEach(line=>{
-        const cols=parseRow(line);
-        const code=(cols[cCode]||'').trim().toUpperCase();
-        const desc=(cols[cDesc]||'').trim();
-        if(!code||!desc){skipped++;return;}
-        const typeRaw=(cols[cType]||'').toLowerCase();
-        const isFix=typeRaw.includes('fix')||typeRaw.includes('piece')||typeRaw.includes('pc');
-        const cat  =(cols[cCat]||'gold').toLowerCase().trim()||'gold';
-        const stock=parseFloat((cols[cStock]||'').replace(/[^0-9.]/g,''))||0;
-        const sell =parseFloat((cols[cSell]||'').replace(/[^0-9.]/g,''))||0;
-        const cap  =parseFloat((cols[cCap]||'').replace(/[^0-9.]/g,''))||0;
-        const existing=S.inventory.findIndex(it=>it.code===code);
-        const obj=isFix
-          ?{code,desc,itemType:'fixprice',category:cat,fixPrice:sell,capitalPerUnit:cap,qty:stock,grams:0,pergram:0}
-          :{code,desc,itemType:'grams',category:cat,pergram:sell,capitalPerGram:cap,grams:stock,qty:0,fixPrice:0};
-        if(existing>=0){S.inventory[existing]={...S.inventory[existing],...obj};updated++;}
-        else{S.inventory.push(obj);added++;}
-      });
-      save();
-      renderInv(invTab||'list');
-      toast(`✅ Import done! ${added} added · ${updated} updated · ${skipped} skipped`);
-    }catch(err){toast('❌ Import failed: '+err.message);}
-  };
-  reader.readAsText(file);
-}
-
-// ── Clear All Transactions — Owner only ───────────────────────────────────────
-// Clears: orders, payroll, expenses, logs
-// SAFE: inventory, riders, locations, passwords, settings are NEVER touched
-function clearAllTransactions(){
-  const ans=prompt('⚠️ CLEAR ALL TRANSACTIONS\n\nMabubura:\n• Orders\n• Payroll & Expenses\n• Remit / Cashbond / Benefits / Return Logs\n\nHINDI mabubura:\n• Inventory\n• Riders & Locations\n• Passwords & Settings\n\nType CLEAR to confirm:');
-  if(ans!=='CLEAR'){toast('Cancelled.');return;}
-  const TX=['orders','payroll','expenses','remitLog','cashbondLog','benefitsLog','returnLog','stockLog','deletedOrders','mergeLog'];
-  TX.forEach(k=>{S[k]=[];});
-  save();
-  toast('✅ All transactions cleared!');
-  try{renderDash();}catch(e){}
-}
-
 function exportData(){
   const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
@@ -6167,68 +6058,6 @@ function unlockPage(page){
   const inp=document.getElementById('lock-pw-'+page); if(inp)inp.value='';
 }
 
-// ── Manual Refresh — force-pull latest data from Firebase ────────────────────
-async function manualRefresh(){
-  const btn = document.getElementById('btn-refresh');
-  if(btn){ btn.disabled=true; btn.textContent='🔄 ...'; }
-  try {
-    if(!window._fbReady || !window.loadFromFirebase){
-      toast('⚠️ Not connected to Firebase.'); return;
-    }
-    // Bypass the 25s throttle for manual refresh
-    window._lastFbRead = 0;
-    const fbData = await window.loadFromFirebase();
-    if(fbData){
-      const keys = ['orders','riders','locations','payroll','expenses','inventory',
-                    'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
-                    'returnLog','govSettings','bizInfo','tabPasswords','adminAccounts'];
-      keys.forEach(k=>{ if(fbData[k]!==undefined) S[k]=fbData[k]; });
-      persist();
-      try{ (({
-        dashboard:renderDash,orders:renderOrders,checker:renderChecker,
-        tracking:renderTracking,riders:renderRiders,sorting:renderSorting,
-        returns:renderCancelledItems,payroll:()=>renderPayroll?.(),
-        expenses:renderExpenses,pnl:renderPnl,inventory:renderInventory,
-        adminsheets:renderAdminSheets,ridersremit:renderRemitPage,
-        cashbond:renderCashbondPage,benefits:renderBenefitsPage,
-        ordermgmt:renderOrderMgmt,lbcdelivery:renderLbcDelivery,
-        emsdelivery:renderEmsDelivery,fedexdelivery:renderFedexDelivery,
-      })[_activePage]||renderDash)?.(); }catch(e){}
-      toast('✅ Refreshed from Firebase!');
-    } else {
-      toast('☁ Already up to date.');
-    }
-  } catch(e){
-    toast('❌ Refresh failed: '+e.message);
-  } finally {
-    if(btn){ btn.disabled=false; btn.textContent='🔄 Refresh'; }
-  }
-}
-
-// ── Manual Save — force immediate sync to Firebase, bypass debounce ───────────
-async function manualSaveSync(){
-  const btn = document.getElementById('btn-manual-save');
-  if(btn){ btn.disabled=true; btn.textContent='💾 ...'; }
-  try {
-    localStorage.setItem(KEY, JSON.stringify(S));
-    if(!window._fbReady || !window.syncToFirebase){
-      toast('⚠️ Not connected to Firebase.'); return;
-    }
-    // Cancel any pending debounced write and fire immediately
-    _syncPending = false;
-    clearTimeout(_syncDebounceTimer);
-    // If circuit is open due to 429, reset it and try anyway
-    _fbCircuitOpen = false;
-    clearTimeout(_fbCircuitTimer);
-    await window.syncToFirebase(S, 0);
-    toast('✅ Saved & synced to Firebase!');
-  } catch(e){
-    toast('❌ Save failed: '+e.message);
-  } finally {
-    if(btn){ btn.disabled=false; btn.textContent='💾 Save'; }
-  }
-}
-
 function logoutUser(){
   if(!confirm('Logout?'))return;
   currentRole=null;currentUser=null;currentRider=null;selectedRole=null;unlockedPages=new Set();
@@ -6289,27 +6118,6 @@ function saveFbConfig(){
 }
 
 
-// ── Global 429 circuit breaker ────────────────────────────────────────────────
-// When Firebase returns 429, ALL writes pause for a cooldown period
-// This prevents repeated hammering during quota exhaustion
-let _fbCircuitOpen    = false;  // true = Firebase is rate-limiting us right now
-let _fbCircuitTimer   = null;   // timer to reset the circuit
-let _fbQueuedWrite    = null;   // last S snapshot waiting to be written after cooldown
-
-function _openCircuit(cooldownMs) {
-  _fbCircuitOpen = true;
-  clearTimeout(_fbCircuitTimer);
-  _fbCircuitTimer = setTimeout(()=>{
-    _fbCircuitOpen = false;
-    console.log('[GCE] Circuit reset — resuming Firebase writes');
-    // Flush any write that was queued during cooldown
-    if(_fbQueuedWrite && window.syncToFirebase){
-      const snap = _fbQueuedWrite; _fbQueuedWrite = null;
-      window.syncToFirebase(snap, 0);
-    }
-  }, cooldownMs);
-}
-
 // ── Debounce timer for Firebase sync — prevents 429 Too Many Requests ────────
 let _syncDebounceTimer = null;
 let _syncPending = false;
@@ -6320,37 +6128,15 @@ async function save(){
 
   if(!window._fbReady || !window.syncToFirebase) return;
 
-  // If circuit is open (we're in 429 cooldown), queue this write and exit
-  if(_fbCircuitOpen){
-    _fbQueuedWrite = JSON.parse(JSON.stringify(S)); // snapshot current state
-    return;
-  }
-
   // Debounce: collapse rapid saves into ONE Firebase write
-  // 10 rapid status-changes → timer resets each time → fires ONCE after 1.5s
+  // 10 rapid status-changes → timer resets each time → fires ONCE after 1.2s
   _syncPending = true;
   clearTimeout(_syncDebounceTimer);
   _syncDebounceTimer = setTimeout(async ()=>{
     if(!_syncPending) return;
     _syncPending = false;
-    if(!_fbCircuitOpen) await window.syncToFirebase(S);
-    else _fbQueuedWrite = JSON.parse(JSON.stringify(S));
-  }, 1500); // 1.5s quiet period — safe for Firestore rate limits
-}
-
-// ── Periodic autosave — every 30 seconds, silently syncs to Firebase ─────────
-// Ensures data is never lost even if no explicit save() was triggered recently
-let _autoSaveTimer = null;
-function startAutoSave(){
-  if(_autoSaveTimer) clearInterval(_autoSaveTimer);
-  _autoSaveTimer = setInterval(async ()=>{
-    if(!window._fbReady || !window.syncToFirebase) return;
-    if(_fbCircuitOpen) return; // skip during 429 cooldown
-    if(_syncPending) return;   // skip if a debounced save is already pending
-    // Silently sync current state — no toast, no UI change except indicator
-    localStorage.setItem(KEY, JSON.stringify(S));
     await window.syncToFirebase(S);
-  }, 30000); // every 30 seconds
+  }, 1200); // 1.2s quiet period — safe for Firestore rate limits
 }
 
 function persist(){
@@ -8479,7 +8265,6 @@ async function initApp(){
   if(_tbd) _tbd.textContent = new Date().toLocaleDateString('en-PH',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   renderDash();
   startAutoRefresh();
-  startAutoSave(); // periodic silent sync every 30s
 }
 
 // ============ STARTUP ============
@@ -8558,7 +8343,7 @@ function startAutoRefresh(){
       // If rider, always refresh their parcels too
       if(currentRole==='rider') try{renderRiderParcels();}catch(e){}
     } catch(e){ console.warn('Auto-refresh error:',e.message); }
-  }, 45000 + Math.floor(Math.random()*15000)); // 45–60s with jitter (prevents device stampede)
+  }, 30000); // every 30 seconds
 }
 
 // ============================================================
