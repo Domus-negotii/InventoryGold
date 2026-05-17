@@ -2650,7 +2650,7 @@ function renderPage(n){
     orders:initOrdersPage,checker:()=>setCheckerTab(checkerTab),tracking:()=>{renderTracking();refreshUpdateBadge();},ordermgmt:renderOrderMgmt,lbcdelivery:renderLbcDelivery,emsdelivery:renderEmsDelivery,fedexdelivery:renderFedexDelivery,
     riders:renderRiders,dailyparcels:renderDailyParcels,sorting:renderSorting,returns:renderReturns,deletedorders:renderDeletedOrders,
     dailysales:renderDailySales,payroll:()=>renderPayroll(payTab),expenses:renderExpenses,
-    pnl:renderPnl,inventory:()=>renderInv(invTab),adminsheets:renderAdminSheets,settings:renderSettings,
+    pnl:renderPnl,inventory:()=>switchInvTab(invTab),adminsheets:renderAdminSheets,settings:renderSettings,
     ridersremit:renderRemitPage,cashbond:renderCashbondPage,benefits:renderBenefitsPage,incentives:renderIncentivesPage
   })[n]?.();
 }
@@ -9244,7 +9244,7 @@ function startAutoRefresh(){
         payroll:()=>renderPayroll(payTab),
         expenses:()=>renderExpenses?.(),
         pnl:()=>renderPnl?.(),
-        inventory:()=>renderInv(invTab),
+        inventory:()=>switchInvTab(invTab),
         adminsheets:()=>renderAdminSheets?.(),
         ridersremit:()=>renderRemitPage?.(),
         cashbond:()=>renderCashbondPage?.(),
