@@ -480,44 +480,183 @@ function _fromFS(fv) {
   return null;
 }
 
-// ── WRITE to Firestore ────────────────────────────────────────────
-window.syncToFirebase = async function(S) {
-  // Debounced 500ms — always writes current global S
-  _syncPending = true;
-  clearTimeout(_syncDebounceTimer);
-  _syncDebounceTimer = setTimeout(async ()=>{
-    _syncPending = false;
-    const fields = {};
-    ['orders','riders','locations','payroll','expenses','inventory','stockLog',
-     'adminNames','remitLog','cashbondLog','benefitsLog','returnLog',
-     'deletedOrders','mergeLog'].forEach(k=>{
-      fields[k] = _toFS(S[k]||[]);
+// ── Per-Document Order Write ─────────────────────────────────────────────────
+// Each order = its own Firestore doc at gce_orders/{_id}
+// Multiple admins encoding simultaneously → different docs → zero conflict
+
+async function _writeOrderDoc(order){
+  if(!order||!order._id) return false;
+  try{
+    const docId=order._id.replace(/[^a-zA-Z0-9_-]/g,'_');
+    const fields={};
+    Object.entries(order).forEach(([k,v])=>{fields[k]=_toFS(v);});
+    const r=await fetch(`${_FB_BASE}/gce_orders/${docId}?key=${_FB_APIKEY}`,{
+      method:'PATCH',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({fields})
     });
-    ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
-      fields[k] = _toFS(S[k]||{});
-    });
-    fields['adminAccounts'] = _toFS(S.adminAccounts||[]);
-    const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
-    try {
-      const r = await fetch(url, {
-        method:'PATCH',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({fields})
-      });
-      const el = document.getElementById('sync-indicator');
-      if(r.ok){
-        if(el){ el.style.color='var(--green)'; el.textContent='☁ Synced'; }
-        setTimeout(()=>{ const e=document.getElementById('sync-indicator'); if(e&&e.textContent==='☁ Synced') e.textContent='☁ Online'; },2000);
-      } else {
-        if(el){ el.style.color='var(--orange)'; el.textContent='☁ Error '+r.status; }
-        console.warn('[GCE] Firestore PATCH error:', r.status);
-      }
-    } catch(e) {
-      const el=document.getElementById('sync-indicator');
-      if(el){ el.style.color='var(--orange)'; el.textContent='☁ Offline'; }
-      console.warn('[GCE] Firebase sync error:', e.message);
+    return r.ok;
+  }catch(e){console.warn('[GCE] _writeOrderDoc:',e.message);return false;}
+}
+
+async function _deleteOrderDoc(orderId){
+  if(!orderId) return;
+  try{
+    const docId=orderId.replace(/[^a-zA-Z0-9_-]/g,'_');
+    await fetch(`${_FB_BASE}/gce_orders/${docId}?key=${_FB_APIKEY}`,{method:'DELETE'});
+  }catch(e){console.warn('[GCE] _deleteOrderDoc:',e.message);}
+}
+
+async function _loadOrderDocs(){
+  try{
+    const r=await fetch(`${_FB_BASE}/gce_orders?key=${_FB_APIKEY}&pageSize=500`,{cache:'no-cache'});
+    if(!r.ok) return null;
+    const data=await r.json();
+    if(!data.documents) return [];
+    return data.documents.map(doc=>{
+      const o={};
+      Object.entries(doc.fields||{}).forEach(([k,v])=>{o[k]=_fromFS(v);});
+      return o;
+    }).filter(o=>o&&o._id);
+  }catch(e){console.warn('[GCE] _loadOrderDocs:',e.message);return null;}
+}
+
+// Merge local + remote order docs — local-only = new, keep it; timestamp wins on conflict
+function _mergeOrderDocs(local,remote,deleted){
+  if(!remote||!remote.length) return local;
+  const dead=new Set((deleted||[]).map(d=>d._id||'').filter(Boolean));
+  const map=new Map();
+  remote.forEach(o=>{if(o._id)map.set(o._id,o);});
+  local.forEach(o=>{
+    if(!o._id){map.set('_new_'+Math.random(),o);return;}
+    if(map.has(o._id)){
+      const rTs=map.get(o._id)._updatedAt||'0',lTs=o._updatedAt||'0';
+      if(lTs>rTs) map.set(o._id,o);
+    } else {
+      map.set(o._id,o); // local-only = new, keep it
     }
-  }, 500); // 500ms debounce
+  });
+  return [...map.values()].filter(o=>!dead.has(o._id||''));
+}
+
+// Deduplicate S.orders by _id — keeps newest _updatedAt version
+function _dedupeOrders(orders){
+  if(!Array.isArray(orders)) return [];
+  const map=new Map();
+  orders.forEach(o=>{
+    if(!o._id) return;
+    if(map.has(o._id)){const ex=map.get(o._id);if((o._updatedAt||'0')>(ex._updatedAt||'0'))map.set(o._id,o);}
+    else map.set(o._id,o);
+  });
+  return [...map.values()];
+}
+
+// ── Clear All Transactions support ───────────────────────────────────────────
+async function _deleteAllOrderDocs(){
+  try{
+    const r=await fetch(`${_FB_BASE}/gce_orders?key=${_FB_APIKEY}&pageSize=500`,{cache:'no-cache'});
+    if(!r.ok) return;
+    const data=await r.json();
+    if(!data.documents||!data.documents.length) return;
+    await Promise.allSettled(data.documents.map(doc=>{
+      const docUrl=`https://firestore.googleapis.com/v1/${doc.name}?key=${_FB_APIKEY}`;
+      return fetch(docUrl,{method:'DELETE'}).catch(()=>{});
+    }));
+  }catch(e){console.warn('[GCE] _deleteAllOrderDocs:',e.message);}
+}
+
+async function _deleteCollectionDocs(collName){
+  try{
+    const r=await fetch(`${_FB_BASE}/${collName}?key=${_FB_APIKEY}&pageSize=500`,{cache:'no-cache'});
+    if(!r.ok) return;
+    const data=await r.json();
+    if(!data.documents||!data.documents.length) return;
+    await Promise.allSettled(data.documents.map(doc=>{
+      const docUrl=`https://firestore.googleapis.com/v1/${doc.name}?key=${_FB_APIKEY}`;
+      return fetch(docUrl,{method:'DELETE'}).catch(()=>{});
+    }));
+  }catch(e){console.warn('[GCE] _deleteCollectionDocs:',e.message);}
+}
+
+// ── Global Clear support ──────────────────────────────────────────────────────
+function _applyGlobalClear(fbData){
+  if(!fbData) return false;
+  const remoteClearTs=fbData.lastGlobalClear||'0';
+  if(!remoteClearTs||remoteClearTs==='0') return false;
+  const localClearTs=S.lastGlobalClear||localStorage.getItem('gce_last_clear')||'0';
+  if(remoteClearTs<=localClearTs) return false;
+  // Owner cleared — wipe all TX arrays on this device
+  ['orders','returnLog','deletedOrders','stockLog','remitLog','cashbondLog',
+   'benefitsLog','payroll','expenses','mergeLog'].forEach(k=>{S[k]=[];});
+  S.lastGlobalClear=remoteClearTs;
+  localStorage.setItem('gce_last_clear',remoteClearTs);
+  persist();
+  return true;
+}
+
+function _filterClearedOrders(orders){
+  const clearTs=S.lastGlobalClear||localStorage.getItem('gce_last_clear')||'0';
+  if(!clearTs||clearTs==='0') return orders;
+  return (orders||[]).filter(o=>(o._updatedAt||o.createdAt||'0')>clearTs);
+}
+
+// ── _stamp: give every record a unique _id ────────────────────────────────────
+function _uuid(){return Date.now().toString(36)+Math.random().toString(36).slice(2);}
+function _stamp(obj){if(obj&&!obj._id)obj._id=_uuid();}
+
+
+// ── WRITE to Firestore ────────────────────────────────────────────
+// ── _directWriteFirebase: writes all state to gce_state/main ─────────────────
+let _syncDebounceTimer2 = null;
+let _syncPending2 = false;
+
+async function _directWriteFirebase(state, opts){
+  state = state||S;
+  const skipKeys = new Set(opts?.skip||[]);
+  skipKeys.add('orders'); // orders go to gce_orders/{id}, not main doc
+  const fields={};
+  ['orders','riders','locations','payroll','expenses','inventory','stockLog',
+   'adminNames','remitLog','cashbondLog','benefitsLog','returnLog',
+   'deletedOrders','mergeLog'].forEach(k=>{
+    if(!skipKeys.has(k)) fields[k]=_toFS(state[k]||[]);
+  });
+  ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
+    if(!skipKeys.has(k)) fields[k]=_toFS(state[k]||{});
+  });
+  if(!skipKeys.has('adminAccounts')) fields['adminAccounts']=_toFS(state.adminAccounts||[]);
+  // Control fields
+  fields['_lastWrite']=_toFS(Date.now());
+  fields['_pwVersion']=_toFS(localStorage.getItem('gce_pw_version')||'0');
+  const clearTs=(state.lastGlobalClear)||localStorage.getItem('gce_last_clear')||'0';
+  fields['lastGlobalClear']=_toFS(clearTs);
+  // Owner password hash
+  try{
+    const stored=localStorage.getItem('gce_pw_hash');
+    fields['ownerPwHash']=_toFS(stored||'');
+  }catch(e){fields['ownerPwHash']=_toFS('');}
+
+  const url=`${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
+  try{
+    const r=await fetch(url,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields})});
+    const el=document.getElementById('sync-indicator');
+    if(r.ok){
+      if(el){el.style.color='var(--green)';el.textContent='☁ Synced';}
+      setTimeout(()=>{const e=document.getElementById('sync-indicator');if(e&&e.textContent==='☁ Synced')e.textContent='☁ Online';},2000);
+    }else{
+      if(el){el.style.color='var(--orange)';el.textContent='☁ Error '+r.status;}
+    }
+    return r.ok;
+  }catch(e){
+    const el=document.getElementById('sync-indicator');
+    if(el){el.style.color='var(--orange)';el.textContent='☁ Offline';}
+    return false;
+  }
+}
+
+syncToFirebase = async function() {
+  // Always write current global S — debounced 500ms
+  _syncPending2 = true;
+  clearTimeout(_syncDebounceTimer2);
+  _syncDebounceTimer2 = setTimeout(()=>_directWriteFirebase(S), 500); // 500ms debounce
 };
 
 // ── READ from Firestore ───────────────────────────────────────────
@@ -2408,6 +2547,7 @@ if(S.orders) S.orders.forEach(o=>{ if(STATUS_MAP[o.status]) o.status=STATUS_MAP[
 let currentUser = null;
 
 let currentRole = null;
+let currentEditingIndex = null; // tracks which order is being edited (null = new order mode)
 
 // No seed data — app starts clean
 // save() now defined in auth section above (async dual-write)
@@ -2738,6 +2878,7 @@ function openEditOrder(i){
   }
   document.getElementById('enc-shipping').value=o.shipping;
   document.getElementById('enc-edit-idx').value=i;
+  currentEditingIndex = i;
   const pm=document.getElementById('enc-payment-method'); if(pm) pm.value=o.paymentMethod||'COD';
   // Restore tracking number + show/hide tracking field
   const tnInp=document.getElementById('enc-tracking-number'); if(tnInp) tnInp.value=o.trackingNumber||'';
@@ -2948,6 +3089,12 @@ function renderOrders() {
   const pm2cls = m => m==='EMS'||m==='FedEx'?'green':m==='LBC'?'blue':'delivering';
 
   const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
+    // Role isolation: non-owner admins see only their own orders
+    if(currentRole !== 'owner' && currentUser?.role !== 'owner'){
+      const myName=(currentUser?.name||'').trim().toUpperCase();
+      if(!myName) return false;
+      if((o.admin||'').trim().toUpperCase()!==myName) return false;
+    }
     if(_ownerAdminTab !== 'ALL' && o.admin.toUpperCase() !== _ownerAdminTab.toUpperCase()) return false;
     if(mf && (o.paymentMethod||'COD') !== mf) return false;
     if(df && o.date !== df) return false;
@@ -5649,9 +5796,27 @@ function clearAllTransactions(){
   if(ans!=='CLEAR'){toast('Cancelled.');return;}
   const TX=['orders','payroll','expenses','remitLog','cashbondLog','benefitsLog','returnLog','stockLog','deletedOrders','mergeLog'];
   TX.forEach(k=>{S[k]=[];});
-  save();
-  toast('✅ All transactions cleared!');
-  try{renderDash();}catch(e){}
+  const clearTs=new Date().toISOString();
+  S.lastGlobalClear=clearTs;
+  localStorage.setItem('gce_last_clear',clearTs);
+  persist();
+  toast('🧹 Clearing cloud data...');
+  // Delete all order docs so other devices cannot resurrect them
+  Promise.allSettled([
+    _deleteAllOrderDocs(),
+    _deleteCollectionDocs('gce_payroll'),
+    _deleteCollectionDocs('gce_expenses'),
+  ]).then(()=>{
+    clearTimeout(_syncDebounceTimer2);
+    _syncPending2=false;
+    return _directWriteFirebase(S,{skip:['inventory']});
+  }).then(()=>{
+    toast('✅ All transactions cleared on all devices!');
+    try{renderDash();}catch(e){}
+  }).catch(()=>{
+    _directWriteFirebase(S,{skip:['inventory']}).catch(()=>{});
+    toast('✅ Cleared locally. Syncing...');
+  });
 }
 
 function exportData(){
@@ -5679,6 +5844,28 @@ function switchPnlTab(t){
   document.querySelectorAll('#page-pnl .tab-btn').forEach((b,i)=>b.classList.toggle('active',['daily','weekly','monthly'][i]===t));
   renderPnl();
 }
+// ── COGS helper — looks up capital cost from inventory ───────────────────────
+function calcItemCOGS(it){
+  // Step 1: inventory lookup by code
+  const code=(it.code||'').trim().toUpperCase();
+  if(code){
+    const inv=(S.inventory||[]).find(p=>p.code&&p.code.trim().toUpperCase()===code);
+    if(inv){
+      if(inv.itemType==='fixprice'){
+        const cost=Math.max(0,inv.capitalPerUnit||inv.capitalPerPiece||0);
+        return parseFloat((cost*Math.max(0,it.qty||1)).toFixed(2));
+      }else{
+        const cost=Math.max(0,inv.capitalPerGram||0);
+        return parseFloat((cost*Math.max(0,it.grams||0)).toFixed(2));
+      }
+    }
+  }
+  // Step 2: item-level fallback — never use selling price
+  if(it.grams>0){const cpg=it.capitalPerGram||0;if(cpg>0)return parseFloat((cpg*it.grams).toFixed(2));}
+  if(it.qty>0){const cpp=it.capitalPerUnit||it.capitalPerPiece||0;if(cpp>0)return parseFloat((cpp*it.qty).toFixed(2));}
+  return 0;
+}
+
 function renderPnl(){
   if(!document.getElementById('pnl-date').value)document.getElementById('pnl-date').value=today();
   const now=new Date(),ym=now.toISOString().slice(0,7);
@@ -5892,10 +6079,19 @@ function printPnl(){
   setTimeout(()=>{ try{ _win.print(); }catch(e){} }, 400);
 }
 function renderDash(){
-  const total=S.orders.length,del=S.orders.filter(o=>o.status==='Delivered').length;
-  const revenue=S.orders.filter(o=>o.status==='Delivered').reduce((s,o)=>s+o.grandTotal,0);
-  const pending=S.orders.filter(o=>o.checkerStatus==='Pending').length;
-  const todayO=S.orders.filter(o=>o.date===today()).length;
+  // ── Role-scoped pool: admin sees own orders, owner/checker sees all ──────────
+  const _dashOrders=(currentRole!=='owner'&&currentRole!=='checker'&&currentUser?.name)
+    ?S.orders.filter(o=>(o.admin||'').trim().toUpperCase()===currentUser.name.trim().toUpperCase())
+    :S.orders;
+  const fo=(typeof _filterClearedOrders==='function')
+    ?_dedupeOrders(_filterClearedOrders(_dashOrders))
+    :_dashOrders;
+  if(typeof _filterClearedOrders==='function')
+    S.orders=_dedupeOrders(_filterClearedOrders(S.orders||[]));
+  const total=fo.length,del=fo.filter(o=>o.status==='Delivered').length;
+  const revenue=fo.filter(o=>o.status==='Delivered').reduce((s,o)=>s+o.grandTotal,0);
+  const pending=fo.filter(o=>o.checkerStatus==='Pending').length;
+  const todayO=fo.filter(o=>o.date===today()).length;
   const expTotal=S.expenses.reduce((s,e)=>s+parseFloat(e.amount||0),0);
   document.getElementById('dash-stats').innerHTML=`
     <div class="stat-card gold"><div class="stat-label">Total Orders</div><div class="stat-value">${total}</div><div class="stat-sub">All time</div></div>
@@ -6130,11 +6326,19 @@ async function manualRefresh(){
     if(!window._fbReady || !window.loadFromFirebase){
       toast('⚠️ Not connected to Firebase.'); return;
     }
-    // Bypass the 25s throttle for manual refresh
-    window._lastFbRead = 0;
+    // Force-pull latest data
     const fbData = await window.loadFromFirebase();
     if(fbData){
-      const keys = ['orders','riders','locations','payroll','expenses','inventory',
+      // Load per-doc orders
+      try{
+        const orderDocs2=await _loadOrderDocs();
+        if(orderDocs2&&orderDocs2.length>0){
+          const dIds2=Array.isArray(fbData.deletedOrders)?fbData.deletedOrders:[];
+          S.orders=_dedupeOrders(_filterClearedOrders(_mergeOrderDocs(S.orders,orderDocs2,dIds2)));
+          fbData.orders=S.orders;
+        }
+      }catch(e){}
+      const keys = ['riders','locations','payroll','expenses','inventory',
                     'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
                     'returnLog','govSettings','bizInfo','tabPasswords','adminAccounts'];
       keys.forEach(k=>{ if(fbData[k]!==undefined) S[k]=fbData[k]; });
@@ -6246,11 +6450,21 @@ let _syncDebounceTimer = null;
 let _syncPending = false;
 
 async function save(){
-  // Write to localStorage immediately (always fast)
+  const _now = new Date().toISOString();
+  // Stamp all TX records with _id and _updatedAt
+  const _TX=['orders','payroll','expenses','remitLog','cashbondLog','benefitsLog',
+             'returnLog','stockLog','deletedOrders','mergeLog'];
+  _TX.forEach(k=>{
+    if(Array.isArray(S[k])) S[k].forEach(item=>{ _stamp(item); item._updatedAt=_now; });
+  });
+  // Apply global clear filter — blocked pre-clear orders from re-uploading
+  if(typeof _filterClearedOrders==='function')
+    S.orders=_filterClearedOrders(S.orders||[]);
+  // Write to localStorage immediately
   localStorage.setItem(KEY, JSON.stringify(S));
   // Sync to Firebase — debounced 500ms
   if(window._fbReady && window.syncToFirebase){
-    window.syncToFirebase(S);
+    window.syncToFirebase();
   }
 }
 
@@ -6975,17 +7189,42 @@ function saveOrder() {
       o.rtoReason = '';
       o.inventoryDeducted = false; // Will be re-deducted when checker re-verifies
     }
+    // ── EDIT: preserve _id so Firebase doc is overwritten, not duplicated ──────
+    o._id = orig._id;  // critical: same doc ID → PATCH not CREATE
+    _stamp(o);
+    o._updatedAt = new Date().toISOString();
     S.orders[+editIdx] = o;
+    persist();
+    if(window._fbReady) _writeOrderDoc(o).catch(()=>{});
+    if(window._fbReady && window.syncToFirebase) window.syncToFirebase();
+    currentEditingIndex = null;
+    closeModal('modal-encode');
+    initOrdersPage?.();
+    renderDash?.();
+    toast('✅ Order updated!');
+    return; // done — no fall-through to save()
     const wasRto = orig.lbcStatus === 'RTO';
     toast(wasRto ? '✅ Order updated & ready for re-dispatch!' : hadDeducted ? '✅ Order updated! Inventory adjusted.' : '✅ Order updated!');
   } else {
     // ── NO deduction on new order — inventory deducted only when Checker VERIFIES ──
     o.inventoryDeducted = false;
+    _stamp(o);
+    o._updatedAt = new Date().toISOString();
     S.orders.push(o);
+    persist();
+    if(window._fbReady) _writeOrderDoc(o).then(ok=>{
+      if(!ok && window.syncToFirebase) window.syncToFirebase();
+    }).catch(()=>{ if(window.syncToFirebase) window.syncToFirebase(); });
+    currentEditingIndex = null;
     toast('✅ Order saved! Inventory will be deducted upon Checker verification.');
+    closeModal('modal-encode');
+    initOrdersPage?.();
+    renderDash?.();
+    return; // skip the save() below for new orders (already handled)
   }
-  save(); closeModal('modal-encode');
-  initOrdersPage();
+  // Safety fallback (both paths return early above)
+  closeModal('modal-encode');
+  initOrdersPage?.();
   renderDash();
 }
 function delOrder(i){
@@ -8344,6 +8583,17 @@ async function initApp(){
         S = Object.assign(S, fbData);
         ['orders','riders','locations','payroll','expenses','inventory','stockLog','adminNames','remitLog','cashbondLog','benefitsLog','returnLog']
           .forEach(k=>{ if(!Array.isArray(S[k])) S[k]=[]; });
+        // Load per-document orders (race-condition-free concurrent encoding)
+        try{
+          const orderDocs = await _loadOrderDocs();
+          if(orderDocs&&orderDocs.length>0){
+            const dIds=Array.isArray(fbData.deletedOrders)?fbData.deletedOrders:[];
+            fbData.orders=_mergeOrderDocs(fbData.orders||[],orderDocs,dIds);
+            S.orders=_dedupeOrders(_filterClearedOrders(fbData.orders));
+          }
+        }catch(e){console.warn('[GCE] initApp orderDocs:',e.message);}
+        // Apply global clear if Owner cleared while device was offline
+        if(_applyGlobalClear(fbData)){ toast('🧹 Transactions cleared by Owner.'); }
         if(!S.govSettings) S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
         if(!S.bizInfo) S.bizInfo={};
         if(!S.tabPasswords) S.tabPasswords={checker:'',tracking:'',riders:''};
@@ -8432,8 +8682,21 @@ function startAutoRefresh(){
     try {
       const fbData = await window.loadFromFirebase();
       if(!fbData) return;
+      // Check if Owner cleared transactions — wipe before merging
+      if(_applyGlobalClear(fbData)){
+        try{renderDash?.();}catch(e){}
+      }
+      // Load per-document orders (race-condition-free)
+      try{
+        const orderDocs=await _loadOrderDocs();
+        if(orderDocs&&orderDocs.length>0){
+          const dIds=Array.isArray(fbData.deletedOrders)?fbData.deletedOrders:[];
+          S.orders=_dedupeOrders(_filterClearedOrders(_mergeOrderDocs(S.orders,orderDocs,dIds)));
+          fbData.orders=S.orders;
+        }
+      }catch(e){console.warn('[GCE] refresh orderDocs:',e.message);}
       // Merge new data silently (don't reset UI)
-      const keys = ['orders','riders','locations','payroll','expenses','inventory',
+      const keys = ['riders','locations','payroll','expenses','inventory',
                     'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
                     'returnLog','govSettings','bizInfo','tabPasswords','adminAccounts'];
       keys.forEach(k=>{ if(fbData[k]!==undefined) S[k]=fbData[k]; });
