@@ -3569,6 +3569,13 @@ function verifyOrder(i){
   }
   S.orders[i].checkerStatus='Verified';
   S.orders[i].verificationStatus='Verified';
+  // ── Set lbcStatus so Sorter sees "Ready to Pick-up" immediately ──────────
+  // Only set if not already in a further-along status (e.g. OFD, Delivered)
+  const _advancedStatuses=['Drop off at LBC','Drop off at EMS','Drop off at FedEx',
+    'Out for Delivery','Delivered','RTO','ODZ/Incomplete Details'];
+  if(!_advancedStatuses.includes(S.orders[i].lbcStatus)){
+    S.orders[i].lbcStatus = 'Ready to Pick-up';
+  }
   save(); toast('✅ Order verified! Inventory deducted.'); renderChecker();
 }
 function unverifyOrder(i){
