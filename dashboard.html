@@ -480,190 +480,91 @@ function _fromFS(fv) {
   return null;
 }
 
-// ── Per-Document Order Write ─────────────────────────────────────────────────
-// Each order = its own Firestore doc at gce_orders/{_id}
-// Multiple admins encoding simultaneously → different docs → zero conflict
-
-async function _writeOrderDoc(order){
-  if(!order||!order._id) return false;
-  try{
-    const docId=order._id.replace(/[^a-zA-Z0-9_-]/g,'_');
-    const fields={};
-    Object.entries(order).forEach(([k,v])=>{fields[k]=_toFS(v);});
-    const r=await fetch(`${_FB_BASE}/gce_orders/${docId}?key=${_FB_APIKEY}`,{
-      method:'PATCH',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({fields})
-    });
-    return r.ok;
-  }catch(e){console.warn('[GCE] _writeOrderDoc:',e.message);return false;}
-}
-
-async function _deleteOrderDoc(orderId){
-  if(!orderId) return;
-  try{
-    const docId=orderId.replace(/[^a-zA-Z0-9_-]/g,'_');
-    await fetch(`${_FB_BASE}/gce_orders/${docId}?key=${_FB_APIKEY}`,{method:'DELETE'});
-  }catch(e){console.warn('[GCE] _deleteOrderDoc:',e.message);}
-}
-
-async function _loadOrderDocs(){
-  try{
-    const r=await fetch(`${_FB_BASE}/gce_orders?key=${_FB_APIKEY}&pageSize=500`,{cache:'no-cache'});
-    if(!r.ok) return null;
-    const data=await r.json();
-    if(!data.documents) return [];
-    return data.documents.map(doc=>{
-      const o={};
-      Object.entries(doc.fields||{}).forEach(([k,v])=>{o[k]=_fromFS(v);});
-      return o;
-    }).filter(o=>o&&o._id);
-  }catch(e){console.warn('[GCE] _loadOrderDocs:',e.message);return null;}
-}
-
-// Merge local + remote order docs — local-only = new, keep it; timestamp wins on conflict
-function _mergeOrderDocs(local,remote,deleted){
-  if(!remote||!remote.length) return local;
-  const dead=new Set((deleted||[]).map(d=>d._id||'').filter(Boolean));
-  const map=new Map();
-  remote.forEach(o=>{if(o._id)map.set(o._id,o);});
-  local.forEach(o=>{
-    if(!o._id){map.set('_new_'+Math.random(),o);return;}
-    if(map.has(o._id)){
-      const rTs=map.get(o._id)._updatedAt||'0',lTs=o._updatedAt||'0';
-      if(lTs>rTs) map.set(o._id,o);
-    } else {
-      map.set(o._id,o); // local-only = new, keep it
-    }
-  });
-  return [...map.values()].filter(o=>!dead.has(o._id||''));
-}
-
-// Deduplicate S.orders by _id — keeps newest _updatedAt version
-function _dedupeOrders(orders){
-  if(!Array.isArray(orders)) return [];
-  const map=new Map();
-  orders.forEach(o=>{
-    if(!o._id) return;
-    if(map.has(o._id)){const ex=map.get(o._id);if((o._updatedAt||'0')>(ex._updatedAt||'0'))map.set(o._id,o);}
-    else map.set(o._id,o);
-  });
-  return [...map.values()];
-}
-
-// ── Clear All Transactions support ───────────────────────────────────────────
-async function _deleteAllOrderDocs(){
-  try{
-    const r=await fetch(`${_FB_BASE}/gce_orders?key=${_FB_APIKEY}&pageSize=500`,{cache:'no-cache'});
-    if(!r.ok) return;
-    const data=await r.json();
-    if(!data.documents||!data.documents.length) return;
-    await Promise.allSettled(data.documents.map(doc=>{
-      const docUrl=`https://firestore.googleapis.com/v1/${doc.name}?key=${_FB_APIKEY}`;
-      return fetch(docUrl,{method:'DELETE'}).catch(()=>{});
-    }));
-  }catch(e){console.warn('[GCE] _deleteAllOrderDocs:',e.message);}
-}
-
-async function _deleteCollectionDocs(collName){
-  try{
-    const r=await fetch(`${_FB_BASE}/${collName}?key=${_FB_APIKEY}&pageSize=500`,{cache:'no-cache'});
-    if(!r.ok) return;
-    const data=await r.json();
-    if(!data.documents||!data.documents.length) return;
-    await Promise.allSettled(data.documents.map(doc=>{
-      const docUrl=`https://firestore.googleapis.com/v1/${doc.name}?key=${_FB_APIKEY}`;
-      return fetch(docUrl,{method:'DELETE'}).catch(()=>{});
-    }));
-  }catch(e){console.warn('[GCE] _deleteCollectionDocs:',e.message);}
-}
-
-// ── Global Clear support ──────────────────────────────────────────────────────
-function _applyGlobalClear(fbData){
-  if(!fbData) return false;
-  const remoteClearTs=fbData.lastGlobalClear||'0';
-  if(!remoteClearTs||remoteClearTs==='0') return false;
-  const localClearTs=S.lastGlobalClear||localStorage.getItem('gce_last_clear')||'0';
-  if(remoteClearTs<=localClearTs) return false;
-  // Owner cleared — wipe all TX arrays on this device
-  ['orders','returnLog','deletedOrders','stockLog','remitLog','cashbondLog',
-   'benefitsLog','payroll','expenses','mergeLog'].forEach(k=>{S[k]=[];});
-  S.lastGlobalClear=remoteClearTs;
-  localStorage.setItem('gce_last_clear',remoteClearTs);
-  persist();
-  return true;
-}
-
-function _filterClearedOrders(orders){
-  const clearTs=S.lastGlobalClear||localStorage.getItem('gce_last_clear')||'0';
-  if(!clearTs||clearTs==='0') return orders;
-  return (orders||[]).filter(o=>(o._updatedAt||o.createdAt||'0')>clearTs);
-}
-
-// ── _stamp: give every record a unique _id ────────────────────────────────────
-function _uuid(){return Date.now().toString(36)+Math.random().toString(36).slice(2);}
-function _stamp(obj){if(obj&&!obj._id)obj._id=_uuid();}
-
-
 // ── WRITE to Firestore ────────────────────────────────────────────
-// ── _directWriteFirebase: writes all state to gce_state/main ─────────────────
-let _syncDebounceTimer2 = null;
-let _syncPending2 = false;
+window.syncToFirebase = async function(S, _retryCount) {
+  _retryCount = _retryCount || 0;
+  const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
+  const el  = ()=>document.getElementById('sync-indicator');
 
-async function _directWriteFirebase(state, opts){
-  state = state||S;
-  const skipKeys = new Set(opts?.skip||[]);
-  skipKeys.add('orders'); // orders go to gce_orders/{id}, not main doc
-  const fields={};
-  ['orders','riders','locations','payroll','expenses','inventory','stockLog',
-   'adminNames','remitLog','cashbondLog','benefitsLog','returnLog',
-   'deletedOrders','mergeLog'].forEach(k=>{
-    if(!skipKeys.has(k)) fields[k]=_toFS(state[k]||[]);
+  // ── Split into two smaller payloads to stay under Firestore size/rate limits ──
+  // Chunk A: Transactional data (changes frequently, smaller chunks)
+  const fieldsA = {};
+  ['orders','payroll','expenses','remitLog','cashbondLog','benefitsLog',
+   'returnLog','stockLog','deletedOrders','mergeLog'].forEach(k=>{
+    fieldsA[k] = _toFS(S[k]||[]);
   });
-  ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
-    if(!skipKeys.has(k)) fields[k]=_toFS(state[k]||{});
-  });
-  if(!skipKeys.has('adminAccounts')) fields['adminAccounts']=_toFS(state.adminAccounts||[]);
-  // Control fields
-  fields['_lastWrite']=_toFS(Date.now());
-  fields['_pwVersion']=_toFS(localStorage.getItem('gce_pw_version')||'0');
-  const clearTs=(state.lastGlobalClear)||localStorage.getItem('gce_last_clear')||'0';
-  fields['lastGlobalClear']=_toFS(clearTs);
-  // Owner password hash
-  try{
-    const stored=localStorage.getItem('gce_pw_hash');
-    fields['ownerPwHash']=_toFS(stored||'');
-  }catch(e){fields['ownerPwHash']=_toFS('');}
 
-  const url=`${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
-  try{
-    const r=await fetch(url,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields})});
-    const el=document.getElementById('sync-indicator');
-    if(r.ok){
-      if(el){el.style.color='var(--green)';el.textContent='☁ Synced';}
-      setTimeout(()=>{const e=document.getElementById('sync-indicator');if(e&&e.textContent==='☁ Synced')e.textContent='☁ Online';},2000);
-    }else{
-      if(el){el.style.color='var(--orange)';el.textContent='☁ Error '+r.status;}
+  // Chunk B: Config/settings data (changes rarely)
+  const fieldsB = {};
+  ['riders','locations','inventory','adminNames','adminAccounts',
+   'govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
+    fieldsB[k] = _toFS(S[k]||(typeof S[k]==='object'&&!Array.isArray(S[k])?{}:[]));
+  });
+
+  const _patch = async (fields) => {
+    const r = await fetch(url, {
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({fields})
+    });
+    return r;
+  };
+
+  try {
+    // Write Chunk A first (transactions — most time-sensitive)
+    const rA = await _patch(fieldsA);
+
+    if(rA.status === 429){
+      // Rate limited — exponential backoff: 2s → 4s → 8s, max 3 retries
+      const e=el(); if(e){e.style.color='var(--orange)';e.textContent='☁ Retrying...';}
+      if(_retryCount < 3){
+        const delay = Math.pow(2, _retryCount+1) * 1000;
+        console.warn(`[GCE] 429 — retrying in ${delay/1000}s (attempt ${_retryCount+1}/3)`);
+        setTimeout(()=>window.syncToFirebase(S, _retryCount+1), delay);
+      } else {
+        const e2=el(); if(e2){e2.style.color='var(--red)';e2.textContent='☁ Sync Error';}
+        console.warn('[GCE] 429 persists after 3 retries');
+      }
+      return;
     }
-    return r.ok;
-  }catch(e){
-    const el=document.getElementById('sync-indicator');
-    if(el){el.style.color='var(--orange)';el.textContent='☁ Offline';}
-    return false;
-  }
-}
 
-syncToFirebase = async function() {
-  // Always write current global S — debounced 500ms
-  _syncPending2 = true;
-  clearTimeout(_syncDebounceTimer2);
-  _syncDebounceTimer2 = setTimeout(()=>_directWriteFirebase(S), 500); // 500ms debounce
+    if(!rA.ok){
+      const e=el(); if(e){e.style.color='var(--orange)';e.textContent='☁ Sync Error';}
+      console.warn('[GCE] Firestore PATCH-A error:', rA.status);
+      return;
+    }
+
+    // Chunk A succeeded — write Chunk B after a 300ms gap
+    // Gap prevents two simultaneous large requests to the same document
+    await new Promise(r=>setTimeout(r,300));
+    const rB = await _patch(fieldsB);
+
+    if(rB.status === 429){
+      // Chunk B rate limited — schedule retry for just Chunk B
+      if(_retryCount < 3){
+        const delay = Math.pow(2, _retryCount+1) * 1000;
+        setTimeout(async ()=>{
+          const rRetry = await _patch(fieldsB);
+          if(!rRetry.ok) console.warn('[GCE] Chunk B retry failed:', rRetry.status);
+        }, delay);
+      }
+    }
+
+    // Both done — update indicator
+    const e=el();
+    if(e){ e.style.color='var(--green)'; e.textContent='☁ Synced'; }
+    setTimeout(()=>{ const e2=el(); if(e2&&e2.textContent==='☁ Synced') e2.textContent='☁ Online'; },2000);
+
+  } catch(err) {
+    const e=el(); if(e){e.style.color='var(--orange)';e.textContent='☁ Offline';}
+    console.warn('[GCE] Firebase sync error:', err.message);
+  }
 };
 
 // ── READ from Firestore ───────────────────────────────────────────
 window.loadFromFirebase = async function() {
   const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
   const _syncEl = ()=>document.getElementById('sync-indicator');
-
   try {
     const r = await fetch(url, {cache:'no-cache'});
 
@@ -675,7 +576,7 @@ window.loadFromFirebase = async function() {
     // 403 = Firestore rules blocking unauthenticated access
     if(r.status === 403) {
       const el=_syncEl(); if(el){el.style.color='var(--orange)';el.textContent='☁ Rules!';}
-      _showRulesHint?.();
+      _showRulesHint();
       return null;
     }
     if(!r.ok) {
@@ -1019,12 +920,10 @@ function _showRulesHint() {
     <div class="user-badge">
       <span id="topbar-date" style="font-size:11px;color:var(--muted);"></span>
       <span id="sync-indicator" class="sync-indicator" style="color:var(--muted);">⬤ Offline</span>
-      <button class="btn btn-outline btn-sm no-print" id="btn-refresh" onclick="manualRefresh()" title="Pull latest data from Firebase" style="font-size:10px;padding:3px 8px;">🔄 Refresh</button>
-      <button class="btn btn-gold btn-sm no-print" id="btn-manual-save" onclick="manualSaveSync()" title="Force save & sync to Firebase now" style="font-size:10px;padding:3px 8px;">💾 Save</button>
       <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Light/Dark Mode">🌙</button>
       <span class="user-role-tag" id="user-role-tag">Admin</span>
       <span class="badge-pill" id="user-name-badge">Goldchelle</span>
-      <button class="btn btn-outline btn-sm" onclick="logoutUser()" style="font-size:10px;padding:3px 8px;" id="btn-logout-role">Logout</button>
+      <button class="btn btn-outline btn-sm" onclick="logoutUser()" style="font-size:10px;padding:3px 8px;">Logout</button>
     </div>
   </div>
 
@@ -1645,7 +1544,6 @@ function _showRulesHint() {
           <p style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Export backup or clear all data. Cannot be undone.</p>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button class="btn btn-outline" onclick="exportData()">📤 Export JSON Backup</button>
-            <button class="btn btn-orange" onclick="clearAllTransactions()">🧹 Clear Transactions</button>
             <button class="btn btn-red" onclick="clearAllData()">🗑️ Clear All Data</button>
           </div>
         </div>
@@ -2529,12 +2427,6 @@ if(!S.bizInfo)S.bizInfo={name:'Goldchelle Online Enterprises',address:'Las Pinas
 // Tab-specific passwords (CEO can set independently)
 if(!S.tabPasswords)S.tabPasswords={checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''};
 if(!S.specialPasswords) S.specialPasswords={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
-// ── Fresh start v4 — clears old TX data on first load after deploy ──────────
-if(!localStorage.getItem('gce_fresh_start_v4')){
-  localStorage.setItem('gce_fresh_start_v4','1');
-  ['orders','payroll','expenses','remitLog','cashbondLog','benefitsLog',
-   'returnLog','stockLog','deletedOrders','mergeLog'].forEach(k=>{S[k]=[];});
-}
 // Migrate existing inventory items that are missing itemType
 if(S.inventory) S.inventory.forEach(it=>{ if(!it.itemType) it.itemType='grams'; });
 // Migrate existing orders — add new fields if missing
@@ -2553,7 +2445,6 @@ if(S.orders) S.orders.forEach(o=>{ if(STATUS_MAP[o.status]) o.status=STATUS_MAP[
 let currentUser = null;
 
 let currentRole = null;
-let currentEditingIndex = null; // tracks which order is being edited (null = new order mode)
 
 // No seed data — app starts clean
 // save() now defined in auth section above (async dual-write)
@@ -2627,7 +2518,8 @@ const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales 
 let _activePage = 'dashboard';
 function gotoPage(name){
   _activePage = name;
-  // Non-owner roles blocked from CEO-only pages
+  // LBC checker lock removed
+  // CEO-only pages
   if(['dashboard','calendar'].includes(name) && currentRole !== 'owner') {
     toast('🔐 Dashboard & Calendar are CEO-only'); return;
   }
@@ -2883,7 +2775,6 @@ function openEditOrder(i){
   }
   document.getElementById('enc-shipping').value=o.shipping;
   document.getElementById('enc-edit-idx').value=i;
-  currentEditingIndex = i;
   const pm=document.getElementById('enc-payment-method'); if(pm) pm.value=o.paymentMethod||'COD';
   // Restore tracking number + show/hide tracking field
   const tnInp=document.getElementById('enc-tracking-number'); if(tnInp) tnInp.value=o.trackingNumber||'';
@@ -3094,12 +2985,6 @@ function renderOrders() {
   const pm2cls = m => m==='EMS'||m==='FedEx'?'green':m==='LBC'?'blue':'delivering';
 
   const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
-    // Role isolation: non-owner admins see only their own orders
-    if(currentRole !== 'owner' && currentUser?.role !== 'owner'){
-      const myName=(currentUser?.name||'').trim().toUpperCase();
-      if(!myName) return false;
-      if((o.admin||'').trim().toUpperCase()!==myName) return false;
-    }
     if(_ownerAdminTab !== 'ALL' && o.admin.toUpperCase() !== _ownerAdminTab.toUpperCase()) return false;
     if(mf && (o.paymentMethod||'COD') !== mf) return false;
     if(df && o.date !== df) return false;
@@ -3568,20 +3453,7 @@ function verifyOrder(i){
   }
   S.orders[i].checkerStatus='Verified';
   S.orders[i].verificationStatus='Verified';
-  // ── Set lbcStatus so Sorter sees "Ready to Pick-up" immediately ──────────
-  const _advancedStatuses=['Drop off at LBC','Drop off at EMS','Drop off at FedEx',
-    'Out for Delivery','Delivered','RTO','ODZ/Incomplete Details'];
-  if(!_advancedStatuses.includes(S.orders[i].lbcStatus)){
-    S.orders[i].lbcStatus = 'Ready to Pick-up';
-  }
-  // Write per-doc immediately so Sorter sees it within 5 seconds (auto-refresh)
-  persist();
-  if(window._fbReady && typeof _writeOrderDoc === 'function'){
-    _writeOrderDoc(S.orders[i]).catch(()=>{});
-  }
-  save();
-  toast('✅ Order verified! Ready to Pick-up. Sorter can now assign rider.');
-  renderChecker();
+  save(); toast('✅ Order verified! Inventory deducted.'); renderChecker();
 }
 function unverifyOrder(i){
   const o = S.orders[i];
@@ -4382,7 +4254,8 @@ function renderReturnLog() {
   const isCEO = currentRole === 'owner';
   el.innerHTML = `
     <div class="action-row no-print" style="margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-      <input type="date" class="form-control" id="ret-log-date" style="width:160px;" value="${dateFilter}" oninput="renderReturnLog()" title="Filter by date">
+      <input type="date" class="form-con
+trol" id="ret-log-date" style="width:160px;" value="${dateFilter}" oninput="renderReturnLog()" title="Filter by date">
       <button class="btn btn-outline btn-sm" onclick="document.getElementById('ret-log-date').value='';renderReturnLog()">Show All</button>
       ${isCEO?'<span style="font-size:11px;color:var(--muted);">👑 CEO mode: delete enabled</span>':'<span style="font-size:11px;color:var(--orange);">🔒 Admin: hindi pwedeng mag-delete ng return log</span>'}
     </div>
@@ -5027,7 +4900,7 @@ function switchInvTab(t){
   invTab=t;
   document.querySelectorAll('#inv-tabs .tab-btn').forEach((b,i)=>b.classList.toggle('active',['list','stockin','stockout','ledger'][i]===t));
   const btn=document.getElementById('inv-action-btn');
-  if(t==='list')btn.innerHTML=`<button class="btn btn-gold" onclick="openAddInvModal()">+ Add Product</button><button class="btn btn-outline btn-sm" onclick="exportInventoryToExcel()" style="font-size:11px;">📥 Export Excel</button><label class="btn btn-outline btn-sm" style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;" title="Import CSV backup">📤 Import Excel<input type="file" accept=".csv" style="display:none;" onchange="importInventoryFromExcel(this)"></label>`;
+  if(t==='list')btn.innerHTML=`<button class="btn btn-gold" onclick="openAddInvModal()">+ Add Product</button>`;
   else if(t==='stockin')btn.innerHTML=`<button class="btn btn-green" onclick="openStockModal('in')">+ Stock In</button>`;
   else if(t==='stockout')btn.innerHTML=`<button class="btn btn-orange" onclick="openStockModal('out')">↓ Stock Out</button><button class="btn btn-outline" style="margin-left:6px;" onclick="openStockModal('adj')">⚙ Adjustment</button>`;
   else btn.innerHTML='';
@@ -5718,125 +5591,6 @@ function renderSettingsSummary(){
     <div class="info-row"><span style="color:var(--muted);">Inventory Products</span><strong>${S.inventory.length}</strong></div>
     <div class="info-row" style="border-bottom:none;"><span style="color:var(--muted);">Stock Transactions</span><strong>${S.stockLog.length}</strong></div>`;
 }
-// ── Export Inventory to Excel (CSV) ──────────────────────────────────────────
-function exportInventoryToExcel(){
-  if(!S.inventory||!S.inventory.length){ toast('⚠️ Walang inventory data.'); return; }
-  const esc=v=>{
-    const s=String(v==null?'':v);
-    return(s.includes(',')||s.includes('"')||s.includes('\n'))?'"'+s.replace(/"/g,'""')+'"':s;
-  };
-  const rows=[['Serial Code','Description','Type','Category','Stock','Selling Price','Capital Cost','Stock Value','Profit/Unit']];
-  S.inventory.forEach(it=>{
-    const isFix=it.itemType==='fixprice';
-    const stock   = isFix?(it.qty||0):(it.grams||0);
-    const unit    = isFix?'pcs':'g';
-    const sell    = isFix?(it.fixPrice||0):(it.pergram||0);
-    const cap     = isFix?(it.capitalPerUnit||0):(it.capitalPerGram||0);
-    const stockVal= parseFloat((cap*stock).toFixed(2));
-    const profit  = parseFloat((sell-cap).toFixed(2));
-    rows.push([esc(it.code),esc(it.desc),esc(isFix?'Fix Price':'By Grams'),
-      esc(it.category||'—'),esc(stock+' '+unit),
-      esc('₱'+sell.toFixed(2)+'/'+unit),esc('₱'+cap.toFixed(2)+'/'+unit),
-      esc('₱'+stockVal.toFixed(2)),esc('₱'+profit.toFixed(2)+'/'+unit)]);
-  });
-  const csv=rows.map(r=>r.join(',')).join('\n');
-  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;a.download='goldchelle-inventory-'+today()+'.csv';a.click();
-  setTimeout(()=>URL.revokeObjectURL(url),3000);
-  toast('✅ Inventory exported!');
-}
-
-// ── Import Inventory from CSV Backup ─────────────────────────────────────────
-function importInventoryFromExcel(input){
-  const file=input.files[0]; if(!file)return;
-  input.value='';
-  const ext=file.name.split('.').pop().toLowerCase();
-  if(ext!=='csv'){ toast('⚠️ I-save muna as .csv sa Excel bago mag-import.'); return; }
-  const reader=new FileReader();
-  reader.onload=function(e){
-    try{
-      const text=e.target.result.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
-      const lines=text.split('\n').filter(l=>l.trim());
-      if(lines.length<2){toast('⚠️ Walang data sa file.');return;}
-      const parseRow=line=>{
-        const cols=[];let cur='',inQ=false;
-        for(const c of line){
-          if(c==='"'){inQ=!inQ;}
-          else if(c===','&&!inQ){cols.push(cur.trim());cur='';}
-          else cur+=c;
-        }
-        cols.push(cur.trim());return cols;
-      };
-      const header=parseRow(lines[0]).map(h=>h.toLowerCase().replace(/[^a-z0-9]/g,''));
-      const col=(...names)=>{for(const n of names){const i=header.findIndex(h=>h.includes(n));if(i>=0)return i;}return -1;};
-      const cCode=col('serialcode','code');
-      const cDesc=col('desc','name','description');
-      const cType=col('type');
-      const cCat =col('cat','category');
-      const cStock=col('stock');
-      const cSell =col('selling','price','pergram','fixprice');
-      const cCap  =col('capital');
-      if(cCode<0||cDesc<0){toast('⚠️ Hindi mahanap ang Code/Description column.');return;}
-      let added=0,updated=0,skipped=0;
-      lines.slice(1).forEach(line=>{
-        const cols=parseRow(line);
-        const code=(cols[cCode]||'').trim().toUpperCase();
-        const desc=(cols[cDesc]||'').trim();
-        if(!code||!desc){skipped++;return;}
-        const typeRaw=(cols[cType]||'').toLowerCase();
-        const isFix=typeRaw.includes('fix')||typeRaw.includes('piece')||typeRaw.includes('pc');
-        const cat  =(cols[cCat]||'gold').toLowerCase().trim()||'gold';
-        const stock=parseFloat((cols[cStock]||'').replace(/[^0-9.]/g,''))||0;
-        const sell =parseFloat((cols[cSell]||'').replace(/[^0-9.]/g,''))||0;
-        const cap  =parseFloat((cols[cCap]||'').replace(/[^0-9.]/g,''))||0;
-        const existing=S.inventory.findIndex(it=>it.code===code);
-        const obj=isFix
-          ?{code,desc,itemType:'fixprice',category:cat,fixPrice:sell,capitalPerUnit:cap,qty:stock,grams:0,pergram:0}
-          :{code,desc,itemType:'grams',category:cat,pergram:sell,capitalPerGram:cap,grams:stock,qty:0,fixPrice:0};
-        if(existing>=0){S.inventory[existing]={...S.inventory[existing],...obj};updated++;}
-        else{S.inventory.push(obj);added++;}
-      });
-      save();
-      renderInv(invTab||'list');
-      toast(`✅ Import done! ${added} added · ${updated} updated · ${skipped} skipped`);
-    }catch(err){toast('❌ Import failed: '+err.message);}
-  };
-  reader.readAsText(file);
-}
-
-// ── Clear All Transactions — Owner only ───────────────────────────────────────
-// Clears: orders, payroll, expenses, logs
-// SAFE: inventory, riders, locations, passwords, settings are NEVER touched
-function clearAllTransactions(){
-  const ans=prompt('⚠️ CLEAR ALL TRANSACTIONS\n\nMabubura:\n• Orders\n• Payroll & Expenses\n• Remit / Cashbond / Benefits / Return Logs\n\nHINDI mabubura:\n• Inventory\n• Riders & Locations\n• Passwords & Settings\n\nType CLEAR to confirm:');
-  if(ans!=='CLEAR'){toast('Cancelled.');return;}
-  const TX=['orders','payroll','expenses','remitLog','cashbondLog','benefitsLog','returnLog','stockLog','deletedOrders','mergeLog'];
-  TX.forEach(k=>{S[k]=[];});
-  const clearTs=new Date().toISOString();
-  S.lastGlobalClear=clearTs;
-  localStorage.setItem('gce_last_clear',clearTs);
-  persist();
-  toast('🧹 Clearing cloud data...');
-  // Delete all order docs so other devices cannot resurrect them
-  Promise.allSettled([
-    _deleteAllOrderDocs(),
-    _deleteCollectionDocs('gce_payroll'),
-    _deleteCollectionDocs('gce_expenses'),
-  ]).then(()=>{
-    clearTimeout(_syncDebounceTimer2);
-    _syncPending2=false;
-    return _directWriteFirebase(S,{skip:['inventory']});
-  }).then(()=>{
-    toast('✅ All transactions cleared on all devices!');
-    try{renderDash();}catch(e){}
-  }).catch(()=>{
-    _directWriteFirebase(S,{skip:['inventory']}).catch(()=>{});
-    toast('✅ Cleared locally. Syncing...');
-  });
-}
-
 function exportData(){
   const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
@@ -5862,28 +5616,6 @@ function switchPnlTab(t){
   document.querySelectorAll('#page-pnl .tab-btn').forEach((b,i)=>b.classList.toggle('active',['daily','weekly','monthly'][i]===t));
   renderPnl();
 }
-// ── COGS helper — looks up capital cost from inventory ───────────────────────
-function calcItemCOGS(it){
-  // Step 1: inventory lookup by code
-  const code=(it.code||'').trim().toUpperCase();
-  if(code){
-    const inv=(S.inventory||[]).find(p=>p.code&&p.code.trim().toUpperCase()===code);
-    if(inv){
-      if(inv.itemType==='fixprice'){
-        const cost=Math.max(0,inv.capitalPerUnit||inv.capitalPerPiece||0);
-        return parseFloat((cost*Math.max(0,it.qty||1)).toFixed(2));
-      }else{
-        const cost=Math.max(0,inv.capitalPerGram||0);
-        return parseFloat((cost*Math.max(0,it.grams||0)).toFixed(2));
-      }
-    }
-  }
-  // Step 2: item-level fallback — never use selling price
-  if(it.grams>0){const cpg=it.capitalPerGram||0;if(cpg>0)return parseFloat((cpg*it.grams).toFixed(2));}
-  if(it.qty>0){const cpp=it.capitalPerUnit||it.capitalPerPiece||0;if(cpp>0)return parseFloat((cpp*it.qty).toFixed(2));}
-  return 0;
-}
-
 function renderPnl(){
   if(!document.getElementById('pnl-date').value)document.getElementById('pnl-date').value=today();
   const now=new Date(),ym=now.toISOString().slice(0,7);
@@ -6097,19 +5829,10 @@ function printPnl(){
   setTimeout(()=>{ try{ _win.print(); }catch(e){} }, 400);
 }
 function renderDash(){
-  // ── Role-scoped pool: admin sees own orders, owner/checker sees all ──────────
-  const _dashOrders=(currentRole!=='owner'&&currentRole!=='checker'&&currentUser?.name)
-    ?S.orders.filter(o=>(o.admin||'').trim().toUpperCase()===currentUser.name.trim().toUpperCase())
-    :S.orders;
-  const fo=(typeof _filterClearedOrders==='function')
-    ?_dedupeOrders(_filterClearedOrders(_dashOrders))
-    :_dashOrders;
-  if(typeof _filterClearedOrders==='function')
-    S.orders=_dedupeOrders(_filterClearedOrders(S.orders||[]));
-  const total=fo.length,del=fo.filter(o=>o.status==='Delivered').length;
-  const revenue=fo.filter(o=>o.status==='Delivered').reduce((s,o)=>s+o.grandTotal,0);
-  const pending=fo.filter(o=>o.checkerStatus==='Pending').length;
-  const todayO=fo.filter(o=>o.date===today()).length;
+  const total=S.orders.length,del=S.orders.filter(o=>o.status==='Delivered').length;
+  const revenue=S.orders.filter(o=>o.status==='Delivered').reduce((s,o)=>s+o.grandTotal,0);
+  const pending=S.orders.filter(o=>o.checkerStatus==='Pending').length;
+  const todayO=S.orders.filter(o=>o.date===today()).length;
   const expTotal=S.expenses.reduce((s,e)=>s+parseFloat(e.amount||0),0);
   document.getElementById('dash-stats').innerHTML=`
     <div class="stat-card gold"><div class="stat-label">Total Orders</div><div class="stat-value">${total}</div><div class="stat-sub">All time</div></div>
@@ -6269,20 +5992,10 @@ function doLogin(){
       document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
       document.getElementById('page-dashboard')?.classList.add('active');
       document.getElementById('topbar-title').textContent='Dashboard';
-      applyDashCeoLock?.();
+      applyDashCeoLock();
       renderDash();
     });
   }
-  // Show Logout button for non-owner roles; hide Switch User
-  if(currentRole && currentRole !== 'owner'){
-    const sw=document.getElementById('btn-logout-role');
-    if(sw) sw.style.display='';
-  }
-  // Update topbar badge
-  const rt=document.getElementById('user-role-tag');
-  const nb=document.getElementById('user-name-badge');
-  if(rt) rt.textContent=currentRole==='owner'?'CEO':currentRole==='admin'?'Admin':currentRole==='checker'?'Checker':currentRole==='rider'?'Rider':'Staff';
-  if(nb) nb.textContent=currentUser?.name||'Goldchelle';
 }
 
 function applyRoleUI(){
@@ -6346,96 +6059,16 @@ function unlockPage(page){
   const inp=document.getElementById('lock-pw-'+page); if(inp)inp.value='';
 }
 
-// ── Manual Refresh — force-pull latest data from Firebase ────────────────────
-async function manualRefresh(){
-  const btn = document.getElementById('btn-refresh');
-  if(btn){ btn.disabled=true; btn.textContent='🔄 ...'; }
-  try {
-    if(!window._fbReady || !window.loadFromFirebase){
-      toast('⚠️ Not connected to Firebase.'); return;
-    }
-    // Force-pull latest data
-    const fbData = await window.loadFromFirebase();
-    if(fbData){
-      // Load per-doc orders
-      try{
-        const orderDocs2=await _loadOrderDocs();
-        if(orderDocs2&&orderDocs2.length>0){
-          const dIds2=Array.isArray(fbData.deletedOrders)?fbData.deletedOrders:[];
-          S.orders=_dedupeOrders(_filterClearedOrders(_mergeOrderDocs(S.orders,orderDocs2,dIds2)));
-          fbData.orders=S.orders;
-        }
-      }catch(e){}
-      const keys = ['riders','locations','payroll','expenses','inventory',
-                    'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
-                    'returnLog','govSettings','bizInfo','tabPasswords','adminAccounts'];
-      keys.forEach(k=>{ if(fbData[k]!==undefined) S[k]=fbData[k]; });
-      persist();
-      try{ (({
-        dashboard:renderDash,orders:renderOrders,checker:renderChecker,
-        tracking:renderTracking,riders:renderRiders,sorting:renderSorting,
-        returns:renderCancelledItems,payroll:()=>renderPayroll?.(),
-        expenses:renderExpenses,pnl:renderPnl,inventory:renderInventory,
-        adminsheets:renderAdminSheets,ridersremit:renderRemitPage,
-        cashbond:renderCashbondPage,benefits:renderBenefitsPage,
-        ordermgmt:renderOrderMgmt,lbcdelivery:renderLbcDelivery,
-        emsdelivery:renderEmsDelivery,fedexdelivery:renderFedexDelivery,
-      })[_activePage]||renderDash)?.(); }catch(e){}
-      toast('✅ Refreshed from Firebase!');
-    } else {
-      toast('☁ Already up to date.');
-    }
-  } catch(e){
-    toast('❌ Refresh failed: '+e.message);
-  } finally {
-    if(btn){ btn.disabled=false; btn.textContent='🔄 Refresh'; }
-  }
-}
-
-// ── Manual Save — force immediate sync to Firebase, bypass debounce ───────────
-async function manualSaveSync(){
-  const btn = document.getElementById('btn-manual-save');
-  if(btn){ btn.disabled=true; btn.textContent='💾 ...'; }
-  try {
-    localStorage.setItem(KEY, JSON.stringify(S));
-    if(!window._fbReady || !window.syncToFirebase){
-      toast('⚠️ Not connected to Firebase.'); return;
-    }
-    // Cancel any pending debounced write and fire immediately
-    _syncPending = false;
-    clearTimeout(_syncDebounceTimer);
-    await window.syncToFirebase(S);
-    toast('✅ Saved & synced to Firebase!');
-  } catch(e){
-    toast('❌ Save failed: '+e.message);
-  } finally {
-    if(btn){ btn.disabled=false; btn.textContent='💾 Save'; }
-  }
-}
-
 function logoutUser(){
-  // Show login screen so another role can log in, or owner can re-authenticate
-  currentRole=null; currentUser=null; currentRider=null; selectedRole=null;
-  unlockedPages=new Set();
-  backToRoleSelect?.();
-  const ls=document.getElementById('login-screen');
-  if(ls) ls.classList.remove('hidden');
+  if(!confirm('Logout?'))return;
+  currentRole=null;currentUser=null;currentRider=null;selectedRole=null;unlockedPages=new Set();
+  backToRoleSelect();
+  document.getElementById('login-screen').classList.remove('hidden');
+  document.querySelectorAll('.nav-item').forEach(el=>el.style.display='flex');
   FIN_PAGES.forEach(p=>{const el=document.getElementById('lock-'+p);if(el)el.classList.remove('unlocked');});
-  const dp=document.getElementById('rider-dash-login-prompt');
-  const dd=document.getElementById('rider-dash-content');
-  if(dp)dp.style.display='block'; if(dd)dd.style.display='none';
-  toast('Logged out. Select your role to continue.');
-}
-
-function switchToOtherRole(){
-  // Show login screen so another role (admin, checker, rider) can log in
-  currentRole=null; currentUser=null; currentRider=null; selectedRole=null;
-  unlockedPages=new Set();
-  backToRoleSelect?.();
-  const ls=document.getElementById('login-screen');
-  if(ls) ls.classList.remove('hidden');
-  FIN_PAGES.forEach(p=>{const el=document.getElementById('lock-'+p);if(el)el.classList.remove('unlocked');});
-  toast('Select your role to continue.');
+  const dp=document.getElementById('rider-dash-login-prompt');const dd=document.getElementById('rider-dash-content');
+  if(dp)dp.style.display='block';if(dd)dd.style.display='none';
+  toast('Logged out');
 }
 
 function changePassword(){
@@ -6486,38 +6119,25 @@ function saveFbConfig(){
 }
 
 
-// ── Debounce timer — collapses rapid saves into one Firebase write ───────────
+// ── Debounce timer for Firebase sync — prevents 429 Too Many Requests ────────
 let _syncDebounceTimer = null;
 let _syncPending = false;
 
 async function save(){
-  const _now = new Date().toISOString();
-  // Stamp all TX records with _id and _updatedAt
-  const _TX=['orders','payroll','expenses','remitLog','cashbondLog','benefitsLog',
-             'returnLog','stockLog','deletedOrders','mergeLog'];
-  _TX.forEach(k=>{
-    if(Array.isArray(S[k])) S[k].forEach(item=>{ _stamp(item); item._updatedAt=_now; });
-  });
-  // Apply global clear filter — blocked pre-clear orders from re-uploading
-  if(typeof _filterClearedOrders==='function')
-    S.orders=_filterClearedOrders(S.orders||[]);
-  // Write to localStorage immediately
+  // Write to localStorage immediately (always fast, never rate-limited)
   localStorage.setItem(KEY, JSON.stringify(S));
-  // Sync to Firebase — debounced 500ms
-  if(window._fbReady && window.syncToFirebase){
-    window.syncToFirebase();
-  }
-}
 
-// ── Periodic autosave — every 30 seconds silently syncs to Firebase ──────────
-let _autoSaveTimer = null;
-function startAutoSave(){
-  if(_autoSaveTimer) clearInterval(_autoSaveTimer);
-  _autoSaveTimer = setInterval(()=>{
-    if(!window._fbReady || !window.syncToFirebase) return;
-    localStorage.setItem(KEY, JSON.stringify(S));
-    window.syncToFirebase(S);
-  }, 30000);
+  if(!window._fbReady || !window.syncToFirebase) return;
+
+  // Debounce: collapse rapid saves into ONE Firebase write
+  // 10 rapid status-changes → timer resets each time → fires ONCE after 1.2s
+  _syncPending = true;
+  clearTimeout(_syncDebounceTimer);
+  _syncDebounceTimer = setTimeout(async ()=>{
+    if(!_syncPending) return;
+    _syncPending = false;
+    await window.syncToFirebase(S);
+  }, 1200); // 1.2s quiet period — safe for Firestore rate limits
 }
 
 function persist(){
@@ -7132,11 +6752,7 @@ function saveOrder() {
   const contact = document.getElementById('enc-contact').value.replace(/\D/g,'');
   const backupContact = (document.getElementById('enc-backup-contact')?.value||'').replace(/\D/g,'');
   const address = document.getElementById('enc-address').value.trim();
-  // Admin is locked to their own name — never trust the form field alone
-  // For admin role: force-use currentUser.name to prevent cross-contamination
-  const admin = (currentRole !== 'owner' && currentUser?.role !== 'owner' && currentUser?.name)
-    ? currentUser.name.trim()
-    : document.getElementById('enc-admin').value.trim();;
+  const admin = document.getElementById('enc-admin').value.trim();
   const date = document.getElementById('enc-date').value;
   if(!date) { toast('⚠️ Date is required. Please enter the date of purchase.'); document.getElementById('enc-date').focus(); return; }
   const shipping = document.getElementById('enc-shipping').value;
@@ -7234,42 +6850,17 @@ function saveOrder() {
       o.rtoReason = '';
       o.inventoryDeducted = false; // Will be re-deducted when checker re-verifies
     }
-    // ── EDIT: preserve _id so Firebase doc is overwritten, not duplicated ──────
-    o._id = orig._id;  // critical: same doc ID → PATCH not CREATE
-    _stamp(o);
-    o._updatedAt = new Date().toISOString();
     S.orders[+editIdx] = o;
-    persist();
-    if(window._fbReady) _writeOrderDoc(o).catch(()=>{});
-    if(window._fbReady && window.syncToFirebase) window.syncToFirebase();
-    currentEditingIndex = null;
-    closeModal('modal-encode');
-    initOrdersPage?.();
-    renderDash?.();
-    toast('✅ Order updated!');
-    return; // done — no fall-through to save()
     const wasRto = orig.lbcStatus === 'RTO';
     toast(wasRto ? '✅ Order updated & ready for re-dispatch!' : hadDeducted ? '✅ Order updated! Inventory adjusted.' : '✅ Order updated!');
   } else {
     // ── NO deduction on new order — inventory deducted only when Checker VERIFIES ──
     o.inventoryDeducted = false;
-    _stamp(o);
-    o._updatedAt = new Date().toISOString();
     S.orders.push(o);
-    persist();
-    if(window._fbReady) _writeOrderDoc(o).then(ok=>{
-      if(!ok && window.syncToFirebase) window.syncToFirebase();
-    }).catch(()=>{ if(window.syncToFirebase) window.syncToFirebase(); });
-    currentEditingIndex = null;
     toast('✅ Order saved! Inventory will be deducted upon Checker verification.');
-    closeModal('modal-encode');
-    initOrdersPage?.();
-    renderDash?.();
-    return; // skip the save() below for new orders (already handled)
   }
-  // Safety fallback (both paths return early above)
-  closeModal('modal-encode');
-  initOrdersPage?.();
+  save(); closeModal('modal-encode');
+  initOrdersPage();
   renderDash();
 }
 function delOrder(i){
@@ -8623,24 +8214,11 @@ async function initApp(){
   if(window._fbReady && window.loadFromFirebase){
     try {
       if(syncEl){ syncEl.textContent='☁ Loading...'; syncEl.style.color='var(--orange)'; }
-      // Use prefetched data if available — no extra network call
-      const fbData = (_prefetchDone && _prefetchedData) ? _prefetchedData : await window.loadFromFirebase();
-      _prefetchedData = null; _prefetchDone = false; // clear after use
+      const fbData = await window.loadFromFirebase();
       if(fbData){
         S = Object.assign(S, fbData);
         ['orders','riders','locations','payroll','expenses','inventory','stockLog','adminNames','remitLog','cashbondLog','benefitsLog','returnLog']
           .forEach(k=>{ if(!Array.isArray(S[k])) S[k]=[]; });
-        // Load per-document orders (race-condition-free concurrent encoding)
-        try{
-          const orderDocs = await _loadOrderDocs();
-          if(orderDocs&&orderDocs.length>0){
-            const dIds=Array.isArray(fbData.deletedOrders)?fbData.deletedOrders:[];
-            fbData.orders=_mergeOrderDocs(fbData.orders||[],orderDocs,dIds);
-            S.orders=_dedupeOrders(_filterClearedOrders(fbData.orders));
-          }
-        }catch(e){console.warn('[GCE] initApp orderDocs:',e.message);}
-        // Apply global clear if Owner cleared while device was offline
-        if(_applyGlobalClear(fbData)){ toast('🧹 Transactions cleared by Owner.'); }
         if(!S.govSettings) S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
         if(!S.bizInfo) S.bizInfo={};
         if(!S.tabPasswords) S.tabPasswords={checker:'',tracking:'',riders:''};
@@ -8686,95 +8264,9 @@ async function initApp(){
   // Update topbar date to current system date
   const _tbd = document.getElementById('topbar-date');
   if(_tbd) _tbd.textContent = new Date().toLocaleDateString('en-PH',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  // ── Auto-login as Owner — no login required ──────────────────────────────
-  // Owner's device shows all data immediately on load.
-  // All admin-encoded orders, payroll, expenses reflect without manual login.
-  if(!currentRole){
-    currentRole = 'owner';
-    currentUser = {name:'Owner', role:'owner'};
-    unlockedPages = new Set(FIN_PAGES);
-    // Hide login screen
-    const ls = document.getElementById('login-screen');
-    if(ls) ls.classList.add('hidden');
-    // Update topbar role display
-    const rt = document.getElementById('user-role-tag');
-    const nb = document.getElementById('user-name-badge');
-    if(rt) rt.textContent = 'CEO';
-    if(nb) nb.textContent = 'Owner';
-    // Show sidebar nav items for owner
-    document.querySelectorAll('.nav-item').forEach(n=>n.style.display='');
-  }
-
   renderDash();
   startAutoRefresh();
-  startAutoSave(); // periodic silent sync every 30s
 }
-
-
-// ── Pre-login: fetch latest passwords + data from Firebase immediately ────────
-// Data is ready the moment user logs in — no wait after doLogin()
-let _prefetchedData = null;
-let _prefetchDone   = false;
-
-async function preloadPasswords(){
-  try{
-    if(!window.loadFromFirebase) return;
-    const fbData = await window.loadFromFirebase();
-    if(!fbData) return;
-    _prefetchedData = fbData;
-    _prefetchDone   = true;
-    // Merge passwords into S now so login works immediately
-    if(fbData.ownerPwHash && fbData.ownerPwHash!==''){
-      localStorage.setItem('gce_pw_hash', fbData.ownerPwHash);
-    }
-    if(fbData.specialPasswords) S.specialPasswords = fbData.specialPasswords;
-    if(fbData.tabPasswords)     S.tabPasswords     = fbData.tabPasswords;
-    if(fbData.adminAccounts)    S.adminAccounts    = fbData.adminAccounts;
-    if(fbData.adminNames)       S.adminNames       = fbData.adminNames;
-    if(fbData.riders)           S.riders           = fbData.riders;
-  }catch(e){ console.warn('[GCE] preloadPasswords failed:', e.message); }
-}
-
-// Run immediately on page load (before login)
-(function(){
-  setTimeout(async function(){
-    try{ await preloadPasswords(); }catch(e){}
-  }, 0);
-})();
-
-// ── visibilitychange: instant sync when user returns to tab ──────────────────
-document.addEventListener('visibilitychange', async function(){
-  if(document.visibilityState === 'visible' && window._fbReady && currentRole){
-    try{
-      const fbData = await window.loadFromFirebase();
-      if(!fbData) return;
-      if(_applyGlobalClear(fbData)){
-        try{renderDash?.();}catch(e){}
-      }
-      const orderDocs=await _loadOrderDocs();
-      if(orderDocs&&orderDocs.length>0){
-        const dIds=Array.isArray(fbData.deletedOrders)?fbData.deletedOrders:[];
-        S.orders=_dedupeOrders(_filterClearedOrders(_mergeOrderDocs(S.orders,orderDocs,dIds)));
-        fbData.orders=S.orders;
-      }
-      const keys=['riders','locations','payroll','expenses','inventory',
-                  'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
-                  'returnLog','govSettings','bizInfo','tabPasswords','adminAccounts'];
-      keys.forEach(k=>{if(fbData[k]!==undefined)S[k]=fbData[k];});
-      persist();
-      try{ const rm={
-        dashboard:renderDash,orders:renderOrders,checker:renderChecker,
-        tracking:renderTracking,riders:renderRiders,sorting:renderSorting,
-        returns:renderCancelledItems,payroll:()=>renderPayroll?.(),
-        expenses:renderExpenses,pnl:renderPnl,inventory:()=>renderInv(invTab||'list'),
-        ridersremit:renderRemitPage,cashbond:renderCashbondPage,
-        benefits:renderBenefitsPage,ordermgmt:renderOrderMgmt,
-        lbcdelivery:renderLbcDelivery,emsdelivery:renderEmsDelivery,
-        fedexdelivery:renderFedexDelivery,
-      }; (rm[_activePage]||renderDash)?.(); }catch(e){}
-    }catch(e){ console.warn('[GCE] visibilitychange sync error:', e.message); }
-  }
-});
 
 // ============ STARTUP ============
 (function(){
@@ -8814,21 +8306,8 @@ function startAutoRefresh(){
     try {
       const fbData = await window.loadFromFirebase();
       if(!fbData) return;
-      // Check if Owner cleared transactions — wipe before merging
-      if(_applyGlobalClear(fbData)){
-        try{renderDash?.();}catch(e){}
-      }
-      // Load per-document orders (race-condition-free)
-      try{
-        const orderDocs=await _loadOrderDocs();
-        if(orderDocs&&orderDocs.length>0){
-          const dIds=Array.isArray(fbData.deletedOrders)?fbData.deletedOrders:[];
-          S.orders=_dedupeOrders(_filterClearedOrders(_mergeOrderDocs(S.orders,orderDocs,dIds)));
-          fbData.orders=S.orders;
-        }
-      }catch(e){console.warn('[GCE] refresh orderDocs:',e.message);}
       // Merge new data silently (don't reset UI)
-      const keys = ['riders','locations','payroll','expenses','inventory',
+      const keys = ['orders','riders','locations','payroll','expenses','inventory',
                     'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
                     'returnLog','govSettings','bizInfo','tabPasswords','adminAccounts'];
       keys.forEach(k=>{ if(fbData[k]!==undefined) S[k]=fbData[k]; });
@@ -8959,15 +8438,6 @@ function renderOrderMgmt() {
              </span>`
         }
       </td>
-      <td>
-        ${o.verificationStatus === 'Verified'
-          ? `<select class="form-control" style="width:130px;font-size:10.5px;padding:3px 5px;" onchange="omAssignRider(${i},this.value)" title="Assign Rider">
-              <option value="">— Assign Rider —</option>
-              ${(S.riders||[]).map(r=>`<option value="${r.name}"${o.assignedRider===r.name?' selected':''}>${r.name}</option>`).join('')}
-             </select>`
-          : `<span style="color:var(--muted);font-size:10px;">—</span>`
-        }
-      </td>
       <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
       <td>
         <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
@@ -8985,26 +8455,11 @@ function renderOrderMgmt() {
         <thead><tr>
           <th>Order #</th><th>Customer</th><th>CP #</th><th>Admin</th><th>Date</th>
           <th>Tracking #</th><th>💳 Payment</th><th>📅 Date Paid</th><th>📦 Date Drop-off</th><th>✅ Verification</th>
-          <th>📦 Parcel Status</th><th>Update Status</th><th>🏍️ Assign Rider</th><th>Total</th><th>Actions</th>
+          <th>📦 Parcel Status</th><th>Update Status</th><th>Total</th><th>Actions</th>
         </tr></thead>
-        <tbody>${rows || '<tr><td colspan="15" style="text-align:center;color:var(--muted);padding:26px;">No '+method+' orders found</td></tr>'}</tbody>
+        <tbody>${rows || '<tr><td colspan="14" style="text-align:center;color:var(--muted);padding:26px;">No '+method+' orders found</td></tr>'}</tbody>
       </table></div>
     </div>`;
-}
-
-function omAssignRider(orderIdx, riderName) {
-  if((S.orders[orderIdx]?.verificationStatus||'Not Verified') !== 'Verified') {
-    toast('⚠️ I-verify muna ang order bago mag-assign ng rider.'); return;
-  }
-  S.orders[orderIdx].assignedRider = riderName;
-  // Write per-doc immediately so rider sees it in their dashboard within 5s
-  persist();
-  if(window._fbReady && typeof _writeOrderDoc === 'function'){
-    _writeOrderDoc(S.orders[orderIdx]).catch(()=>{});
-  }
-  save();
-  toast(riderName ? `🏍️ Rider assigned: ${riderName}` : '🏍️ Rider unassigned');
-  renderOrderMgmt();
 }
 
 function omUpdateStatus(orderIdx, newStatus) {
@@ -9016,11 +8471,6 @@ function omUpdateStatus(orderIdx, newStatus) {
   if(newStatus === 'Delivered') { _promptDelivered(orderIdx,'ordermgmt'); return; }
   S.orders[orderIdx].lbcStatus = newStatus;
   S.orders[orderIdx].status = 'Preparing';
-  // Write per-doc immediately so all devices see the status change within 5s
-  persist();
-  if(window._fbReady && typeof _writeOrderDoc === 'function'){
-    _writeOrderDoc(S.orders[orderIdx]).catch(()=>{});
-  }
   save();
   toast('📦 Parcel Status → '+newStatus);
   renderOrderMgmt();
@@ -9290,7 +8740,8 @@ function renderLbcDelivery() {
     : ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
   const UPDATE_STATUSES_INTL = (lbcDeliveryTab==='ofd')
     ? (currentRole==='checker'||currentRole==='owner' ? ofdChoicesChecker : ofdChoicesSorter)
-    : ['Ready to Pick-up','Drop off at EMS','Out for Delivery','Delivered','RTO'];
+    : ['Ready to Pick-up','Drop of
+f at EMS','Out for Delivery','Delivered','RTO'];
 
   const stColor = s => {
     if(s==='Delivered') return 'var(--green)';
