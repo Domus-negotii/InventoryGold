@@ -6236,6 +6236,21 @@ async function save(){
   }, 1500); // 1.5s quiet period — safe for Firestore rate limits
 }
 
+// ── Periodic autosave — every 30 seconds, silently syncs to Firebase ─────────
+// Ensures data is never lost even if no explicit save() was triggered recently
+let _autoSaveTimer = null;
+function startAutoSave(){
+  if(_autoSaveTimer) clearInterval(_autoSaveTimer);
+  _autoSaveTimer = setInterval(async ()=>{
+    if(!window._fbReady || !window.syncToFirebase) return;
+    if(_fbCircuitOpen) return; // skip during 429 cooldown
+    if(_syncPending) return;   // skip if a debounced save is already pending
+    // Silently sync current state — no toast, no UI change except indicator
+    localStorage.setItem(KEY, JSON.stringify(S));
+    await window.syncToFirebase(S);
+  }, 30000); // every 30 seconds
+}
+
 function persist(){
   localStorage.setItem(KEY, JSON.stringify(S));
 }
@@ -8362,6 +8377,7 @@ async function initApp(){
   if(_tbd) _tbd.textContent = new Date().toLocaleDateString('en-PH',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   renderDash();
   startAutoRefresh();
+  startAutoSave(); // periodic silent sync every 30s
 }
 
 // ============ STARTUP ============
