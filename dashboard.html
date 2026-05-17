@@ -1024,8 +1024,7 @@ function _showRulesHint() {
       <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Light/Dark Mode">🌙</button>
       <span class="user-role-tag" id="user-role-tag">Admin</span>
       <span class="badge-pill" id="user-name-badge">Goldchelle</span>
-      <button class="btn btn-outline btn-sm" onclick="switchToOtherRole()" style="font-size:10px;padding:3px 8px;" title="Login as Admin/Checker/Rider">🔄 Switch User</button>
-      <button class="btn btn-outline btn-sm" onclick="logoutUser()" style="font-size:10px;padding:3px 8px;display:none;" id="btn-logout-role">Logout</button>
+      <button class="btn btn-outline btn-sm" onclick="logoutUser()" style="font-size:10px;padding:3px 8px;" id="btn-logout-role">Logout</button>
     </div>
   </div>
 
@@ -3570,13 +3569,19 @@ function verifyOrder(i){
   S.orders[i].checkerStatus='Verified';
   S.orders[i].verificationStatus='Verified';
   // ── Set lbcStatus so Sorter sees "Ready to Pick-up" immediately ──────────
-  // Only set if not already in a further-along status (e.g. OFD, Delivered)
   const _advancedStatuses=['Drop off at LBC','Drop off at EMS','Drop off at FedEx',
     'Out for Delivery','Delivered','RTO','ODZ/Incomplete Details'];
   if(!_advancedStatuses.includes(S.orders[i].lbcStatus)){
     S.orders[i].lbcStatus = 'Ready to Pick-up';
   }
-  save(); toast('✅ Order verified! Inventory deducted.'); renderChecker();
+  // Write per-doc immediately so Sorter sees it within 5 seconds (auto-refresh)
+  persist();
+  if(window._fbReady && typeof _writeOrderDoc === 'function'){
+    _writeOrderDoc(S.orders[i]).catch(()=>{});
+  }
+  save();
+  toast('✅ Order verified! Ready to Pick-up. Sorter can now assign rider.');
+  renderChecker();
 }
 function unverifyOrder(i){
   const o = S.orders[i];
@@ -6409,18 +6414,17 @@ async function manualSaveSync(){
 }
 
 function logoutUser(){
-  // Reset to Owner auto-login state (Owner is always logged in on this device)
-  currentRole = 'owner';
-  currentUser = {name:'Owner', role:'owner'};
-  unlockedPages = new Set(FIN_PAGES);
-  const ls = document.getElementById('login-screen');
-  if(ls) ls.classList.add('hidden');
-  const rt = document.getElementById('user-role-tag');
-  const nb = document.getElementById('user-name-badge');
-  if(rt) rt.textContent = 'CEO';
-  if(nb) nb.textContent = 'Owner';
-  gotoPage('dashboard');
-  toast('✅ Switched back to Owner view');
+  // Show login screen so another role can log in, or owner can re-authenticate
+  currentRole=null; currentUser=null; currentRider=null; selectedRole=null;
+  unlockedPages=new Set();
+  backToRoleSelect?.();
+  const ls=document.getElementById('login-screen');
+  if(ls) ls.classList.remove('hidden');
+  FIN_PAGES.forEach(p=>{const el=document.getElementById('lock-'+p);if(el)el.classList.remove('unlocked');});
+  const dp=document.getElementById('rider-dash-login-prompt');
+  const dd=document.getElementById('rider-dash-content');
+  if(dp)dp.style.display='block'; if(dd)dd.style.display='none';
+  toast('Logged out. Select your role to continue.');
 }
 
 function switchToOtherRole(){
@@ -8955,6 +8959,15 @@ function renderOrderMgmt() {
              </span>`
         }
       </td>
+      <td>
+        ${o.verificationStatus === 'Verified'
+          ? `<select class="form-control" style="width:130px;font-size:10.5px;padding:3px 5px;" onchange="omAssignRider(${i},this.value)" title="Assign Rider">
+              <option value="">— Assign Rider —</option>
+              ${(S.riders||[]).map(r=>`<option value="${r.name}"${o.assignedRider===r.name?' selected':''}>${r.name}</option>`).join('')}
+             </select>`
+          : `<span style="color:var(--muted);font-size:10px;">—</span>`
+        }
+      </td>
       <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
       <td>
         <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
@@ -8972,11 +8985,26 @@ function renderOrderMgmt() {
         <thead><tr>
           <th>Order #</th><th>Customer</th><th>CP #</th><th>Admin</th><th>Date</th>
           <th>Tracking #</th><th>💳 Payment</th><th>📅 Date Paid</th><th>📦 Date Drop-off</th><th>✅ Verification</th>
-          <th>📦 Parcel Status</th><th>Update Status</th><th>Total</th><th>Actions</th>
+          <th>📦 Parcel Status</th><th>Update Status</th><th>🏍️ Assign Rider</th><th>Total</th><th>Actions</th>
         </tr></thead>
-        <tbody>${rows || '<tr><td colspan="14" style="text-align:center;color:var(--muted);padding:26px;">No '+method+' orders found</td></tr>'}</tbody>
+        <tbody>${rows || '<tr><td colspan="15" style="text-align:center;color:var(--muted);padding:26px;">No '+method+' orders found</td></tr>'}</tbody>
       </table></div>
     </div>`;
+}
+
+function omAssignRider(orderIdx, riderName) {
+  if((S.orders[orderIdx]?.verificationStatus||'Not Verified') !== 'Verified') {
+    toast('⚠️ I-verify muna ang order bago mag-assign ng rider.'); return;
+  }
+  S.orders[orderIdx].assignedRider = riderName;
+  // Write per-doc immediately so rider sees it in their dashboard within 5s
+  persist();
+  if(window._fbReady && typeof _writeOrderDoc === 'function'){
+    _writeOrderDoc(S.orders[orderIdx]).catch(()=>{});
+  }
+  save();
+  toast(riderName ? `🏍️ Rider assigned: ${riderName}` : '🏍️ Rider unassigned');
+  renderOrderMgmt();
 }
 
 function omUpdateStatus(orderIdx, newStatus) {
@@ -8988,6 +9016,11 @@ function omUpdateStatus(orderIdx, newStatus) {
   if(newStatus === 'Delivered') { _promptDelivered(orderIdx,'ordermgmt'); return; }
   S.orders[orderIdx].lbcStatus = newStatus;
   S.orders[orderIdx].status = 'Preparing';
+  // Write per-doc immediately so all devices see the status change within 5s
+  persist();
+  if(window._fbReady && typeof _writeOrderDoc === 'function'){
+    _writeOrderDoc(S.orders[orderIdx]).catch(()=>{});
+  }
   save();
   toast('📦 Parcel Status → '+newStatus);
   renderOrderMgmt();
