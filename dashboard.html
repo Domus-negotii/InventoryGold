@@ -7463,7 +7463,6 @@ function saveOrder() {
   }
   if(!address) { toast('⚠️ Complete Address required'); document.getElementById('enc-address').focus(); return; }
   if(!admin) { toast('⚠️ Admin Name required'); return; }
-  if(!date) { toast('⚠️ Date of Purchase required'); document.getElementById('enc-date').focus(); return; }
   if(shipping === '' || shipping === null) { toast('⚠️ Shipping Fee required (0 kung libre)'); document.getElementById('enc-shipping').focus(); return; }
 
   const items = getItems('enc-items-tbody');
@@ -8029,6 +8028,9 @@ function openRemitModal(editIdx=null) {
     document.querySelectorAll('input[name="remit-status-radio"]').forEach(r=>{ r.checked = r.value === (e.remitStatus||'For Remittance'); });
     onRemitStatusChange(e.remitStatus||'For Remittance');
     populateRemitParcels();
+  } else {
+    // New entry: if only one rider exists, auto-select and populate
+    if(S.riders.length === 1) { sel.value = '0'; populateRemitParcels(); }
   }
   openModal('modal-remit');
 }
@@ -8268,35 +8270,43 @@ function saveRemit() {
   const date = document.getElementById('remit-date').value || today();
   const remitStatus = [...document.querySelectorAll('input[name="remit-status-radio"]')]
     .find(r=>r.checked)?.value || 'For Remittance';
-  const riderEl = document.getElementById('remit-rider');
-  const totalSF = parseFloat(riderEl.dataset.totalSF)||0;
-  const sf10 = parseFloat(riderEl.dataset.sf10)||0;
-  const sfNetRider = parseFloat(riderEl.dataset.sfNetRider)||0;
-  const cashbond = parseFloat(riderEl.dataset.cashbond)||100;
-  const parcelFee = parseFloat(riderEl.dataset.parcelFee)||0;
   const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
-  const codSubtotal = parseFloat(riderEl.dataset.codSubtotal)||0;
-  const netSF = parseFloat(riderEl.dataset.netSF)||0;
-  const netTotal = parseFloat(riderEl.dataset.netTotal)||0;
-  const deliveredCount = parseInt(riderEl.dataset.deliveredCount)||0;
-  const cancelledCount = parseInt(riderEl.dataset.cancelledCount)||0;
-  const parcelCount = parseInt(riderEl.dataset.parcelCount)||0;
+
+  // ── Recompute all values fresh from S.orders (don't rely on dataset) ─────
+  const myOrders = S.orders.map((o,i)=>({...o,idx:i}))
+    .filter(o=>o.assignedRider===rider.name && o.date===date);
+  const delivered   = myOrders.filter(o=>o.status==='Delivered');
+  const cancelled   = myOrders.filter(o=>['Cancelled','Update'].includes(o.status));
+  const deliveredSF = delivered.reduce((s,o)=>s+(o.shipping||0),0);
+  const codSubtotal = delivered.reduce((s,o)=>s+(o.grandTotal||0),0);
+  const sf10        = deliveredSF * 0.10;
+  const sfRider90   = deliveredSF * 0.90;
+  const cashbond    = 100;
+  const parcelFee   = delivered.length * 10;
+  const netSF       = Math.max(0, sfRider90 - cashbond - parcelFee - manualBenefits);
+  const netTotal    = Math.max(0, codSubtotal - netSF);
 
   const entry = {
     riderName: rider.name,
     date,
     remitStatus,
-    parcelCount, totalSF, sf10, sfNetRider,
+    parcelCount   : myOrders.length,
+    totalSF       : deliveredSF,
+    sf10,
+    sfNetRider    : sfRider90,
     cashbondDeduct: cashbond,
     parcelFeeDeduct: parcelFee,
     manualBenefits,
-    totalBenefits: manualBenefits, // for backwards compat display
-    codSubtotal, netSF, netTotal,
-    deliveredCount, cancelledCount,
-    subtotal: codSubtotal,
-    netEarn: netTotal,
-    cashRemitted: netTotal,
-    notes: ''
+    totalBenefits : manualBenefits,
+    codSubtotal,
+    netSF,
+    netTotal,
+    deliveredCount: delivered.length,
+    cancelledCount: cancelled.length,
+    subtotal      : codSubtotal,
+    netEarn       : netTotal,
+    cashRemitted  : netTotal,
+    notes         : ''
   };
 
   const editIdx = document.getElementById('remit-edit-idx').value;
