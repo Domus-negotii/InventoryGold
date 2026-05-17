@@ -925,6 +925,8 @@ function _showRulesHint() {
     <div class="user-badge">
       <span id="topbar-date" style="font-size:11px;color:var(--muted);"></span>
       <span id="sync-indicator" class="sync-indicator" style="color:var(--muted);">⬤ Offline</span>
+      <button class="btn btn-outline btn-sm no-print" id="btn-refresh" onclick="manualRefresh()" title="Pull latest data from Firebase" style="font-size:10px;padding:3px 8px;">🔄 Refresh</button>
+      <button class="btn btn-gold btn-sm no-print" id="btn-manual-save" onclick="manualSaveSync()" title="Force save & sync to Firebase now" style="font-size:10px;padding:3px 8px;">💾 Save</button>
       <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Light/Dark Mode">🌙</button>
       <span class="user-role-tag" id="user-role-tag">Admin</span>
       <span class="badge-pill" id="user-name-badge">Goldchelle</span>
@@ -6061,6 +6063,68 @@ function unlockPage(page){
   unlockedPages.add(page);
   const lockEl=document.getElementById('lock-'+page); if(lockEl)lockEl.classList.add('unlocked');
   const inp=document.getElementById('lock-pw-'+page); if(inp)inp.value='';
+}
+
+// ── Manual Refresh — force-pull latest data from Firebase ────────────────────
+async function manualRefresh(){
+  const btn = document.getElementById('btn-refresh');
+  if(btn){ btn.disabled=true; btn.textContent='🔄 ...'; }
+  try {
+    if(!window._fbReady || !window.loadFromFirebase){
+      toast('⚠️ Not connected to Firebase.'); return;
+    }
+    // Bypass the 25s throttle for manual refresh
+    window._lastFbRead = 0;
+    const fbData = await window.loadFromFirebase();
+    if(fbData){
+      const keys = ['orders','riders','locations','payroll','expenses','inventory',
+                    'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
+                    'returnLog','govSettings','bizInfo','tabPasswords','adminAccounts'];
+      keys.forEach(k=>{ if(fbData[k]!==undefined) S[k]=fbData[k]; });
+      persist();
+      try{ (({
+        dashboard:renderDash,orders:renderOrders,checker:renderChecker,
+        tracking:renderTracking,riders:renderRiders,sorting:renderSorting,
+        returns:renderCancelledItems,payroll:()=>renderPayroll?.(),
+        expenses:renderExpenses,pnl:renderPnl,inventory:renderInventory,
+        adminsheets:renderAdminSheets,ridersremit:renderRemitPage,
+        cashbond:renderCashbondPage,benefits:renderBenefitsPage,
+        ordermgmt:renderOrderMgmt,lbcdelivery:renderLbcDelivery,
+        emsdelivery:renderEmsDelivery,fedexdelivery:renderFedexDelivery,
+      })[_activePage]||renderDash)?.(); }catch(e){}
+      toast('✅ Refreshed from Firebase!');
+    } else {
+      toast('☁ Already up to date.');
+    }
+  } catch(e){
+    toast('❌ Refresh failed: '+e.message);
+  } finally {
+    if(btn){ btn.disabled=false; btn.textContent='🔄 Refresh'; }
+  }
+}
+
+// ── Manual Save — force immediate sync to Firebase, bypass debounce ───────────
+async function manualSaveSync(){
+  const btn = document.getElementById('btn-manual-save');
+  if(btn){ btn.disabled=true; btn.textContent='💾 ...'; }
+  try {
+    localStorage.setItem(KEY, JSON.stringify(S));
+    if(!window._fbReady || !window.syncToFirebase){
+      toast('⚠️ Not connected to Firebase.'); return;
+    }
+    // Cancel any pending debounced write and fire immediately
+    _syncPending = false;
+    clearTimeout(_syncDebounceTimer);
+    // If circuit is open due to 429, reset it and try anyway
+    _fbCircuitOpen = false;
+    clearTimeout(_fbCircuitTimer);
+    await window.syncToFirebase(S, 0);
+    toast('✅ Saved & synced to Firebase!');
+  } catch(e){
+    toast('❌ Save failed: '+e.message);
+  } finally {
+    if(btn){ btn.disabled=false; btn.textContent='💾 Save'; }
+  }
 }
 
 function logoutUser(){
