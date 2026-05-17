@@ -515,16 +515,11 @@ window.syncToFirebase = async function(S, _retryCount) {
     const rA = await _patch(fieldsA);
 
     if(rA.status === 429){
-      // Rate limited — exponential backoff: 2s → 4s → 8s, max 3 retries
-      const e=el(); if(e){e.style.color='var(--orange)';e.textContent='☁ Retrying...';}
-      if(_retryCount < 3){
-        const delay = Math.pow(2, _retryCount+1) * 1000;
-        console.warn(`[GCE] 429 — retrying in ${delay/1000}s (attempt ${_retryCount+1}/3)`);
-        setTimeout(()=>window.syncToFirebase(S, _retryCount+1), delay);
-      } else {
-        const e2=el(); if(e2){e2.style.color='var(--red)';e2.textContent='☁ Sync Error';}
-        console.warn('[GCE] 429 persists after 3 retries');
-      }
+      // Trip the circuit breaker — pause ALL writes for 60s
+      const e=el(); if(e){e.style.color='var(--orange)';e.textContent='☁ Quota (60s)';}
+      console.warn('[GCE] 429 on Chunk A — circuit open for 60s, queuing write');
+      _fbQueuedWrite = JSON.parse(JSON.stringify(S)); // queue current state
+      _openCircuit(60000); // 60s cooldown
       return;
     }
 
@@ -540,14 +535,10 @@ window.syncToFirebase = async function(S, _retryCount) {
     const rB = await _patch(fieldsB);
 
     if(rB.status === 429){
-      // Chunk B rate limited — schedule retry for just Chunk B
-      if(_retryCount < 3){
-        const delay = Math.pow(2, _retryCount+1) * 1000;
-        setTimeout(async ()=>{
-          const rRetry = await _patch(fieldsB);
-          if(!rRetry.ok) console.warn('[GCE] Chunk B retry failed:', rRetry.status);
-        }, delay);
-      }
+      // Chunk B rate limited — open circuit, queue the full state for retry
+      console.warn('[GCE] 429 on Chunk B — circuit open for 60s');
+      _fbQueuedWrite = JSON.parse(JSON.stringify(S));
+      _openCircuit(60000);
     }
 
     // Both done — update indicator
@@ -565,24 +556,38 @@ window.syncToFirebase = async function(S, _retryCount) {
 window.loadFromFirebase = async function() {
   const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
   const _syncEl = ()=>document.getElementById('sync-indicator');
+
+  // ── Throttle reads: skip if last successful read was <25s ago ───────────────
+  const _now = Date.now();
+  if(window._lastFbRead && (_now - window._lastFbRead) < 25000) return null;
+
   try {
     const r = await fetch(url, {cache:'no-cache'});
 
     // 404 = fresh database, no data yet — OK
     if(r.status === 404) {
       const el=_syncEl(); if(el){el.style.color='var(--green)';el.textContent='☁ Online';}
+      window._lastFbRead = _now;
       return null;
     }
     // 403 = Firestore rules blocking unauthenticated access
     if(r.status === 403) {
       const el=_syncEl(); if(el){el.style.color='var(--orange)';el.textContent='☁ Rules!';}
-      _showRulesHint();
+      _showRulesHint?.();
+      return null;
+    }
+    // 429 = rate limited — back off, do not count as successful read
+    if(r.status === 429) {
+      const el=_syncEl(); if(el){el.style.color='var(--orange)';el.textContent='☁ Quota...';}
+      console.warn('[GCE] loadFromFirebase 429 — throttling reads for 60s');
+      window._lastFbRead = _now + 35000; // force 60s+ wait before next read
       return null;
     }
     if(!r.ok) {
       const el=_syncEl(); if(el){el.style.color='var(--orange)';el.textContent='☁ Error '+r.status;}
       return null;
     }
+    window._lastFbRead = _now; // mark successful read time
     const doc = await r.json();
     if(!doc.fields) {
       const el=_syncEl(); if(el){el.style.color='var(--green)';el.textContent='☁ Online';}
@@ -6118,6 +6123,27 @@ function saveFbConfig(){
 }
 
 
+// ── Global 429 circuit breaker ────────────────────────────────────────────────
+// When Firebase returns 429, ALL writes pause for a cooldown period
+// This prevents repeated hammering during quota exhaustion
+let _fbCircuitOpen    = false;  // true = Firebase is rate-limiting us right now
+let _fbCircuitTimer   = null;   // timer to reset the circuit
+let _fbQueuedWrite    = null;   // last S snapshot waiting to be written after cooldown
+
+function _openCircuit(cooldownMs) {
+  _fbCircuitOpen = true;
+  clearTimeout(_fbCircuitTimer);
+  _fbCircuitTimer = setTimeout(()=>{
+    _fbCircuitOpen = false;
+    console.log('[GCE] Circuit reset — resuming Firebase writes');
+    // Flush any write that was queued during cooldown
+    if(_fbQueuedWrite && window.syncToFirebase){
+      const snap = _fbQueuedWrite; _fbQueuedWrite = null;
+      window.syncToFirebase(snap, 0);
+    }
+  }, cooldownMs);
+}
+
 // ── Debounce timer for Firebase sync — prevents 429 Too Many Requests ────────
 let _syncDebounceTimer = null;
 let _syncPending = false;
@@ -6128,15 +6154,22 @@ async function save(){
 
   if(!window._fbReady || !window.syncToFirebase) return;
 
+  // If circuit is open (we're in 429 cooldown), queue this write and exit
+  if(_fbCircuitOpen){
+    _fbQueuedWrite = JSON.parse(JSON.stringify(S)); // snapshot current state
+    return;
+  }
+
   // Debounce: collapse rapid saves into ONE Firebase write
-  // 10 rapid status-changes → timer resets each time → fires ONCE after 1.2s
+  // 10 rapid status-changes → timer resets each time → fires ONCE after 1.5s
   _syncPending = true;
   clearTimeout(_syncDebounceTimer);
   _syncDebounceTimer = setTimeout(async ()=>{
     if(!_syncPending) return;
     _syncPending = false;
-    await window.syncToFirebase(S);
-  }, 1200); // 1.2s quiet period — safe for Firestore rate limits
+    if(!_fbCircuitOpen) await window.syncToFirebase(S);
+    else _fbQueuedWrite = JSON.parse(JSON.stringify(S));
+  }, 1500); // 1.5s quiet period — safe for Firestore rate limits
 }
 
 function persist(){
@@ -8343,7 +8376,7 @@ function startAutoRefresh(){
       // If rider, always refresh their parcels too
       if(currentRole==='rider') try{renderRiderParcels();}catch(e){}
     } catch(e){ console.warn('Auto-refresh error:',e.message); }
-  }, 30000); // every 30 seconds
+  }, 45000 + Math.floor(Math.random()*15000)); // 45–60s with jitter (prevents device stampede)
 }
 
 // ============================================================
