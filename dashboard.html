@@ -1024,7 +1024,8 @@ function _showRulesHint() {
       <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Light/Dark Mode">🌙</button>
       <span class="user-role-tag" id="user-role-tag">Admin</span>
       <span class="badge-pill" id="user-name-badge">Goldchelle</span>
-      <button class="btn btn-outline btn-sm" onclick="logoutUser()" style="font-size:10px;padding:3px 8px;">Logout</button>
+      <button class="btn btn-outline btn-sm" onclick="switchToOtherRole()" style="font-size:10px;padding:3px 8px;" title="Login as Admin/Checker/Rider">🔄 Switch User</button>
+      <button class="btn btn-outline btn-sm" onclick="logoutUser()" style="font-size:10px;padding:3px 8px;display:none;" id="btn-logout-role">Logout</button>
     </div>
   </div>
 
@@ -2529,6 +2530,12 @@ if(!S.bizInfo)S.bizInfo={name:'Goldchelle Online Enterprises',address:'Las Pinas
 // Tab-specific passwords (CEO can set independently)
 if(!S.tabPasswords)S.tabPasswords={checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''};
 if(!S.specialPasswords) S.specialPasswords={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
+// ── Fresh start v4 — clears old TX data on first load after deploy ──────────
+if(!localStorage.getItem('gce_fresh_start_v4')){
+  localStorage.setItem('gce_fresh_start_v4','1');
+  ['orders','payroll','expenses','remitLog','cashbondLog','benefitsLog',
+   'returnLog','stockLog','deletedOrders','mergeLog'].forEach(k=>{S[k]=[];});
+}
 // Migrate existing inventory items that are missing itemType
 if(S.inventory) S.inventory.forEach(it=>{ if(!it.itemType) it.itemType='grams'; });
 // Migrate existing orders — add new fields if missing
@@ -2621,8 +2628,7 @@ const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales 
 let _activePage = 'dashboard';
 function gotoPage(name){
   _activePage = name;
-  // LBC checker lock removed
-  // CEO-only pages
+  // Non-owner roles blocked from CEO-only pages
   if(['dashboard','calendar'].includes(name) && currentRole !== 'owner') {
     toast('🔐 Dashboard & Calendar are CEO-only'); return;
   }
@@ -6251,10 +6257,20 @@ function doLogin(){
       document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
       document.getElementById('page-dashboard')?.classList.add('active');
       document.getElementById('topbar-title').textContent='Dashboard';
-      applyDashCeoLock();
+      applyDashCeoLock?.();
       renderDash();
     });
   }
+  // Show Logout button for non-owner roles; hide Switch User
+  if(currentRole && currentRole !== 'owner'){
+    const sw=document.getElementById('btn-logout-role');
+    if(sw) sw.style.display='';
+  }
+  // Update topbar badge
+  const rt=document.getElementById('user-role-tag');
+  const nb=document.getElementById('user-name-badge');
+  if(rt) rt.textContent=currentRole==='owner'?'CEO':currentRole==='admin'?'Admin':currentRole==='checker'?'Checker':currentRole==='rider'?'Rider':'Staff';
+  if(nb) nb.textContent=currentUser?.name||'Goldchelle';
 }
 
 function applyRoleUI(){
@@ -6386,15 +6402,29 @@ async function manualSaveSync(){
 }
 
 function logoutUser(){
-  if(!confirm('Logout?'))return;
-  currentRole=null;currentUser=null;currentRider=null;selectedRole=null;unlockedPages=new Set();
-  backToRoleSelect();
-  document.getElementById('login-screen').classList.remove('hidden');
-  document.querySelectorAll('.nav-item').forEach(el=>el.style.display='flex');
+  // Reset to Owner auto-login state (Owner is always logged in on this device)
+  currentRole = 'owner';
+  currentUser = {name:'Owner', role:'owner'};
+  unlockedPages = new Set(FIN_PAGES);
+  const ls = document.getElementById('login-screen');
+  if(ls) ls.classList.add('hidden');
+  const rt = document.getElementById('user-role-tag');
+  const nb = document.getElementById('user-name-badge');
+  if(rt) rt.textContent = 'CEO';
+  if(nb) nb.textContent = 'Owner';
+  gotoPage('dashboard');
+  toast('✅ Switched back to Owner view');
+}
+
+function switchToOtherRole(){
+  // Show login screen so another role (admin, checker, rider) can log in
+  currentRole=null; currentUser=null; currentRider=null; selectedRole=null;
+  unlockedPages=new Set();
+  backToRoleSelect?.();
+  const ls=document.getElementById('login-screen');
+  if(ls) ls.classList.remove('hidden');
   FIN_PAGES.forEach(p=>{const el=document.getElementById('lock-'+p);if(el)el.classList.remove('unlocked');});
-  const dp=document.getElementById('rider-dash-login-prompt');const dd=document.getElementById('rider-dash-content');
-  if(dp)dp.style.display='block';if(dd)dd.style.display='none';
-  toast('Logged out');
+  toast('Select your role to continue.');
 }
 
 function changePassword(){
@@ -7091,7 +7121,11 @@ function saveOrder() {
   const contact = document.getElementById('enc-contact').value.replace(/\D/g,'');
   const backupContact = (document.getElementById('enc-backup-contact')?.value||'').replace(/\D/g,'');
   const address = document.getElementById('enc-address').value.trim();
-  const admin = document.getElementById('enc-admin').value.trim();
+  // Admin is locked to their own name — never trust the form field alone
+  // For admin role: force-use currentUser.name to prevent cross-contamination
+  const admin = (currentRole !== 'owner' && currentUser?.role !== 'owner' && currentUser?.name)
+    ? currentUser.name.trim()
+    : document.getElementById('enc-admin').value.trim();;
   const date = document.getElementById('enc-date').value;
   if(!date) { toast('⚠️ Date is required. Please enter the date of purchase.'); document.getElementById('enc-date').focus(); return; }
   const shipping = document.getElementById('enc-shipping').value;
@@ -8578,7 +8612,9 @@ async function initApp(){
   if(window._fbReady && window.loadFromFirebase){
     try {
       if(syncEl){ syncEl.textContent='☁ Loading...'; syncEl.style.color='var(--orange)'; }
-      const fbData = await window.loadFromFirebase();
+      // Use prefetched data if available — no extra network call
+      const fbData = (_prefetchDone && _prefetchedData) ? _prefetchedData : await window.loadFromFirebase();
+      _prefetchedData = null; _prefetchDone = false; // clear after use
       if(fbData){
         S = Object.assign(S, fbData);
         ['orders','riders','locations','payroll','expenses','inventory','stockLog','adminNames','remitLog','cashbondLog','benefitsLog','returnLog']
@@ -8639,10 +8675,95 @@ async function initApp(){
   // Update topbar date to current system date
   const _tbd = document.getElementById('topbar-date');
   if(_tbd) _tbd.textContent = new Date().toLocaleDateString('en-PH',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  // ── Auto-login as Owner — no login required ──────────────────────────────
+  // Owner's device shows all data immediately on load.
+  // All admin-encoded orders, payroll, expenses reflect without manual login.
+  if(!currentRole){
+    currentRole = 'owner';
+    currentUser = {name:'Owner', role:'owner'};
+    unlockedPages = new Set(FIN_PAGES);
+    // Hide login screen
+    const ls = document.getElementById('login-screen');
+    if(ls) ls.classList.add('hidden');
+    // Update topbar role display
+    const rt = document.getElementById('user-role-tag');
+    const nb = document.getElementById('user-name-badge');
+    if(rt) rt.textContent = 'CEO';
+    if(nb) nb.textContent = 'Owner';
+    // Show sidebar nav items for owner
+    document.querySelectorAll('.nav-item').forEach(n=>n.style.display='');
+  }
+
   renderDash();
   startAutoRefresh();
   startAutoSave(); // periodic silent sync every 30s
 }
+
+
+// ── Pre-login: fetch latest passwords + data from Firebase immediately ────────
+// Data is ready the moment user logs in — no wait after doLogin()
+let _prefetchedData = null;
+let _prefetchDone   = false;
+
+async function preloadPasswords(){
+  try{
+    if(!window.loadFromFirebase) return;
+    const fbData = await window.loadFromFirebase();
+    if(!fbData) return;
+    _prefetchedData = fbData;
+    _prefetchDone   = true;
+    // Merge passwords into S now so login works immediately
+    if(fbData.ownerPwHash && fbData.ownerPwHash!==''){
+      localStorage.setItem('gce_pw_hash', fbData.ownerPwHash);
+    }
+    if(fbData.specialPasswords) S.specialPasswords = fbData.specialPasswords;
+    if(fbData.tabPasswords)     S.tabPasswords     = fbData.tabPasswords;
+    if(fbData.adminAccounts)    S.adminAccounts    = fbData.adminAccounts;
+    if(fbData.adminNames)       S.adminNames       = fbData.adminNames;
+    if(fbData.riders)           S.riders           = fbData.riders;
+  }catch(e){ console.warn('[GCE] preloadPasswords failed:', e.message); }
+}
+
+// Run immediately on page load (before login)
+(function(){
+  setTimeout(async function(){
+    try{ await preloadPasswords(); }catch(e){}
+  }, 0);
+})();
+
+// ── visibilitychange: instant sync when user returns to tab ──────────────────
+document.addEventListener('visibilitychange', async function(){
+  if(document.visibilityState === 'visible' && window._fbReady && currentRole){
+    try{
+      const fbData = await window.loadFromFirebase();
+      if(!fbData) return;
+      if(_applyGlobalClear(fbData)){
+        try{renderDash?.();}catch(e){}
+      }
+      const orderDocs=await _loadOrderDocs();
+      if(orderDocs&&orderDocs.length>0){
+        const dIds=Array.isArray(fbData.deletedOrders)?fbData.deletedOrders:[];
+        S.orders=_dedupeOrders(_filterClearedOrders(_mergeOrderDocs(S.orders,orderDocs,dIds)));
+        fbData.orders=S.orders;
+      }
+      const keys=['riders','locations','payroll','expenses','inventory',
+                  'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
+                  'returnLog','govSettings','bizInfo','tabPasswords','adminAccounts'];
+      keys.forEach(k=>{if(fbData[k]!==undefined)S[k]=fbData[k];});
+      persist();
+      try{ const rm={
+        dashboard:renderDash,orders:renderOrders,checker:renderChecker,
+        tracking:renderTracking,riders:renderRiders,sorting:renderSorting,
+        returns:renderCancelledItems,payroll:()=>renderPayroll?.(),
+        expenses:renderExpenses,pnl:renderPnl,inventory:()=>renderInv(invTab||'list'),
+        ridersremit:renderRemitPage,cashbond:renderCashbondPage,
+        benefits:renderBenefitsPage,ordermgmt:renderOrderMgmt,
+        lbcdelivery:renderLbcDelivery,emsdelivery:renderEmsDelivery,
+        fedexdelivery:renderFedexDelivery,
+      }; (rm[_activePage]||renderDash)?.(); }catch(e){}
+    }catch(e){ console.warn('[GCE] visibilitychange sync error:', e.message); }
+  }
+});
 
 // ============ STARTUP ============
 (function(){
