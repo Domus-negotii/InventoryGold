@@ -3052,6 +3052,7 @@ function _renderOwnerOrdersView() {
     </div>
     <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
       <input type="date" class="form-control" style="width:140px;font-size:11px;padding:4px 8px;" id="order-date-filter" oninput="renderOrders()" title="Filter by date">
+      <button class="btn btn-outline btn-sm" onclick="document.getElementById('order-date-filter').value='';renderOrders()" title="Show all dates">All Dates</button>
       <input class="form-control" style="width:180px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / order# / CP#" id="order-search" oninput="renderOrders()">
       <select class="form-control" style="width:130px;font-size:11px;padding:4px 8px;" id="order-method-filter" onchange="renderOrders()">
         <option value="">All Methods</option><option>COD</option><option>LBC</option><option>EMS</option><option>FedEx</option>
@@ -3083,7 +3084,7 @@ function _renderOwnerOrdersView() {
 
   // Set default date = tomorrow right after element is created
   const odf = document.getElementById('order-date-filter');
-  if(odf && !odf.value) odf.value = tomorrow();
+  if(odf && !odf.value) odf.value = today();
   renderOrders();
 }
 
@@ -3102,7 +3103,7 @@ function renderOrders() {
     if(mf && (o.paymentMethod||'COD') !== mf) return false;
     if(df && o.date !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q) && !(o.contact||'').includes(q)) return false;
-    if(o.status === 'Cancelled') return false; // Cancelled orders hidden from Admin Encode
+    if(o.status === 'Cancelled' && currentRole === 'admin') return false; // Admin sees only active orders
     return true;
   });
 
@@ -9097,7 +9098,7 @@ async function initApp(){
   setVal('ret-update-date', today());
   setVal('remit-page-date', today());
   setVal('my-order-date', '');
-  setVal('order-date-filter', tomorrow());
+  setVal('order-date-filter', today());
   setVal('rider-date-filter', today());
   setVal('enc-date', '');
   setVal('pay-date', today());
