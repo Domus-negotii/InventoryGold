@@ -1551,6 +1551,7 @@ function _showRulesHint() {
           <p style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Export backup or clear all data. Cannot be undone.</p>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button class="btn btn-outline" onclick="exportData()">📤 Export JSON Backup</button>
+            <button class="btn btn-orange" onclick="clearAllTransactions()">🧹 Clear Transactions</button>
             <button class="btn btn-red" onclick="clearAllData()">🗑️ Clear All Data</button>
           </div>
         </div>
@@ -4906,7 +4907,7 @@ function switchInvTab(t){
   invTab=t;
   document.querySelectorAll('#inv-tabs .tab-btn').forEach((b,i)=>b.classList.toggle('active',['list','stockin','stockout','ledger'][i]===t));
   const btn=document.getElementById('inv-action-btn');
-  if(t==='list')btn.innerHTML=`<button class="btn btn-gold" onclick="openAddInvModal()">+ Add Product</button>`;
+  if(t==='list')btn.innerHTML=`<button class="btn btn-gold" onclick="openAddInvModal()">+ Add Product</button><button class="btn btn-outline btn-sm" onclick="exportInventoryToExcel()" style="font-size:11px;">📥 Export Excel</button><label class="btn btn-outline btn-sm" style="font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;" title="Import CSV backup">📤 Import Excel<input type="file" accept=".csv" style="display:none;" onchange="importInventoryFromExcel(this)"></label>`;
   else if(t==='stockin')btn.innerHTML=`<button class="btn btn-green" onclick="openStockModal('in')">+ Stock In</button>`;
   else if(t==='stockout')btn.innerHTML=`<button class="btn btn-orange" onclick="openStockModal('out')">↓ Stock Out</button><button class="btn btn-outline" style="margin-left:6px;" onclick="openStockModal('adj')">⚙ Adjustment</button>`;
   else btn.innerHTML='';
@@ -5597,6 +5598,107 @@ function renderSettingsSummary(){
     <div class="info-row"><span style="color:var(--muted);">Inventory Products</span><strong>${S.inventory.length}</strong></div>
     <div class="info-row" style="border-bottom:none;"><span style="color:var(--muted);">Stock Transactions</span><strong>${S.stockLog.length}</strong></div>`;
 }
+// ── Export Inventory to Excel (CSV) ──────────────────────────────────────────
+function exportInventoryToExcel(){
+  if(!S.inventory||!S.inventory.length){ toast('⚠️ Walang inventory data.'); return; }
+  const esc=v=>{
+    const s=String(v==null?'':v);
+    return(s.includes(',')||s.includes('"')||s.includes('\n'))?'"'+s.replace(/"/g,'""')+'"':s;
+  };
+  const rows=[['Serial Code','Description','Type','Category','Stock','Selling Price','Capital Cost','Stock Value','Profit/Unit']];
+  S.inventory.forEach(it=>{
+    const isFix=it.itemType==='fixprice';
+    const stock   = isFix?(it.qty||0):(it.grams||0);
+    const unit    = isFix?'pcs':'g';
+    const sell    = isFix?(it.fixPrice||0):(it.pergram||0);
+    const cap     = isFix?(it.capitalPerUnit||0):(it.capitalPerGram||0);
+    const stockVal= parseFloat((cap*stock).toFixed(2));
+    const profit  = parseFloat((sell-cap).toFixed(2));
+    rows.push([esc(it.code),esc(it.desc),esc(isFix?'Fix Price':'By Grams'),
+      esc(it.category||'—'),esc(stock+' '+unit),
+      esc('₱'+sell.toFixed(2)+'/'+unit),esc('₱'+cap.toFixed(2)+'/'+unit),
+      esc('₱'+stockVal.toFixed(2)),esc('₱'+profit.toFixed(2)+'/'+unit)]);
+  });
+  const csv=rows.map(r=>r.join(',')).join('\n');
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='goldchelle-inventory-'+today()+'.csv';a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),3000);
+  toast('✅ Inventory exported!');
+}
+
+// ── Import Inventory from CSV Backup ─────────────────────────────────────────
+function importInventoryFromExcel(input){
+  const file=input.files[0]; if(!file)return;
+  input.value='';
+  const ext=file.name.split('.').pop().toLowerCase();
+  if(ext!=='csv'){ toast('⚠️ I-save muna as .csv sa Excel bago mag-import.'); return; }
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const text=e.target.result.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+      const lines=text.split('\n').filter(l=>l.trim());
+      if(lines.length<2){toast('⚠️ Walang data sa file.');return;}
+      const parseRow=line=>{
+        const cols=[];let cur='',inQ=false;
+        for(const c of line){
+          if(c==='"'){inQ=!inQ;}
+          else if(c===','&&!inQ){cols.push(cur.trim());cur='';}
+          else cur+=c;
+        }
+        cols.push(cur.trim());return cols;
+      };
+      const header=parseRow(lines[0]).map(h=>h.toLowerCase().replace(/[^a-z0-9]/g,''));
+      const col=(...names)=>{for(const n of names){const i=header.findIndex(h=>h.includes(n));if(i>=0)return i;}return -1;};
+      const cCode=col('serialcode','code');
+      const cDesc=col('desc','name','description');
+      const cType=col('type');
+      const cCat =col('cat','category');
+      const cStock=col('stock');
+      const cSell =col('selling','price','pergram','fixprice');
+      const cCap  =col('capital');
+      if(cCode<0||cDesc<0){toast('⚠️ Hindi mahanap ang Code/Description column.');return;}
+      let added=0,updated=0,skipped=0;
+      lines.slice(1).forEach(line=>{
+        const cols=parseRow(line);
+        const code=(cols[cCode]||'').trim().toUpperCase();
+        const desc=(cols[cDesc]||'').trim();
+        if(!code||!desc){skipped++;return;}
+        const typeRaw=(cols[cType]||'').toLowerCase();
+        const isFix=typeRaw.includes('fix')||typeRaw.includes('piece')||typeRaw.includes('pc');
+        const cat  =(cols[cCat]||'gold').toLowerCase().trim()||'gold';
+        const stock=parseFloat((cols[cStock]||'').replace(/[^0-9.]/g,''))||0;
+        const sell =parseFloat((cols[cSell]||'').replace(/[^0-9.]/g,''))||0;
+        const cap  =parseFloat((cols[cCap]||'').replace(/[^0-9.]/g,''))||0;
+        const existing=S.inventory.findIndex(it=>it.code===code);
+        const obj=isFix
+          ?{code,desc,itemType:'fixprice',category:cat,fixPrice:sell,capitalPerUnit:cap,qty:stock,grams:0,pergram:0}
+          :{code,desc,itemType:'grams',category:cat,pergram:sell,capitalPerGram:cap,grams:stock,qty:0,fixPrice:0};
+        if(existing>=0){S.inventory[existing]={...S.inventory[existing],...obj};updated++;}
+        else{S.inventory.push(obj);added++;}
+      });
+      save();
+      renderInv(invTab||'list');
+      toast(`✅ Import done! ${added} added · ${updated} updated · ${skipped} skipped`);
+    }catch(err){toast('❌ Import failed: '+err.message);}
+  };
+  reader.readAsText(file);
+}
+
+// ── Clear All Transactions — Owner only ───────────────────────────────────────
+// Clears: orders, payroll, expenses, logs
+// SAFE: inventory, riders, locations, passwords, settings are NEVER touched
+function clearAllTransactions(){
+  const ans=prompt('⚠️ CLEAR ALL TRANSACTIONS\n\nMabubura:\n• Orders\n• Payroll & Expenses\n• Remit / Cashbond / Benefits / Return Logs\n\nHINDI mabubura:\n• Inventory\n• Riders & Locations\n• Passwords & Settings\n\nType CLEAR to confirm:');
+  if(ans!=='CLEAR'){toast('Cancelled.');return;}
+  const TX=['orders','payroll','expenses','remitLog','cashbondLog','benefitsLog','returnLog','stockLog','deletedOrders','mergeLog'];
+  TX.forEach(k=>{S[k]=[];});
+  save();
+  toast('✅ All transactions cleared!');
+  try{renderDash();}catch(e){}
+}
+
 function exportData(){
   const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
