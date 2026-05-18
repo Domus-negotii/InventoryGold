@@ -8401,15 +8401,16 @@ function openCashbondFromRemit() {
 function renderRemitPage() {
   const el = document.getElementById('remit-page-content'); if(!el) return;
   const df = document.getElementById('remit-page-date')?.value||'';
-  let filteredLog = S.remitLog||[];
+  // Build filteredLog WITH real S.remitLog indices (don't use indexOf - fails after Firebase round-trip)
+  const _remitAll = S.remitLog||[];
+  let filteredLog = _remitAll.map((e,ri)=>({...e, _realIdx:ri}));
   if(df) filteredLog = filteredLog.filter(e=>e.date===df);
 
   // Group by rider
   const byRider = {};
-  filteredLog.forEach((e,li)=>{
-    const idx = (S.remitLog||[]).indexOf(e);
+  filteredLog.forEach((e)=>{
     if(!byRider[e.riderName]) byRider[e.riderName]=[];
-    byRider[e.riderName].push({...e, idx});
+    byRider[e.riderName].push({...e, idx: e._realIdx});
   });
 
   if(!filteredLog.length){
