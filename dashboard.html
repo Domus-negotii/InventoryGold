@@ -981,6 +981,7 @@ function _showRulesHint() {
       <span class="user-role-tag" id="user-role-tag">Admin</span>
       <span class="badge-pill" id="user-name-badge">Goldchelle</span>
       <button class="btn btn-gold btn-sm" onclick="manualSaveSync()" title="Save & sync to all devices" style="font-size:10px;padding:3px 10px;" id="btn-manual-save">💾 Save</button>
+      <button class="btn btn-outline btn-sm" onclick="manualRefresh()" title="Refresh data from server" style="font-size:10px;padding:3px 8px;" id="btn-manual-refresh">🔄</button>
       <button class="btn btn-outline btn-sm" onclick="logoutUser()" style="font-size:10px;padding:3px 8px;">Logout</button>
     </div>
   </div>
@@ -6540,6 +6541,41 @@ function unlockPage(page){
 // ── Manual Save & Sync — button next to Logout ───────────────
 // Forces an immediate Firebase sync regardless of debounce timer.
 // Use this before handing device to another employee.
+function manualRefresh() {
+  const btn = document.getElementById('btn-manual-refresh');
+  if(btn){ btn.textContent='⏳'; btn.disabled=true; }
+  window.loadFromFirebase?.().then(fbData=>{
+    if(!fbData){ toast('⚠️ Could not reach server'); }
+    else {
+      const _SETUP = new Set(['riders','locations']);
+      ['orders','riders','locations','payroll','expenses','inventory',
+       'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
+       'returnLog','deletedOrders'].forEach(k=>{
+        const local  = Array.isArray(S[k]) ? S[k] : [];
+        const remote = Array.isArray(fbData[k]) ? fbData[k] : [];
+        if(_SETUP.has(k)){
+          if(fbData[k]!==undefined) S[k]=remote;
+        } else if(k==='inventory'){
+          if(!remote.length){return;}
+          const lm=new Map(local.map(it=>[it.code,it]));
+          const rm=new Map(remote.map(it=>[it.code,it]));
+          rm.forEach((it,code)=>{ if(!lm.has(code)) lm.set(code,it); });
+          S[k]=[...lm.values()];
+        } else if(remote.length) {
+          S[k]=remote;
+        }
+      });
+      persist();
+      try{ const rp=document.querySelector('.page.active')?.id?.replace('page-',''); if(rp) renderPage(rp); }catch(e){}
+      toast('✅ Refreshed from server!');
+    }
+    if(btn){ btn.textContent='🔄'; btn.disabled=false; }
+  }).catch(()=>{
+    toast('⚠️ Refresh failed');
+    if(btn){ btn.textContent='🔄'; btn.disabled=false; }
+  });
+}
+
 async function manualSaveSync(){
   const btn = document.getElementById('btn-manual-save');
   if(btn){ btn.textContent='💾 Saving...'; btn.disabled=true; }
@@ -8365,32 +8401,31 @@ function openCashbondFromRemit() {
 function renderRemitPage() {
   const el = document.getElementById('remit-page-content'); if(!el) return;
   const df = document.getElementById('remit-page-date')?.value||'';
-  let filteredLog = S.remitLog;
-  if(df) filteredLog = S.remitLog.filter(e=>e.date===df);
+  let filteredLog = S.remitLog||[];
+  if(df) filteredLog = filteredLog.filter(e=>e.date===df);
+
+  // Group by rider
   const byRider = {};
-  filteredLog.forEach((e)=>{
-    const i = S.remitLog.indexOf(e);
-    if(!byRider[e.riderName]) byRider[e.riderName] = [];
-    byRider[e.riderName].push({...e, idx:i});
+  filteredLog.forEach((e,li)=>{
+    const idx = (S.remitLog||[]).indexOf(e);
+    if(!byRider[e.riderName]) byRider[e.riderName]=[];
+    byRider[e.riderName].push({...e, idx});
   });
-  if(!filteredLog.length) {
+
+  if(!filteredLog.length){
     el.innerHTML = `<div class="card"><p style="color:var(--muted);padding:20px;text-align:center;">Walang remit entries${df?' para sa petsang ito':''}.</p></div>`;
-    // Hide total net when empty
     const tEl=document.getElementById('remit-page-total-net'); if(tEl) tEl.style.display='none';
     return;
   }
 
-  // ── Compute & display grand total net (all riders) ────────────────────────
-  const grandAllNet = filteredLog.reduce((s,e) => s + (e.netTotal||e.netEarn||0), 0);
-  const grandAllSub = filteredLog.reduce((s,e) => s + (e.codSubtotal||e.subtotal||0), 0);
+  // ── Grand Total Net bar ───────────────────────────────────────────────────
+  const grandAllNet = filteredLog.reduce((s,e)=>s+(e.netTotal||e.netEarn||0),0);
+  const grandAllSub = filteredLog.reduce((s,e)=>s+(e.codSubtotal||e.subtotal||0),0);
   const grandPending= filteredLog.filter(e=>(e.remitStatus||'For Remittance')!=='Remitted').length;
-  const totEl  = document.getElementById('remit-page-total-net');
-  const totVal = document.getElementById('remit-page-total-net-val');
-  if(totEl) {
-    totEl.style.display = 'flex';
-    totEl.style.flexDirection = 'column';
-    totEl.style.gap = '2px';
-    totEl.innerHTML = `
+  const totEl = document.getElementById('remit-page-total-net');
+  if(totEl){
+    totEl.style.display='flex'; totEl.style.flexDirection='column'; totEl.style.gap='2px';
+    totEl.innerHTML=`
       <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Total Net — All Riders${df?' ('+df+')':''}</div>
       <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
         <span style="font-size:15px;font-weight:700;color:var(--green);">${p(grandAllNet)}</span>
@@ -8399,164 +8434,167 @@ function renderRemitPage() {
       </div>`;
   }
 
-  // Helper: build cancelled items detail for a remit entry
-  function buildCancelledDetail(entry) {
-    const riderName = entry.riderName;
-    const date      = entry.date;
-    // Find all orders assigned to this rider on this date
-    const riderOrders = S.orders.map((o,i)=>({...o,idx:i}))
-      .filter(o=>o.assignedRider===riderName && (!date||o.date===date));
+  const statusColor = s=>s==='Remitted'?'var(--green)':s==='Remitting'?'var(--orange)':'var(--muted)';
+  const statusIcon  = s=>s==='Remitted'?'✅':s==='Remitting'?'🏃':'⏳';
 
-    const wholeOrderCancels = riderOrders.filter(o=>['Cancelled','Update'].includes(o.status));
-    const deliveredWithItemCancels = riderOrders.filter(o=>{
-      if(o.status!=='Delivered') return false;
-      const iS=o.itemStatuses||{};
-      return o.items.some((_,ii)=>iS[ii]==='Cancelled'||(o.itemCancelQty||{})[ii]>0);
-    });
-
-    if(!wholeOrderCancels.length && !deliveredWithItemCancels.length) return '';
-
-    let html = `<div style="margin-top:8px;padding:8px 10px;background:rgba(224,85,85,0.07);border:1px solid rgba(224,85,85,0.3);border-radius:6px;">
-      <div style="font-size:10.5px;font-weight:700;color:var(--red);margin-bottom:6px;">⚠️ Cancelled Details — ${riderName} (${date})</div>`;
-
-    if(wholeOrderCancels.length) {
-      html += `<div style="font-size:10px;color:var(--orange);font-weight:600;margin-bottom:4px;">📦 Whole-Order Cancels (${wholeOrderCancels.length}):</div>
-      <div class="table-wrap"><table style="font-size:10px;">
-        <thead><tr style="background:rgba(224,85,85,0.1);">
-          <th>Order #</th><th>Customer</th><th>Contact</th><th>Items</th><th>SF</th><th>Orig. Amount</th><th>Status</th><th>Rider Remark</th>
-        </tr></thead><tbody>
-        ${wholeOrderCancels.map(o=>`<tr>
-          <td style="color:var(--gold);font-weight:700;">${onum(o.idx)}</td>
-          <td style="font-weight:600;">${o.name}</td>
-          <td>${o.contact||'—'}</td>
-          <td style="font-size:9.5px;">${o.items.map(it=>`[${it.code||'?'}] ${it.desc} (${p(it.total)})`).join('<br>')}</td>
-          <td>${p(o.shipping)}</td>
-          <td style="text-decoration:line-through;color:var(--muted);">${p(o.grandTotal)}</td>
-          <td><span class="status ${sclass(o.status)}" style="font-size:9px;">${o.status}</span></td>
-          <td style="font-size:9.5px;color:var(--orange);">${o.riderRemarks||'—'}</td>
-        </tr>`).join('')}
-        <tr style="background:rgba(224,85,85,0.06);font-weight:700;">
-          <td colspan="5" style="color:var(--red);">Total Cancelled Amount</td>
-          <td style="color:var(--red);text-decoration:line-through;">${p(wholeOrderCancels.reduce((s,o)=>s+o.grandTotal,0))}</td>
-          <td colspan="2" style="font-size:9px;color:var(--muted);">→ Remit: ₱0.00</td>
-        </tr>
-        </tbody>
-      </table></div>`;
-    }
-
-    if(deliveredWithItemCancels.length) {
-      html += `<div style="font-size:10px;color:var(--orange);font-weight:600;margin:8px 0 4px;">📦 Partial Item Cancels (${deliveredWithItemCancels.length} order/s):</div>
-      <div class="table-wrap"><table style="font-size:10px;">
-        <thead><tr style="background:rgba(255,165,0,0.1);">
-          <th>Order #</th><th>Customer</th><th>Cancelled Item</th><th>Cancelled Qty</th><th>Cancelled Amt</th><th>Remaining Amt</th><th>Rider Remark</th>
-        </tr></thead><tbody>
-        ${deliveredWithItemCancels.flatMap(o=>{
-          const iS=o.itemStatuses||{};
-          const iCQ=o.itemCancelQty||{};
-          const iR=o.itemRemarks||{};
-          return o.items.map((it,ii)=>{
-            const isCancelled = iS[ii]==='Cancelled';
-            const partialQty  = iCQ[ii]||0;
-            if(!isCancelled && !partialQty) return '';
-            const totalQty    = it.grams||it.qty||1;
-            const unit        = it.pergram>0?'g':'pcs';
-            const cancelQty   = isCancelled ? totalQty : partialQty;
-            const priceUnit   = it.total / Math.max(1,totalQty);
-            const cancelAmt   = cancelQty * priceUnit;
-            const remainAmt   = it.total - cancelAmt;
-            return `<tr>
-              <td style="color:var(--gold);font-weight:700;">${onum(o.idx)}</td>
-              <td style="font-weight:600;">${o.name}</td>
-              <td style="font-size:9.5px;">[${it.code||'?'}] ${it.desc}</td>
-              <td style="color:var(--red);font-weight:700;">${cancelQty}${unit} ${isCancelled?'(Full)':'(Partial)'}</td>
-              <td style="color:var(--red);font-weight:700;">-${p(cancelAmt)}</td>
-              <td style="color:var(--green);">${p(remainAmt)}</td>
-              <td style="font-size:9.5px;color:var(--orange);">${iR[ii]||o.riderRemarks||'—'}</td>
-            </tr>`;
-          }).filter(Boolean);
-        }).join('')}
-        </tbody>
-      </table></div>`;
-    }
-
-    html += `</div>`;
-    return html;
-  }
-
-  const statusColor = s => s==='Remitted'?'var(--green)':s==='Remitting'?'var(--orange)':'var(--muted)';
-  const statusIcon  = s => s==='Remitted'?'✅':s==='Remitting'?'🏃':'⏳';
-
+  // ── Render each rider as a SEPARATE top-level card ────────────────────────
   el.innerHTML = Object.entries(byRider).map(([riderName, entries])=>{
     const grandSubtotal = entries.reduce((s,e)=>s+(e.codSubtotal||e.subtotal||0),0);
     const grandNet      = entries.reduce((s,e)=>s+(e.netTotal||e.netEarn||0),0);
-    const totalCancelled= entries.reduce((s,e)=>s+(e.cancelledCount||0),0);
     const remittedCount = entries.filter(e=>e.remitStatus==='Remitted').length;
-    const allRemitted   = remittedCount === entries.length;
-    const safeId = 'remit_rider_' + riderName.replace(/[^a-zA-Z0-9]/g,'_');
-    return `<div class="card" style="margin-bottom:13px;">
+    const allRemitted   = remittedCount===entries.length;
+    const safeId = 'rr_'+riderName.replace(/[^a-zA-Z0-9]/g,'_');
+
+    // Actual orders for this rider (filtered by df if set)
+    const riderOrders = (S.orders||[]).map((o,oi)=>({...o,oi}))
+      .filter(o=>o.assignedRider===riderName && (!df||o.date===df));
+
+    const delivered  = riderOrders.filter(o=>o.status==='Delivered');
+    const cancelled  = riderOrders.filter(o=>o.status==='Cancelled');
+    const forUpdate  = riderOrders.filter(o=>o.status==='Update');
+    const inTransit  = riderOrders.filter(o=>!['Delivered','Cancelled','Update'].includes(o.status));
+
+    // ── Per-order details: items display ──
+    const renderOrderItems = (o) => {
+      const iS = o.itemStatuses||{};
+      const iCQ = o.itemCancelQty||{};
+      return o.items.map((it,ii)=>{
+        const isCx = iS[ii]==='Cancelled';
+        const cxQty = iCQ[ii]||0;
+        const totalQty = it.grams||it.qty||1;
+        const unit = it.pergram>0?'g':'pcs';
+        const ppu = it.total/Math.max(1,totalQty);
+        const discTag = it.discount>0
+          ? `<span style="color:var(--red);font-size:9px;font-weight:700;"> 🏷️-₱${it.discount.toFixed(2)}</span>`:'';
+        if(isCx)
+          return `<div style="color:var(--muted);text-decoration:line-through;font-size:9.5px;">[Cx] ${it.code}: ${it.desc} ×${totalQty}${unit} = ${p(it.total)}</div>`;
+        if(cxQty>0){
+          const cxAmt=cxQty*ppu; const remAmt=it.total-cxAmt;
+          return `<div style="font-size:9.5px;">
+            <span style="color:var(--text);">${it.code}: ${it.desc}</span>${discTag}
+            <span style="color:var(--red);"> ❌${cxQty}${unit}=-${p(cxAmt)}</span>
+            <span style="color:var(--green);"> ✅${totalQty-cxQty}${unit}=${p(remAmt)}</span>
+          </div>`;
+        }
+        return `<div style="font-size:9.5px;">${it.code}: ${it.desc} ×${totalQty}${unit} = ${p(it.total)}${discTag}</div>`;
+      }).join('');
+    };
+
+    // ── Sections of orders ──
+    const makeOrderTable = (orders, titleColor, title, icon) => {
+      if(!orders.length) return '';
+      return `
+        <div style="margin:10px 0 6px;font-size:11px;font-weight:700;color:${titleColor};">${icon} ${title} (${orders.length})</div>
+        <div class="table-wrap"><table style="font-size:10.5px;">
+          <thead><tr style="background:rgba(201,168,76,0.07);">
+            <th style="width:70px;">Order #</th>
+            <th>Customer</th>
+            <th>Items</th>
+            <th>SF</th>
+            <th>Amount</th>
+            <th>Rider Remark</th>
+          </tr></thead>
+          <tbody>
+            ${orders.map(o=>`<tr>
+              <td style="color:var(--gold);font-size:10px;font-weight:700;">${onum(o.oi)}</td>
+              <td style="font-weight:600;font-size:10.5px;">${o.name}<br><span style="color:var(--muted);font-size:9px;">${o.contact||''}</span></td>
+              <td>${renderOrderItems(o)}</td>
+              <td style="color:var(--blue);white-space:nowrap;">${p(o.shipping||0)}</td>
+              <td style="font-weight:700;white-space:nowrap;${o.status==='Cancelled'?'color:var(--muted);text-decoration:line-through;':'color:var(--green);'}">${p(o.grandTotal||0)}</td>
+              <td style="font-size:9.5px;color:var(--orange);">${o.riderRemarks||'—'}</td>
+            </tr>`).join('')}
+            <tr style="background:rgba(201,168,76,0.06);font-weight:700;">
+              <td colspan="4" style="color:${titleColor};">Total</td>
+              <td style="color:${titleColor};">${p(orders.reduce((s,o)=>s+(o.status!=='Cancelled'?o.grandTotal||0:0),0))}</td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table></div>`;
+    };
+
+    // ── Remit log summary rows ──
+    const remitRows = entries.map(e=>{
+      const st=e.remitStatus||'For Remittance';
+      return `<tr>
+        <td style="white-space:nowrap;">${e.date}</td>
+        <td style="text-align:center;">${e.parcelCount||0}</td>
+        <td style="color:var(--green);font-weight:600;">${e.deliveredCount||0}</td>
+        <td style="color:${(e.cancelledCount||0)>0?'var(--red)':'var(--muted)'};">${e.cancelledCount||0}</td>
+        <td>${p(e.totalSF||0)}</td>
+        <td style="color:var(--red);">-${p(e.sf10||0)}</td>
+        <td style="color:var(--red);">-${p(e.totalBenefits||e.manualBenefits||0)}</td>
+        <td style="color:var(--blue);font-weight:600;">${p(e.codSubtotal||e.subtotal||0)}</td>
+        <td style="color:var(--gold);font-weight:700;">${p(e.netTotal||e.netEarn||0)}</td>
+        <td style="font-weight:600;color:${statusColor(st)};">${statusIcon(st)} ${st}</td>
+        <td style="display:flex;gap:4px;flex-wrap:nowrap;">
+          <button class="btn btn-outline btn-sm" onclick="openRemitModal(${e.idx})">✏️</button>
+          ${st!=='Remitted'?`<button class="btn btn-red btn-sm" onclick="delRemit(${e.idx})">🗑️</button>`:''}
+        </td>
+      </tr>`;
+    }).join('');
+
+    return `<div class="card" style="margin-bottom:14px;">
+      <!-- ── Rider Header (click to expand/collapse) ── -->
       <div class="card-header" style="cursor:pointer;user-select:none;" onclick="toggleRemitRider('${safeId}')">
-        <span class="card-title">🏍️ ${riderName}
-          <span id="${safeId}_arrow" style="font-size:12px;color:var(--muted);margin-left:6px;">${allRemitted?'▶':'▼'}</span>
+        <span class="card-title" style="font-size:14px;">
+          🏍️ ${riderName}
+          <span id="${safeId}_arrow" style="font-size:11px;color:var(--muted);margin-left:8px;">${allRemitted?'▶':'▼'}</span>
         </span>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;" onclick="event.stopPropagation()">
           <span style="font-size:11px;color:var(--muted);">${entries.length} entry/entries · ${remittedCount} Remitted</span>
-          ${totalCancelled?`<span style="font-size:11px;color:var(--red);font-weight:600;">⚠️ ${totalCancelled} cancelled order(s)</span>`:''}
+          ${delivered.length?`<span style="font-size:11px;color:var(--green);font-weight:600;">✅ ${delivered.length} delivered</span>`:''}
+          ${(cancelled.length+forUpdate.length)?`<span style="font-size:11px;color:var(--red);font-weight:600;">⚠️ ${cancelled.length+forUpdate.length} cancel/update</span>`:''}
           <span style="font-size:11.5px;color:var(--blue);font-weight:600;">Subtotal: ${p(grandSubtotal)}</span>
-          <span style="font-size:11.5px;color:var(--gold);font-weight:700;">Net Total: ${p(grandNet)}</span>
+          <span style="font-size:11.5px;color:var(--gold);font-weight:700;">Net: ${p(grandNet)}</span>
           <button class="btn btn-gold btn-sm" onclick="openRemitModal()">+ Add</button>
         </div>
       </div>
+
+      <!-- ── Expandable Body ── -->
       <div id="${safeId}" style="display:${allRemitted?'none':'block'};">
-      <div class="table-wrap"><table style="font-size:11px;">
-        <thead><tr style="background:rgba(201,168,76,0.08);">
-          <th>Date</th><th>Parcels</th><th>Delivered</th>
-          <th style="color:var(--red);">Cancelled</th>
-          <th>Total SF</th><th>−SF 10%</th><th>−Benefits</th>
-          <th style="color:var(--blue);">COD Subtotal</th>
-          <th style="color:var(--gold);">Rider's Net SF</th>
-          <th style="color:var(--gold);">Net Total to Remit</th>
-          <th>Status</th><th>Actions</th>
-        </tr></thead>
-        <tbody>
-          ${entries.map(e=>{
-            const st = e.remitStatus||'For Remittance';
-            const hasCancels = (e.cancelledCount||0)>0;
-            return `<tr style="${hasCancels?'background:rgba(224,85,85,0.04);':''}">
-              <td>${e.date}</td>
-              <td style="text-align:center;font-weight:600;">${e.parcelCount||0}</td>
-              <td style="color:var(--green);font-weight:600;">${e.deliveredCount||'—'}</td>
-              <td style="color:${hasCancels?'var(--red)':'var(--muted)'};font-weight:${hasCancels?'700':'400'};">${hasCancels?'⚠️':''} ${e.cancelledCount||0}</td>
-              <td>${p(e.totalSF||0)}</td>
-              <td style="color:var(--red);">-${p(e.sf10||0)}</td>
-              <td style="color:var(--red);">-${p(e.totalBenefits||0)}</td>
-              <td style="color:var(--blue);font-weight:600;">${p(e.codSubtotal||e.subtotal||0)}</td>
-              <td style="color:var(--muted);">${p(e.netSF||0)}</td>
-              <td style="color:var(--gold);font-weight:700;">${p(e.netTotal||e.netEarn||0)}</td>
-              <td style="font-weight:600;color:${statusColor(st)};">${statusIcon(st)} ${st}</td>
-              <td style="display:flex;gap:4px;">
-                <button class="btn btn-outline btn-sm" onclick="openRemitModal(${e.idx})">✏️</button>
-                ${st !== 'Remitted' ? `<button class="btn btn-red btn-sm" onclick="delRemit(${e.idx})">🗑️</button>` : ''}
-              </td>
-            </tr>
-            ${hasCancels ? `<tr style="background:rgba(224,85,85,0.02);">
-              <td colspan="12" style="padding:0 8px 8px;">
-                ${buildCancelledDetail(e)}
-              </td>
-            </tr>` : ''}`;
-          }).join('')}
-          <tr style="background:rgba(201,168,76,0.08);font-weight:700;font-size:12px;">
-            <td colspan="7" style="color:var(--gold);">TOTALS — ${riderName}</td>
-            <td style="color:var(--blue);">${p(grandSubtotal)}</td>
-            <td></td>
-            <td style="color:var(--gold);">${p(grandNet)}</td>
-            <td colspan="2"></td>
-          </tr>
-        </tbody>
-      </table></div>
+
+        <!-- Remit Log Summary -->
+        <div style="padding:10px 14px 0;font-size:10.5px;font-weight:700;color:var(--gold);border-bottom:1px solid rgba(255,255,255,0.05);padding-bottom:6px;margin-bottom:4px;">
+          📋 Remit Entries
+        </div>
+        <div class="table-wrap" style="padding:0 14px 10px;">
+          <table style="font-size:11px;">
+            <thead><tr style="background:rgba(201,168,76,0.08);">
+              <th>Date</th><th>Parcels</th><th>✅ Del</th><th style="color:var(--red);">❌ Cx</th>
+              <th>Total SF</th><th>−10%</th><th>−Benefits</th>
+              <th style="color:var(--blue);">COD Subtotal</th>
+              <th style="color:var(--gold);">Net to Remit</th>
+              <th>Status</th><th>Actions</th>
+            </tr></thead>
+            <tbody>
+              ${remitRows}
+              <tr style="background:rgba(201,168,76,0.08);font-weight:700;font-size:11.5px;">
+                <td colspan="7" style="color:var(--gold);">TOTAL — ${riderName}</td>
+                <td style="color:var(--blue);">${p(grandSubtotal)}</td>
+                <td style="color:var(--gold);">${p(grandNet)}</td>
+                <td colspan="2"></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ── Actual Orders Breakdown ── -->
+        ${(delivered.length||cancelled.length||forUpdate.length||inTransit.length)?
+          `<div style="padding:0 14px 14px;">
+            <div style="font-size:11px;font-weight:700;color:var(--muted);border-top:1px solid rgba(255,255,255,0.05);padding-top:10px;margin-bottom:2px;">
+              📦 Orders na naka-assign kay ${riderName}${df?' ('+df+')':' (lahat)'}
+            </div>
+            ${makeOrderTable(delivered,'var(--green)','DELIVERED','✅')}
+            ${makeOrderTable(cancelled,'var(--red)','CANCELLED','❌')}
+            ${makeOrderTable(forUpdate,'var(--orange)','FOR UPDATE / RTO','⚠️')}
+            ${makeOrderTable(inTransit,'var(--blue)','IN TRANSIT','🚴')}
+          </div>`
+          :''}
+
+      </div>
     </div>`;
   }).join('');
 }
-
 function toggleRemitRider(safeId) {
   const el    = document.getElementById(safeId);
   const arrow = document.getElementById(safeId + '_arrow');
@@ -9007,7 +9045,7 @@ async function initApp(){
         // All other fields: use whichever has more entries.
         // ── Union-by-ID merge — Firebase authoritative, local offline entries preserved ──
         const _deletedIds = Array.isArray(fbData.deletedOrders) ? fbData.deletedOrders : [];
-        const _SETUP_KEYS = new Set(['inventory','riders','locations']);
+        const _SETUP_KEYS = new Set(['riders','locations']);
         const _arrKeys = ['orders','riders','locations','payroll','expenses','inventory',
           'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
           'returnLog','deletedOrders','mergeLog'];
@@ -9195,7 +9233,7 @@ function startAutoRefresh(){
       // Smart merge — Firebase is source of truth after fresh start cleaned it
       // ── Union-by-ID merge — Firebase authoritative, local offline entries preserved ──
       const _deletedIds = Array.isArray(fbData.deletedOrders) ? fbData.deletedOrders : [];
-      const _SETUP_KEYS = new Set(['inventory','riders','locations']);
+      const _SETUP_KEYS = new Set(['riders','locations']);
       const _arrKeys = ['orders','riders','locations','payroll','expenses','inventory',
         'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
         'returnLog','deletedOrders','mergeLog'];
@@ -9205,6 +9243,17 @@ function startAutoRefresh(){
         if(_SETUP_KEYS.has(k)){
           // Setup data: Firebase wins if key is defined (even empty = intentionally cleared)
           S[k] = (fbData[k] !== undefined && fbData[k] !== null) ? remote : local;
+        } else if(k === 'inventory'){
+          // Inventory: merge by 'code' — local wins (has latest stock from saveStock)
+          // but remote adds any items not in local (added from another device)
+          if(!remote.length){ S[k]=local; return; }
+          const localByCode = new Map(local.map(it=>[it.code,it]));
+          const remoteByCode = new Map(remote.map(it=>[it.code,it]));
+          // Start with local (has latest stock mutations)
+          const merged = new Map(localByCode);
+          // Add remote items that don't exist locally (added from another device)
+          remoteByCode.forEach((it,code)=>{ if(!localByCode.has(code)) merged.set(code,it); });
+          S[k] = [...merged.values()];
         } else if(k === 'adminNames'){
           // adminNames: Firebase always wins — deletions propagate
           S[k] = remote;
@@ -10832,7 +10881,7 @@ document.addEventListener('visibilitychange', async ()=>{
       'cashbondLog','benefitsLog','payroll','expenses','mergeLog','adminNames'];
     // ── Union-by-ID merge — Firebase authoritative, local offline entries preserved ──
     const _deletedIds3 = Array.isArray(fbData.deletedOrders) ? fbData.deletedOrders : [];
-    const _SETUP_KEYS3 = new Set(['inventory','riders','locations']);
+    const _SETUP_KEYS3 = new Set(['riders','locations']);
     const _arrKeys3 = ['orders','riders','locations','payroll','expenses','inventory',
       'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
       'returnLog','deletedOrders','mergeLog'];
@@ -10841,6 +10890,12 @@ document.addEventListener('visibilitychange', async ()=>{
       const remote=Array.isArray(fbData[k])?fbData[k]:[];
       if(_SETUP_KEYS3.has(k)){
         S[k]=(fbData[k]!==undefined&&fbData[k]!==null)?remote:local;
+      } else if(k==='inventory'){
+        if(!remote.length){return;}
+        const lm3=new Map(local.map(it=>[it.code,it]));
+        const rm3=new Map(remote.map(it=>[it.code,it]));
+        rm3.forEach((it,code)=>{ if(!lm3.has(code)) lm3.set(code,it); });
+        S[k]=[...lm3.values()];
       } else if(k==='adminNames'){
         S[k]=remote;
       } else {
