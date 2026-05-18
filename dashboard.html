@@ -571,6 +571,7 @@ window.loadFromFirebase = async function() {
     if(!Array.isArray(data.adminNames))    data.adminNames    = [];
     if(!data.tabPasswords)     data.tabPasswords     = {checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''};
     if(!data.specialPasswords) data.specialPasswords = {remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
+    if(!data.lastGlobalClear)  data.lastGlobalClear  = '';
     if(!data.govSettings)      data.govSettings      = {sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
     if(!data.bizInfo)          data.bizInfo          = {};
     // Restore owner password hash to this device localStorage
@@ -2520,7 +2521,8 @@ function _showRulesHint() {
 const KEY='gce_v5';
 // Clear old version keys on load
 ['gce_v3','gce_v4'].forEach(k=>{ try{localStorage.removeItem(k);}catch(e){} });
-let S=JSON.parse(localStorage.getItem(KEY)||'null')||{orders:[],riders:[],locations:[],payroll:[],expenses:[],inventory:[],stockLog:[],remitLog:[],cashbondLog:[],benefitsLog:[],deletedOrders:[],mergeLog:[],specialPasswords:{remitter:'remit2026',sorter:'sort2026',checker:'check2026'}};
+let S=JSON.parse(localStorage.getItem(KEY)||'null')||{orders:[],riders:[],locations:[],payroll:[],expenses:[],inventory:[],stockLog:[],remitLog:[],cashbondLog:[],benefitsLog:[],deletedOrders:[],mergeLog:[],lastGlobalClear:'',specialPasswords:{remitter:'remit2026',sorter:'sort2026',checker:'check2026'}};
+if(!S.lastGlobalClear) S.lastGlobalClear='';
 if(!S.locations)S.locations=[];
 if(!S.deletedOrders)S.deletedOrders=[];
 if(!S.mergeLog)S.mergeLog=[];
@@ -6691,24 +6693,47 @@ function clearAllTransactions() {
     'Type CLEAR to confirm:'
   );
   if(confirmed !== 'CLEAR') { toast('Cancelled — type CLEAR exactly to confirm.'); return; }
-  // Clear all transaction data
-  S.orders        = [];
-  S.returnLog     = [];
-  S.deletedOrders = [];
-  S.stockLog      = [];
-  S.remitLog      = [];
-  S.cashbondLog   = [];
-  S.benefitsLog   = [];
-  S.payroll       = [];
-  S.expenses      = [];
-  S.mergeLog      = [];
-  save();
-  toast('✅ All transactions cleared. System is ready for fresh operations!');
+
+  // ── 1. Stamp the clear timestamp BEFORE wiping ──────────────────────────
+  const clearTs = new Date().toISOString();
+  S.lastGlobalClear = clearTs;
+
+  // ── 2. Wipe all transaction arrays ──────────────────────────────────────
+  const _TX_KEYS = ['orders','returnLog','deletedOrders','stockLog','remitLog',
+                    'cashbondLog','benefitsLog','payroll','expenses','mergeLog'];
+  _TX_KEYS.forEach(k=>{ S[k] = []; });
+
+  // ── 3. Persist to localStorage immediately ───────────────────────────────
+  localStorage.setItem(KEY, JSON.stringify(S));
+
+  // ── 4. Force-write to Firebase NOW (no debounce) — broadcasts to all devices ──
+  const _fbApiKey = localStorage.getItem('gce_fb_config')
+    ? JSON.parse(localStorage.getItem('gce_fb_config')).apiKey || _FB_APIKEY
+    : _FB_APIKEY;
+  const _clearPayload = { fields: {
+    lastGlobalClear: { stringValue: clearTs },
+    orders:        { arrayValue: { values: [] } },
+    returnLog:     { arrayValue: { values: [] } },
+    deletedOrders: { arrayValue: { values: [] } },
+    stockLog:      { arrayValue: { values: [] } },
+    remitLog:      { arrayValue: { values: [] } },
+    cashbondLog:   { arrayValue: { values: [] } },
+    benefitsLog:   { arrayValue: { values: [] } },
+    payroll:       { arrayValue: { values: [] } },
+    expenses:      { arrayValue: { values: [] } },
+    mergeLog:      { arrayValue: { values: [] } },
+  }};
+  const _clearUrl = `${_FB_BASE}/gce_state/main?key=${_fbApiKey}&updateMask.fieldPaths=lastGlobalClear` +
+    _TX_KEYS.map(k=>`&updateMask.fieldPaths=${k}`).join('');
+  fetch(_clearUrl, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(_clearPayload) })
+    .then(()=>toast('✅ All transactions cleared & synced. All devices will refresh shortly.'))
+    .catch(()=>toast('✅ Cleared locally. Firebase sync may be slow — retry if other devices still show data.'));
+
+  // ── 5. Re-render current page ────────────────────────────────────────────
+  toast('⏳ Clearing all transactions...');
   try { renderDash(); } catch(e) {}
-  try { renderOrders(); } catch(e) {}
-  try { renderChecker(); } catch(e) {}
-  try { renderReturns(); } catch(e) {}
-  try { renderDeletedOrders(); } catch(e) {}
+  try { if(typeof renderOrders==='function') renderOrders(); } catch(e) {}
+  try { if(typeof renderRemitPage==='function') renderRemitPage(); } catch(e) {}
 }
 function loadFbConfig(){
   const cfg = JSON.parse(localStorage.getItem('gce_fb_config')||'null');
@@ -7553,7 +7578,9 @@ function saveOrder() {
     paymentNotes: '',
     verificationStatus: 'Not Verified',
     lbcStatus: isLbcMethod ? 'Preparing' : '',
-    riderRemarks: '', createdAt: new Date().toISOString()
+    riderRemarks: '', createdAt: new Date().toISOString(),
+    _id: 'o_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+    encodedBy: currentUser?.name || admin || 'unknown'
   };
   if(editIdx !== '') {
     const orig = S.orders[+editIdx];
@@ -7561,6 +7588,8 @@ function saveOrder() {
     o.checkerStatus = orig.checkerStatus;
     o.riderRemarks = orig.riderRemarks;
     o.createdAt = orig.createdAt;
+    o._id = orig._id || o._id;          // ← preserve original _id
+    o.encodedBy = orig.encodedBy || o.encodedBy; // ← preserve original encoder
     o.paymentStatus = orig.paymentStatus || o.paymentStatus;
     o.paymentNotes = orig.paymentNotes || '';
     o.verificationStatus = orig.verificationStatus || 'Not Verified';
@@ -9193,6 +9222,25 @@ document.querySelectorAll('.nav-item').forEach(el=>{
 // Checks for changes every 10 seconds using a lightweight timestamp check.
 // Only does a full data load when something actually changed — saves bandwidth.
 let _autoRefreshTimer = null;
+// ── Global Clear broadcast checker ──────────────────────────────────────
+// Returns true if this device needs to be wiped (caller must abort merge)
+function _applyGlobalClear(fbData) {
+  const remoteClearTs = fbData?.lastGlobalClear || '';
+  const localClearTs  = S.lastGlobalClear || '';
+  if(!remoteClearTs) return false;
+  if(remoteClearTs > localClearTs) {
+    const _TX = ['orders','returnLog','deletedOrders','stockLog','remitLog',
+                 'cashbondLog','benefitsLog','payroll','expenses','mergeLog'];
+    _TX.forEach(k=>{ S[k] = []; });
+    S.lastGlobalClear = remoteClearTs;
+    localStorage.setItem(KEY, JSON.stringify(S));
+    toast('🔄 System was cleared by Owner. Local data wiped on this device.');
+    try { renderPage(_activePage); } catch(e) {}
+    return true;
+  }
+  return false;
+}
+
 function startAutoRefresh(){
   if(_autoRefreshTimer) clearInterval(_autoRefreshTimer);
   _autoRefreshTimer = setInterval(async ()=>{
@@ -9231,6 +9279,8 @@ function startAutoRefresh(){
       // Something changed — do a full load and merge
       const fbData = await window.loadFromFirebase();
       if(!fbData) return;
+      // ── FIRST: check if Owner cleared all transactions on another device ──
+      if(_applyGlobalClear(fbData)) return; // wiped and re-rendered — skip merge
       // Smart merge — Firebase is source of truth after fresh start cleaned it
       // ── Union-by-ID merge — Firebase authoritative, local offline entries preserved ──
       const _deletedIds = Array.isArray(fbData.deletedOrders) ? fbData.deletedOrders : [];
@@ -9283,6 +9333,8 @@ function startAutoRefresh(){
       S.tabPasswords=Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},lTP2,rTP2);
       // adminAccounts: Firebase is ALWAYS the source of truth — replace, never merge
       S.adminAccounts=Array.isArray(fbData.adminAccounts)?fbData.adminAccounts:(S.adminAccounts||[]);
+      // Preserve lastGlobalClear — always take the NEWER of local/remote
+      if((fbData.lastGlobalClear||'') > (S.lastGlobalClear||'')) S.lastGlobalClear = fbData.lastGlobalClear;
       // Ensure required fields
       if(!Array.isArray(S.adminNames))    S.adminNames=[];
       if(!S.adminAccounts)    S.adminAccounts=[];
@@ -10739,6 +10791,10 @@ function confirmMerge() {
     grandTotal: mergedGrandTotal,
     admin: adminDisplay,
     adminList: adminList,
+    _id: oKeep._id || oA._id || ('o_merge_'+Date.now()),  // ← preserve _id
+    createdAt: oKeep.createdAt || oA.createdAt,             // ← preserve original createdAt
+    encodedBy: oKeep.encodedBy || oA.encodedBy,             // ← preserve original encoder
+    mergedFrom: oRemove._id || onum(removeIdx),             // ← record absorbed order
     // Reset checker status so checker re-verifies the merged order
     checkerStatus: 'Pending',
     verificationStatus: 'Not Verified',
@@ -10877,6 +10933,8 @@ document.addEventListener('visibilitychange', async ()=>{
     _lastKnownWriteTs = 0;
     const fbData = await window.loadFromFirebase();
     if(!fbData) return;
+    // ── FIRST: check if Owner cleared all transactions ──
+    if(_applyGlobalClear(fbData)) return;
     const freshRan3 = !!localStorage.getItem(_FRESH_FLAG);
     const TX_KEYS3 = ['orders','returnLog','deletedOrders','stockLog','remitLog',
       'cashbondLog','benefitsLog','payroll','expenses','mergeLog','adminNames'];
