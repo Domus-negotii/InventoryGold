@@ -6386,17 +6386,30 @@ function selectRole(role){
     const sel=document.getElementById('login-admin-name');
     if(sel){
       sel.innerHTML='<option value="">-- Select your name --</option>';
-      const names=[...new Set([...(S.adminAccounts||[]).map(a=>a.name),...S.orders.map(o=>o.admin).filter(Boolean)])].sort();
-      names.forEach(n=>sel.innerHTML+=`<option value="${n}">${n}</option>`);
+      if(!S.adminAccounts.length && !S.adminNames.length){
+        sel.innerHTML='<option value="">⏳ Loading admins... please wait</option>';
+        setTimeout(()=>{ if(selectedRole==='admin') selectRole('admin'); }, 1500);
+      } else {
+        const names=[...new Set([...(S.adminAccounts||[]).map(a=>a.name),...(S.adminNames||[]),...S.orders.map(o=>o.admin).filter(Boolean)])].sort();
+        names.forEach(n=>sel.innerHTML+=`<option value="${n}">${n}</option>`);
+        if(sel.options.length===1) sel.innerHTML='<option value="">No admins configured</option>';
+      }
     }
     document.getElementById('login-step-admin').style.display='block';
   } else if(role==='rider'){
     const sel=document.getElementById('login-rider-name-main');
     if(sel){
       sel.innerHTML='<option value="">-- Select your name --</option>';
-      S.riders.forEach((r,i)=>{
-        if(r.password) sel.innerHTML+=`<option value="${i}">🏍️ ${r.name} — 📍 ${(r.locations&&r.locations.length?r.locations:(r.location?[r.location]:[])).join(', ')||'—'}</option>`;
-      });
+      if(!S.riders.length){
+        sel.innerHTML='<option value="">⏳ Loading riders... please wait</option>';
+        // Retry after Firebase loads
+        setTimeout(()=>{ if(selectedRole==='rider') selectRole('rider'); }, 1500);
+      } else {
+        S.riders.forEach((r,i)=>{
+          if(r.password) sel.innerHTML+=`<option value="${i}">🏍️ ${r.name} — 📍 ${(r.locations&&r.locations.length?r.locations:(r.location?[r.location]:[])).join(', ')||'—'}</option>`;
+        });
+        if(sel.options.length===1) sel.innerHTML='<option value="">No riders with password set</option>';
+      }
     }
     document.getElementById('login-step-rider').style.display='block';
   } else if(role==='remitter'){
@@ -6430,28 +6443,32 @@ function doLogin(){
     const idx=document.getElementById('login-rider-name-main').value;
     const pw=document.getElementById('login-rider-pw-main').value;
     const err=document.getElementById('login-rider-err');
-    if(idx===''){ err.textContent='Select your name'; return; }
+    if(idx===''){ err.textContent=S.riders.length?'Select your name':'⏳ Still loading riders — please wait a moment and try again'; return; }
+    if(!pw){ err.textContent='Enter your password'; return; }
     const rider=S.riders[+idx];
-    if(!rider){ err.textContent='Rider not found'; return; }
-    if(!rider.password){ err.textContent='❌ No password set. Contact CEO.'; return; }
+    if(!rider){ err.textContent='Rider not found — please refresh'; return; }
+    if(!rider.password){ err.textContent='❌ No password set. Ask CEO to set a password first.'; return; }
     if(rider.password!==pw){ err.textContent='❌ Incorrect password'; document.getElementById('login-rider-pw-main').value=''; document.getElementById('login-rider-pw-main').focus(); return; }
     currentRole='rider'; currentRider={...rider,idx:+idx}; currentUser={name:rider.name,role:'rider'};
   } else if(selectedRole==='remitter'){
     const pw=document.getElementById('login-remitter-pw').value;
     const err=document.getElementById('login-remitter-err');
-    const correct=S.specialPasswords?.remitter||'remit2026';
+    const correct=(S.specialPasswords?.remitter)||(S.specialPasswords?.remitter)||'remit2026';
+    if(!pw){ err.textContent='Enter password'; return; }
     if(pw!==correct){ err.textContent='❌ Incorrect password'; document.getElementById('login-remitter-pw').value=''; document.getElementById('login-remitter-pw').focus(); return; }
     currentRole='remitter'; currentUser={name:'Remitter',role:'remitter'};
   } else if(selectedRole==='sorter'){
     const pw=document.getElementById('login-sorter-pw').value;
     const err=document.getElementById('login-sorter-err');
-    const correct=S.specialPasswords?.sorter||'sort2026';
+    const correct=(S.specialPasswords?.sorter)||'sort2026';
+    if(!pw){ err.textContent='Enter password'; return; }
     if(pw!==correct){ err.textContent='❌ Incorrect password'; document.getElementById('login-sorter-pw').value=''; document.getElementById('login-sorter-pw').focus(); return; }
     currentRole='sorter'; currentUser={name:'Parcel Sorter',role:'sorter'};
   } else if(selectedRole==='checker'){
     const pw=document.getElementById('login-checker-pw').value;
     const err=document.getElementById('login-checker-err');
-    const correct=S.specialPasswords?.checker||'check2026';
+    const correct=(S.specialPasswords?.checker)||'check2026';
+    if(!pw){ err.textContent='Enter password'; return; }
     if(pw!==correct){ err.textContent='❌ Incorrect password'; document.getElementById('login-checker-pw').value=''; document.getElementById('login-checker-pw').focus(); return; }
     currentRole='checker'; currentUser={name:'Checker',role:'checker'};
   }
@@ -9067,8 +9084,10 @@ async function initApp(){
   const syncEl = document.getElementById('sync-indicator');
   if(syncEl){ syncEl.textContent='☁ Loading...'; syncEl.style.color='var(--orange)'; }
 
-  // ── Load directly from Firebase — no localStorage fallback for data ──
-  if(window._fbReady && window.loadFromFirebase){
+  // ── Load from Firebase (skip if _preloadLoginData already loaded full S) ──
+  const _alreadyLoaded = S.orders.length>0 || S.riders.length>0 ||
+                         S.inventory.length>0 || S.remitLog.length>0;
+  if(window._fbReady && window.loadFromFirebase && !_alreadyLoaded){
     try {
       const fbData = await window.loadFromFirebase();
       if(fbData){
@@ -9095,7 +9114,6 @@ async function initApp(){
         if(syncEl){ syncEl.style.color='var(--green)'; syncEl.textContent='☁ Online'; }
         toast('☁ Loaded from Firebase!');
       } else {
-        // No data in Firebase yet — S is already initialized empty
         if(syncEl){ syncEl.style.color='var(--green)'; syncEl.textContent='☁ Online (No Data)'; }
       }
     } catch(e) {
@@ -9104,8 +9122,8 @@ async function initApp(){
       toast('⚠️ Firebase load failed. Check connection.');
     }
   } else {
-    if(syncEl){ syncEl.style.color='var(--muted)'; syncEl.textContent='⬤ Offline'; }
-    toast('⚠️ Offline — waiting for Firebase connection...');
+    // Data already loaded by _preloadLoginData, or offline
+    if(syncEl){ syncEl.style.color='var(--green)'; syncEl.textContent='☁ Online'; }
   }
 
   // Initialize UI dates
@@ -9145,6 +9163,46 @@ async function initApp(){
 (function(){
   try { if(typeof loadFbConfig === 'function') loadFbConfig(); } catch(e) {}
 })();
+
+// ── Pre-load login data from Firebase on page open ────────────────────────
+// Runs on DOMContentLoaded — no owner login required
+// Populates riders/admin/specialPasswords so all role tabs work immediately
+async function _preloadLoginData(){
+  if(!window._fbReady || !window.loadFromFirebase){
+    setTimeout(_preloadLoginData, 300); return;
+  }
+  try {
+    const syncEl = document.getElementById('sync-indicator');
+    if(syncEl){ syncEl.textContent='☁ Loading...'; syncEl.style.color='var(--orange)'; }
+    const fbData = await window.loadFromFirebase();
+    if(!fbData){
+      if(syncEl){ syncEl.textContent='☁ Online'; syncEl.style.color='var(--green)'; }
+      return;
+    }
+    // Load ALL data into S so login validation + initApp both work
+    if(Array.isArray(fbData.riders))        S.riders        = fbData.riders;
+    if(Array.isArray(fbData.adminAccounts)) S.adminAccounts = fbData.adminAccounts;
+    if(Array.isArray(fbData.adminNames))    S.adminNames    = fbData.adminNames;
+    if(Array.isArray(fbData.orders))        S.orders        = fbData.orders;
+    if(fbData.specialPasswords && typeof fbData.specialPasswords==='object')
+      S.specialPasswords = fbData.specialPasswords;
+    if(fbData.lastGlobalClear) S.lastGlobalClear = fbData.lastGlobalClear;
+    ['payroll','expenses','inventory','stockLog','remitLog','cashbondLog',
+     'benefitsLog','returnLog','deletedOrders','mergeLog','locations'].forEach(k=>{
+      if(Array.isArray(fbData[k])) S[k] = fbData[k];
+    });
+    ['govSettings','bizInfo','tabPasswords'].forEach(k=>{
+      if(fbData[k] && typeof fbData[k]==='object') S[k] = fbData[k];
+    });
+    if(syncEl){ syncEl.textContent='☁ Online'; syncEl.style.color='var(--green)'; }
+    // Refresh role dropdown if user already clicked a tab
+    if(selectedRole) selectRole(selectedRole);
+  } catch(e) {
+    console.warn('_preloadLoginData error:', e.message);
+    setTimeout(_preloadLoginData, 2000);
+  }
+}
+document.addEventListener('DOMContentLoaded', ()=>{ _preloadLoginData(); });
 
 // ── Sidebar toggle (mobile) ──────────────────────────────────────────────
 function toggleSidebar(){
