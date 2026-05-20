@@ -493,47 +493,48 @@ let _syncDebounceTimer = null;
 let _syncPending = false;
 
 window.syncToFirebase = async function() {
-  // Always write the CURRENT global S when debounce fires — not a stale snapshot
-  _syncPending = true;
-  clearTimeout(_syncDebounceTimer);
-  _syncDebounceTimer = setTimeout(()=>_directWriteFirebase(), 800);
+  // Firebase-only mode: direct write, no debounce
+  await _directWriteFirebase();
 };
 
 // ── Direct write — no debounce, used by Save button and password change ──
 // NOTE: hashPw and DEFAULT_OWNER_PW are defined later in the file.
 // We use window references to avoid hoisting issues.
 async function _directWriteFirebase(data, opts){
-  _syncPending = false;
+  if(_syncPending) return false; // prevent concurrent writes
+  _syncPending = true;
   _setSyncStatus('syncing','var(--orange)','⬆ Saving...');
-  // Always use the current global S — never a stale snapshot
-  const S2 = (typeof S !== 'undefined') ? S : (data||{});
-  const skipKeys = new Set(opts?.skip||[]);
-  const fields = {};
-  ['orders','riders','locations','payroll','expenses','inventory','stockLog',
-   'adminNames','remitLog','cashbondLog','benefitsLog','returnLog',
-   'deletedOrders','mergeLog'].forEach(k=>{
-    if(!skipKeys.has(k)) fields[k] = _toFS(S2[k]||[]);
-  });
-  ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{ fields[k] = _toFS(S2[k]||{}); });
-  fields['adminAccounts'] = _toFS(S2.adminAccounts||[]);
-  // Owner password hash — resolve lazily so hashPw is definitely defined
   try {
-    const _hp = window.hashPw || (typeof hashPw !== 'undefined' ? hashPw : null);
-    const _dp = window.DEFAULT_OWNER_PW || (typeof DEFAULT_OWNER_PW !== 'undefined' ? DEFAULT_OWNER_PW : 'goldchelle2024');
-    const ownerHash = localStorage.getItem('gce_pw_hash') || (_hp ? _hp(_dp) : '');
-    fields['ownerPwHash'] = _toFS(ownerHash);
-  } catch(e) { fields['ownerPwHash'] = _toFS(''); }
-  fields['_lastWrite'] = _toFS(Date.now());
-  fields['_pwVersion'] = _toFS(localStorage.getItem('gce_pw_version')||'0');
+    // Always use the current global S — never a stale snapshot
+    const S2 = (typeof S !== 'undefined') ? S : (data||{});
+    const skipKeys = new Set(opts?.skip||[]);
+    const fields = {};
+    ['orders','riders','locations','payroll','expenses','inventory','stockLog',
+     'adminNames','remitLog','cashbondLog','benefitsLog','returnLog',
+     'deletedOrders','mergeLog'].forEach(k=>{
+      if(!skipKeys.has(k)) fields[k] = _toFS(S2[k]||[]);
+    });
+    ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{ fields[k] = _toFS(S2[k]||{}); });
+    fields['adminAccounts'] = _toFS(S2.adminAccounts||[]);
+    fields['lastGlobalClear'] = _toFS(S2.lastGlobalClear||'');
+    // Owner password hash
+    try {
+      const _hp = window.hashPw || (typeof hashPw !== 'undefined' ? hashPw : null);
+      const _dp = window.DEFAULT_OWNER_PW || (typeof DEFAULT_OWNER_PW !== 'undefined' ? DEFAULT_OWNER_PW : 'goldchelle2024');
+      const ownerHash = localStorage.getItem('gce_pw_hash') || (_hp ? _hp(_dp) : '');
+      fields['ownerPwHash'] = _toFS(ownerHash);
+    } catch(e) { fields['ownerPwHash'] = _toFS(''); }
+    fields['_lastWrite'] = _toFS(Date.now());
+    fields['_pwVersion'] = _toFS(localStorage.getItem('gce_pw_version')||'0');
 
-  const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
-  try {
+    const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}`;
     const r = await fetch(url, {
       method:'PATCH',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({fields})
     });
     if(r.ok){
+      _lastKnownWriteTs = Date.now();
       _setSyncStatus('online','var(--green)','☁ Synced ✓');
       setTimeout(()=>_setSyncStatus('online','var(--green)','☁ Online'),2500);
       return true;
@@ -546,8 +547,11 @@ async function _directWriteFirebase(data, opts){
     console.warn('Firebase sync error:',e.message);
     _setSyncStatus('offline','var(--muted)','● Offline');
     return false;
+  } finally {
+    _syncPending = false; // always release lock
   }
 }
+
 
 // ── READ from Firestore ───────────────────────────────────────
 window.loadFromFirebase = async function() {
@@ -2521,8 +2525,16 @@ function _showRulesHint() {
 const KEY='gce_v5';
 // Clear old version keys on load
 ['gce_v3','gce_v4'].forEach(k=>{ try{localStorage.removeItem(k);}catch(e){} });
-let S=JSON.parse(localStorage.getItem(KEY)||'null')||{orders:[],riders:[],locations:[],payroll:[],expenses:[],inventory:[],stockLog:[],remitLog:[],cashbondLog:[],benefitsLog:[],deletedOrders:[],mergeLog:[],lastGlobalClear:'',specialPasswords:{remitter:'remit2026',sorter:'sort2026',checker:'check2026'}};
-if(!S.lastGlobalClear) S.lastGlobalClear='';
+// Firebase-only mode: S always comes from Firebase on login
+// localStorage is only used for auth tokens (gce_pw_hash, gce_fb_config, gce_pw_version)
+let S = {
+  orders:[], riders:[], locations:[], payroll:[], expenses:[], inventory:[],
+  stockLog:[], remitLog:[], cashbondLog:[], benefitsLog:[], deletedOrders:[],
+  mergeLog:[], adminNames:[], adminAccounts:[], lastGlobalClear:'',
+  govSettings:{sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25},
+  bizInfo:{}, tabPasswords:{checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},
+  specialPasswords:{remitter:'remit2026',sorter:'sort2026',checker:'check2026'}
+};
 if(!S.locations)S.locations=[];
 if(!S.deletedOrders)S.deletedOrders=[];
 if(!S.mergeLog)S.mergeLog=[];
@@ -6584,8 +6596,8 @@ async function manualSaveSync(){
   persist(); // save to localStorage first
   _setSyncStatus('syncing','var(--orange)','⬆ Saving...');
   // Direct write — no debounce, writes immediately to Firebase
-  clearTimeout(_syncDebounceTimer);
-  _syncPending = false;
+  // clearTimeout removed — Firebase-only
+  // _syncPending managed by _directWriteFirebase
   const success = await _directWriteFirebase(S);
   if(btn){ btn.textContent = success ? '✅ Saved!' : '⚠️ Error'; btn.disabled=false; }
   setTimeout(()=>{ if(btn) btn.textContent='💾 Save'; },2500);
@@ -6595,10 +6607,8 @@ async function manualSaveSync(){
 
 function logoutUser(){
   // Show login screen so another role can log in (no confirm needed)
-  persist();
-  clearTimeout(_syncDebounceTimer);
-  _syncPending = false;
-  if(typeof _directWriteFirebase === 'function') _directWriteFirebase(S);
+  // Firebase-only: direct write on logout (fire-and-forget)
+  if(window._fbReady) _directWriteFirebase().catch(()=>{});
   currentRole=null; currentUser=null; currentRider=null; selectedRole=null;
   unlockedPages=new Set();
   backToRoleSelect();
@@ -6643,8 +6653,8 @@ async function changePassword(){
 
   // Immediately push to Firebase — includes new ownerPwHash + new _pwVersion
   // All other devices will detect the version change and force-logout within 10s
-  clearTimeout(_syncDebounceTimer);
-  _syncPending = false;
+  // clearTimeout removed — Firebase-only
+  // _syncPending managed by _directWriteFirebase
   await _directWriteFirebase(S);
 
   setTimeout(()=>{ err.textContent=''; err.style.color='var(--red)'; closeModal('modal-change-pw'); }, 2000);
@@ -6703,10 +6713,7 @@ function clearAllTransactions() {
                     'cashbondLog','benefitsLog','payroll','expenses','mergeLog'];
   _TX_KEYS.forEach(k=>{ S[k] = []; });
 
-  // ── 3. Persist to localStorage immediately ───────────────────────────────
-  localStorage.setItem(KEY, JSON.stringify(S));
-
-  // ── 4. Force-write to Firebase NOW (no debounce) — broadcasts to all devices ──
+  // ── 3. Force-write to Firebase NOW (no debounce) — broadcasts to all devices ──
   const _fbApiKey = localStorage.getItem('gce_fb_config')
     ? JSON.parse(localStorage.getItem('gce_fb_config')).apiKey || _FB_APIKEY
     : _FB_APIKEY;
@@ -6730,7 +6737,9 @@ function clearAllTransactions() {
     .catch(()=>toast('✅ Cleared locally. Firebase sync may be slow — retry if other devices still show data.'));
 
   // ── 5. Re-render current page ────────────────────────────────────────────
-  toast('⏳ Clearing all transactions...');
+  // Also write via save() to ensure full state is synced
+  save().catch(()=>{});
+  toast('✅ All transactions cleared! All devices will update within 3 seconds.');
   try { renderDash(); } catch(e) {}
   try { if(typeof renderOrders==='function') renderOrders(); } catch(e) {}
   try { if(typeof renderRemitPage==='function') renderRemitPage(); } catch(e) {}
@@ -6766,23 +6775,20 @@ function saveFbConfig(){
 
 
 async function save(){
-  // Stamp all records with _id before saving (safe no-op if already stamped)
-  if(typeof S !== 'undefined' && typeof _stamp !== 'undefined'){
-    const _TX=['orders','payroll','expenses','remitLog','cashbondLog','benefitsLog',
-               'returnLog','stockLog','deletedOrders','mergeLog'];
-    _TX.forEach(k=>{ if(Array.isArray(S[k])) S[k].forEach(_stamp); });
+  // Stamp all records with _id (safe no-op if already stamped)
+  if(typeof _stamp !== 'undefined'){
+    ['orders','payroll','expenses','remitLog','cashbondLog','benefitsLog',
+     'returnLog','stockLog','deletedOrders','mergeLog'].forEach(k=>{
+      if(Array.isArray(S[k])) S[k].forEach(_stamp);
+    });
   }
-  // Write to localStorage immediately
-  if(typeof S !== 'undefined') localStorage.setItem(KEY, JSON.stringify(S));
-  // Sync to Firebase — debounced 800ms, always writes current global S
-  if(window._fbReady && window.syncToFirebase){
-    window.syncToFirebase();
+  // Firebase-only: write immediately, no localStorage data cache
+  if(window._fbReady) {
+    await _directWriteFirebase();
   }
 }
 
-function persist(){
-  localStorage.setItem(KEY, JSON.stringify(S));
-}
+function persist(){ /* Firebase-only mode: no localStorage data cache */ }
 
 
 // ============================================================
@@ -9059,107 +9065,56 @@ function delBenefits(i) {
 // ============================================================
 async function initApp(){
   const syncEl = document.getElementById('sync-indicator');
-  if(syncEl){ syncEl.textContent='⬤ Offline'; syncEl.style.color='var(--muted)'; }
+  if(syncEl){ syncEl.textContent='☁ Loading...'; syncEl.style.color='var(--orange)'; }
 
-  // ── Load from Firebase and smart-merge with localStorage ──────
+  // ── Load directly from Firebase — no localStorage fallback for data ──
   if(window._fbReady && window.loadFromFirebase){
     try {
-      if(syncEl){ syncEl.textContent='☁ Loading...'; syncEl.style.color='var(--orange)'; }
       const fbData = await window.loadFromFirebase();
-
       if(fbData){
-        // ── Smart merge — Firebase is source of truth ────────────────
-        // Fresh start already cleaned Firebase (v3). Any data now in Firebase
-        // was written AFTER the clean — so we should always use it.
-        // inventory/riders/locations: Firebase wins if non-empty.
-        // All other fields: use whichever has more entries.
-        // ── Union-by-ID merge — Firebase authoritative, local offline entries preserved ──
-        const _deletedIds = Array.isArray(fbData.deletedOrders) ? fbData.deletedOrders : [];
-        const _SETUP_KEYS = new Set(['riders','locations']);
-        const _arrKeys = ['orders','riders','locations','payroll','expenses','inventory',
-          'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
-          'returnLog','deletedOrders','mergeLog'];
-        _arrKeys.forEach(k=>{
-          const local  = Array.isArray(S[k])      ? S[k]      : [];
-          const remote = Array.isArray(fbData[k]) ? fbData[k] : [];
-          if(_SETUP_KEYS.has(k)){
-            // Setup data: Firebase wins if key is defined (even if empty array — means cleared)
-            // Only fall back to local if Firebase has no data for this key at all
-            S[k] = (fbData[k] !== undefined && fbData[k] !== null) ? remote : local;
-          } else if(k === 'adminNames'){
-            // adminNames: Firebase always wins — deletions propagate
-            S[k] = remote;
-          } else {
-            // Transaction keys: union merge — keeps offline local entries, Firebase wins on conflicts
-            S[k] = _unionMerge(local, remote, _deletedIds);
-          }
+        // ── Firebase is the ONLY source of truth ─────────────────────
+        ['orders','riders','locations','payroll','expenses','inventory','stockLog',
+         'adminNames','adminAccounts','remitLog','cashbondLog','benefitsLog',
+         'returnLog','deletedOrders','mergeLog'].forEach(k=>{
+          if(Array.isArray(fbData[k])) S[k] = fbData[k];
         });
-
-        // For config objects: deep merge
-        // For passwords (specialPasswords, tabPasswords): local wins — owner sets them locally first
-        ['govSettings','bizInfo'].forEach(k=>{
-          const local=(typeof S[k]==='object'&&S[k])?S[k]:{};
-          const remote=(typeof fbData[k]==='object'&&fbData[k])?fbData[k]:{};
-          S[k]=Object.assign({},local,remote); // remote wins for non-password config
+        ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
+          if(fbData[k] && typeof fbData[k]==='object') S[k] = fbData[k];
         });
-        // specialPasswords — remote always wins (owner set these in Settings intentionally)
-        const defaultSpecial={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
-        const localSP=S.specialPasswords||defaultSpecial;
-        const remoteSP=fbData.specialPasswords||{};
-        S.specialPasswords={
-          remitter: remoteSP.remitter||localSP.remitter||defaultSpecial.remitter,
-          sorter:   remoteSP.sorter  ||localSP.sorter  ||defaultSpecial.sorter,
-          checker:  remoteSP.checker ||localSP.checker  ||defaultSpecial.checker,
-        };
-        // tabPasswords: remote wins (these are set in settings and should propagate)
-        const localTP=S.tabPasswords||{};
-        const remoteTP=fbData.tabPasswords||{};
-        S.tabPasswords=Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},localTP,remoteTP);
+        if(fbData.lastGlobalClear) S.lastGlobalClear = fbData.lastGlobalClear;
 
-        // adminAccounts: Firebase is ALWAYS the source of truth
-        // Never merge — replace completely so deletions propagate to all devices
-        S.adminAccounts = Array.isArray(fbData.adminAccounts) ? fbData.adminAccounts : (S.adminAccounts||[]);
-        S.adminAccounts = mergedAccs;
+        // Ensure defaults
+        if(!Array.isArray(S.adminNames))    S.adminNames=[];
+        if(!Array.isArray(S.adminAccounts)) S.adminAccounts=[];
+        if(!S.govSettings)      S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
+        if(!S.bizInfo)          S.bizInfo={};
+        if(!S.tabPasswords)     S.tabPasswords={};
+        S.tabPasswords=Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},S.tabPasswords);
+        if(!S.specialPasswords) S.specialPasswords={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
 
-        // Ensure all required fields exist
-        if(!Array.isArray(S.adminNames))    S.adminNames    = [];
-        if(!Array.isArray(S.adminAccounts)) S.adminAccounts = [];
-        if(!S.govSettings)      S.govSettings      = {sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
-        if(!S.bizInfo)          S.bizInfo          = {};
-        if(!S.tabPasswords)     S.tabPasswords     = {};
-        S.tabPasswords = Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''}, S.tabPasswords);
-        if(!S.specialPasswords) S.specialPasswords = {remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
-
-        persist(); // save merged result to localStorage
         if(syncEl){ syncEl.style.color='var(--green)'; syncEl.textContent='☁ Online'; }
-        toast('☁ Synced with Firebase!');
-
-        // Push the MERGED result back to Firebase so all other devices get the best data
-        // This is critical: if this device had data Firebase didn't, now Firebase gets it
-        window.syncToFirebase(S);
-
+        toast('☁ Loaded from Firebase!');
       } else {
-        // Firebase returned no data — but this device might have local data
-        // Push it to Firebase so other devices can get it
-        if(S.orders?.length || S.riders?.length || S.adminAccounts?.length || S.adminNames?.length) {
-          if(syncEl){ syncEl.style.color='var(--green)'; syncEl.textContent='☁ Online'; }
-          toast('☁ Online — pushing local data to Firebase...');
-          window.syncToFirebase(S);
-        }
+        // No data in Firebase yet — S is already initialized empty
+        if(syncEl){ syncEl.style.color='var(--green)'; syncEl.textContent='☁ Online (No Data)'; }
       }
     } catch(e) {
-      console.warn('Firebase load error (non-fatal):', e.message);
-      if(syncEl){ syncEl.style.color='var(--muted)'; syncEl.textContent='⬤ Offline'; }
+      console.warn('Firebase load error:', e.message);
+      if(syncEl){ syncEl.style.color='var(--red)'; syncEl.textContent='☁ Load Failed'; }
+      toast('⚠️ Firebase load failed. Check connection.');
     }
+  } else {
+    if(syncEl){ syncEl.style.color='var(--muted)'; syncEl.textContent='⬤ Offline'; }
+    toast('⚠️ Offline — waiting for Firebase connection...');
   }
 
-  // Initialize UI dates safely
+  // Initialize UI dates
   const setVal = (id,v) => { const el=document.getElementById(id); if(el) el.value=v; };
   setVal('ds-date', today());
   setVal('pnl-from', today());
   setVal('pnl-to',   today());
   setVal('daily-date', today());
-  setVal('checker-date', '');  // Blank — show all orders regardless of date
+  setVal('checker-date', '');
   setVal('track-date', today());
   setVal('sort-date', today());
   setVal('ret-items-date', today());
@@ -9179,10 +9134,7 @@ async function initApp(){
   const mStart = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-01';
   setVal('as-date-from', mStart);
   setVal('as-date-to', today());
-  const invBtn = document.getElementById('inv-action-btn');
-  if(invBtn) invBtn.innerHTML=`<button class="btn btn-gold" onclick="openAddInvModal()">+ Add Product</button>`;
 
-  // Update topbar date to current system date
   const _tbd = document.getElementById('topbar-date');
   if(_tbd) _tbd.textContent = new Date().toLocaleDateString('en-PH',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   renderDash();
@@ -9233,7 +9185,6 @@ function _applyGlobalClear(fbData) {
                  'cashbondLog','benefitsLog','payroll','expenses','mergeLog'];
     _TX.forEach(k=>{ S[k] = []; });
     S.lastGlobalClear = remoteClearTs;
-    localStorage.setItem(KEY, JSON.stringify(S));
     toast('🔄 System was cleared by Owner. Local data wiped on this device.');
     try { renderPage(_activePage); } catch(e) {}
     return true;
@@ -9245,105 +9196,71 @@ function startAutoRefresh(){
   if(_autoRefreshTimer) clearInterval(_autoRefreshTimer);
   _autoRefreshTimer = setInterval(async ()=>{
     if(!window._fbReady || !window.loadFromFirebase) return;
-    if(_syncPending) return; // skip if we are mid-write to avoid race
+    if(_syncPending) return;
     try {
-      // Lightweight check: fetch ONLY the _lastWrite and _pwVersion fields
-      const checkUrl = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}&mask.fieldPaths=_lastWrite&mask.fieldPaths=_pwVersion`;
+      // Lightweight check: only fetch _lastWrite + _pwVersion
+      const checkUrl = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}&mask.fieldPaths=_lastWrite&mask.fieldPaths=_pwVersion&mask.fieldPaths=lastGlobalClear`;
       const checkR = await fetch(checkUrl, {cache:'no-cache'});
       if(!checkR.ok) return;
       const checkDoc = await checkR.json();
       const remoteTs  = checkDoc.fields?._lastWrite  ? _fromFS(checkDoc.fields._lastWrite)  : 0;
       const remotePwV = checkDoc.fields?._pwVersion  ? _fromFS(checkDoc.fields._pwVersion)  : '0';
+      const remoteClear = checkDoc.fields?.lastGlobalClear ? _fromFS(checkDoc.fields.lastGlobalClear) : '';
       const localPwV  = localStorage.getItem('gce_pw_version')||'0';
 
-      // ── Force logout if password version changed ──
+      // ── Force logout if password changed ──
       if(remotePwV && remotePwV !== '0' && remotePwV !== localPwV && currentRole) {
         localStorage.setItem('gce_pw_version', remotePwV);
-        // Fetch new password hash immediately
         try {
           const phUrl = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}&mask.fieldPaths=ownerPwHash`;
           const phR = await fetch(phUrl,{cache:'no-cache'});
           if(phR.ok){ const phDoc=await phR.json(); const h=phDoc.fields?.ownerPwHash?_fromFS(phDoc.fields.ownerPwHash):''; if(h) localStorage.setItem('gce_pw_hash',h); }
         } catch(e){}
-        alert('🔐 Password was changed by the Owner/CEO.\n\nYou have been logged out. Please log in again with the new password.');
+        alert('🔐 Password was changed by the Owner/CEO.\n\nPlease log in again.');
         try{ logoutUser(); }catch(e){ location.reload(); }
         return;
       } else if(remotePwV && remotePwV !== '0') {
         localStorage.setItem('gce_pw_version', remotePwV);
       }
 
+      // ── Check if Owner cleared all data ──
+      if(remoteClear && remoteClear > (S.lastGlobalClear||'')) {
+        const _TX = ['orders','returnLog','deletedOrders','stockLog','remitLog',
+                     'cashbondLog','benefitsLog','payroll','expenses','mergeLog'];
+        _TX.forEach(k=>{ S[k] = []; });
+        S.lastGlobalClear = remoteClear;
+        toast('🔄 System was cleared by Owner. Data wiped on this device.');
+        try { renderPage(_activePage); } catch(e) {}
+        return;
+      }
+
       // Nothing changed — skip full re-fetch
       if(remoteTs && remoteTs <= _lastKnownWriteTs) return;
       _lastKnownWriteTs = remoteTs || Date.now();
 
-      // Something changed — do a full load and merge
+      // ── Full load from Firebase — replace S directly (no merge) ──
       const fbData = await window.loadFromFirebase();
       if(!fbData) return;
-      // ── FIRST: check if Owner cleared all transactions on another device ──
-      if(_applyGlobalClear(fbData)) return; // wiped and re-rendered — skip merge
-      // Smart merge — Firebase is source of truth after fresh start cleaned it
-      // ── Union-by-ID merge — Firebase authoritative, local offline entries preserved ──
-      const _deletedIds = Array.isArray(fbData.deletedOrders) ? fbData.deletedOrders : [];
-      const _SETUP_KEYS = new Set(['riders','locations']);
-      const _arrKeys = ['orders','riders','locations','payroll','expenses','inventory',
-        'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
-        'returnLog','deletedOrders','mergeLog'];
-      _arrKeys.forEach(k=>{
-        const local  = Array.isArray(S[k])      ? S[k]      : [];
-        const remote = Array.isArray(fbData[k]) ? fbData[k] : [];
-        if(_SETUP_KEYS.has(k)){
-          // Setup data: Firebase wins if key is defined (even empty = intentionally cleared)
-          S[k] = (fbData[k] !== undefined && fbData[k] !== null) ? remote : local;
-        } else if(k === 'inventory'){
-          // Inventory: merge by 'code' — local wins (has latest stock from saveStock)
-          // but remote adds any items not in local (added from another device)
-          if(!remote.length){ S[k]=local; return; }
-          const localByCode = new Map(local.map(it=>[it.code,it]));
-          const remoteByCode = new Map(remote.map(it=>[it.code,it]));
-          // Start with local (has latest stock mutations)
-          const merged = new Map(localByCode);
-          // Add remote items that don't exist locally (added from another device)
-          remoteByCode.forEach((it,code)=>{ if(!localByCode.has(code)) merged.set(code,it); });
-          S[k] = [...merged.values()];
-        } else if(k === 'adminNames'){
-          // adminNames: Firebase always wins — deletions propagate
-          S[k] = remote;
-        } else {
-          // Transaction keys: union merge — keeps offline local entries, Firebase wins on conflicts
-          S[k] = _unionMerge(local, remote, _deletedIds);
-        }
+
+      // Firebase IS the source of truth — replace all arrays directly
+      ['orders','riders','locations','payroll','expenses','inventory','stockLog',
+       'adminNames','adminAccounts','remitLog','cashbondLog','benefitsLog',
+       'returnLog','deletedOrders','mergeLog'].forEach(k=>{
+        if(Array.isArray(fbData[k])) S[k] = fbData[k];
       });
-      ['govSettings','bizInfo'].forEach(k=>{
-        const local=(typeof S[k]==='object'&&S[k])?S[k]:{};
-        const remote=(typeof fbData[k]==='object'&&fbData[k])?fbData[k]:{};
-        S[k]=Object.assign({},local,remote);
+      // Config objects
+      ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
+        if(fbData[k] && typeof fbData[k]==='object') S[k] = fbData[k];
       });
-      // specialPasswords — remote ALWAYS wins (owner set these intentionally in Settings)
-      const defSP2={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
-      const lSP2=S.specialPasswords||defSP2;
-      const rSP2=fbData.specialPasswords||{};
-      S.specialPasswords={
-        remitter: rSP2.remitter||lSP2.remitter||defSP2.remitter,
-        sorter:   rSP2.sorter  ||lSP2.sorter  ||defSP2.sorter,
-        checker:  rSP2.checker ||lSP2.checker  ||defSP2.checker,
-      };
-      // tabPasswords — remote wins (set in Settings, propagates to all)
-      const lTP2=S.tabPasswords||{};
-      const rTP2=fbData.tabPasswords||{};
-      S.tabPasswords=Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},lTP2,rTP2);
-      // adminAccounts: Firebase is ALWAYS the source of truth — replace, never merge
-      S.adminAccounts=Array.isArray(fbData.adminAccounts)?fbData.adminAccounts:(S.adminAccounts||[]);
-      // Preserve lastGlobalClear — always take the NEWER of local/remote
-      if((fbData.lastGlobalClear||'') > (S.lastGlobalClear||'')) S.lastGlobalClear = fbData.lastGlobalClear;
-      // Ensure required fields
-      if(!Array.isArray(S.adminNames))    S.adminNames=[];
-      if(!S.adminAccounts)    S.adminAccounts=[];
-      if(!S.govSettings)      S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
-      if(!S.specialPasswords) S.specialPasswords={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
-      if(!S.tabPasswords)     S.tabPasswords={};
+      if(fbData.lastGlobalClear) S.lastGlobalClear = fbData.lastGlobalClear;
+
+      // Ensure defaults
+      if(!S.tabPasswords) S.tabPasswords={checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''};
       S.tabPasswords=Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},S.tabPasswords);
-      persist();
-      // Re-render active page silently
+      if(!S.specialPasswords) S.specialPasswords={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
+      if(!S.govSettings) S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
+
+      // Re-render active page
       const renderMap = {
         dashboard:()=>renderDash?.(),
         orders:()=>{ try{initOrdersPage();}catch(e){} },
@@ -9374,7 +9291,7 @@ function startAutoRefresh(){
       try { renderMap[_activePage]?.(); } catch(e){}
       if(currentRole==='rider') try{renderRiderParcels();}catch(e){}
     } catch(e){ console.warn('Auto-refresh error:',e.message); }
-  }, 10000); // every 10 seconds
+  }, 3000); // every 3 seconds
 }
 
 // ============================================================
@@ -10879,45 +10796,7 @@ function confirmMerge() {
 // Clears ALL transactions AND admin names/accounts (JP, PAM, etc. removed).
 // PRESERVES: inventory products + stock levels, riders, locations, settings.
 // Pushes clean state to Firebase so every device gets it regardless of cache.
-const _FRESH_FLAG = 'gce_fresh_start_v4';
-const _freshStartDone = !!localStorage.getItem(_FRESH_FLAG);
-
-(function oneFreshStart(){
-  if(_freshStartDone) return;
-  localStorage.setItem(_FRESH_FLAG, '1');
-
-  // ── Clear ALL transaction data ──
-  S.orders        = [];
-  S.returnLog     = [];
-  S.deletedOrders = [];
-  S.stockLog      = [];
-  S.remitLog      = [];
-  S.cashbondLog   = [];
-  S.benefitsLog   = [];
-  S.payroll       = [];
-  S.expenses      = [];
-  S.mergeLog      = [];
-
-  // ── Clear admin names and accounts (remove JP, PAM, etc.) ──
-  S.adminNames    = [];
-  S.adminAccounts = [];
-
-  persist(); // save clean state to localStorage immediately
-
-  // Push to Firebase after 4 seconds — clears old transactions
-  // IMPORTANT: skip inventory & stockLog — never overwrite Firebase inventory
-  // with a potentially empty local array on a new device
-  setTimeout(async ()=>{
-    try {
-      const success = await _directWriteFirebase(S, {skip:['inventory','stockLog']});
-      if(success) console.log('✅ Fresh start v2 pushed to Firebase. All devices clean.');
-      else setTimeout(()=>_directWriteFirebase(S, {skip:['inventory','stockLog']}), 5000);
-    } catch(e) {
-      console.warn('Fresh start push failed, retrying...', e.message);
-      setTimeout(()=>_directWriteFirebase(S, {skip:['inventory','stockLog']}).catch(()=>{}), 5000);
-    }
-  }, 4000);
-})();
+// oneFreshStart removed — Firebase-only mode
 
 // Show login screen on load (login screen is visible by default)
 // initApp() is called after successful doLogin()
@@ -10930,53 +10809,30 @@ document.addEventListener('visibilitychange', async ()=>{
   if(!window._fbReady || !window.loadFromFirebase) return;
   if(!currentRole) return;
   try {
-    _lastKnownWriteTs = 0;
+    _lastKnownWriteTs = 0; // force full re-fetch on tab focus
     const fbData = await window.loadFromFirebase();
     if(!fbData) return;
-    // ── FIRST: check if Owner cleared all transactions ──
+
+    // ── Check global clear ──
     if(_applyGlobalClear(fbData)) return;
-    const freshRan3 = !!localStorage.getItem(_FRESH_FLAG);
-    const TX_KEYS3 = ['orders','returnLog','deletedOrders','stockLog','remitLog',
-      'cashbondLog','benefitsLog','payroll','expenses','mergeLog','adminNames'];
-    // ── Union-by-ID merge — Firebase authoritative, local offline entries preserved ──
-    const _deletedIds3 = Array.isArray(fbData.deletedOrders) ? fbData.deletedOrders : [];
-    const _SETUP_KEYS3 = new Set(['riders','locations']);
-    const _arrKeys3 = ['orders','riders','locations','payroll','expenses','inventory',
-      'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
-      'returnLog','deletedOrders','mergeLog'];
-    _arrKeys3.forEach(k=>{
-      const local=Array.isArray(S[k])?S[k]:[];
-      const remote=Array.isArray(fbData[k])?fbData[k]:[];
-      if(_SETUP_KEYS3.has(k)){
-        S[k]=(fbData[k]!==undefined&&fbData[k]!==null)?remote:local;
-      } else if(k==='inventory'){
-        if(!remote.length){return;}
-        const lm3=new Map(local.map(it=>[it.code,it]));
-        const rm3=new Map(remote.map(it=>[it.code,it]));
-        rm3.forEach((it,code)=>{ if(!lm3.has(code)) lm3.set(code,it); });
-        S[k]=[...lm3.values()];
-      } else if(k==='adminNames'){
-        S[k]=remote;
-      } else {
-        S[k]=_unionMerge(local,remote,_deletedIds3);
-      }
+
+    // ── Firebase-only: replace S directly ──
+    ['orders','riders','locations','payroll','expenses','inventory','stockLog',
+     'adminNames','adminAccounts','remitLog','cashbondLog','benefitsLog',
+     'returnLog','deletedOrders','mergeLog'].forEach(k=>{
+      if(Array.isArray(fbData[k])) S[k] = fbData[k];
     });
-    if(fbData.adminAccounts){
-      // adminAccounts: Firebase replaces local completely — deletions must propagate
-      if(fbData.adminAccounts!==undefined) S.adminAccounts=fbData.adminAccounts||[];
-    }
-    if(fbData.specialPasswords){
-      const r=fbData.specialPasswords,l=S.specialPasswords||{};
-      S.specialPasswords={remitter:r.remitter||l.remitter,sorter:r.sorter||l.sorter,checker:r.checker||l.checker};
-    }
-    if(fbData.tabPasswords) S.tabPasswords=Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},S.tabPasswords||{},fbData.tabPasswords);
-    persist();
-    try{({dashboard:renderDash,orders:renderOrders,checker:renderChecker,
-      riders:renderRiders,dailysales:renderDailySales,payroll:renderPayroll,
-      expenses:renderExpenses,inventory:()=>renderInv(invTab),pnl:renderPnl,
-      tracking:renderTracking,sorting:renderSorting,returns:renderReturns,
-      deletedorders:renderDeletedOrders}[_activePage]||(() =>{}))();}catch(e){}
-    if(currentRole==='rider')try{renderRiderParcels();}catch(e){}
+    ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
+      if(fbData[k] && typeof fbData[k]==='object') S[k] = fbData[k];
+    });
+    if(fbData.lastGlobalClear) S.lastGlobalClear = fbData.lastGlobalClear;
+    if(!S.tabPasswords) S.tabPasswords={checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''};
+    S.tabPasswords=Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},S.tabPasswords);
+    if(!S.specialPasswords) S.specialPasswords={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
+    if(!S.govSettings) S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
+
+    try{ renderPage(_activePage); }catch(e){}
+    if(currentRole==='rider') try{renderRiderParcels();}catch(e){}
   } catch(e){ console.warn('Visibility sync error:',e.message); }
 });
 </script>
