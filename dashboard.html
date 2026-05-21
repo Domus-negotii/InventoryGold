@@ -3593,7 +3593,11 @@ function updatePaymentStatus(orderIdx, status) {
     toast(`💳 Payment: ${status}`);
   }
   save(); renderChecker();
-  if(currentRole==='owner'||currentRole==='admin') try{renderAdminSheets();}catch(e){}
+  if(currentRole==='owner'||currentRole==='admin') {
+    try{renderAdminSheets();}catch(e){}
+    try{initOrdersPage();}catch(e){}
+    setTimeout(()=>{ try{renderCourierDashboard();}catch(e){}}, 80);
+  }
 }
 function updatePaymentNotes(orderIdx, notes) {
   S.orders[orderIdx].paymentNotes = notes;
@@ -7850,6 +7854,12 @@ function saveOrder() {
     o._id = orig._id || o._id;          // ← preserve original _id
     o.encodedBy = orig.encodedBy || o.encodedBy; // ← preserve original encoder
     o.paymentStatus = orig.paymentStatus || o.paymentStatus;
+    // For courier orders: always honour the enc-order-payment-status dropdown value
+    // (allows admin to change payment status via the edit modal)
+    if(isLbcMethod) {
+      const newPymSt = document.getElementById('enc-order-payment-status')?.value;
+      if(newPymSt) o.paymentStatus = newPymSt;
+    }
     o.paymentNotes = orig.paymentNotes || '';
     o.verificationStatus = orig.verificationStatus || 'Not Verified';
     o.lbcStatus = orig.lbcStatus || o.lbcStatus;
