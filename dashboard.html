@@ -7891,20 +7891,15 @@ function saveOrder() {
     toast('✅ Order saved! Inventory will be deducted upon Checker verification.');
   }
   save(); closeModal('modal-encode');
-  // Route post-save refresh based on where edit was triggered from
-  if(_editSource === 'courier-dashboard') {
-    // Stay on courier dashboard — just refresh it + dash stats
-    _editSource = '';
-    setTimeout(()=>{ try { renderCourierDashboard(); } catch(e){} }, 80);
-    try { renderDash(); } catch(e) {}
-  } else {
-    _editSource = '';
-    // Full orders page refresh
-    try { initOrdersPage(); } catch(e) {}
-    try { renderDash(); } catch(e) {}
-    setTimeout(()=>{ try { renderCourierDashboard(); } catch(e){} }, 100);
-    if(_activePage === 'checker') try { renderChecker(); } catch(e) {}
-  }
+  const _wasCourierEdit = (_editSource === 'courier-dashboard');
+  _editSource = '';
+  // Always refresh dash stats + orders table (top section)
+  try { renderDash(); } catch(e) {}
+  try { initOrdersPage(); } catch(e) {}
+  // Always refresh courier dashboard (bottom section)
+  setTimeout(()=>{ try { renderCourierDashboard(); } catch(e){} }, 80);
+  // If checker page is open on another view, refresh that too
+  if(_activePage === 'checker') try { renderChecker(); } catch(e) {}
 }
 function delOrder(i){
   _confirmDel(`Delete order ${onum(i)} for "${S.orders[i]?.name}"?`, ()=>{
