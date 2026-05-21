@@ -9616,11 +9616,20 @@ function startAutoRefresh(){
       if(!fbData) return;
 
       // Firebase IS the source of truth — replace all arrays directly
-      ['orders','riders','locations','payroll','expenses','inventory','stockLog',
+      // EXCEPTION: inventory uses code-based merge so local stock changes aren't overwritten
+      ['orders','riders','locations','payroll','expenses','stockLog',
        'adminNames','adminAccounts','remitLog','cashbondLog','benefitsLog',
        'returnLog','deletedOrders','mergeLog'].forEach(k=>{
         if(Array.isArray(fbData[k])) S[k] = fbData[k];
       });
+      // Inventory: local wins for stock levels, remote adds NEW items from other devices
+      if(Array.isArray(fbData.inventory) && fbData.inventory.length>0){
+        const localByCode = new Map((S.inventory||[]).map(it=>[it.code,it]));
+        const remoteByCode = new Map(fbData.inventory.map(it=>[it.code,it]));
+        // Remote adds items not in local; local preserves stock mutations
+        remoteByCode.forEach((it,code)=>{ if(!localByCode.has(code)) localByCode.set(code,it); });
+        S.inventory = [...localByCode.values()];
+      }
       // Config objects
       ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
         if(fbData[k] && typeof fbData[k]==='object') S[k] = fbData[k];
@@ -9680,17 +9689,21 @@ function setOmTab(tab) {
 }
 
 function renderOrderMgmt() {
-  const q  = (document.getElementById('om-search')?.value||'').toLowerCase();
-  const df = document.getElementById('om-date')?.value||'';
-  const method = omTab === 'lbc' ? 'LBC' : omTab === 'ems' ? 'EMS' : 'FedEx';
-  const icon   = omTab === 'lbc' ? '📦' : omTab === 'ems' ? '✈️' : '📦';
+  const q      = (document.getElementById('om-search')?.value||'').toLowerCase();
+  const df     = document.getElementById('om-date')?.value||'';
+  const method = omTab==='lbc'?'LBC':omTab==='ems'?'EMS':'FedEx';
+  const icon   = method==='LBC'?'📦':'✈️';
 
-  const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
+  // ── Filter: only Verified + Ready to Pick-up orders (no Preparing, no Cancelled) ──
+  const list = S.orders.map((o,i)=>({o,i})).filter(({o}) => {
     if((o.paymentMethod||'COD') !== method) return false;
-    // Hide Delivered — they move to LBC Delivery / EMS Delivery page
-    if(o.lbcStatus === 'Delivered' || o.status === 'Delivered') return false;
-    // Hide Cancelled — they are handled by Remitter
     if(o.status === 'Cancelled') return false;
+    if(o.status === 'Delivered' || o.lbcStatus === 'Delivered') return false;
+    // Must be Verified by checker
+    if(o.verificationStatus !== 'Verified') return false;
+    // Must be Ready to Pick-up (not Preparing)
+    const st = o.lbcStatus||'Preparing';
+    if(st === 'Preparing') return false;
     if(df && o.date !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q)
        && !(o.contact||'').includes(q) && !(o.trackingNumber||'').includes(q)) return false;
@@ -9698,96 +9711,83 @@ function renderOrderMgmt() {
   });
 
   // Stats
-  const del  = list.filter(({o})=>o.status==='Delivered');
-  const pend = list.filter(({o})=>['Preparing','Ready to Pick-up'].includes(o.lbcStatus||o.status));
-  const drop = list.filter(({o})=>['Drop off at LBC','Drop off at EMS','Drop off at FedEx'].includes(o.lbcStatus||''));
+  const readyList = list.filter(({o})=>(o.lbcStatus||'')==='Ready to Pick-up');
+  const droppedList = list.filter(({o})=>['Drop off at LBC','Drop off at EMS','Drop off at FedEx'].includes(o.lbcStatus||''));
+  const ofdList = list.filter(({o})=>o.lbcStatus==='Out for Delivery');
   const statsEl = document.getElementById('om-stats');
   if(statsEl) statsEl.innerHTML = `
-    <div class="stat-card gold"><div class="stat-label">Total ${method}</div><div class="stat-value">${list.length}</div></div>
-    <div class="stat-card blue"><div class="stat-label">Preparing / Ready</div><div class="stat-value">${pend.length}</div></div>
-    <div class="stat-card orange"><div class="stat-label">Dropped Off</div><div class="stat-value">${drop.length}</div></div>
-    <div class="stat-card green"><div class="stat-label">Delivered</div><div class="stat-value">${del.length}</div><div class="stat-sub">${p(del.reduce((s,{o})=>s+o.grandTotal,0))}</div></div>`;
+    <div class="stat-card gold"><div class="stat-label">Ready to Pick-up</div><div class="stat-value">${readyList.length}</div></div>
+    <div class="stat-card blue"><div class="stat-label">Dropped Off</div><div class="stat-value">${droppedList.length}</div></div>
+    <div class="stat-card orange"><div class="stat-label">Out for Delivery</div><div class="stat-value">${ofdList.length}</div></div>
+    <div class="stat-card green"><div class="stat-label">Total Active</div><div class="stat-value">${list.length}</div></div>`;
 
   const lbcColor = s => {
-    if(s==='Delivered') return 'var(--green)';
-    if(['Drop off at LBC','Drop off at EMS'].includes(s)) return 'var(--blue)';
+    if(['Drop off at LBC','Drop off at EMS','Drop off at FedEx'].includes(s)) return 'var(--blue)';
     if(s==='Ready to Pick-up') return 'var(--gold)';
     if(s==='ODZ/Incomplete Details') return 'var(--orange)';
     if(s==='RTO') return 'var(--red)';
     if(s==='Out for Delivery') return 'var(--gold)';
     return 'var(--muted)';
   };
-  // Full status list per courier type (for all non-OFD statuses)
-  const ALL_STATUSES_LBC   = ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
-  const ALL_STATUSES_EMS   = ['Ready to Pick-up','Drop off at EMS','Out for Delivery','Delivered','RTO'];
-  const ALL_STATUSES_FEDEX = ['Ready to Pick-up','Drop off at FedEx','Out for Delivery','Delivered','RTO'];
-  // OFD-specific choices per role (checker/owner: OFD+Delivered+RTO, sorter: OFD+RTO only)
-  const OFD_CHOICES_FULL = ['Out for Delivery','Delivered','RTO'];
+
+  const ALL_STATUSES_LBC   = ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery','RTO'];
+  const ALL_STATUSES_EMS   = ['Ready to Pick-up','Drop off at EMS','Out for Delivery','RTO'];
+  const ALL_STATUSES_FEDEX = ['Ready to Pick-up','Drop off at FedEx','Out for Delivery','RTO'];
   const OFD_CHOICES_SORTER = ['Out for Delivery','RTO'];
-  // OM_STATUSES is a function of the parcel's current status (computed per row below)
+
   const getOmStatuses = (currentLbcSt, method) => {
-    const isOFD = currentLbcSt === 'Out for Delivery';
-    if(isOFD) return (currentRole==='checker'||currentRole==='owner') ? OFD_CHOICES_FULL : OFD_CHOICES_SORTER;
+    if(currentLbcSt === 'Out for Delivery') return OFD_CHOICES_SORTER;
     if(method==='EMS') return ALL_STATUSES_EMS;
     if(method==='FedEx') return ALL_STATUSES_FEDEX;
     return ALL_STATUSES_LBC;
   };
 
   const rows = list.map(({o,i}) => {
-    // Migrate 'Preparing' to 'Ready to Pick-up' for display consistency with Parcel Tracking
-    const lbcSt = (!o.lbcStatus || o.lbcStatus === 'Preparing') ? 'Ready to Pick-up' : o.lbcStatus;
+    const lbcSt = o.lbcStatus || 'Ready to Pick-up';
     const trackNum = o.trackingNumber || '—';
     return `<tr>
       <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
-      <td style="font-weight:500;">${o.name}</td>
-      <td style="font-size:11px;">${o.contact||'—'}</td>
+      <td style="font-weight:500;">${o.name}<br><span style="color:var(--muted);font-size:9px;">${o.contact||''}</span></td>
+      <td style="font-family:monospace;font-size:11px;color:var(--blue);">${trackNum}</td>
       <td style="font-size:11px;">${o.admin||'—'}</td>
       <td>${o.date}</td>
-      <td style="font-family:monospace;font-size:11px;color:var(--blue);">${trackNum}</td>
-      <td style="font-size:11px;font-weight:600;color:${payColor(o.paymentStatus||'No Payment')};">${o.paymentStatus||'No Payment'}</td>
-      <td style="font-size:11px;color:var(--muted);">${o.dateOfPayment||'—'}</td>
-      <td style="font-size:11px;color:var(--muted);">${o.dateOfDropoff||'—'}</td>
-      <td><span class="checker-tag ${o.verificationStatus==='Verified'?'verified':'pending'}">${o.verificationStatus||'Not Verified'}</span></td>
-      <td style="font-weight:600;color:${lbcColor(lbcSt)};">${icon} ${lbcSt}</td>
+      <td style="font-weight:600;color:${lbcColor(lbcSt)}">${icon} ${lbcSt}</td>
       <td>
-        ${o.verificationStatus === 'Verified'
-          ? `<select class="form-control" style="width:165px;font-size:10.5px;padding:3px 5px;" onchange="omUpdateStatus(${i},this.value)">
-              ${getOmStatuses(lbcSt, o.paymentMethod).map(s=>`<option${lbcSt===s?' selected':''}>${s}</option>`).join('')}
-             </select>`
-          : `<span style="font-size:10px;color:var(--orange);padding:3px 7px;background:rgba(224,138,48,0.1);border-radius:5px;display:inline-block;">
-               🔒 Not Verified Yet
-             </span>`
-        }
+        <select class="form-control" style="width:165px;font-size:10.5px;padding:3px 5px;" onchange="omUpdateStatus(${i},this.value)">
+          ${getOmStatuses(lbcSt, o.paymentMethod).map(s=>`<option${lbcSt===s?' selected':''}>${s}</option>`).join('')}
+        </select>
       </td>
-      <td>
-        ${o.verificationStatus === 'Verified'
-          ? `<select class="form-control" style="width:130px;font-size:10.5px;padding:3px 5px;" onchange="omAssignRider(${i},this.value)" title="Assign Rider">
-              <option value="">— Assign Rider —</option>
-              ${(S.riders||[]).map(r=>`<option value="${r.name}"${o.assignedRider===r.name?' selected':''}>${r.name}</option>`).join('')}
-             </select>`
-          : `<span style="color:var(--muted);font-size:10px;">—</span>`
-        }
-      </td>
-      <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
       <td>
         <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
       </td>
     </tr>`;
   }).join('');
 
+  const emptyMsg = list.length===0
+    ? `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:30px;">
+        <div style="font-size:13px;margin-bottom:6px;">📭 Walang parcel na handa para sa ${method}.</div>
+        <div style="font-size:11px;">Ang lalabas lang dito ay ang mga parcel na <strong style="color:var(--gold);">Verified</strong> at <strong style="color:var(--gold);">Ready to Pick-up</strong> na.</div>
+       </td></tr>`
+    : '';
+
   document.getElementById('om-content').innerHTML = `
     <div class="card">
       <div class="card-header">
-        <span class="card-title">${icon} ${method} Parcels</span>
-        <span style="font-size:11px;color:var(--muted);">${list.length} order(s)</span>
+        <span class="card-title">${icon} ${method} Parcels — Ready for Dispatch</span>
+        <span style="font-size:11px;color:var(--muted);">${list.length} parcel(s) ready</span>
       </div>
       <div class="table-wrap"><table>
         <thead><tr>
-          <th>Order #</th><th>Customer</th><th>CP #</th><th>Admin</th><th>Date</th>
-          <th>Tracking #</th><th>💳 Payment</th><th>📅 Date Paid</th><th>📦 Date Drop-off</th><th>✅ Verification</th>
-          <th>📦 Parcel Status</th><th>Update Status</th><th>🏍️ Assign Rider</th><th>Total</th><th>Actions</th>
+          <th>Order #</th>
+          <th>Customer</th>
+          <th>Tracking #</th>
+          <th>Admin</th>
+          <th>Date</th>
+          <th>📦 Parcel Status</th>
+          <th>Update Status</th>
+          <th>Actions</th>
         </tr></thead>
-        <tbody>${rows || '<tr><td colspan="15" style="text-align:center;color:var(--muted);padding:26px;">No '+method+' orders found</td></tr>'}</tbody>
+        <tbody>${rows||emptyMsg}</tbody>
       </table></div>
     </div>`;
 }
