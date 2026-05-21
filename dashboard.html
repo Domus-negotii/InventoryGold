@@ -2114,7 +2114,33 @@ function _showRulesHint() {
       Discount: <strong style="color:var(--red);" id="enc-discount-disp">-₱0.00</strong> &nbsp;|&nbsp;
       <span style="font-size:14px;">Grand Total: <strong style="color:var(--green);" id="enc-grand-disp">₱0.00</strong></span>
     </div>
+    <!-- ── Overall/Global Discount Box ── -->
+    <div class="form-group" style="margin-top:10px;padding:10px 14px;background:rgba(224,85,85,0.06);border:1px solid rgba(224,85,85,0.2);border-radius:8px;">
+      <label style="color:var(--red);font-weight:700;font-size:12px;">🏷️ Overall Order Discount (Global)</label>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:6px;">
+        <input type="number" class="form-control" id="enc-global-discount" min="0" value="0"
+          style="width:140px;font-size:13px;" oninput="calcEnc()" onfocus="this.select()"
+          placeholder="0.00">
+        <div style="flex:1;">
+          <input type="text" class="form-control" id="enc-global-discount-reason" placeholder="Reason (e.g. Shipping discount, Promo...)"
+            style="font-size:11.5px;">
+        </div>
+      </div>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:5px;">
+        💡 Use this for discounts that apply to the whole order (e.g. shipping promo). 
+        This discount persists even if individual items are cancelled.
+      </div>
+    </div>
     <input type="hidden" id="enc-edit-idx" value="">
+    <!-- ── Conditional Payment Status for LBC/EMS/FedEx ── -->
+    <div id="enc-payment-status-group" style="display:none;margin-top:10px;">
+      <label style="font-weight:700;font-size:12px;">📋 Order Payment Status</label>
+      <select class="form-control" id="enc-order-payment-status" onchange="calcEnc()">
+        <option value="No Payment">⏳ Unpaid Orders</option>
+        <option value="Partial">💳 Partially Paid Orders</option>
+        <option value="Fully Paid">✅ Fully Paid Orders</option>
+      </select>
+    </div>
     <div class="form-actions">
       <button class="btn btn-gold" onclick="saveOrder()">💾 Save Order</button>
       <button class="btn btn-outline" onclick="closeModal('modal-encode')">Cancel</button>
@@ -2785,14 +2811,11 @@ window.calcEnc = function() {
 
     let subtotal = 0;
     if(qg > 0 && pg > 0) {
-      // Gram-based: qty/grams × per gram
       subtotal = ceilPeso(qg * pg);
     } else if(r.dataset.unitPrice) {
-      // Fix-price item: unit price × qty (supports 2, 3, 4... qty)
       const unitPrice = parseFloat(r.dataset.unitPrice) || 0;
       subtotal = unitPrice * Math.max(1, qg);
     } else if(totalInput) {
-      // Manual total (no unit price stored) — derive subtotal from total+discount
       const curTotal = parseFloat(totalInput.value)||0;
       subtotal = curTotal + discount;
     }
@@ -2805,7 +2828,10 @@ window.calcEnc = function() {
     totalDiscount += discount;
   });
   const sf = parseFloat(document.getElementById('enc-shipping').value)||0;
-  const grandTotal = iT + sf;
+  // FEAT3: Include global/overall discount in total calculation
+  const globalDiscount = parseFloat(document.getElementById('enc-global-discount')?.value)||0;
+  totalDiscount += globalDiscount;
+  const grandTotal = Math.max(0, iT + sf - globalDiscount);
   const discEl = document.getElementById('enc-discount-disp');
   if(discEl) discEl.textContent = p(totalDiscount);
   document.getElementById('enc-sf-disp').textContent = p(sf);
@@ -2895,6 +2921,24 @@ function openEditOrder(i){
     if(editIsLbc) renderPayments(o.payments||[], false);
   }
   populateAdminDropdown();
+  // CHECKER: admin name field is read-only — cannot be changed
+  if(currentRole==='checker'){
+    const adminEl=document.getElementById('enc-admin');
+    if(adminEl){ adminEl.disabled=true; adminEl.style.opacity='0.7'; adminEl.title='Admin name is locked (Checker cannot edit)'; }
+    const adminWrapper=document.getElementById('enc-admin-wrapper');
+    if(adminWrapper){ adminWrapper.title='Admin name is locked for checkers'; }
+  }
+  // FEAT3: Restore global discount if editing existing order
+  const gdEl = document.getElementById('enc-global-discount');
+  const gdrEl = document.getElementById('enc-global-discount-reason');
+  if(gdEl) gdEl.value = o.globalDiscount || 0;
+  if(gdrEl) gdrEl.value = o.globalDiscountReason || '';
+  // FEAT4: Restore payment status dropdown
+  const opsEl = document.getElementById('enc-order-payment-status');
+  const opsGrp = document.getElementById('enc-payment-status-group');
+  const isEditCourier = o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx';
+  if(opsGrp) opsGrp.style.display = isEditCourier ? '' : 'none';
+  if(opsEl && isEditCourier) opsEl.value = o.paymentStatus || 'No Payment';
   // For owner: set the dropdown to the order's admin.
   // For admin: populateAdminDropdown already locked it to their name — don't override.
   if(currentUser?.role !== 'admin') {
@@ -3297,9 +3341,17 @@ function renderChecker(){
   const isCOD = checkerTab === 'COD';
   const isLbc = checkerTab === 'LBC' || checkerTab === 'EMS' || checkerTab === 'FedEx';
 
+  const _isCourierTab = checkerTab==='LBC'||checkerTab==='EMS'||checkerTab==='FedEx';
   const list = S.orders.map((o,i)=>({o,i})).filter(({o}) => {
     const method = o.paymentMethod || 'COD';
     if(method !== checkerTab) return false;
+    // Exclude cancelled orders from checker view (they go to Remitter)
+    if(o.status === 'Cancelled') return false;
+    // FEAT: LBC/EMS/FedEx Verify tab shows ONLY Fully Paid orders
+    if(_isCourierTab){
+      const pymSt = o.paymentStatus||'No Payment';
+      if(pymSt !== 'Fully Paid') return false;
+    }
     if(filt && o.checkerStatus !== filt) return false;
     if(df && o.date !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !(o.contact||'').includes(q) && !onum(S.orders.indexOf(o)).includes(q)) return false;
@@ -3509,13 +3561,22 @@ function renderChecker(){
 function updatePaymentStatus(orderIdx, status) {
   S.orders[orderIdx].paymentStatus = status;
   if(status !== 'Partial') S.orders[orderIdx].paymentNotes = '';
-  // If downgraded from Fully Paid, reset verification
-  if(status !== 'Fully Paid') {
+  // Partial payment → default to No Payment for verification (not ready to verify)
+  if(status === 'Partial') {
     S.orders[orderIdx].verificationStatus = 'Not Verified';
     S.orders[orderIdx].checkerStatus = 'Pending';
+    toast('💳 Partially Paid — moved to Admin Partially Paid section.');
+  } else if(status === 'Fully Paid') {
+    toast('💳 Fully Paid ✅ — Order now visible in Checker Verify tab.');
+  } else if(status === 'No Payment') {
+    S.orders[orderIdx].verificationStatus = 'Not Verified';
+    S.orders[orderIdx].checkerStatus = 'Pending';
+    toast('💳 Marked as Unpaid — not yet ready for verification.');
+  } else {
+    toast(`💳 Payment: ${status}`);
   }
   save(); renderChecker();
-  toast(`💳 Payment: ${status}`);
+  if(currentRole==='owner'||currentRole==='admin') try{renderAdminSheets();}catch(e){}
 }
 function updatePaymentNotes(orderIdx, notes) {
   S.orders[orderIdx].paymentNotes = notes;
@@ -5841,48 +5902,143 @@ function closeDayDetail(){document.getElementById('cal-detail').classList.remove
 function renderAdminSheets(){
   const df=document.getElementById('as-date-from').value;
   const dt=document.getElementById('as-date-to').value;
-
-  // Always show ALL admins — tabs removed
-  let orders=S.orders.map((o,i)=>({...o,idx:i}));
-  if(df)orders=orders.filter(o=>o.date>=df);
-  if(dt)orders=orders.filter(o=>o.date<=dt);
-
   const el=document.getElementById('adminsheet-content');
-  if(!el)return;
+  if(!el) return;
 
-  // Always ALL admins summary view
+  let orders=S.orders.map((o,i)=>({...o,idx:i}));
+  if(df) orders=orders.filter(o=>o.date>=df);
+  if(dt) orders=orders.filter(o=>o.date<=dt);
+
+  // ── Admin Performance Summary (top) ──────────────────────────────────
   const adminMap={};
   orders.forEach(o=>{
-    const admins = o.adminList && o.adminList.length > 0 ? o.adminList : (o.admin ? [o.admin] : ['(No Admin)']);
-    const share = 1 / Math.max(1, admins.length);
-    admins.forEach(a => {
-      if(!adminMap[a]) adminMap[a]={name:a,total:0,delivered:0,cancelled:0,revenue:0,incentive:0,orders:[]};
-      adminMap[a].total += share;
-      adminMap[a].orders.push(o);
-      if(o.status==='Delivered'){ adminMap[a].delivered += share; adminMap[a].revenue += o.grandTotal * share; }
-      if(['Cancelled','Update'].includes(o.status)) adminMap[a].cancelled += share;
-      adminMap[a].incentive = adminMap[a].delivered * 25;
+    const admins=o.adminList&&o.adminList.length>0?o.adminList:(o.admin?[o.admin]:['(No Admin)']);
+    const share=1/Math.max(1,admins.length);
+    admins.forEach(a=>{
+      if(!adminMap[a]) adminMap[a]={name:a,total:0,delivered:0,cancelled:0,revenue:0,incentive:0};
+      adminMap[a].total+=share;
+      if(o.status==='Delivered'){adminMap[a].delivered+=share;adminMap[a].revenue+=o.grandTotal*share;}
+      if(['Cancelled','Update'].includes(o.status)) adminMap[a].cancelled+=share;
+      adminMap[a].incentive=adminMap[a].delivered*25;
     });
   });
   const admList=Object.values(adminMap).sort((a,b)=>b.delivered-a.delivered);
+
+  // ── Courier tabs: LBC / EMS / FedEx ─────────────────────────────────
+  const COURIER_TABS = ['LBC','EMS','FedEx'];
+  const PAYMENT_TABS = [
+    {key:'No Payment', label:'⏳ Unpaid', color:'var(--red)'},
+    {key:'Partial',    label:'💳 Partially Paid', color:'var(--orange)'},
+    {key:'Fully Paid', label:'✅ Fully Paid', color:'var(--green)'},
+  ];
+
+  const curCourier = window._asCourierTab || 'LBC';
+  const curPayTab  = window._asPayTab    || 'No Payment';
+
+  const courierOrders = orders.filter(o=>o.paymentMethod===curCourier);
+  const payTabOrders  = courierOrders.filter(o=>(o.paymentStatus||'No Payment')===curPayTab);
+
+  const pRow=(label,val,color='')=>`<tr><td style="color:var(--muted);font-size:11px;">${label}</td><td style="font-weight:600;${color?'color:'+color+';':''}">${val}</td></tr>`;
+
   el.innerHTML=`
-    <div class="stats-grid" style="margin-bottom:14px;">
-      <div class="stat-card gold"><div class="stat-label">Total Orders</div><div class="stat-value">${orders.length}</div></div>
-      <div class="stat-card green"><div class="stat-label">Total Revenue</div><div class="stat-value">${p(orders.filter(o=>o.status==='Delivered').reduce((s,o)=>s+o.grandTotal,0))}</div></div>
-      <div class="stat-card blue"><div class="stat-label">Total Delivered</div><div class="stat-value">${orders.filter(o=>o.status==='Delivered').length}</div></div>
-      <div class="stat-card orange"><div class="stat-label">Total Incentives</div><div class="stat-value">${p(orders.filter(o=>o.status==='Delivered').length*25)}</div></div>
+    <!-- Admin Performance Summary -->
+    <div class="card" style="margin-bottom:14px;">
+      <div class="card-header"><span class="card-title">👥 Admin Performance Summary</span>
+        <span style="font-size:11px;color:var(--muted);">${df||''}${df&&dt?' – ':''}${dt||''}</span>
+      </div>
+      <div class="stats-grid" style="margin:10px 14px;">
+        <div class="stat-card gold"><div class="stat-label">Total Orders</div><div class="stat-value">${orders.length}</div></div>
+        <div class="stat-card green"><div class="stat-label">Revenue</div><div class="stat-value">${p(orders.filter(o=>o.status==='Delivered').reduce((s,o)=>s+o.grandTotal,0))}</div></div>
+        <div class="stat-card blue"><div class="stat-label">Delivered</div><div class="stat-value">${orders.filter(o=>o.status==='Delivered').length}</div></div>
+        <div class="stat-card orange"><div class="stat-label">Incentives</div><div class="stat-value">${p(orders.filter(o=>o.status==='Delivered').length*25)}</div></div>
+      </div>
+      <div class="table-wrap" style="padding:0 14px 14px;">
+        <table><thead><tr><th>Admin</th><th>Total</th><th>Delivered</th><th>Cancelled</th><th>Revenue</th><th>Incentive</th></tr></thead>
+        <tbody>${admList.length?admList.map(a=>`<tr>
+          <td style="font-weight:700;color:var(--gold);">${a.name}</td>
+          <td>${Math.round(a.total)}</td>
+          <td style="color:var(--green);font-weight:600;">${Math.round(a.delivered)}</td>
+          <td style="color:var(--red);">${Math.round(a.cancelled)}</td>
+          <td style="color:var(--green);font-weight:600;">${p(a.revenue)}</td>
+          <td style="color:var(--gold);font-weight:700;">${p(a.incentive)}</td>
+        </tr>`).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px;">No orders</td></tr>'}
+        </tbody></table>
+      </div>
     </div>
-    <div class="card"><div class="card-header"><span class="card-title">Admin Performance Summary</span><span style="font-size:11px;color:var(--muted);">${df||''}${df&&dt?' – ':''}${dt||''}</span></div>
-    <div class="table-wrap"><table><thead><tr><th>Admin</th><th>Total Orders</th><th>Delivered</th><th>Cancelled/Update</th><th>Revenue</th><th>Incentive (₱25×del)</th></tr></thead>
-    <tbody>${admList.length?admList.map(a=>`<tr>
-      <td style="font-weight:700;color:var(--gold);">${a.name}</td>
-      <td>${a.total}</td>
-      <td style="color:var(--green);font-weight:600;">${a.delivered}</td>
-      <td style="color:var(--red);">${a.cancelled}</td>
-      <td style="color:var(--green);font-weight:600;">${p(a.revenue)}</td>
-      <td style="color:var(--gold);font-weight:700;">${p(a.incentive)}</td>
-    </tr>`).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px;">No orders found</td></tr>'}
-    </tbody></table></div></div>`;
+
+    <!-- ── Courier Tabs: LBC / EMS / FedEx ── -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">📦 Courier Orders Dashboard</span>
+      </div>
+      <!-- Main courier tabs -->
+      <div style="display:flex;gap:6px;padding:10px 14px 0;border-bottom:1px solid rgba(255,255,255,0.07);">
+        ${COURIER_TABS.map(c=>`
+          <button onclick="window._asCourierTab='${c}';window._asPayTab=window._asPayTab||'No Payment';renderAdminSheets();"
+            style="padding:7px 18px;font-size:12px;font-weight:600;border:none;border-radius:6px 6px 0 0;cursor:pointer;
+              background:${curCourier===c?'var(--gold)':'rgba(255,255,255,0.07)'};
+              color:${curCourier===c?'#000':'var(--text)'};transition:all 0.15s;">
+            ${c==='LBC'?'📦':'✈️'} ${c}
+            <span style="font-size:10px;margin-left:4px;opacity:0.8;">(${orders.filter(o=>o.paymentMethod===c).length})</span>
+          </button>`).join('')}
+      </div>
+
+      <!-- Payment sub-tabs -->
+      <div style="display:flex;gap:4px;padding:8px 14px;background:rgba(0,0,0,0.08);">
+        ${PAYMENT_TABS.map(pt=>{
+          const cnt=courierOrders.filter(o=>(o.paymentStatus||'No Payment')===pt.key).length;
+          const isActive=curPayTab===pt.key;
+          return `<button onclick="window._asPayTab='${pt.key}';renderAdminSheets();"
+            style="padding:5px 14px;font-size:11.5px;font-weight:600;border:2px solid ${isActive?pt.color:'transparent'};
+              border-radius:5px;cursor:pointer;background:${isActive?'rgba(255,255,255,0.08)':'transparent'};
+              color:${isActive?pt.color:'var(--muted)'};transition:all 0.15s;">
+            ${pt.label} (${cnt})
+          </button>`;
+        }).join('')}
+      </div>
+
+      <!-- Orders table for selected courier + payment tab -->
+      <div style="padding:0 14px 14px;">
+        ${payTabOrders.length===0
+          ? `<div style="text-align:center;color:var(--muted);padding:30px;font-size:12px;">
+              No ${curPayTab} orders for ${curCourier}${df?' on selected date range':''}.
+             </div>`
+          : `<div style="font-size:11px;color:var(--muted);padding:8px 0 4px;">${payTabOrders.length} order${payTabOrders.length>1?'s':''}</div>
+             <div class="table-wrap"><table style="font-size:11px;">
+               <thead><tr style="background:rgba(201,168,76,0.08);">
+                 <th>Order #</th><th>Date</th><th>Customer</th><th>Admin</th>
+                 <th>Tracking #</th><th>Items Total</th><th>SF</th>
+                 ${curPayTab==='Partial'?'<th>Notes</th>':''}
+                 <th>Grand Total</th><th>Status</th><th>Verification</th>
+               </tr></thead>
+               <tbody>
+                 ${payTabOrders.map(o=>`<tr>
+                   <td style="color:var(--gold);font-weight:700;">${onum(o.idx)}</td>
+                   <td style="white-space:nowrap;">${o.date}</td>
+                   <td style="font-weight:500;">${o.name}<br><span style="color:var(--muted);font-size:9px;">${o.contact||''}</span></td>
+                   <td style="font-size:10.5px;">${o.admin||'—'}</td>
+                   <td style="font-size:10px;color:var(--blue);">${o.trackingNumber||'—'}</td>
+                   <td>${p(o.itemsTotal||0)}</td>
+                   <td>${p(o.shipping||0)}</td>
+                   ${curPayTab==='Partial'?`<td style="font-size:10px;color:var(--orange);">${o.paymentNotes||'—'}</td>`:''}
+                   <td style="font-weight:700;color:var(--green);">${p(o.grandTotal||0)}</td>
+                   <td><span class="status ${sclass(o.status)}" style="font-size:9px;">${o.status}</span></td>
+                   <td style="font-size:10px;">
+                     ${o.verificationStatus==='Verified'
+                       ? '<span style="color:var(--green);font-weight:600;">✅ Verified</span>'
+                       : '<span style="color:var(--muted);">⏳ Pending</span>'}
+                   </td>
+                 </tr>`).join('')}
+               </tbody>
+               <tfoot><tr style="background:rgba(201,168,76,0.08);font-weight:700;">
+                 <td colspan="${curPayTab==='Partial'?8:7}" style="color:var(--gold);">TOTAL (${payTabOrders.length} orders)</td>
+                 <td style="color:var(--green);">${p(payTabOrders.reduce((s,o)=>s+(o.grandTotal||0),0))}</td>
+                 <td colspan="2"></td>
+               </tfoot>
+             </table></div>`
+        }
+      </div>
+    </div>`;
 }
 function printAdminSheet(){
   const df=document.getElementById('as-date-from').value;
@@ -7570,6 +7726,10 @@ function saveOrder() {
   const sf2 = parseFloat(document.getElementById('enc-shipping').value)||0;
   const iT = items.reduce((s,it) => s+it.total, 0);
   const totalDiscount = items.reduce((s,it) => s+(it.discount||0), 0);
+  // FEAT3: Global/overall discount (separate from per-item discounts)
+  const globalDiscount = parseFloat(document.getElementById('enc-global-discount')?.value)||0;
+  const globalDiscountReason = document.getElementById('enc-global-discount-reason')?.value.trim()||'';
+  const totalDiscountAll = totalDiscount + globalDiscount;
   const editIdx = document.getElementById('enc-edit-idx').value;
   const isLbcMethod = paymentMethod === 'LBC' || paymentMethod === 'EMS' || paymentMethod === 'FedEx';
   const trackingNumber = (paymentMethod === 'LBC' || paymentMethod === 'EMS' || paymentMethod === 'FedEx') ? (document.getElementById('enc-tracking-number')?.value.trim()||'') : '';
@@ -7593,11 +7753,15 @@ function saveOrder() {
     landmark: document.getElementById('enc-landmark').value,
     date: date || today(),
     admin, assignedRider, paymentMethod,
-    shipping: sf2, items, itemsTotal: iT, totalDiscount, grandTotal: iT + sf2,
+    shipping: sf2, items, itemsTotal: iT, totalDiscount: totalDiscountAll, grandTotal: Math.max(0, iT + sf2 - globalDiscount),
     trackingNumber, dateOfPayment, dateOfDropoff,
     payments,
     status: 'Preparing', checkerStatus: 'Pending',
-    paymentStatus: isLbcMethod ? 'No Payment' : 'COD',
+    paymentStatus: isLbcMethod
+      ? (document.getElementById('enc-order-payment-status')?.value || 'No Payment')
+      : 'COD',
+    globalDiscount, globalDiscountReason,
+    totalDiscount: totalDiscountAll,
     paymentNotes: '',
     verificationStatus: 'Not Verified',
     lbcStatus: isLbcMethod ? 'Preparing' : '',
@@ -7701,6 +7865,11 @@ function openEncodeModal() {
   const hint3=document.getElementById('enc-date-hint'); if(hint3) hint3.textContent='* Required (mm/dd/yy)';
   populateAdminDropdown();
   populateInvQuickPick();
+  // Reset global discount and payment status for new orders
+  const gdNew=document.getElementById('enc-global-discount'); if(gdNew) gdNew.value=0;
+  const gdrNew=document.getElementById('enc-global-discount-reason'); if(gdrNew) gdrNew.value='';
+  const psGrpNew=document.getElementById('enc-payment-status-group'); if(psGrpNew) psGrpNew.style.display='none';
+  const psNew=document.getElementById('enc-order-payment-status'); if(psNew) psNew.value='No Payment';
   addItemRow('enc-items-tbody','calcEnc'); calcEnc();
   openModal('modal-encode');
   setTimeout(()=>document.getElementById('enc-name')?.focus(), 120);
@@ -8546,6 +8715,7 @@ function renderRemitPage() {
             <th>SF</th>
             <th>Amount</th>
             <th>Rider Remark</th>
+            <th>Cancel Reason</th>
           </tr></thead>
           <tbody>
             ${orders.map(o=>`<tr>
@@ -8555,6 +8725,7 @@ function renderRemitPage() {
               <td style="color:var(--blue);white-space:nowrap;">${p(o.shipping||0)}</td>
               <td style="font-weight:700;white-space:nowrap;${o.status==='Cancelled'?'color:var(--muted);text-decoration:line-through;':'color:var(--green);'}">${p(o.grandTotal||0)}</td>
               <td style="font-size:9.5px;color:var(--orange);">${o.riderRemarks||'—'}</td>
+              <td style="font-size:9.5px;">${o.cancelReason?`<span style="color:var(--red);font-weight:600;">❌ ${o.cancelReason}</span>`:o.status==='Cancelled'?`<span style="color:var(--muted);">No reason recorded</span>`:'—'}</td>
             </tr>`).join('')}
             <tr style="background:rgba(201,168,76,0.06);font-weight:700;">
               <td colspan="4" style="color:${titleColor};">Total</td>
@@ -9374,6 +9545,8 @@ function renderOrderMgmt() {
     if((o.paymentMethod||'COD') !== method) return false;
     // Hide Delivered — they move to LBC Delivery / EMS Delivery page
     if(o.lbcStatus === 'Delivered' || o.status === 'Delivered') return false;
+    // Hide Cancelled — they are handled by Remitter
+    if(o.status === 'Cancelled') return false;
     if(df && o.date !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q)
        && !(o.contact||'').includes(q) && !(o.trackingNumber||'').includes(q)) return false;
@@ -9570,6 +9743,9 @@ function onPaymentMethodChange() {
   }
 
   autoAssignRider();
+  // FEAT4: Show order payment status dropdown for courier orders
+  const pymStatusGrp = document.getElementById('enc-payment-status-group');
+  if(pymStatusGrp) pymStatusGrp.style.display = isLbc ? '' : 'none';
 }
 
 function validateTrackingNum(input) {
@@ -10146,8 +10322,20 @@ function confirmCheckerCancel() {
       `Checker cancelled ${onum(orderIdx)} – ${o.name}`);
   }
 
-  // Remove from active orders
-  S.orders.splice(orderIdx, 1);
+  // Save cancel reason ON the order snapshot in remitLog (for remitter view)
+  // Mark any existing remit entries for this rider+date with the reason
+  const _cancelledOrderNum = onum(orderIdx);
+  (S.remitLog||[]).forEach(entry=>{
+    if(entry.riderName===o.assignedRider && entry.date===o.date){
+      if(!entry.cancelledReasons) entry.cancelledReasons={};
+      entry.cancelledReasons[_cancelledOrderNum]=reason;
+    }
+  });
+  // Mark as Cancelled (keep in S.orders so Remitter can see it) + save cancel reason
+  S.orders[orderIdx].status = 'Cancelled';
+  S.orders[orderIdx].cancelReason = reason;
+  S.orders[orderIdx].cancelledBy = currentUser?.name || 'Checker';
+  S.orders[orderIdx].cancelledAt = new Date().toISOString();
   save();
   closeModal('modal-checker-cancel');
   toast(`❌ Order cancelled${restored ? ' & inventory restored' : ''}. Reason: ${reason}`);
