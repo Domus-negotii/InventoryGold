@@ -2886,7 +2886,11 @@ function rowTabNext(e, el) {
   if(idx >= 0 && idx < allInputs.length - 1) allInputs[idx+1].focus();
 }
 // openEncodeModal() — replaced by updated version with rider/inventory pickers above
+// Tracks where openEditOrder was called from (for post-save refresh routing)
+let _editSource = ''; // 'courier-dashboard' | 'orders' | ''
+
 function openEditOrder(i){
+  if(_editSource !== 'courier-dashboard') _editSource = ''; // ensure clean state
   const o=S.orders[i];
   // RTO LBC/INTL parcels (lbcStatus='RTO') can always be edited by checker/owner for re-dispatch
   const isRtoParcel = o.lbcStatus === 'RTO' &&
@@ -6019,7 +6023,7 @@ function renderCourierDashboard(){
                    </td>
                    <td style="display:flex;gap:4px;flex-wrap:nowrap;">
                      ${canEdit(o)
-                       ? `<button class="btn btn-outline btn-sm" onclick="openEditOrder(${o.idx})" title="Edit order">✏️</button>`
+                       ? `<button class="btn btn-outline btn-sm" onclick="_editSource='courier-dashboard';openEditOrder(${o.idx})" title="Edit order">✏️</button>`
                        : '<span style="font-size:9px;color:var(--muted);">Locked</span>'}
                      ${isOwner
                        ? `<button class="btn btn-red btn-sm" onclick="delOrder(${o.idx})" title="Delete order">🗑️</button>`
@@ -7887,11 +7891,20 @@ function saveOrder() {
     toast('✅ Order saved! Inventory will be deducted upon Checker verification.');
   }
   save(); closeModal('modal-encode');
-  // Refresh all views that show orders so every role sees updates immediately
-  try { initOrdersPage(); } catch(e) {}
-  try { renderDash(); } catch(e) {}
-  setTimeout(()=>{ try { renderCourierDashboard(); } catch(e){} }, 100);
-  if(_activePage === 'checker') try { renderChecker(); } catch(e) {}
+  // Route post-save refresh based on where edit was triggered from
+  if(_editSource === 'courier-dashboard') {
+    // Stay on courier dashboard — just refresh it + dash stats
+    _editSource = '';
+    setTimeout(()=>{ try { renderCourierDashboard(); } catch(e){} }, 80);
+    try { renderDash(); } catch(e) {}
+  } else {
+    _editSource = '';
+    // Full orders page refresh
+    try { initOrdersPage(); } catch(e) {}
+    try { renderDash(); } catch(e) {}
+    setTimeout(()=>{ try { renderCourierDashboard(); } catch(e){} }, 100);
+    if(_activePage === 'checker') try { renderChecker(); } catch(e) {}
+  }
 }
 function delOrder(i){
   _confirmDel(`Delete order ${onum(i)} for "${S.orders[i]?.name}"?`, ()=>{
@@ -7941,6 +7954,7 @@ function openEncodeModal() {
   const gdrNew=document.getElementById('enc-global-discount-reason'); if(gdrNew) gdrNew.value='';
   const psGrpNew=document.getElementById('enc-payment-status-group'); if(psGrpNew) psGrpNew.style.display='none';
   const psNew=document.getElementById('enc-order-payment-status'); if(psNew) psNew.value='No Payment';
+  _editSource = ''; // new order — not from courier dashboard
   addItemRow('enc-items-tbody','calcEnc'); calcEnc();
   openModal('modal-encode');
   setTimeout(()=>document.getElementById('enc-name')?.focus(), 120);
