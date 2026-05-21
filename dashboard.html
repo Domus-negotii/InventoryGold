@@ -3135,7 +3135,7 @@ function _renderOwnerOrdersView() {
       <div class="table-wrap"><table>
         <thead><tr>
           <th>Order #</th><th>Customer</th><th>Contact</th><th>Address</th><th>Landmark</th>
-          <th>Date</th><th>Admin</th><th>Method</th><th>Items</th><th>Grand Total</th><th>Status</th><th>Checker</th><th>Actions</th>
+          <th>Date</th><th>Admin</th><th>Method</th><th>Items</th><th>Grand Total</th><th>Status</th><th>Payment Status</th><th>Checker</th><th>Actions</th>
         </tr></thead>
         <tbody id="orders-tbody"></tbody>
       </table></div>
@@ -3198,6 +3198,14 @@ function renderOrders() {
     <td>${o.items.length}x</td>
     <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
     <td><span class="status ${sclass(o.status)}">${o.status}</span></td>
+    <td style="white-space:nowrap;">
+      ${(o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx')
+        ? `<select class="form-control" style="width:120px;font-size:10px;padding:2px 4px;border-color:${payColor(o.paymentStatus||'No Payment')};"
+             onchange="updatePaymentStatus(${i},this.value)">
+             ${PAYMENT_STATUSES.map(s=>`<option${(o.paymentStatus||'No Payment')===s?' selected':''}>${s}</option>`).join('')}
+           </select>`
+        : '<span style="font-size:9.5px;color:var(--muted);">COD</span>'}
+    </td>
     <td><span class="checker-tag ${o.checkerStatus==='Verified'?'verified':'pending'}">${o.checkerStatus}</span></td>
     <td style="display:flex;gap:3px;flex-wrap:wrap;">
       ${o.checkerStatus!=='Verified'
@@ -3323,6 +3331,10 @@ function getMissingFieldsWarning(o, verifSt) {
   return '';
 }
 
+// ── Payment status constants (global) ─────────────────────────────────────
+const PAYMENT_STATUSES = ['No Payment','Partial','Fully Paid'];
+function payColor(s){ return s==='Fully Paid'?'var(--green)':s==='Partial'?'var(--orange)':'var(--red)'; }
+
 function renderChecker(){
   // v2-fixed-checkerCanEditODZ
   const filt = document.getElementById('checker-filter')?.value||'';
@@ -3347,11 +3359,8 @@ function renderChecker(){
     if(method !== checkerTab) return false;
     // Exclude cancelled orders from checker view (they go to Remitter)
     if(o.status === 'Cancelled') return false;
-    // FEAT: LBC/EMS/FedEx Verify tab shows ONLY Fully Paid orders
-    if(_isCourierTab){
-      const pymSt = o.paymentStatus||'No Payment';
-      if(pymSt !== 'Fully Paid') return false;
-    }
+    // NOTE: Do NOT filter by paymentStatus here — checker needs to SEE all orders
+    // to be able to SET the payment status. The Verify button is disabled for non-Fully-Paid orders.
     if(filt && o.checkerStatus !== filt) return false;
     if(df && o.date !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !(o.contact||'').includes(q) && !onum(S.orders.indexOf(o)).includes(q)) return false;
@@ -3432,6 +3441,8 @@ function renderChecker(){
               ${currentRole==='owner'?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" title="CEO Edit">✏️ Edit</button>`:''}
               ${o.status==='Cancelled'
                 ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
+                :(_isCourierTab && (o.paymentStatus||'No Payment')!=='Fully Paid')
+                  ?`<button class="btn btn-outline btn-sm" style="opacity:0.5;cursor:not-allowed;" disabled title="Set payment to Fully Paid first">🔒 Verify</button><div style="font-size:9px;color:var(--orange);margin-top:2px;">Must be Fully Paid</div>`
                 :o.checkerStatus!=='Verified'
                 ?`<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`
                 :(isLocked
@@ -3449,10 +3460,8 @@ function renderChecker(){
     }
   } else {
     // LBC / EMS / FedEx — payment status + verification flow
-    const PAYMENT_STATUSES = ['No Payment','Partial','Fully Paid'];
     const VERIF_STATUSES = ['Not Verified','Verified'];
-    const payColor = s => s==='Fully Paid'?'var(--green)':s==='Partial'?'var(--orange)':'var(--red)';
-    // Group LBC/INTL orders by admin
+      // Group LBC/INTL orders by admin
     const adminGroups = {};
     list.forEach(({o,i}) => {
       const adm = o.admin || '(No Admin)';
@@ -3646,9 +3655,14 @@ function assignRiderFromChecker(orderIdx, riderName) {
 }
 function verifyOrder(i){
   const o = S.orders[i];
+  const isCourier = o.paymentMethod==='LBC' || o.paymentMethod==='EMS' || o.paymentMethod==='FedEx';
+  // Guard: LBC/EMS/FedEx orders must be Fully Paid before verification
+  if(isCourier && (o.paymentStatus||'No Payment') !== 'Fully Paid'){
+    toast('⚠️ Cannot verify — order must be marked as Fully Paid first.');
+    return;
+  }
   // For LBC/EMS/FedEx: tracking required for LBC/EMS only; date paid & drop-off required for all
   // FedEx exception: tracking number generated only AFTER drop-off at FedEx facility
-  const isCourier = o.paymentMethod==='LBC' || o.paymentMethod==='EMS' || o.paymentMethod==='FedEx';
   const isFedEx = o.paymentMethod==='FedEx';
   if(isCourier) {
     const missing = [];
@@ -7819,8 +7833,10 @@ function saveOrder() {
     toast('✅ Order saved! Inventory will be deducted upon Checker verification.');
   }
   save(); closeModal('modal-encode');
-  initOrdersPage();
-  renderDash();
+  // Refresh all views that show orders so every role sees updates immediately
+  try { initOrdersPage(); } catch(e) {}
+  try { renderDash(); } catch(e) {}
+  if(_activePage === 'checker') try { renderChecker(); } catch(e) {}
 }
 function delOrder(i){
   _confirmDel(`Delete order ${onum(i)} for "${S.orders[i]?.name}"?`, ()=>{
@@ -9493,7 +9509,7 @@ function startAutoRefresh(){
       const renderMap = {
         dashboard:()=>renderDash?.(),
         orders:()=>{ try{initOrdersPage();}catch(e){} },
-        checker:()=>renderChecker?.(),
+        checker:()=>setCheckerTab(checkerTab),
         tracking:()=>renderTracking?.(),
         riders:()=>renderRiders?.(),
         dailyparcels:()=>renderDailyParcels?.(),
@@ -9564,7 +9580,6 @@ function renderOrderMgmt() {
     <div class="stat-card orange"><div class="stat-label">Dropped Off</div><div class="stat-value">${drop.length}</div></div>
     <div class="stat-card green"><div class="stat-label">Delivered</div><div class="stat-value">${del.length}</div><div class="stat-sub">${p(del.reduce((s,{o})=>s+o.grandTotal,0))}</div></div>`;
 
-  const payColor = s => s==='Fully Paid'?'var(--green)':s==='Partial'?'var(--orange)':'var(--red)';
   const lbcColor = s => {
     if(s==='Delivered') return 'var(--green)';
     if(['Drop off at LBC','Drop off at EMS'].includes(s)) return 'var(--blue)';
@@ -10546,7 +10561,22 @@ function renderCheckerDeleted() {
   const mf = document.getElementById('checker-del-method')?.value||'';
   const df = document.getElementById('checker-del-date')?.value||'';
 
-  const list = S.deletedOrders.map((d,i)=>({d,i})).filter(({d}) => {
+  // Merge S.deletedOrders (old splice-based) + Cancelled orders from S.orders (new approach)
+  const cancelledActive = S.orders.map((o,i)=>({
+    ...o, orderIdx:i,
+    cancelledAt: o.cancelledAt||o.date,
+    cancelledBy: o.cancelledBy||'Checker',
+    reason: o.cancelReason||'—',
+    orderNum: onum(i),
+    _fromActive: true
+  })).filter(o=>o.status==='Cancelled');
+
+  const allDeleted = [
+    ...S.deletedOrders.map(d=>({...d,_fromActive:false})),
+    ...cancelledActive
+  ];
+
+  const list = allDeleted.map((d,i)=>({d,i})).filter(({d}) => {
     if(mf && (d.paymentMethod||'COD') !== mf) return false;
     if(df && d.cancelledAt && !d.cancelledAt.startsWith(df)) return false;
     if(q && !d.name.toLowerCase().includes(q)
