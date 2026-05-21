@@ -1041,6 +1041,8 @@ function _showRulesHint() {
     <div id="orders-stats-row"></div>
     <!-- Main orders table card -->
     <div id="orders-main-view"></div>
+    <!-- Courier Orders Dashboard (LBC/EMS/FedEx) -->
+    <div id="courier-dashboard-content"></div>
   </div>
 
   <!-- CHECKER -->
@@ -2971,6 +2973,8 @@ function initOrdersPage() {
   } else {
     _renderOwnerOrdersView();
   }
+  // Always render the courier dashboard below (for both admin and owner)
+  setTimeout(()=>{ try{ renderCourierDashboard(); }catch(e){} }, 50);
 }
 
 // ── ADMIN VIEW: Personal sheet only ────────────────────────────
@@ -5913,6 +5917,129 @@ function openDayDetail(dateStr){
 function closeDayDetail(){document.getElementById('cal-detail').classList.remove('open');}
 
 // ============ ADMIN SHEETS ============
+
+// ── Tab state for Admin Sheets and Courier Dashboard ─────────────────────
+if(typeof window._asCourierTab === 'undefined') window._asCourierTab = 'LBC';
+if(typeof window._asPayTab    === 'undefined') window._asPayTab    = 'No Payment';
+if(typeof window._cdCourierTab === 'undefined') window._cdCourierTab = 'LBC';
+if(typeof window._cdPayTab    === 'undefined') window._cdPayTab    = 'No Payment';
+
+// ── Courier Orders Dashboard (LBC/EMS/FedEx) with Edit/Delete ────────────────
+function renderCourierDashboard(){
+  const el = document.getElementById('courier-dashboard-content');
+  if(!el) return;
+
+  const COURIER_TABS = ['LBC','EMS','FedEx'];
+  const PAYMENT_TABS = [
+    {key:'No Payment', label:'⏳ Unpaid', color:'var(--red)'},
+    {key:'Partial',    label:'💳 Partially Paid', color:'var(--orange)'},
+    {key:'Fully Paid', label:'✅ Fully Paid', color:'var(--green)'},
+  ];
+
+  const curCourier = window._cdCourierTab || 'LBC';
+  const curPayTab  = window._cdPayTab    || 'No Payment';
+  const loggedAdmin = currentUser?.name || '';
+  const isOwner = currentRole === 'owner';
+
+  // For admin: only their own orders. For owner: all orders.
+  let allCourierOrders = S.orders.map((o,i)=>({...o,idx:i}))
+    .filter(o=>['LBC','EMS','FedEx'].includes(o.paymentMethod||''));
+  if(!isOwner && loggedAdmin) {
+    allCourierOrders = allCourierOrders.filter(o=>(o.admin||'').toUpperCase()===loggedAdmin.toUpperCase());
+  }
+
+  const courierOrders = allCourierOrders.filter(o=>o.paymentMethod===curCourier);
+  const payTabOrders  = courierOrders.filter(o=>(o.paymentStatus||'No Payment')===curPayTab && o.status!=='Cancelled');
+
+  const canEdit = (o) => isOwner || (o.checkerStatus !== 'Verified');
+
+  el.innerHTML = `
+    <div class="card" style="margin-top:14px;">
+      <div class="card-header">
+        <span class="card-title">📦 Courier Orders Dashboard</span>
+        <span style="font-size:11px;color:var(--muted);">${allCourierOrders.length} total courier orders</span>
+      </div>
+      <!-- Courier tabs -->
+      <div style="display:flex;gap:6px;padding:10px 14px 0;border-bottom:1px solid rgba(255,255,255,0.07);">
+        ${COURIER_TABS.map(c=>`
+          <button onclick="window._cdCourierTab='${c}';window._cdPayTab=window._cdPayTab||'No Payment';renderCourierDashboard();"
+            style="padding:7px 18px;font-size:12px;font-weight:600;border:none;border-radius:6px 6px 0 0;cursor:pointer;
+              background:${curCourier===c?'var(--gold)':'rgba(255,255,255,0.07)'};
+              color:${curCourier===c?'#000':'var(--text)'};transition:all 0.15s;">
+            ${c==='LBC'?'📦':'✈️'} ${c}
+            <span style="font-size:10px;margin-left:4px;opacity:0.8;">(${allCourierOrders.filter(o=>o.paymentMethod===c&&o.status!=='Cancelled').length})</span>
+          </button>`).join('')}
+      </div>
+      <!-- Payment sub-tabs -->
+      <div style="display:flex;gap:4px;padding:8px 14px;background:rgba(0,0,0,0.08);">
+        ${PAYMENT_TABS.map(pt=>{
+          const cnt=courierOrders.filter(o=>(o.paymentStatus||'No Payment')===pt.key&&o.status!=='Cancelled').length;
+          const isActive=curPayTab===pt.key;
+          return `<button onclick="window._cdPayTab='${pt.key}';renderCourierDashboard();"
+            style="padding:5px 14px;font-size:11.5px;font-weight:600;
+              border:2px solid ${isActive?pt.color:'transparent'};
+              border-radius:5px;cursor:pointer;
+              background:${isActive?'rgba(255,255,255,0.08)':'transparent'};
+              color:${isActive?pt.color:'var(--muted)'};transition:all 0.15s;">
+            ${pt.label} (${cnt})
+          </button>`;
+        }).join('')}
+      </div>
+      <!-- Orders table -->
+      <div style="padding:0 14px 14px;">
+        ${payTabOrders.length===0
+          ? `<div style="text-align:center;color:var(--muted);padding:30px;font-size:12px;">
+              No ${curPayTab} orders for ${curCourier}.
+             </div>`
+          : `<div style="font-size:11px;color:var(--muted);padding:8px 0 4px;">${payTabOrders.length} order${payTabOrders.length>1?'s':''}</div>
+             <div class="table-wrap"><table style="font-size:11px;">
+               <thead><tr style="background:rgba(201,168,76,0.08);">
+                 <th>Order #</th><th>Date</th><th>Customer</th>
+                 ${isOwner?'<th>Admin</th>':''}
+                 <th>Tracking #</th><th>Items Total</th><th>SF</th>
+                 ${curPayTab==='Partial'?'<th>Notes</th>':''}
+                 <th>Grand Total</th><th>Status</th><th>Verif</th><th>Actions</th>
+               </tr></thead>
+               <tbody>
+                 ${payTabOrders.map(o=>`<tr>
+                   <td style="color:var(--gold);font-weight:700;">${onum(o.idx)}</td>
+                   <td style="white-space:nowrap;">${o.date}</td>
+                   <td style="font-weight:500;">${o.name}<br><span style="color:var(--muted);font-size:9px;">${o.contact||''}</span></td>
+                   ${isOwner?`<td style="font-size:10.5px;">${o.admin||'—'}</td>`:''}
+                   <td style="font-size:10px;color:var(--blue);">${o.trackingNumber||'—'}</td>
+                   <td>${p(o.itemsTotal||0)}</td>
+                   <td>${p(o.shipping||0)}</td>
+                   ${curPayTab==='Partial'?`<td style="font-size:10px;color:var(--orange);">${o.paymentNotes||'—'}</td>`:''}
+                   <td style="font-weight:700;color:var(--green);">${p(o.grandTotal||0)}</td>
+                   <td><span class="status ${sclass(o.status)}" style="font-size:9px;">${o.status}</span></td>
+                   <td style="font-size:10px;">
+                     ${o.verificationStatus==='Verified'
+                       ? '<span style="color:var(--green);font-weight:600;">✅</span>'
+                       : '<span style="color:var(--muted);">⏳</span>'}
+                   </td>
+                   <td style="display:flex;gap:4px;flex-wrap:nowrap;">
+                     ${canEdit(o)
+                       ? `<button class="btn btn-outline btn-sm" onclick="openEditOrder(${o.idx})" title="Edit order">✏️</button>`
+                       : '<span style="font-size:9px;color:var(--muted);">Locked</span>'}
+                     ${isOwner
+                       ? `<button class="btn btn-red btn-sm" onclick="delOrder(${o.idx})" title="Delete order">🗑️</button>`
+                       : (o.checkerStatus!=='Verified'&&o.status==='Preparing'
+                           ? `<button class="btn btn-red btn-sm" onclick="delOrder(${o.idx})" title="Delete order">🗑️</button>`
+                           : '')}
+                   </td>
+                 </tr>`).join('')}
+               </tbody>
+               <tfoot><tr style="background:rgba(201,168,76,0.08);font-weight:700;">
+                 <td colspan="${isOwner?(curPayTab==='Partial'?9:8):(curPayTab==='Partial'?8:7)}" style="color:var(--gold);">TOTAL (${payTabOrders.length})</td>
+                 <td style="color:var(--green);">${p(payTabOrders.reduce((s,o)=>s+(o.grandTotal||0),0))}</td>
+                 <td colspan="3"></td>
+               </tfoot>
+             </table></div>`
+        }
+      </div>
+    </div>`;
+}
+
 function renderAdminSheets(){
   const df=document.getElementById('as-date-from').value;
   const dt=document.getElementById('as-date-to').value;
@@ -5979,80 +6106,7 @@ function renderAdminSheets(){
         </tbody></table>
       </div>
     </div>
-
-    <!-- ── Courier Tabs: LBC / EMS / FedEx ── -->
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title">📦 Courier Orders Dashboard</span>
-      </div>
-      <!-- Main courier tabs -->
-      <div style="display:flex;gap:6px;padding:10px 14px 0;border-bottom:1px solid rgba(255,255,255,0.07);">
-        ${COURIER_TABS.map(c=>`
-          <button onclick="window._asCourierTab='${c}';window._asPayTab=window._asPayTab||'No Payment';renderAdminSheets();"
-            style="padding:7px 18px;font-size:12px;font-weight:600;border:none;border-radius:6px 6px 0 0;cursor:pointer;
-              background:${curCourier===c?'var(--gold)':'rgba(255,255,255,0.07)'};
-              color:${curCourier===c?'#000':'var(--text)'};transition:all 0.15s;">
-            ${c==='LBC'?'📦':'✈️'} ${c}
-            <span style="font-size:10px;margin-left:4px;opacity:0.8;">(${orders.filter(o=>o.paymentMethod===c).length})</span>
-          </button>`).join('')}
-      </div>
-
-      <!-- Payment sub-tabs -->
-      <div style="display:flex;gap:4px;padding:8px 14px;background:rgba(0,0,0,0.08);">
-        ${PAYMENT_TABS.map(pt=>{
-          const cnt=courierOrders.filter(o=>(o.paymentStatus||'No Payment')===pt.key).length;
-          const isActive=curPayTab===pt.key;
-          return `<button onclick="window._asPayTab='${pt.key}';renderAdminSheets();"
-            style="padding:5px 14px;font-size:11.5px;font-weight:600;border:2px solid ${isActive?pt.color:'transparent'};
-              border-radius:5px;cursor:pointer;background:${isActive?'rgba(255,255,255,0.08)':'transparent'};
-              color:${isActive?pt.color:'var(--muted)'};transition:all 0.15s;">
-            ${pt.label} (${cnt})
-          </button>`;
-        }).join('')}
-      </div>
-
-      <!-- Orders table for selected courier + payment tab -->
-      <div style="padding:0 14px 14px;">
-        ${payTabOrders.length===0
-          ? `<div style="text-align:center;color:var(--muted);padding:30px;font-size:12px;">
-              No ${curPayTab} orders for ${curCourier}${df?' on selected date range':''}.
-             </div>`
-          : `<div style="font-size:11px;color:var(--muted);padding:8px 0 4px;">${payTabOrders.length} order${payTabOrders.length>1?'s':''}</div>
-             <div class="table-wrap"><table style="font-size:11px;">
-               <thead><tr style="background:rgba(201,168,76,0.08);">
-                 <th>Order #</th><th>Date</th><th>Customer</th><th>Admin</th>
-                 <th>Tracking #</th><th>Items Total</th><th>SF</th>
-                 ${curPayTab==='Partial'?'<th>Notes</th>':''}
-                 <th>Grand Total</th><th>Status</th><th>Verification</th>
-               </tr></thead>
-               <tbody>
-                 ${payTabOrders.map(o=>`<tr>
-                   <td style="color:var(--gold);font-weight:700;">${onum(o.idx)}</td>
-                   <td style="white-space:nowrap;">${o.date}</td>
-                   <td style="font-weight:500;">${o.name}<br><span style="color:var(--muted);font-size:9px;">${o.contact||''}</span></td>
-                   <td style="font-size:10.5px;">${o.admin||'—'}</td>
-                   <td style="font-size:10px;color:var(--blue);">${o.trackingNumber||'—'}</td>
-                   <td>${p(o.itemsTotal||0)}</td>
-                   <td>${p(o.shipping||0)}</td>
-                   ${curPayTab==='Partial'?`<td style="font-size:10px;color:var(--orange);">${o.paymentNotes||'—'}</td>`:''}
-                   <td style="font-weight:700;color:var(--green);">${p(o.grandTotal||0)}</td>
-                   <td><span class="status ${sclass(o.status)}" style="font-size:9px;">${o.status}</span></td>
-                   <td style="font-size:10px;">
-                     ${o.verificationStatus==='Verified'
-                       ? '<span style="color:var(--green);font-weight:600;">✅ Verified</span>'
-                       : '<span style="color:var(--muted);">⏳ Pending</span>'}
-                   </td>
-                 </tr>`).join('')}
-               </tbody>
-               <tfoot><tr style="background:rgba(201,168,76,0.08);font-weight:700;">
-                 <td colspan="${curPayTab==='Partial'?8:7}" style="color:var(--gold);">TOTAL (${payTabOrders.length} orders)</td>
-                 <td style="color:var(--green);">${p(payTabOrders.reduce((s,o)=>s+(o.grandTotal||0),0))}</td>
-                 <td colspan="2"></td>
-               </tfoot>
-             </table></div>`
-        }
-      </div>
-    </div>`;
+`;
 }
 function printAdminSheet(){
   const df=document.getElementById('as-date-from').value;
@@ -7836,6 +7890,7 @@ function saveOrder() {
   // Refresh all views that show orders so every role sees updates immediately
   try { initOrdersPage(); } catch(e) {}
   try { renderDash(); } catch(e) {}
+  setTimeout(()=>{ try { renderCourierDashboard(); } catch(e){} }, 100);
   if(_activePage === 'checker') try { renderChecker(); } catch(e) {}
 }
 function delOrder(i){
@@ -9508,7 +9563,7 @@ function startAutoRefresh(){
       // Re-render active page
       const renderMap = {
         dashboard:()=>renderDash?.(),
-        orders:()=>{ try{initOrdersPage();}catch(e){} },
+        orders:()=>{ try{initOrdersPage();}catch(e){} setTimeout(()=>{try{renderCourierDashboard();}catch(e){}},100); },
         checker:()=>setCheckerTab(checkerTab),
         tracking:()=>renderTracking?.(),
         riders:()=>renderRiders?.(),
