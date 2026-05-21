@@ -2137,7 +2137,7 @@ function _showRulesHint() {
     <!-- ── Conditional Payment Status for LBC/EMS/FedEx ── -->
     <div id="enc-payment-status-group" style="display:none;margin-top:10px;">
       <label style="font-weight:700;font-size:12px;">📋 Order Payment Status</label>
-      <select class="form-control" id="enc-order-payment-status" onchange="calcEnc()">
+      <select class="form-control" id="enc-order-payment-status" onchange="onOrderPaymentStatusChange(this.value);calcEnc()">
         <option value="No Payment">⏳ Unpaid Orders</option>
         <option value="Partial">💳 Partially Paid Orders</option>
         <option value="Fully Paid">✅ Fully Paid Orders</option>
@@ -3358,6 +3358,22 @@ function renderChecker(){
   const delCount = (S.deletedOrders||[]).length;
   const delBtn = document.getElementById('checker-tab-deleted-btn');
   if(delBtn) delBtn.textContent = delCount > 0 ? `🗑️ Recently Deleted (${delCount})` : '🗑️ Recently Deleted';
+  // Update LBC/EMS/FedEx tab badges with Fully Paid count (what checker sees)
+  ['LBC','EMS','FedEx'].forEach(method=>{
+    const count = S.orders.filter(o=>
+      o.paymentMethod===method &&
+      (o.paymentStatus||'No Payment')==='Fully Paid' &&
+      o.status!=='Cancelled'
+    ).length;
+    const tabBtn = [...document.querySelectorAll('#checker-tabs .tab-btn')]
+      .find(b=>b.textContent.includes(method));
+    if(tabBtn){
+      const icon = method==='LBC'?'📦':'✈️';
+      tabBtn.textContent = count > 0
+        ? `${icon} ${method} ✅${count}`
+        : `${icon} ${method}`;
+    }
+  });
   const isCOD = checkerTab === 'COD';
   const isLbc = checkerTab === 'LBC' || checkerTab === 'EMS' || checkerTab === 'FedEx';
 
@@ -3367,8 +3383,8 @@ function renderChecker(){
     if(method !== checkerTab) return false;
     // Exclude cancelled orders from checker view (they go to Remitter)
     if(o.status === 'Cancelled') return false;
-    // NOTE: Do NOT filter by paymentStatus here — checker needs to SEE all orders
-    // to be able to SET the payment status. The Verify button is disabled for non-Fully-Paid orders.
+    // LBC/EMS/FedEx: only show Fully Paid orders — admin sets payment status, not checker
+    if(_isCourierTab && (o.paymentStatus||'No Payment') !== 'Fully Paid') return false;
     if(filt && o.checkerStatus !== filt) return false;
     if(df && o.date !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !(o.contact||'').includes(q) && !onum(S.orders.indexOf(o)).includes(q)) return false;
@@ -3409,7 +3425,13 @@ function renderChecker(){
 
     if(!list.length) {
       document.getElementById('checker-tbody').innerHTML =
-        `<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">No COD orders found</td></tr>`;
+        _isCourierTab
+          ? `<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">
+               <div style="font-size:13px;margin-bottom:6px;">✅ Walang <strong style="color:var(--green);">Fully Paid</strong> orders sa ${checkerTab} tab.</div>
+               <div style="font-size:11px;color:var(--muted);">Ang checker ay nagve-verify lang ng orders na <strong>Fully Paid</strong> na.<br>
+               Ang admin/encoder ang mag-se-set ng payment status sa Admin Encode page.</div>
+             </td></tr>`
+          : `<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">No COD orders found</td></tr>`;
     } else {
       let codRows = '';
       Object.keys(codAdminGroups).sort().forEach(adm => {
@@ -3449,8 +3471,6 @@ function renderChecker(){
               ${currentRole==='owner'?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" title="CEO Edit">✏️ Edit</button>`:''}
               ${o.status==='Cancelled'
                 ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
-                :(_isCourierTab && (o.paymentStatus||'No Payment')!=='Fully Paid')
-                  ?`<button class="btn btn-outline btn-sm" style="opacity:0.5;cursor:not-allowed;" disabled title="Set payment to Fully Paid first">🔒 Verify</button><div style="font-size:9px;color:var(--orange);margin-top:2px;">Must be Fully Paid</div>`
                 :o.checkerStatus!=='Verified'
                 ?`<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`
                 :(isLocked
@@ -7823,6 +7843,40 @@ function saveOrder() {
       return;
     }
   }
+
+  // ── Fully Paid validation: tracking, date of payment, ref#, amount, date & time required ──
+  const _selectedPayStatus = document.getElementById('enc-order-payment-status')?.value || '';
+  if(isLbcMethod && _selectedPayStatus === 'Fully Paid') {
+    // 1. Tracking number required
+    if(!trackingNumber) {
+      toast('⚠️ Fully Paid requires a Tracking Number. Please enter it first.');
+      document.getElementById('enc-tracking-number')?.focus();
+      document.getElementById('enc-tracking-number')?.scrollIntoView({behavior:'smooth',block:'nearest'});
+      return;
+    }
+    // 2. Date of payment required
+    if(!dateOfPayment) {
+      toast('⚠️ Fully Paid requires a Date of Payment.');
+      document.getElementById('enc-date-payment')?.focus();
+      document.getElementById('enc-date-payment')?.scrollIntoView({behavior:'smooth',block:'nearest'});
+      return;
+    }
+    // 3. At least one payment row with ref#, amount, and date
+    if(!payments.length) {
+      toast('⚠️ Fully Paid requires at least one payment entry (Ref#, Amount, Date & Time).');
+      document.getElementById('enc-payments-group')?.scrollIntoView({behavior:'smooth',block:'nearest'});
+      document.getElementById('enc-payments-group').style.display = '';
+      addPaymentRow();
+      return;
+    }
+    const incomplete = payments.filter(p => !p.refno || !p.amount || !p.date);
+    if(incomplete.length) {
+      toast('⚠️ Fully Paid: bawat payment row ay kailangan ng Ref#, Amount, at Date ng bayad.');
+      document.getElementById('enc-payments-group')?.scrollIntoView({behavior:'smooth',block:'nearest'});
+      return;
+    }
+  }
+
   const o = {
     name, contact, backupContact, address,
     city: document.getElementById('enc-city').value,
@@ -9835,6 +9889,30 @@ function onPaymentMethodChange() {
   // FEAT4: Show order payment status dropdown for courier orders
   const pymStatusGrp = document.getElementById('enc-payment-status-group');
   if(pymStatusGrp) pymStatusGrp.style.display = isLbc ? '' : 'none';
+}
+
+// Called when the Order Payment Status dropdown changes inside the encode modal
+function onOrderPaymentStatusChange(val) {
+  if(val === 'Fully Paid') {
+    // Auto-show payments group with a blank row if empty
+    const paymentsGrp = document.getElementById('enc-payments-group');
+    if(paymentsGrp) {
+      paymentsGrp.style.display = '';
+      const tbody = document.getElementById('enc-payments-tbody');
+      if(tbody && tbody.children.length === 0) addPaymentRow();
+      paymentsGrp.scrollIntoView({behavior:'smooth', block:'nearest'});
+    }
+    // Highlight the tracking field if empty
+    const tn = document.getElementById('enc-tracking-number');
+    if(tn && !tn.value.trim()) {
+      tn.style.borderColor = 'var(--orange)';
+      tn.placeholder = '⚠️ Required for Fully Paid';
+    }
+  } else {
+    // Reset tracking field highlight
+    const tn = document.getElementById('enc-tracking-number');
+    if(tn) { tn.style.borderColor = ''; tn.placeholder = '000000000000'; }
+  }
 }
 
 function validateTrackingNum(input) {
