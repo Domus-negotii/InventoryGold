@@ -3730,6 +3730,8 @@ function verifyOrder(i){
       'Checker verified – '+o.name+' ('+onum(i)+')');
     if(didDeduct) S.orders[i].inventoryDeducted = true;
   }
+  // Save the inventory deduction to Firebase immediately
+  // (save() is called below — this comment confirms the sequence)
   S.orders[i].checkerStatus='Verified';
   S.orders[i].verificationStatus='Verified';
   // ── Set lbcStatus so Sorter sees "Ready to Pick-up" (LBC/EMS/FedEx only) ─
@@ -4538,24 +4540,69 @@ function saveReturnLog() {
   const restoreInv = document.getElementById('ret-restore-inv').value === 'yes';
   const unit = document.getElementById('ret-unit').value;
 
-  if(restoreInv && orderNum) {
-    const orderIdx = S.orders.findIndex((_,i) => onum(i) === orderNum);
-    if(orderIdx >= 0 && parsedItemIdx !== null) {
-      const o = S.orders[orderIdx];
-      const it = o.items[parsedItemIdx];
-      if(it && it.code) {
-        const inv = S.inventory.find(inv => inv.code.toUpperCase() === it.code.toUpperCase());
-        if(inv) {
-          if(inv.itemType === 'fixprice') {
-            const before = inv.qty; inv.qty = before + qtyGrams;
-            S.stockLog.push({ productCode:inv.code, type:'return', qty:qtyGrams,
-              date:today(), notes:`Manual return – ${orderNum} – by ${receivedBy}`, before, after:inv.qty });
-          } else {
-            const before = inv.grams; inv.grams = before + qtyGrams;
-            S.stockLog.push({ productCode:inv.code, type:'return', qty:qtyGrams,
-              date:today(), notes:`Manual return – ${orderNum} – by ${receivedBy}`, before, after:inv.grams });
+  if(restoreInv) {
+    // Try to find the item from the order + item index
+    let invFound = false;
+    if(orderNum && parsedItemIdx !== null) {
+      const orderIdx = S.orders.findIndex((_,i) => onum(i) === orderNum);
+      if(orderIdx >= 0) {
+        const o = S.orders[orderIdx];
+        const it = (o.items||[])[parsedItemIdx];
+        if(it && it.code) {
+          const inv = S.inventory.find(x => x.code.toUpperCase() === it.code.toUpperCase());
+          if(inv) {
+            invFound = true;
+            const retQty = parseFloat(qtyGrams)||0;
+            if(inv.itemType === 'fixprice') {
+              const before = parseFloat(inv.qty)||0;
+              inv.qty = parseFloat((before + retQty).toFixed(4));
+              S.stockLog.push({ productCode:inv.code, productName:inv.name||inv.code,
+                type:'return', qty:retQty, unit:'pcs', date:today(),
+                notes:`Return – ${orderNum} – ${receivedBy}`, before, after:inv.qty });
+            } else {
+              const before = parseFloat(inv.grams)||0;
+              inv.grams = parseFloat((before + retQty).toFixed(4));
+              S.stockLog.push({ productCode:inv.code, productName:inv.name||inv.code,
+                type:'return', qty:retQty, unit:'g', date:today(),
+                notes:`Return – ${orderNum} – ${receivedBy}`, before, after:inv.grams });
+            }
           }
         }
+      }
+    }
+    // Fallback: parse code from the auto-filled description field (format: "CODE — desc")
+    if(!invFound && desc) {
+      // Try to extract product code from "CODE — description" format
+      const codeFromDesc = desc.split('—')[0].trim().toUpperCase();
+      const invByCode = codeFromDesc
+        ? S.inventory.find(x => x.code.toUpperCase() === codeFromDesc)
+        : null;
+      const invByName = invByCode || S.inventory.find(x =>
+        (x.name||'').toLowerCase().includes(desc.toLowerCase())
+      );
+      if(invByName) {
+        const retQty = parseFloat(qtyGrams)||0;
+        // Use unit field to determine grams vs qty (matches what was selected in modal)
+        const useGrams = (unit === 'grams' || unit === 'g') && invByName.itemType !== 'fixprice';
+        if(!useGrams || invByName.itemType === 'fixprice') {
+          const before = parseFloat(invByName.qty)||0;
+          invByName.qty = parseFloat((before + retQty).toFixed(4));
+          S.stockLog.push({ productCode:invByName.code, productName:invByName.name||invByName.code,
+            type:'return', qty:retQty, unit:'pcs', date:today(),
+            notes:`Return – ${orderNum} – ${receivedBy}`, before, after:invByName.qty });
+        } else {
+          const before = parseFloat(invByName.grams)||0;
+          invByName.grams = parseFloat((before + retQty).toFixed(4));
+          S.stockLog.push({ productCode:invByName.code, productName:invByName.name||invByName.code,
+            type:'return', qty:retQty, unit:'g', date:today(),
+            notes:`Return – ${orderNum} – ${receivedBy}`, before, after:invByName.grams });
+        }
+        invFound = true;
+      }
+      if(!invFound) {
+        // Still log the return but mark as inventory not found
+        console.warn('saveReturnLog: product not found for', desc, '— return logged but inventory not updated');
+        toast('⚠️ Return recorded, but product code not found in inventory. Please manually update stock.');
       }
     }
   }
@@ -5861,16 +5908,24 @@ function saveStock(){
     if(resolvedIdx >= 0) document.getElementById('stock-product').value=resolvedIdx;
   }
   if(resolvedIdx < 0){toast('⚠️ Select or type a valid product');return;}
-  const qty=+document.getElementById('stock-qty').value||0;
-  if(!qty){toast('⚠️ Enter quantity');return;}
+  const qty=parseFloat(document.getElementById('stock-qty').value)||0;
+  if(!qty||qty<=0){toast('⚠️ Enter a valid quantity (must be > 0)');return;}
   const type=document.getElementById('stock-type').value;
   const it=S.inventory[resolvedIdx];
   const isGrams = it.itemType !== 'fixprice';
-  const before = isGrams ? it.grams : it.qty;
-  const after=type==='in'||type==='return'?before+qty:before-qty;
+  const before = parseFloat(isGrams ? it.grams : it.qty)||0;
+  const after = parseFloat(
+    (type==='in'||type==='return' ? before+qty : before-qty).toFixed(4)
+  );
   if(after<0){ toast('⚠️ Stock will go negative! Reduce the quantity or check your entry.'); return; }
   if(isGrams) it.grams=after; else it.qty=after;
-  S.stockLog.push({productCode:it.code,type,qty,date:document.getElementById('stock-date').value||today(),notes:document.getElementById('stock-notes').value,before,after});
+  S.stockLog.push({
+    productCode:it.code, productName:it.name||it.code,
+    type, qty, unit:isGrams?'g':'pcs',
+    date:document.getElementById('stock-date').value||today(),
+    notes:document.getElementById('stock-notes').value,
+    before, after
+  });
   save();closeModal('modal-stock');toast('✅ Stock updated!');renderInv(invTab);
 }
 function delStockLog(i){
@@ -7694,24 +7749,28 @@ function riderItemPartialCancel(orderIdx, itemIdx, cancelQtyStr, totalQty, isGra
 // ── INVENTORY HELPERS ─────────────────────────────────────────────────────────
 // Deduct order items from inventory. Returns true if anything was deducted.
 function _deductOrderItems(items, orderDate, label) {
+  // Deducts qty/grams from Products table with decimal-safe math
   let deducted = false;
-  const logDate = today(); // always log on today — actual date of action
+  const logDate = today();
   (items||[]).forEach(item => {
     if(!item.code) return;
     const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
     if(!inv) return;
     if(inv.itemType === 'fixprice') {
-      const qty = item.qty || 1;
-      const before = inv.qty;
-      inv.qty = before - qty;
-      S.stockLog.push({ productCode:inv.code, type:'out', qty,
-        date:logDate, notes:'Auto deduct – '+label, before, after:inv.qty });
+      const qty = Math.max(0, parseInt(item.qty)||1);
+      const before = parseFloat(inv.qty)||0;
+      inv.qty = parseFloat((before - qty).toFixed(4));
+      S.stockLog.push({ productCode:inv.code, productName:inv.name||inv.code,
+        type:'out', qty, unit:'pcs',
+        date:logDate, notes:'Stock Out – '+label, before, after:inv.qty });
       deducted = true;
-    } else if((item.grams||0) > 0) {
-      const before = inv.grams;
-      inv.grams = before - item.grams;
-      S.stockLog.push({ productCode:inv.code, type:'out', qty:item.grams,
-        date:logDate, notes:'Auto deduct – '+label, before, after:inv.grams });
+    } else if((parseFloat(item.grams)||0) > 0) {
+      const grams = parseFloat(item.grams);
+      const before = parseFloat(inv.grams)||0;
+      inv.grams = parseFloat((before - grams).toFixed(4));
+      S.stockLog.push({ productCode:inv.code, productName:inv.name||inv.code,
+        type:'out', qty:grams, unit:'g',
+        date:logDate, notes:'Stock Out – '+label, before, after:inv.grams });
       deducted = true;
     }
   });
@@ -7720,6 +7779,7 @@ function _deductOrderItems(items, orderDate, label) {
 
 // Restore order items back to inventory. Returns true if anything was restored.
 function _restoreOrderItems(items, orderDate, label) {
+  // Restores qty/grams to Products table with decimal-safe math
   let restored = false;
   const logDate = today();
   (items||[]).forEach(item => {
@@ -7727,17 +7787,20 @@ function _restoreOrderItems(items, orderDate, label) {
     const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
     if(!inv) return;
     if(inv.itemType === 'fixprice') {
-      const qty = item.qty || 1;
-      const before = inv.qty;
-      inv.qty = before + qty;
-      S.stockLog.push({ productCode:inv.code, type:'return', qty,
-        date:logDate, notes:'Auto restore – '+label, before, after:inv.qty });
+      const qty = Math.max(0, parseInt(item.qty)||1);
+      const before = parseFloat(inv.qty)||0;
+      inv.qty = parseFloat((before + qty).toFixed(4));
+      S.stockLog.push({ productCode:inv.code, productName:inv.name||inv.code,
+        type:'return', qty, unit:'pcs',
+        date:logDate, notes:'Stock Return – '+label, before, after:inv.qty });
       restored = true;
-    } else if((item.grams||0) > 0) {
-      const before = inv.grams;
-      inv.grams = before + item.grams;
-      S.stockLog.push({ productCode:inv.code, type:'return', qty:item.grams,
-        date:logDate, notes:'Auto restore – '+label, before, after:inv.grams });
+    } else if((parseFloat(item.grams)||0) > 0) {
+      const grams = parseFloat(item.grams);
+      const before = parseFloat(inv.grams)||0;
+      inv.grams = parseFloat((before + grams).toFixed(4));
+      S.stockLog.push({ productCode:inv.code, productName:inv.name||inv.code,
+        type:'return', qty:grams, unit:'g',
+        date:logDate, notes:'Stock Return – '+label, before, after:inv.grams });
       restored = true;
     }
   });
@@ -9640,13 +9703,15 @@ function startAutoRefresh(){
        'returnLog','deletedOrders','mergeLog'].forEach(k=>{
         if(Array.isArray(fbData[k])) S[k] = fbData[k];
       });
-      // Inventory: local wins for stock levels, remote adds NEW items from other devices
+      // Inventory: Firebase IS the source of truth after save() writes it
+      // Replace local S.inventory with Firebase version on every poll
+      // This ensures all devices see deductions/returns immediately
       if(Array.isArray(fbData.inventory) && fbData.inventory.length>0){
-        const localByCode = new Map((S.inventory||[]).map(it=>[it.code,it]));
+        // Merge: Firebase values replace local (deductions/returns come from Firebase after save())
+        // But preserve any items added locally that aren't in Firebase yet (edge case during save lag)
         const remoteByCode = new Map(fbData.inventory.map(it=>[it.code,it]));
-        // Remote adds items not in local; local preserves stock mutations
-        remoteByCode.forEach((it,code)=>{ if(!localByCode.has(code)) localByCode.set(code,it); });
-        S.inventory = [...localByCode.values()];
+        const localOnlyItems = (S.inventory||[]).filter(it=>!remoteByCode.has(it.code.toUpperCase())&&!remoteByCode.has(it.code));
+        S.inventory = [...remoteByCode.values(), ...localOnlyItems];
       }
       // Config objects
       ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
