@@ -2934,6 +2934,23 @@ function openEditOrder(i){
     const adminWrapper=document.getElementById('enc-admin-wrapper');
     if(adminWrapper){ adminWrapper.title='Admin name is locked for checkers'; }
   }
+  // FIX3: Date of Drop-off is CHECKER-ONLY — disable for admin/CSR
+  (() => {
+    const dofInput = document.getElementById('enc-date-dropoff');
+    if(dofInput){
+      const canDof = (currentRole==='checker'||currentRole==='owner');
+      dofInput.disabled = !canDof;
+      dofInput.style.opacity = canDof ? '1' : '0.5';
+      dofInput.title = canDof ? '' : '🔒 Only Checker can edit Date of Drop-off';
+      const grp = dofInput.closest('.form-group');
+      if(grp){
+        const lbl = grp.querySelector('label');
+        if(lbl) lbl.innerHTML = 'Date of Drop-off ' + (canDof
+          ? '<span style="font-size:10px;color:var(--muted);">(checker only)</span>'
+          : '<span style="font-size:10px;color:var(--red);">🔒 Checker only</span>');
+      }
+    }
+  })();
   // FEAT3: Restore global discount if editing existing order
   const gdEl = document.getElementById('enc-global-discount');
   const gdrEl = document.getElementById('enc-global-discount-reason');
@@ -3659,7 +3676,7 @@ function updateVerifStatus(orderIdx, status) {
     const _advStUV=['Drop off at LBC','Drop off at EMS','Drop off at FedEx',
       'Out for Delivery','Delivered','RTO','ODZ/Incomplete Details'];
     if(!_advStUV.includes(o.lbcStatus)){
-      S.orders[orderIdx].lbcStatus = 'Ready to Pick-up';
+      S.orders[orderIdx].lbcStatus = 'Preparing'; // Req#3: default Preparing
     }
   } else {
     // ── Restore inventory on Un-verify ───────────────────────────
@@ -3721,13 +3738,13 @@ function verifyOrder(i){
     const _advancedStatuses=['Drop off at LBC','Drop off at EMS','Drop off at FedEx',
       'Out for Delivery','Delivered','RTO','ODZ/Incomplete Details'];
     if(!_advancedStatuses.includes(S.orders[i].lbcStatus)){
-      S.orders[i].lbcStatus = 'Ready to Pick-up';
+      S.orders[i].lbcStatus = 'Preparing';
     }
   }
   persist();
   save();
   const _toastMsg = _isCourierOrder
-    ? '✅ Order verified! Ready to Pick-up. Sorter can now assign rider.'
+    ? '✅ Order verified! Status: Preparing. Checker must set to Ready to Pick-up when parcel is ready.'
     : '✅ Order verified! Inventory deducted. Rider can now pick-up.';
   toast(_toastMsg);
   renderChecker();
@@ -3765,8 +3782,9 @@ function unverifyOrder(i){
   S.orders[i].verificationStatus='Not Verified';
   // ── Reset lbcStatus for courier orders back to Preparing ─────────────────
   const _isCourierUnv = o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx';
-  if(_isCourierUnv && S.orders[i].lbcStatus === 'Ready to Pick-up'){
-    S.orders[i].lbcStatus = 'Preparing';
+  if(_isCourierUnv){
+    const _nonRevertable=['Drop off at LBC','Drop off at EMS','Drop off at FedEx','Out for Delivery','Delivered','RTO'];
+    if(!_nonRevertable.includes(S.orders[i].lbcStatus)) S.orders[i].lbcStatus = 'Preparing';
   }
   save(); toast('↩ Set back to Pending. Inventory restored.'); renderChecker();
 }
@@ -9751,6 +9769,7 @@ function renderOrderMgmt() {
       <td style="font-family:monospace;font-size:11px;color:var(--blue);">${trackNum}</td>
       <td style="font-size:11px;">${o.admin||'—'}</td>
       <td>${o.date}</td>
+      <td style="font-size:11px;color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'}">${o.dateOfDropoff||'—'}</td>
       <td style="font-weight:600;color:${lbcColor(lbcSt)}">${icon} ${lbcSt}</td>
       <td>
         <select class="form-control" style="width:165px;font-size:10.5px;padding:3px 5px;" onchange="omUpdateStatus(${i},this.value)">
@@ -9764,7 +9783,7 @@ function renderOrderMgmt() {
   }).join('');
 
   const emptyMsg = list.length===0
-    ? `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:30px;">
+    ? `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:30px;">
         <div style="font-size:13px;margin-bottom:6px;">📭 Walang parcel na handa para sa ${method}.</div>
         <div style="font-size:11px;">Ang lalabas lang dito ay ang mga parcel na <strong style="color:var(--gold);">Verified</strong> at <strong style="color:var(--gold);">Ready to Pick-up</strong> na.</div>
        </td></tr>`
@@ -9782,7 +9801,8 @@ function renderOrderMgmt() {
           <th>Customer</th>
           <th>Tracking #</th>
           <th>Admin</th>
-          <th>Date</th>
+          <th>📅 Encode Date</th>
+          <th>🚚 Drop-off Date</th>
           <th>📦 Parcel Status</th>
           <th>Update Status</th>
           <th>Actions</th>
@@ -9889,6 +9909,14 @@ function onPaymentMethodChange() {
   // FEAT4: Show order payment status dropdown for courier orders
   const pymStatusGrp = document.getElementById('enc-payment-status-group');
   if(pymStatusGrp) pymStatusGrp.style.display = isLbc ? '' : 'none';
+  // FIX3: Lock Date of Drop-off for non-checker even in new encode
+  const _dofNew = document.getElementById('enc-date-dropoff');
+  if(_dofNew){
+    const _canDof = (currentRole==='checker'||currentRole==='owner');
+    _dofNew.disabled = !_canDof;
+    _dofNew.style.opacity = _canDof ? '1' : '0.5';
+    _dofNew.title = _canDof ? '' : '🔒 Only Checker can set Date of Drop-off';
+  }
 }
 
 // Called when the Order Payment Status dropdown changes inside the encode modal
@@ -10039,6 +10067,9 @@ function openDailyDetail(orderIdx) {
 // ============================================================
 let lbcDeliveryTab = 'odz';
 
+// ── Collapsible row toggle for Delivered/RTO history (FIX5) ─────────────
+// toggleLbcRow defined below
+
 function setLbcDeliveryTab(tab) {
   lbcDeliveryTab = tab;
   document.querySelectorAll('#lbcdelivery-tabs .tab-btn').forEach((b,i) =>
@@ -10111,11 +10142,16 @@ function renderLbcDelivery() {
   // OFD tab: checker sees only OFD/Delivered/RTO; sorter sees OFD/RTO only
   const ofdChoicesChecker = ['Out for Delivery','Delivered','RTO'];
   const ofdChoicesSorter  = ['Out for Delivery','RTO'];
-  const UPDATE_STATUSES_LBC  = (lbcDeliveryTab==='ofd')
-    ? (currentRole==='checker'||currentRole==='owner' ? ofdChoicesChecker : ofdChoicesSorter)
+  const ODZ_STATUSES = ['ODZ/Incomplete Details','Ready to Pick-up'];
+  const RTO_STATUSES = ['RTO','Ready to Pick-up'];
+  const OFD_STATUSES = ['Out for Delivery','Delivered'];
+  const UPDATE_STATUSES_LBC  = lbcDeliveryTab==='odz' ? ODZ_STATUSES
+    : lbcDeliveryTab==='ofd' ? OFD_STATUSES
+    : lbcDeliveryTab==='rto' ? RTO_STATUSES
     : ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'];
-  const UPDATE_STATUSES_INTL = (lbcDeliveryTab==='ofd')
-    ? (currentRole==='checker'||currentRole==='owner' ? ofdChoicesChecker : ofdChoicesSorter)
+  const UPDATE_STATUSES_INTL = lbcDeliveryTab==='odz' ? ODZ_STATUSES
+    : lbcDeliveryTab==='ofd' ? OFD_STATUSES
+    : lbcDeliveryTab==='rto' ? RTO_STATUSES
     : ['Ready to Pick-up','Drop off at EMS','Out for Delivery','Delivered','RTO'];
 
   const stColor = s => {
@@ -10133,6 +10169,10 @@ function renderLbcDelivery() {
     const isDelivered = lst === 'Delivered' || o.status === 'Delivered';
         const isODZ = lst === 'ODZ/Incomplete Details';
     const checkerCanEditODZ = isODZ && (currentRole==='checker'||currentRole==='owner'); const UPDATE_STATUSES = o.paymentMethod === 'EMS' ? UPDATE_STATUSES_INTL : o.paymentMethod === 'FedEx' ? UPDATE_STATUSES_INTL : UPDATE_STATUSES_LBC;
+    // FIX4D: ODZ parcels — checker can edit customer details to fix the issue
+    const odzEditBtn = (isODZ && (currentRole==='checker'||currentRole==='owner'))
+      ? `<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" title="Edit customer details (fix ODZ/incomplete info)" style="font-size:10.5px;">✏️ Fix Details</button>`
+      : '';
 
     const itemStatuses = o.itemStatuses || {};
     const itemList = o.items.map((it,ii) => {
@@ -10145,20 +10185,21 @@ function renderLbcDelivery() {
     }).join('');
 
     return `<tr style="${isRTO?'background:rgba(224,85,85,0.05);':isDelivered?'background:rgba(46,204,138,0.04);':isODZ?'background:rgba(224,138,48,0.04);':''}">
-      <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
-      <td style="font-weight:500;">${o.name}<br><span style="font-size:9.5px;color:var(--muted);">${o.contact||'—'}</span></td>
-      <td style="font-size:10.5px;max-width:180px;">${o.address||'—'}${o.landmark?'<br><span style="color:var(--muted);font-size:9.5px;">🏠 '+o.landmark+'</span>':''}</td>
-      <td style="font-size:11px;">${o.admin||'—'}<br><span style="font-size:9.5px;color:var(--blue);">${pmIcon(o)} ${o.paymentMethod}</span></td>
+      <td style="color:var(--gold);font-weight:600;" onclick="${isDelivered||isRTO?'toggleLbcRow('+i+')':''}">${onum(i)}</td>
+      <td style="font-weight:500;" onclick="${isDelivered||isRTO?'toggleLbcRow('+i+')':''}">
+        ${o.name}<br><span style="font-size:9.5px;color:var(--muted);">${o.contact||'—'}</span>
+        ${isDelivered||isRTO?'<span id="lbc-arrow-'+i+'" style="font-size:9px;color:var(--muted);margin-left:6px;">▶</span>':''}
+      </td>
+      <td style="font-size:10.5px;max-width:180px;" id="lbc-addr-${i}" ${isDelivered||isRTO?'style="display:none;"':''}>${isDelivered||isRTO?'<span style="color:var(--muted);font-size:9.5px;">— click to expand —</span>':o.address||'—'}</td>
+      <td style="font-size:11px;">${o.admin||'—'}</td>
+      <td style="font-size:10.5px;color:var(--blue);">${pmIcon(o)} ${o.paymentMethod}</td>
       <td style="font-family:monospace;font-size:11px;color:var(--blue);">${tn}</td>
       <td style="font-size:11px;">${o.date}</td>
-      <td style="font-size:11px;color:${o.dateOfPayment?'var(--green)':'var(--muted)'};">
-        ${o.dateOfPayment||'<span style="color:var(--red);font-size:10px;">—</span>'}
-      </td>
-      <td style="font-size:11px;color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">
-        ${o.dateOfDropoff||'<span style="color:var(--muted);font-size:10px;">—</span>'}
-      </td>
-      <td style="font-size:11px;color:${o.dateDelivered?'var(--green)':'var(--muted)'}">${o.dateDelivered||'<span style="color:var(--muted);font-size:10px;">—</span>'}</td>
-      <td style="font-size:10px;">${itemList}</td>
+      <td style="font-size:11px;color:${o.dateOfPayment?'var(--green)':'var(--muted)'};">${o.dateOfPayment||'—'}</td>
+      <td style="font-size:11px;color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">${o.dateOfDropoff||'—'}</td>
+      <td style="font-size:11px;color:${o.dateDelivered?'var(--green)':'var(--muted)'};">${o.dateDelivered||'—'}</td>
+      <td style="font-size:10px;">${isDelivered||isRTO?'':itemList}</td>
+      <td id="lbc-expand-${i}" style="${isDelivered||isRTO?'display:none;':''}font-size:10px;">${itemList}</td>
       <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
       <td><span style="font-size:10px;font-weight:700;color:${stColor(lst)};padding:3px 8px;background:rgba(201,168,76,0.08);border-radius:5px;">${lst}</span>${isRTO&&o.rtoReason?`<div style="font-size:9px;color:var(--red);margin-top:3px;">📝 ${o.rtoReason}</div>`:''}</td>
       <td>
@@ -10169,13 +10210,13 @@ function renderLbcDelivery() {
             ${UPDATE_STATUSES.map(s=>`<option${lst===s?' selected':''}>${s}</option>`).join('')}
           </select>`}
           ${isRTO?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" style="width:175px;font-size:10.5px;">✏️ Edit / Re-dispatch</button>`:''}
+          ${isODZ&&(currentRole==='checker'||currentRole==='owner')?`<button class="btn btn-outline btn-sm" onclick="_editSource='courier-dashboard';openEditOrder(${i})" style="font-size:10.5px;" title="Fix customer details">✏️ Fix Details</button>`:''}
         </div>
       </td>
       <td>
         <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
       </td>
-    </tr>`;
-  }).join('');
+    </tr>`;  }).join('');
 
   document.getElementById('lbcd-content').innerHTML = `
     <div class="card">
@@ -10260,6 +10301,17 @@ function _confirmDelivered(orderIdx, renderFn) {
   if(currentRole==='owner') renderDash();
 }
 
+function toggleLbcRow(id) {
+  const el = document.getElementById('lbc-expand-'+id);
+  const arrow = document.getElementById('lbc-arrow-'+id);
+  const addrEl = document.getElementById('lbc-addr-'+id);
+  if(!el) return;
+  const hidden = el.style.display==='none'||!el.style.display;
+  el.style.display = hidden ? '' : 'none';
+  if(addrEl) addrEl.style.display = hidden ? '' : 'none';
+  if(arrow) arrow.textContent = hidden ? '▼' : '▶';
+}
+
 function lbcdUpdateStatus(orderIdx, newStatus) {
   if(newStatus === 'RTO') { _promptRTO(orderIdx,'lbc'); return; }
   if(newStatus === 'Delivered') { _promptDelivered(orderIdx,'lbc'); return; }
@@ -10329,8 +10381,12 @@ function renderEmsDelivery() {
   // OFD tab: checker sees OFD/Delivered/RTO; sorter sees OFD/RTO only
   const ofdChoicesC = ['Out for Delivery','Delivered','RTO'];
   const ofdChoicesS = ['Out for Delivery','RTO'];
-  const UPDATE_STATUSES = (emsDeliveryTab==='ofd')
-    ? (currentRole==='checker'||currentRole==='owner' ? ofdChoicesC : ofdChoicesS)
+  const ODZ_ST_EMS = ['ODZ/Incomplete Details','Ready to Pick-up'];
+  const RTO_ST_EMS = ['RTO','Ready to Pick-up'];
+  const OFD_ST_EMS = ['Out for Delivery','Delivered'];
+  const UPDATE_STATUSES = emsDeliveryTab==='odz' ? ODZ_ST_EMS
+    : emsDeliveryTab==='ofd' ? OFD_ST_EMS
+    : emsDeliveryTab==='rto' ? RTO_ST_EMS
     : ['Ready to Pick-up','Drop off at EMS','Out for Delivery','Delivered','RTO'];
 
   const rows = list.map(({o,i}) => {
@@ -10628,8 +10684,12 @@ function renderFedexDelivery() {
   // OFD tab: checker sees OFD/Delivered/RTO; sorter sees OFD/RTO only
   const ofdChoicesFC = ['Out for Delivery','Delivered','RTO'];
   const ofdChoicesFS = ['Out for Delivery','RTO'];
-  const UPDATE_STATUSES = (fedexDeliveryTab==='ofd')
-    ? (currentRole==='checker'||currentRole==='owner' ? ofdChoicesFC : ofdChoicesFS)
+  const ODZ_ST_FEX = ['ODZ/Incomplete Details','Ready to Pick-up'];
+  const RTO_ST_FEX = ['RTO','Ready to Pick-up'];
+  const OFD_ST_FEX = ['Out for Delivery','Delivered'];
+  const UPDATE_STATUSES = fedexDeliveryTab==='odz' ? ODZ_ST_FEX
+    : fedexDeliveryTab==='ofd' ? OFD_ST_FEX
+    : fedexDeliveryTab==='rto' ? RTO_ST_FEX
     : ['Ready to Pick-up','Drop off at FedEx','Out for Delivery','Delivered','RTO'];
 
   const rows = list.map(({o,i}) => {
