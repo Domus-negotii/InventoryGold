@@ -517,6 +517,7 @@ async function _directWriteFirebase(data, opts){
     ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{ fields[k] = _toFS(S2[k]||{}); });
     fields['adminAccounts'] = _toFS(S2.adminAccounts||[]);
     fields['lastGlobalClear'] = _toFS(S2.lastGlobalClear||'');
+    fields['_deletedInventoryCodes'] = _toFS(S2._deletedInventoryCodes||[]);
     // Owner password hash
     try {
       const _hp = window.hashPw || (typeof hashPw !== 'undefined' ? hashPw : null);
@@ -4553,18 +4554,31 @@ function saveReturnLog() {
           if(inv) {
             invFound = true;
             const retQty = parseFloat(qtyGrams)||0;
+            if(retQty <= 0) { toast('⚠️ Qty/Grams must be > 0'); return; }
             if(inv.itemType === 'fixprice') {
+              // QTY-based: restore whole number quantity
+              const restoreQty = Math.max(1, Math.round(retQty));
               const before = parseFloat(inv.qty)||0;
-              inv.qty = parseFloat((before + retQty).toFixed(4));
-              S.stockLog.push({ productCode:inv.code, productName:inv.name||inv.code,
-                type:'return', qty:retQty, unit:'pcs', date:today(),
-                notes:`Return – ${orderNum} – ${receivedBy}`, before, after:inv.qty });
+              inv.qty = parseFloat((before + restoreQty).toFixed(4));
+              S.stockLog.push({
+                productCode:inv.code, productName:inv.desc||inv.code,
+                type:'return', qty:restoreQty, unit:'pcs', date:today(),
+                notes:'Manual Return: '+(inv.desc||inv.code)+' x'+restoreQty+' – '+receivedBy,
+                before, after:inv.qty
+              });
+              toast('✅ Inventory restored: '+(inv.desc||inv.code)+' → '+inv.qty+' pcs');
             } else {
+              // GRAMS-based: restore exact decimal grams
+              const restoreGrams = parseFloat(retQty.toFixed(4));
               const before = parseFloat(inv.grams)||0;
-              inv.grams = parseFloat((before + retQty).toFixed(4));
-              S.stockLog.push({ productCode:inv.code, productName:inv.name||inv.code,
-                type:'return', qty:retQty, unit:'g', date:today(),
-                notes:`Return – ${orderNum} – ${receivedBy}`, before, after:inv.grams });
+              inv.grams = parseFloat((before + restoreGrams).toFixed(4));
+              S.stockLog.push({
+                productCode:inv.code, productName:inv.desc||inv.code,
+                type:'return', qty:restoreGrams, unit:'g', date:today(),
+                notes:'Manual Return: '+(inv.desc||inv.code)+' '+restoreGrams+'g – '+receivedBy,
+                before, after:inv.grams
+              });
+              toast('✅ Inventory restored: '+(inv.desc||inv.code)+' → '+inv.grams+'g');
             }
           }
         }
@@ -5825,10 +5839,15 @@ function delInv(i){
     return;
   }
   _confirmDel(`Delete product "${prod.desc}"?`,()=>{
+    // Track deleted code permanently so Firebase sync never re-adds it
+    if(!S._deletedInventoryCodes) S._deletedInventoryCodes = [];
+    const delCode = prod.code.toUpperCase();
+    if(!S._deletedInventoryCodes.includes(delCode))
+      S._deletedInventoryCodes.push(delCode);
     S.inventory.splice(i,1);
     save();
     renderInv(invTab);
-    toast('🗑️ Product deleted');
+    toast('🗑️ Product deleted permanently');
   });
 }
 
@@ -9497,6 +9516,7 @@ async function initApp(){
           if(fbData[k] && typeof fbData[k]==='object') S[k] = fbData[k];
         });
         if(fbData.lastGlobalClear) S.lastGlobalClear = fbData.lastGlobalClear;
+        if(Array.isArray(fbData._deletedInventoryCodes)) S._deletedInventoryCodes = fbData._deletedInventoryCodes;
 
         // Ensure defaults
         if(!Array.isArray(S.adminNames))    S.adminNames=[];
@@ -9583,6 +9603,7 @@ async function _preloadLoginData(){
     if(fbData.specialPasswords && typeof fbData.specialPasswords==='object')
       S.specialPasswords = fbData.specialPasswords;
     if(fbData.lastGlobalClear) S.lastGlobalClear = fbData.lastGlobalClear;
+    if(Array.isArray(fbData._deletedInventoryCodes)) S._deletedInventoryCodes = fbData._deletedInventoryCodes;
     ['payroll','expenses','inventory','stockLog','remitLog','cashbondLog',
      'benefitsLog','returnLog','deletedOrders','mergeLog','locations'].forEach(k=>{
       if(Array.isArray(fbData[k])) S[k] = fbData[k];
@@ -9707,11 +9728,24 @@ function startAutoRefresh(){
       // Replace local S.inventory with Firebase version on every poll
       // This ensures all devices see deductions/returns immediately
       if(Array.isArray(fbData.inventory) && fbData.inventory.length>0){
-        // Merge: Firebase values replace local (deductions/returns come from Firebase after save())
-        // But preserve any items added locally that aren't in Firebase yet (edge case during save lag)
-        const remoteByCode = new Map(fbData.inventory.map(it=>[it.code,it]));
-        const localOnlyItems = (S.inventory||[]).filter(it=>!remoteByCode.has(it.code.toUpperCase())&&!remoteByCode.has(it.code));
-        S.inventory = [...remoteByCode.values(), ...localOnlyItems];
+        // Build deleted codes set (merge from Firebase + local)
+        const fbDeleted = Array.isArray(fbData._deletedInventoryCodes) ? fbData._deletedInventoryCodes : [];
+        const localDeleted = Array.isArray(S._deletedInventoryCodes) ? S._deletedInventoryCodes : [];
+        const deletedCodes = new Set([...fbDeleted,...localDeleted].map(c=>(c||'').toUpperCase()));
+        // Firebase IS source of truth — replace local, but filter deleted codes
+        const remoteByCode = new Map(
+          fbData.inventory
+            .filter(it=>!deletedCodes.has((it.code||'').toUpperCase()))
+            .map(it=>[it.code.toUpperCase(),it])
+        );
+        // Keep locally-added items not yet in Firebase (save lag), unless deleted
+        const localOnlyItems=(S.inventory||[]).filter(it=>
+          !remoteByCode.has((it.code||'').toUpperCase())&&
+          !deletedCodes.has((it.code||'').toUpperCase())
+        );
+        S.inventory=[...remoteByCode.values(),...localOnlyItems];
+        // Sync deleted codes list
+        S._deletedInventoryCodes=[...deletedCodes];
       }
       // Config objects
       ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
