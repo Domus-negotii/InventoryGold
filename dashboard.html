@@ -38,6 +38,15 @@ body{background:var(--navy);color:var(--white);font-family:var(--fb);min-height:
 .nav-section{padding:9px 0 2px;}
 .nav-label{font-size:8.5px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;padding:0 13px 4px;}
 .nav-item{display:flex;align-items:center;gap:8px;padding:7px 13px;cursor:pointer;font-size:12px;font-weight:700;color:var(--muted);transition:all 0.18s;border-left:3px solid transparent;}
+/* Uniform form control heights across encode modal */
+#modal-encode .form-control,#modal-encode select,#modal-encode input[type="date"],#modal-encode input[type="number"],#modal-encode input[type="text"],#modal-encode textarea{
+  height:36px;padding:6px 10px;font-size:12.5px;
+  border:1px solid var(--navy-border);border-radius:6px;
+  background:var(--navy);color:var(--text);
+  box-sizing:border-box;width:100%;
+}
+#modal-encode textarea{height:auto;min-height:36px;resize:none;overflow:hidden;line-height:1.4;}
+
 /* Sidebar collapse */
 .sidebar{transition:width 0.22s ease,left 0.22s ease;}
 .sidebar.collapsed{width:0;overflow:hidden;border-right:none;}
@@ -123,7 +132,27 @@ tr:hover td{background:rgba(201,168,76,0.03);}
 .btn-orange{background:rgba(224,138,48,0.12);color:var(--orange);border:1px solid rgba(224,138,48,0.3);}
 
 /* FORMS */
-.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:11px;}
+/* Encode modal 4-column grid */
+.form-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px 12px;align-items:start;}
+/* Uniform field heights */
+.form-grid .form-group{display:flex;flex-direction:column;}
+.form-grid .form-group label{font-size:10.5px;font-weight:600;color:var(--muted);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.form-grid .form-group input,.form-grid .form-group select,.form-grid .form-group textarea{height:36px;padding:6px 10px;font-size:12.5px;border:1px solid var(--navy-border);border-radius:6px;background:var(--navy);color:var(--text);width:100%;box-sizing:border-box;}
+.form-grid .form-group textarea{height:auto;min-height:36px;resize:none;overflow:hidden;}
+/* Row 1: Name=col-span-2, CP=col-span-1, Backup=col-span-1 */
+#enc-name-group{grid-column:span 2;}
+#enc-contact-group{grid-column:span 1;}
+#enc-backup-group{grid-column:span 1;}
+/* Row 2: Address=col-span-2, Landmark=col-span-2 — same baseline via align-items:stretch */
+#enc-address-group{grid-column:span 2;}
+#enc-landmark-group{grid-column:span 2;}
+/* Row 3: Admin=col-span-1, SF=col-span-1, Method=col-span-2 */
+#enc-admin-group{grid-column:span 1;}
+#enc-sf-group{grid-column:span 1;}
+#enc-method-group{grid-column:span 2;}
+/* Row 4+: All full width */
+#enc-date-purchase-group,#enc-date-payment-group,#enc-date-dropoff-group,
+#enc-payments-group,#enc-items-area,#enc-global-discount-group{grid-column:1/-1;}
 .form-group{display:flex;flex-direction:column;gap:4px;}
 .form-group label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;}
 .form-control{background:var(--navy);border:1px solid var(--navy-border);border-radius:7px;padding:7px 10px;color:var(--white);font-family:var(--fb);font-size:12px;outline:none;transition:border 0.18s;width:100%;}
@@ -143,8 +172,9 @@ select.form-control{cursor:pointer;}
 /* TABS */
 .section-tabs{display:flex;gap:6px;flex-wrap:wrap;}
 .tab-btn{padding:5px 13px;border-radius:7px;border:1px solid var(--navy-border);background:transparent;color:var(--muted);cursor:pointer;font-size:11.5px;font-family:var(--fb);transition:all 0.18s;}
-.tab-btn.active{background:var(--gold);color:var(--navy);border-color:var(--gold);font-weight:700;}
-.tab-btn:hover:not(.active){border-color:var(--gold);color:var(--gold);}
+.tab-btn.active{background:transparent;color:var(--gold);border-color:transparent;border-bottom:2px solid var(--gold);font-weight:700;padding-bottom:5px;box-shadow:none !important;}
+.tab-btn:focus,.tab-btn:focus-visible,.tab-btn.active:focus,.tab-btn.active:focus-visible{outline:none;box-shadow:none !important;background:transparent !important;}
+.tab-btn:hover:not(.active){border-color:transparent;color:var(--gold);border-bottom:2px solid rgba(201,168,76,0.35);padding-bottom:5px;}
 
 /* RIDER LOCATION TABS */
 .loc-tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:14px;}
@@ -930,6 +960,7 @@ function _showRulesHint() {
       <div class="nav-item" onclick="gotoPage('orders')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>Admin Encode</div>
       <div class="nav-item" onclick="gotoPage('checker')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Checker Verify</div>
       <div class="nav-item" onclick="gotoPage('tracking')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>COD Tracking</div>
+      <div class="nav-item" onclick="gotoPage('coddelivery')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>COD Delivery</div>
       <div class="nav-item" onclick="gotoPage('ordermgmt')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><path d="M9 3h6v4H9z"/><path d="M9 12h6M9 16h4"/></svg>LBC/EMS/FedEx Tracking</div>
       <div class="nav-item" onclick="gotoPage('lbcdelivery')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 4v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>LBC Delivery</div>
       <div class="nav-item" onclick="gotoPage('emsdelivery')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>EMS Delivery</div>
@@ -1859,6 +1890,30 @@ function _showRulesHint() {
     <div id="lbcd-content"></div>
   </div>
 
+  <!-- COD DELIVERY PAGE (Checker) -->
+  <div class="page page-lockable" id="page-coddelivery">
+    <div class="action-row no-print" style="flex-wrap:wrap;gap:10px;">
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
+        <div class="section-tabs" style="margin:0;" id="coddelivery-tabs">
+          <button class="tab-btn active" onclick="setCodDelivTab('Delivered')">✅ Delivered</button>
+          <button class="tab-btn" onclick="setCodDelivTab('Cancelled')">🚫 Cancelled</button>
+          <button class="tab-btn" onclick="setCodDelivTab('Returned')">↩️ Returned</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
+        <input class="form-control" style="width:200px;font-size:11px;padding:4px 8px;"
+          placeholder="🔍 Search name / order# / contact"
+          id="codd-search" oninput="renderCodDelivPage()">
+        <input type="date" class="form-control" style="width:148px;font-size:11px;"
+          id="codd-date" oninput="renderCodDelivPage()">
+        <button class="btn btn-outline btn-sm"
+          onclick="document.getElementById('codd-date').value='';renderCodDelivPage()">All Dates</button>
+      </div>
+    </div>
+    <div class="stats-grid" id="codd-stats" style="margin-bottom:13px;"></div>
+    <div id="codd-content"></div>
+  </div>
+
   <!-- RECENTLY DELETED PAGE -->
   <div class="page" id="page-deletedorders">
     <div class="action-row no-print">
@@ -2016,21 +2071,25 @@ function _showRulesHint() {
   <div class="modal" style="max-width:900px;">
     <div class="modal-header"><span class="modal-title" id="encode-title">Encode New Order</span><button class="modal-close" onclick="closeModal('modal-encode')">✕</button></div>
     <div class="form-grid" id="enc-form-fields">
-      <div class="form-group"><label>Customer Name *</label><input class="form-control enc-tab" id="enc-name" placeholder="Full name" onkeydown="encNextField(event,this)"></div>
-      <div class="form-group"><label>CP Number * <span style="font-size:10px;color:var(--muted);">(exactly 11 digits)</span></label>
+      <div class="form-group" id="enc-name-group"><label>Customer Name *</label><input class="form-control enc-tab" id="enc-name" placeholder="Full name" onkeydown="encNextField(event,this)"></div>
+      <div class="form-group" id="enc-contact-group"><label>CP Number * <span style="font-size:10px;color:var(--muted);">(11 digits)</span></label>
         <input class="form-control enc-tab" id="enc-contact" placeholder="09xxxxxxxxx" maxlength="11"
           oninput="this.value=this.value.replace(/\D/g,'');validateCpField(this)"
           onkeydown="encNextField(event,this)">
         <div id="enc-contact-err" style="font-size:10.5px;min-height:14px;margin-top:2px;"></div>
       </div>
-      <div class="form-group"><label>Back-Up Number <span style="font-size:10px;color:var(--muted);">(optional)</span></label>
+      <div class="form-group" id="enc-backup-group"><label>Back-Up Number <span style="font-size:10px;color:var(--muted);">(optional)</span></label>
         <input class="form-control enc-tab" id="enc-backup-contact" placeholder="09xxxxxxxxx" maxlength="11"
           oninput="this.value=this.value.replace(/\D/g,'')"
           onkeydown="encNextField(event,this)">
       </div>
-      <div class="form-group" style="grid-column:1/-1"><label>Complete Address *</label><input class="form-control enc-tab" id="enc-address" placeholder="House/Unit, Barangay, City, Province" onkeydown="encNextField(event,this)" oninput="autoAssignRider()"></div>
+      <div class="form-group" id="enc-address-group"><label>Complete Address *</label>
+        <textarea class="form-control enc-tab" id="enc-address" placeholder="House/Unit, Barangay, City, Province" rows="1"
+          onkeydown="encNextField(event,this)"
+          oninput="autoAssignRider();this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+      </div>
       <input type="hidden" id="enc-city" value="">
-      <div class="form-group"><label>Landmark / Pakuha sa</label><input class="form-control enc-tab" id="enc-landmark" placeholder="Near church, beside sari-sari..." onkeydown="encNextField(event,this)"></div>
+      <div class="form-group" id="enc-landmark-group"><label>Landmark / Pakuha sa</label><input class="form-control enc-tab" id="enc-landmark" placeholder="Near church, beside sari-sari..." onkeydown="encNextField(event,this)"></div>
       <div class="form-group" id="enc-date-purchase-group">
         <label>Date of Purchase <span style="font-size:10px;color:var(--red);font-weight:600;" id="enc-date-hint">* Required (mm/dd/yy)</span></label>
         <input type="date" class="form-control enc-tab" id="enc-date" required oninput="validateDateInput(this)" onkeydown="encNextField(event,this)" placeholder="mm/dd/yy">
@@ -2058,7 +2117,7 @@ function _showRulesHint() {
         <div id="enc-payments-tbody" style="display:flex;flex-direction:column;gap:5px;"></div>
         <div style="font-size:10px;color:var(--muted);margin-top:4px;">💡 Tip: Mag-add ng payment row para sa bawat installment. Bawat ref# may kasamang amount.</div>
       </div>
-      <div class="form-group"><label>Admin Name *</label>
+      <div class="form-group" id="enc-admin-group"><label>Admin Name *</label>
         <div id="enc-admin-wrapper">
           <!-- Populated by populateAdminDropdown() based on role -->
           <select class="form-control enc-tab" id="enc-admin" onkeydown="encNextField(event,this)">
@@ -2066,8 +2125,8 @@ function _showRulesHint() {
           </select>
         </div>
       </div>
-      <div class="form-group"><label>Shipping Fee (₱)</label><input type="number" class="form-control enc-tab" id="enc-shipping" value="0" min="0" oninput="calcEnc()" onfocus="this.select()" onkeydown="encNextField(event,this)"></div>
-      <div class="form-group"><label>Shipping Method *</label>
+      <div class="form-group" id="enc-sf-group"><label>Shipping Fee (₱)</label><input type="number" class="form-control enc-tab" id="enc-shipping" value="0" min="0" oninput="calcEnc()" onfocus="this.select()" onkeydown="encNextField(event,this)"></div>
+      <div class="form-group" id="enc-method-group"><label>Shipping Method *</label>
         <select class="form-control enc-tab" id="enc-payment-method" onkeydown="encNextField(event,this)" onchange="onPaymentMethodChange()">
           <option value="COD">🏍️ COD – Own Rider, Cash on Delivery</option>
           <option value="LBC">📦 LBC – Payment First, LBC Delivers</option>
@@ -2671,7 +2730,7 @@ function closeModal(id){document.getElementById(id).classList.remove('open');}
 })();
 
 // ============ NAVIGATION ============
-const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales Calendar',orders:'Admin Encode',checker:'Checker Verify',tracking:'COD Tracking',ordermgmt:'LBC/EMS/FedEx Tracking',lbcdelivery:'LBC Delivery',emsdelivery:'EMS Delivery',fedexdelivery:'FedEx Delivery',riders:'Riders by Location',dailyparcels:'Daily Parcels',sorting:'Parcel Sorting',returns:'Return / Cancel',deletedorders:'Recently Deleted',dailysales:'Daily Sales Record',payroll:'Payroll',expenses:'Expenses',pnl:'P&L Report',inventory:'Inventory',adminsheets:'Per-Admin Order Sheets',settings:'Settings',ridersremit:'Riders Remit',cashbond:'Cashbond Tracker',benefits:'Benefits',incentives:'Incentives / Baog'};
+const titles={dashboard:'Dashboard',riderdash:'Rider Dashboard',calendar:'Sales Calendar',orders:'Admin Encode',checker:'Checker Verify',tracking:'COD Tracking',ordermgmt:'LBC/EMS/FedEx Tracking',lbcdelivery:'LBC Delivery',emsdelivery:'EMS Delivery',fedexdelivery:'FedEx Delivery',coddelivery:'COD Delivery',riders:'Riders by Location',dailyparcels:'Daily Parcels',sorting:'Parcel Sorting',returns:'Return / Cancel',deletedorders:'Recently Deleted',dailysales:'Daily Sales Record',payroll:'Payroll',expenses:'Expenses',pnl:'P&L Report',inventory:'Inventory',adminsheets:'Per-Admin Order Sheets',settings:'Settings',ridersremit:'Riders Remit',cashbond:'Cashbond Tracker',benefits:'Benefits',incentives:'Incentives / Baog'};
 let _activePage = 'dashboard';
 function gotoPage(name){
   _activePage = name;
@@ -2697,7 +2756,7 @@ function gotoPage(name){
 function renderPage(n){
   ({dashboard:()=>{applyDashCeoLock();if(currentRole==='owner')renderDash();},
     riderdash:()=>{},calendar:()=>{if(currentRole==='owner')renderCalendar();else{const p2=document.getElementById('page-calendar');if(p2)p2.innerHTML='<div style="text-align:center;padding:60px;"><div style="font-size:48px;">🔐</div><div style="font-family:var(--fh);font-size:20px;color:var(--gold);margin:10px 0;">CEO Only</div><p style="color:var(--muted);">Sales Calendar is restricted to CEO access.</p></div>';}},
-    orders:initOrdersPage,checker:()=>setCheckerTab(checkerTab),tracking:()=>{renderTracking();refreshUpdateBadge();},ordermgmt:renderOrderMgmt,lbcdelivery:renderLbcDelivery,emsdelivery:renderEmsDelivery,fedexdelivery:renderFedexDelivery,
+    orders:initOrdersPage,checker:()=>setCheckerTab(checkerTab),tracking:()=>{renderTracking();refreshUpdateBadge();},ordermgmt:renderOrderMgmt,lbcdelivery:renderLbcDelivery,emsdelivery:renderEmsDelivery,fedexdelivery:renderFedexDelivery,coddelivery:renderCodDelivPage,
     riders:renderRiders,dailyparcels:renderDailyParcels,sorting:renderSorting,returns:renderReturns,deletedorders:renderDeletedOrders,
     dailysales:renderDailySales,payroll:()=>renderPayroll(payTab),expenses:renderExpenses,
     pnl:renderPnl,inventory:()=>switchInvTab(invTab),adminsheets:renderAdminSheets,settings:renderSettings,
@@ -3039,20 +3098,38 @@ function _renderAdminPersonalSheet() {
     </div>`;
   // Stats
   document.getElementById('orders-stats-row').innerHTML = '<div id="my-orders-stats-inner"></div>';
-  // Main view
+  // Main view — collapsible, default MINIMIZED
   document.getElementById('orders-main-view').innerHTML = `
     <div class="card no-print">
-      <div class="card-header">
-        <span class="card-title" id="my-orders-title">${adminName}'s Orders</span>
-        <span id="my-orders-count" style="font-size:11px;color:var(--muted);"></span>
+      <div class="card-header" style="cursor:pointer;user-select:none;"
+           onclick="(function(){
+             var b=document.getElementById('my-orders-body');
+             var a=document.getElementById('my-orders-arrow');
+             var h=document.getElementById('my-orders-hint');
+             if(!b)return;
+             var collapsed=b.style.display==='none';
+             b.style.display=collapsed?'block':'none';
+             a.textContent=collapsed?'&#9660;':'&#9654;';
+             h.textContent=collapsed?'Click to minimize':'Click to expand';
+           })()">
+        <div style="display:flex;align-items:center;gap:10px;flex:1;">
+          <span class="card-title" id="my-orders-title">${adminName}'s Orders</span>
+          <span id="my-orders-count" style="font-size:11px;color:var(--muted);"></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;" onclick="event.stopPropagation()">
+          <span id="my-orders-hint" style="font-size:10px;color:var(--muted);">Click to expand</span>
+          <span id="my-orders-arrow" style="color:var(--gold);font-size:13px;">&#9654;</span>
+        </div>
       </div>
-      <div class="table-wrap"><table>
-        <thead><tr>
-          <th>Order #</th><th>Customer</th><th>Contact</th><th>Address</th><th>Landmark</th>
-          <th>Date</th><th>Method</th><th>Items</th><th>Grand Total</th><th>Status</th><th>Checker</th><th>Actions</th>
-        </tr></thead>
-        <tbody id="my-orders-tbody"></tbody>
-      </table></div>
+      <div id="my-orders-body" style="display:none;">
+        <div class="table-wrap"><table>
+          <thead><tr>
+            <th>Order #</th><th>Customer</th><th>Contact</th><th>Address</th><th>Landmark</th>
+            <th>Date</th><th>Method</th><th>Items</th><th>Grand Total</th><th>Status</th><th>Checker</th><th>Actions</th>
+          </tr></thead>
+          <tbody id="my-orders-tbody"></tbody>
+        </table></div>
+      </div>
     </div>`;
   // Leave date blank by default — shows all orders; user can filter by date manually
   renderMyOrders();
@@ -6079,32 +6156,76 @@ function renderCourierDashboard(){
   const el = document.getElementById('courier-dashboard-content');
   if(!el) return;
 
-  const COURIER_TABS = ['LBC','EMS','FedEx'];
-  const PAYMENT_TABS = [
-    {key:'No Payment', label:'⏳ Unpaid', color:'var(--red)'},
-    {key:'Partial',    label:'💳 Partially Paid', color:'var(--orange)'},
+  const COURIER_TABS = ['LBC','EMS','FedEx','COD'];
+  // For COD: logistical sub-tabs; for LBC/EMS/FedEx: payment sub-tabs
+  const COD_TABS = [
+    {key:'Delivered',  label:'✅ Delivered',  color:'var(--green)'},
+    {key:'Cancelled',  label:'🚫 Cancelled',  color:'var(--red)'},
+    {key:'Returned',   label:'↩️ Returned',   color:'var(--orange)'},
+  ];
+  const PAYMENT_TABS = curCourier === 'COD' ? COD_TABS : [
+    {key:'No Payment', label:'⏳ Unpaid',     color:'var(--red)'},
+    {key:'Partial',    label:'💳 Partial',    color:'var(--orange)'},
     {key:'Fully Paid', label:'✅ Fully Paid', color:'var(--green)'},
+    {key:'Delivered',  label:'📦 Delivered',  color:'var(--blue)'},
   ];
 
   const curCourier = window._cdCourierTab || 'LBC';
-  const curPayTab  = window._cdPayTab    || 'No Payment';
+  const _rawPayTab = window._cdPayTab || 'No Payment';
+  // When COD is active, payment keys like 'No Payment'/'Partial'/'Fully Paid' don't apply — default to 'Delivered'
+  const curPayTab = curCourier==='COD' && !['Delivered','Cancelled','Returned'].includes(_rawPayTab)
+    ? 'Delivered' : _rawPayTab;
   const loggedAdmin = currentUser?.name || '';
   const isOwner = currentRole === 'owner';
 
   // For admin: only their own orders. For owner: all orders.
   let allCourierOrders = S.orders.map((o,i)=>({...o,idx:i}))
-    .filter(o=>['COD','LBC','EMS','FedEx'].includes(o.paymentMethod||''));
+    .filter(o=>{
+      const pm = o.paymentMethod||'COD';
+      return ['COD','LBC','EMS','FedEx'].includes(pm);
+    });
   if(!isOwner && loggedAdmin) {
     allCourierOrders = allCourierOrders.filter(o=>(o.admin||'').toUpperCase()===loggedAdmin.toUpperCase());
   }
 
-  const courierOrders = allCourierOrders.filter(o=>o.paymentMethod===curCourier);
-  const payTabOrders  = courierOrders.filter(o=>(o.paymentStatus||'No Payment')===curPayTab && (o.status!=='Cancelled'&&o.status!=='RTO'));
+  const courierOrders = allCourierOrders.filter(o=>{
+    const pm = o.paymentMethod||'COD';
+    return pm === curCourier;
+  });
+  let payTabOrders;
+  if(curCourier === 'COD') {
+    // COD: logistical buckets
+    if(curPayTab === 'Delivered')  payTabOrders = courierOrders.filter(o=>o.status==='Delivered');
+    else if(curPayTab === 'Cancelled') payTabOrders = courierOrders.filter(o=>o.status==='Cancelled');
+    else if(curPayTab === 'Returned')  payTabOrders = courierOrders.filter(o=>o.status==='RTO' || o.lbcStatus==='RTO');
+    else payTabOrders = courierOrders.filter(o=>o.status==='Delivered');
+  } else {
+    // LBC/EMS/FedEx: payment buckets (unchanged)
+    payTabOrders = curPayTab==='Delivered'
+      ? courierOrders.filter(o=>o.status==='Delivered')
+      : curPayTab==='Fully Paid'
+      ? courierOrders.filter(o=>(o.paymentStatus||'No Payment')==='Fully Paid'&&o.status!=='Delivered'&&o.status!=='Cancelled'&&o.status!=='RTO')
+      : courierOrders.filter(o=>(o.paymentStatus||'No Payment')===curPayTab&&o.status!=='Cancelled'&&o.status!=='RTO'&&o.status!=='Delivered');
+  }
+
+  // Apply global search filter
+  const _cdSearch=(document.getElementById('cd-global-search')?.value||'').toLowerCase().trim();
+  const searchFiltered=_cdSearch
+    ? payTabOrders.filter(({o,idx})=>{
+        const i=S.orders.indexOf(o);
+        return [o.name,o.contact,onum(i),(o.trackingNumber||'')].some(v=>(v||'').toLowerCase().includes(_cdSearch));
+      })
+    : payTabOrders;
 
   const canEdit = (o) => isOwner || (o.checkerStatus !== 'Verified');
 
   el.innerHTML = `
     <div class="card" style="margin-top:14px;">
+      <div style="padding:10px 14px 0;">
+        <input class="form-control" id="cd-global-search" placeholder="🔍 Search Order # / Customer / Contact / Tracking #"
+          style="width:100%;font-size:12px;padding:7px 11px;border-radius:7px;"
+          oninput="renderCourierDashboard()">
+      </div>
       <div class="card-header">
         <span class="card-title">📦 Courier Orders Dashboard</span>
         <span style="font-size:11px;color:var(--muted);">${allCourierOrders.length} total courier orders</span>
@@ -6112,25 +6233,27 @@ function renderCourierDashboard(){
       <!-- Courier tabs -->
       <div style="display:flex;gap:6px;padding:10px 14px 0;border-bottom:1px solid rgba(255,255,255,0.07);">
         ${COURIER_TABS.map(c=>`
-          <button onclick="window._cdCourierTab='${c}';window._cdPayTab=window._cdPayTab||'No Payment';renderCourierDashboard();"
+          <button onclick="(function(){window._cdCourierTab='${c}';window._cdPayTab='${c}'==='COD'?'Delivered':(window._cdPayTab==='Delivered'||window._cdPayTab==='Cancelled'||window._cdPayTab==='Returned'?'No Payment':window._cdPayTab||'No Payment');renderCourierDashboard();})()"
             style="padding:7px 18px;font-size:12px;font-weight:600;border:none;border-radius:6px 6px 0 0;cursor:pointer;
               background:${curCourier===c?'var(--gold)':'rgba(255,255,255,0.07)'};
               color:${curCourier===c?'#000':'var(--text)'};transition:all 0.15s;">
-            ${c==='LBC'?'📦':'✈️'} ${c}
-            <span style="font-size:10px;margin-left:4px;opacity:0.8;">(${allCourierOrders.filter(o=>o.paymentMethod===c&&(o.status!=='Cancelled'&&o.status!=='RTO')).length})</span>
+            ${c==='COD'?'🏍️':c==='LBC'?'📦':'✈️'} ${c}
+            <span style="font-size:10px;margin-left:4px;opacity:0.8;">(${allCourierOrders.filter(o=>(o.paymentMethod||'COD')===c&&(o.status!=='Cancelled'&&o.status!=='RTO')).length})</span>
           </button>`).join('')}
       </div>
       <!-- Payment sub-tabs -->
       <div style="display:flex;gap:4px;padding:8px 14px;background:rgba(0,0,0,0.08);">
         ${PAYMENT_TABS.map(pt=>{
           const cnt = curCourier==='COD'
-            ? courierOrders.filter(o=>{
-                if(pt.key==='active')    return !['Delivered','Cancelled'].includes(o.status);
-                if(pt.key==='Delivered') return o.status==='Delivered';
-                if(pt.key==='Cancelled') return o.status==='Cancelled';
-                return false;
-              }).length
-            : courierOrders.filter(o=>(o.paymentStatus||'No Payment')===pt.key&&(o.status!=='Cancelled'&&o.status!=='RTO')).length;
+            ? pt.key==='Delivered'  ? courierOrders.filter(o=>o.status==='Delivered').length
+            : pt.key==='Cancelled'  ? courierOrders.filter(o=>o.status==='Cancelled').length
+            : pt.key==='Returned'   ? courierOrders.filter(o=>o.status==='RTO'||o.lbcStatus==='RTO').length
+            : 0
+            : pt.key==='Delivered'
+            ? courierOrders.filter(o=>o.status==='Delivered').length
+            : pt.key==='Fully Paid'
+            ? courierOrders.filter(o=>(o.paymentStatus||'No Payment')==='Fully Paid'&&o.status!=='Delivered'&&o.status!=='Cancelled'&&o.status!=='RTO').length
+            : courierOrders.filter(o=>(o.paymentStatus||'No Payment')===pt.key&&o.status!=='Cancelled'&&o.status!=='RTO'&&o.status!=='Delivered').length;
           const isActive=curPayTab===pt.key;
           return `<button onclick="window._cdPayTab='${pt.key}';renderCourierDashboard();"
             style="padding:5px 14px;font-size:11.5px;font-weight:600;
@@ -6144,26 +6267,26 @@ function renderCourierDashboard(){
       </div>
       <!-- Orders table -->
       <div style="padding:0 14px 14px;">
-        ${payTabOrders.length===0
+        ${searchFiltered.length===0
           ? `<div style="text-align:center;color:var(--muted);padding:30px;font-size:12px;">
               No ${curPayTab} orders for ${curCourier}.
              </div>`
-          : `<div style="font-size:11px;color:var(--muted);padding:8px 0 4px;">${payTabOrders.length} order${payTabOrders.length>1?'s':''}</div>
+          : `<div style="font-size:11px;color:var(--muted);padding:8px 0 4px;">${searchFiltered.length} order${searchFiltered.length>1?'s':''}</div>
              <div class="table-wrap"><table style="font-size:11px;">
                <thead><tr style="background:rgba(201,168,76,0.08);">
                  <th>Order #</th><th>Date</th><th>Customer</th>
                  ${isOwner?'<th>Admin</th>':''}
-                 <th>Tracking #</th><th>Items Total</th><th>SF</th>
+                 <th>${curCourier==='COD'?(curPayTab==='Cancelled'||curPayTab==='Returned'?'Reason':'—'):'Tracking #'}</th><th>Items Total</th><th>SF</th>
                  ${curPayTab==='Partial'?'<th>Notes</th>':''}
                  <th>Grand Total</th><th>Status</th><th>Verif</th><th>Actions</th>
                </tr></thead>
                <tbody>
-                 ${payTabOrders.map(o=>`<tr>
+                 ${searchFiltered.map(o=>`<tr>
                    <td style="color:var(--gold);font-weight:700;">${onum(o.idx)}</td>
                    <td style="white-space:nowrap;">${o.date}</td>
                    <td style="font-weight:500;">${o.name}<br><span style="color:var(--muted);font-size:9px;">${o.contact||''}</span></td>
                    ${isOwner?`<td style="font-size:10.5px;">${o.admin||'—'}</td>`:''}
-                   <td style="font-size:10px;color:var(--blue);">${o.trackingNumber||'—'}</td>
+                   <td style="font-size:10px;color:${curCourier==='COD'?'var(--muted)':'var(--blue)'}">${curCourier==='COD'?(o.cancelReason||o.rtoReason||'—'):(o.trackingNumber||'—')}</td>
                    <td>${p(o.itemsTotal||0)}</td>
                    <td>${p(o.shipping||0)}</td>
                    ${curPayTab==='Partial'?`<td style="font-size:10px;color:var(--orange);">${o.paymentNotes||'—'}</td>`:''}
@@ -6187,8 +6310,8 @@ function renderCourierDashboard(){
                  </tr>`).join('')}
                </tbody>
                <tfoot><tr style="background:rgba(201,168,76,0.08);font-weight:700;">
-                 <td colspan="${isOwner?(curPayTab==='Partial'?9:8):(curPayTab==='Partial'?8:7)}" style="color:var(--gold);">TOTAL (${payTabOrders.length})</td>
-                 <td style="color:var(--green);">${p(payTabOrders.reduce((s,o)=>s+(o.grandTotal||0),0))}</td>
+                 <td colspan="${isOwner?(curPayTab==='Partial'?9:8):(curPayTab==='Partial'?8:7)}" style="color:var(--gold);">TOTAL (${searchFiltered.length})</td>
+                 <td style="color:var(--green);">${p(searchFiltered.reduce((s,o)=>s+(o.grandTotal||0),0))}</td>
                  <td colspan="3"></td>
                </tfoot>
              </table></div>`
@@ -6536,10 +6659,15 @@ function renderPnl(){
 
   // TOTAL SALES = grandTotal (items + shipping - discounts) = what customer actually paid
   // This matches Dashboard revenue and Daily Sales figures exactly
-  const totalSales = incomeOrders.reduce((s,o)=>s+(o.grandTotal||0),0);
+  // TOTAL SALES = Item Sales + (Remitted SF x 10%)
   const totalItemsSales = incomeOrders.reduce((s,o)=>s+(o.itemsTotal||0),0);
-  const totalShippingRev = incomeOrders.reduce((s,o)=>s+(parseFloat(o.shipping)||0),0);
   const totalDiscountsAll = incomeOrders.reduce((s,o)=>s+(parseFloat(o.totalDiscount)||0),0);
+  const remittedSF = (S.remitLog||[])
+    .filter(e=>{ const d=e.date||''; return d>=from && d<=to && (e.remitStatus||'For Remittance')==='Remitted'; })
+    .reduce((s,e)=>s+(parseFloat(e.codSubtotal||e.subtotal||0)),0);
+  const sfRevenue10pct = Math.round(remittedSF * 0.10 * 100) / 100;
+  const totalShippingRev = sfRevenue10pct;
+  const totalSales = Math.round((totalItemsSales + sfRevenue10pct) * 100) / 100;
   // TOTAL COST = cost of goods sold (pergram × grams or pergram × qty for each item)
   // ── COGS helper: look up capital/cost price from inventory by product code ──
   // order items store the SELLING price (pergram / fixPrice), NOT the cost price.
@@ -6604,9 +6732,9 @@ function renderPnl(){
       <span style="font-size:11px;color:var(--muted);">${label}</span>
     </div>
     ${sH('REVENUE')}
-    ${row('Total Sales (Items + Shipping − Discounts)',p(totalSales),'var(--green)',false,true)}
-    ${row('  ↳ Items Sales',p(totalItemsSales),'var(--green)',true)}
-    ${row('  ↳ Shipping Collected',p(totalShippingRev),'var(--green)',true)}
+    ${row('TOTAL SALES = Items + SF 10% (Remit)',p(totalSales),'var(--green)',false,true)}
+    ${row('  ↳ Item Sales',p(totalItemsSales),'var(--green)',true)}
+    ${row('  ↳ SF 10% Company (from Rider Remit)','+ '+p(sfRevenue10pct),'var(--gold)',true)}
     ${totalDiscountsAll>0?row('  ↳ Discounts Given','('+p(totalDiscountsAll)+')','var(--orange)',true):''}
     ${row('TOTAL COST (COGS: Cost/g×g or Cost/pc×qty)',totalCOGS?'('+p(totalCOGS)+')':'₱0.00','var(--red)',false,true)}
     ${row('GROSS PROFIT',p(grossProfit),grossProfit>=0?'var(--green)':'var(--red)',false,true)}
@@ -6924,7 +7052,7 @@ function applyRoleUI(){
     rider:    ['riderdash'],
     remitter: ['ridersremit','cashbond','benefits','sorting','returns'],
     sorter:   ['sorting','tracking','ordermgmt'],
-    checker:  ['checker','sorting','lbcdelivery','emsdelivery','fedexdelivery'],
+    checker:  ['checker','sorting','lbcdelivery','emsdelivery','fedexdelivery','coddelivery'],
   };
   const allowed = rolePages[currentRole] || null;
   document.querySelectorAll('.nav-item').forEach(el=>{
@@ -6948,7 +7076,7 @@ function applyRoleUI(){
       if(lockEl) lockEl.classList.add('unlocked');
     } else if(currentRole==='remitter' && ['ridersremit','cashbond','benefits','returns'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
-    } else if(currentRole==='checker' && ['checker','lbcdelivery','emsdelivery','fedexdelivery'].includes(page)){
+    } else if(currentRole==='checker' && ['checker','lbcdelivery','emsdelivery','fedexdelivery','coddelivery'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
     } else if(currentRole==='sorter' && ['tracking','sorting','ordermgmt'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
@@ -7709,12 +7837,7 @@ function renderRiderParcels() {
 }
 
 function riderUpdateStatus(orderIdx, newStatus) {
-  // Guard: only allow if parcel is Ready (not Preparing)
-  if(S.orders[orderIdx]?.status === 'Preparing') {
-    toast('⏳ Hindi pa Ready ang parcel. Hintayin maging "Ready for Pick-up" sa COD Tracking.');
-    renderRiderParcels();
-    return;
-  }
+  // Direct save — no confirmation needed, status applies immediately
   // Map display label to stored value
   const statusMap = {
     'For Update': 'Update',
@@ -7745,12 +7868,7 @@ function riderSaveItemRemark(orderIdx, itemIdx, remark) {
 function riderItemStatus(orderIdx, itemIdx, newStatus) {
   const order = S.orders[orderIdx];
   if(!order) return;
-  // Guard: only allow if parcel is Ready (not Preparing)
-  if(order.status === 'Preparing') {
-    toast('⏳ Hindi pa Ready ang parcel. Hintayin maging "Ready for Pick-up" sa COD Tracking.');
-    renderRiderParcels();
-    return;
-  }
+  // Direct save — status applies immediately on selection, no guards or dialogs.
   if(!order.itemStatuses) order.itemStatuses = {};
 
   // Normalize status value ("Cancelled (All)" → "Cancelled")
@@ -10525,6 +10643,123 @@ let _encFormCollapsed = true; // default: minimized
 // Called when encode modal opens — reset collapse state
 
 
+
+// ── COD Delivery Page (Checker) ──────────────────────────────────
+let _codDelivTab = 'Delivered';
+
+function setCodDelivTab(tab) {
+  _codDelivTab = tab;
+  document.querySelectorAll('#coddelivery-tabs .tab-btn').forEach((b,i)=>
+    b.classList.toggle('active', ['Delivered','Cancelled','Returned'][i] === tab)
+  );
+  renderCodDelivPage();
+}
+
+function renderCodDelivPage() {
+  const statsEl   = document.getElementById('codd-stats');
+  const contentEl = document.getElementById('codd-content');
+  if(!contentEl) return;
+
+  const tab = _codDelivTab;
+  const q   = (document.getElementById('codd-search')?.value||'').toLowerCase();
+  const df  = document.getElementById('codd-date')?.value||'';
+
+  // Only COD orders
+  const allCOD = (S.orders||[]).filter(o=>(o.paymentMethod||'COD')==='COD');
+
+  // Stats
+  const delivCount = allCOD.filter(o=>o.status==='Delivered').length;
+  const cancelCount= allCOD.filter(o=>o.status==='Cancelled').length;
+  const returnCount= allCOD.filter(o=>o.status==='RTO'||o.lbcStatus==='RTO').length;
+  const totalRev   = allCOD.filter(o=>o.status==='Delivered').reduce((s,o)=>s+(o.grandTotal||0),0);
+
+  if(statsEl) statsEl.innerHTML = `
+    <div class="stat-card green" onclick="setCodDelivTab('Delivered')" style="cursor:pointer;">
+      <div class="stat-label">✅ Delivered</div>
+      <div class="stat-value">${delivCount}</div>
+      <div class="stat-sub">${p(totalRev)}</div>
+    </div>
+    <div class="stat-card red" onclick="setCodDelivTab('Cancelled')" style="cursor:pointer;">
+      <div class="stat-label">🚫 Cancelled</div>
+      <div class="stat-value">${cancelCount}</div>
+    </div>
+    <div class="stat-card orange" onclick="setCodDelivTab('Returned')" style="cursor:pointer;">
+      <div class="stat-label">↩️ Returned (RTO)</div>
+      <div class="stat-value">${returnCount}</div>
+    </div>
+  `;
+
+  // Filter for current tab
+  let list = allCOD.map((o,ri)=>({o,i:(S.orders||[]).indexOf(o)})).filter(({o})=>{
+    if(tab==='Delivered') return o.status==='Delivered';
+    if(tab==='Cancelled') return o.status==='Cancelled';
+    if(tab==='Returned')  return o.status==='RTO'||o.lbcStatus==='RTO';
+    return false;
+  });
+  if(df) list=list.filter(({o})=>{
+    const d=tab==='Delivered'?(o.dateDelivered||o.date):o.date;
+    return d===df;
+  });
+  if(q) list=list.filter(({o,i})=>[o.name,o.contact,onum(i)].join(' ').toLowerCase().includes(q));
+
+  if(!list.length){
+    contentEl.innerHTML=`<div class="card"><div style="text-align:center;color:var(--muted);padding:40px;">No ${tab} COD orders found.</div></div>`;
+    return;
+  }
+
+  // Accordion rows — each collapsed by default, click to expand
+  const rows = list.map(({o,i},ri)=>{
+    const safeId = 'cod-row-'+i;
+    const dateCol = tab==='Delivered'?(o.dateDelivered||o.date):o.date;
+    const statusColor = o.status==='Delivered'?'var(--green)':o.status==='Cancelled'?'var(--red)':'var(--orange)';
+    const reason = o.cancelReason||o.rtoReason||'—';
+    const itemsList = (o.items||[]).map(it=>`${it.desc||it.code} ×${it.qty||it.grams||1}${it.grams?'g':''}`).join(', ');
+    return `
+      <div class="card" style="margin-bottom:6px;cursor:pointer;" onclick="toggleCodRow('${safeId}')">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <span style="color:var(--gold);font-weight:700;">${onum(i)}</span>
+            <span style="font-weight:600;">${o.name}</span>
+            <span style="color:var(--muted);font-size:11px;">${o.contact||''}</span>
+            <span style="font-size:11px;">${dateCol}</span>
+            <span style="color:var(--green);font-weight:700;">${p(o.grandTotal)}</span>
+            <span style="font-size:10.5px;font-weight:700;color:${statusColor};padding:2px 8px;background:rgba(255,255,255,0.05);border-radius:4px;">${o.status}</span>
+            ${reason!=='—'?'<span style="font-size:10px;color:var(--red);">📝 '+reason+'</span>':''}
+          </div>
+          <span id="${safeId}-arrow" style="color:var(--muted);font-size:12px;">▶</span>
+        </div>
+        <div id="${safeId}" style="display:none;padding:0 14px 12px;border-top:1px solid var(--navy-border);margin-top:4px;">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:11.5px;margin-top:8px;">
+            <div><span style="color:var(--muted);font-size:10px;">ADDRESS</span><br>${o.address||'—'}</div>
+            <div><span style="color:var(--muted);font-size:10px;">ADMIN</span><br>${o.admin||'—'}</div>
+            <div><span style="color:var(--muted);font-size:10px;">RIDER</span><br>${o.assignedRider||'—'}</div>
+            <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:10px;">ITEMS</span><br>${itemsList||'—'}</div>
+            ${reason!=='—'?'<div style="grid-column:1/-1;"><span style="color:var(--red);font-size:10px;">REASON</span><br>'+reason+'</div>':''}
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  contentEl.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">${list.length} order${list.length!==1?'s':''} · Click row to expand</div>${rows}`;
+}
+
+function toggleCodRow(id) {
+  const el = document.getElementById(id);
+  const arrow = document.getElementById(id+'-arrow');
+  if(!el) return;
+  const hidden = el.style.display==='none';
+  el.style.display = hidden?'block':'none';
+  if(arrow) arrow.textContent = hidden?'▼':'▶';
+}
+
+function toggleMyOrders() {
+  const body = document.getElementById('my-orders-body');
+  const btn  = document.getElementById('my-orders-toggle-btn');
+  if (!body) return;
+  const isHidden = body.style.display === 'none';
+  body.style.display  = isHidden ? 'block' : 'none';
+  if (btn) btn.textContent = isHidden ? '▼ Hide Orders' : '▶ Show Orders';
+}
 
 function lbcdUpdateStatus(orderIdx, newStatus) {
   if(newStatus === 'RTO') { _promptRTO(orderIdx,'lbc'); return; }
