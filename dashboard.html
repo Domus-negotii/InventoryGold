@@ -1,4 +1,4 @@
-111<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1156,6 +1156,8 @@ function _showRulesHint() {
       </div>
     </div>
   </div>
+
+
 
   <!-- TRACKING -->
   <div class="page page-lockable" id="page-tracking">
@@ -2798,10 +2800,21 @@ function getItems(id) {
     const discountRemark = r.querySelector('.row-discount-remark')?.value||'';
     const totalInput = r.querySelector('.row-total-input');
     const totalVal = parseFloat(totalInput?.value)||0;
-    // qty vs grams: if pergram > 0 it's gram-based, else qty-based
-    const grams = pg > 0 ? qgVal : 0;
-    const qty = pg > 0 ? 1 : (qgVal||1);
-    rows.push({code, desc, qty, grams, pergram:pg, discount, discountRemark, total:totalVal, fixPrice: pg === 0});
+    // qty vs grams determination:
+    // If pergram > 0 → gram-based (quick-pick path): grams=qgVal, qty=1
+    // If pergram = 0 → check inventory: if grams-type product, store qgVal as grams too
+    //   so deduction uses grams even when manually entered without pergram
+    let grams = pg > 0 ? qgVal : 0;
+    let qty   = pg > 0 ? 1 : (qgVal||1);
+    if(pg === 0 && code) {
+      const invMatch = (S.inventory||[]).find(it=>it.code.toUpperCase()===(code||'').toUpperCase());
+      if(invMatch && invMatch.itemType !== 'fixprice') {
+        // Grams-type product manually entered — store qgVal as grams
+        grams = qgVal;
+        qty   = 1;
+      }
+    }
+    rows.push({code, desc, qty, grams, pergram:pg, discount, discountRemark, total:totalVal, fixPrice: pg === 0 && (!code || !(S.inventory||[]).find(it=>it.itemType!=='fixprice'&&it.code.toUpperCase()===(code||'').toUpperCase()))});
   });
   return rows;
 }
@@ -2834,6 +2847,10 @@ window.calcEnc = function() {
     iT += lineTotal;
     totalDiscount += discount;
   });
+  // Round accumulated floats to prevent 100.0000000001 type errors
+  iT           = Math.round(iT * 100) / 100;
+  itemsSubtotal = Math.round(itemsSubtotal * 100) / 100;
+  totalDiscount = Math.round(totalDiscount * 100) / 100;
   const sf = parseFloat(document.getElementById('enc-shipping').value)||0;
   // FEAT3: Include global/overall discount in total calculation
   const globalDiscount = parseFloat(document.getElementById('enc-global-discount')?.value)||0;
@@ -3037,8 +3054,6 @@ function _renderAdminPersonalSheet() {
         <tbody id="my-orders-tbody"></tbody>
       </table></div>
     </div>`;
-  // Set default date = tomorrow right after element is created
-  const modf = document.getElementById('my-order-date');
   // Leave date blank by default — shows all orders; user can filter by date manually
   renderMyOrders();
 }
@@ -3325,7 +3340,7 @@ let checkerTab = 'COD';
 function setCheckerTab(tab) {
   checkerTab = tab;
   document.querySelectorAll('#checker-tabs .tab-btn').forEach((b,i) =>
-    b.classList.toggle('active', ['COD','LBC','EMS','FedEx','UPDATE','DELETED'][i] === tab));
+    b.classList.toggle('active', ['LBC','EMS','FedEx','UPDATE','DELETED'][i] === tab));
   const labels = {COD:'🏍️ COD – Checker Queue', LBC:'📦 LBC – Checker Queue', EMS:'✈️ EMS – Checker Queue', FedEx:'📦 FedEx – Checker Queue', UPDATE:'🔔 For Update – COD Parcels', DELETED:'🗑️ Recently Deleted / Cancelled'};
   // Show/hide the right panel
   const tableArea = document.getElementById('checker-table-area');
@@ -3343,10 +3358,9 @@ function setCheckerTab(tab) {
   document.getElementById('checker-cod-table').style.display = isLbc ? 'none' : '';
   document.getElementById('checker-lbc-table').style.display = isLbc ? '' : 'none';
   renderChecker();
-}
-
-
-function getMissingFieldsWarning(o, verifSt) {
+  // Also refresh COD delivery monitor
+  setTimeout(()=>{ try{ renderCheckerCodDelivery(); }catch(e){} }, 50);
+}function getMissingFieldsWarning(o, verifSt) {
   const isCourier = o.paymentMethod==='LBC' || o.paymentMethod==='EMS' || o.paymentMethod==='FedEx';
   const isFedEx = o.paymentMethod==='FedEx';
   if(!isCourier || verifSt==='Verified') return '';
@@ -3490,7 +3504,7 @@ function renderChecker(){
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
               ${!isLocked?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>`:''}
-             
+              ${currentRole==='owner'?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" title="CEO Edit">✏️ Edit</button>`:''}
               ${o.status==='Cancelled'
                 ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
                 :o.checkerStatus!=='Verified'
@@ -6079,7 +6093,7 @@ function renderCourierDashboard(){
 
   // For admin: only their own orders. For owner: all orders.
   let allCourierOrders = S.orders.map((o,i)=>({...o,idx:i}))
-    .filter(o=>['LBC','EMS','FedEx'].includes(o.paymentMethod||''));
+    .filter(o=>['COD','LBC','EMS','FedEx'].includes(o.paymentMethod||''));
   if(!isOwner && loggedAdmin) {
     allCourierOrders = allCourierOrders.filter(o=>(o.admin||'').toUpperCase()===loggedAdmin.toUpperCase());
   }
@@ -6109,7 +6123,14 @@ function renderCourierDashboard(){
       <!-- Payment sub-tabs -->
       <div style="display:flex;gap:4px;padding:8px 14px;background:rgba(0,0,0,0.08);">
         ${PAYMENT_TABS.map(pt=>{
-          const cnt=courierOrders.filter(o=>(o.paymentStatus||'No Payment')===pt.key&&o.status!=='Cancelled').length;
+          const cnt = curCourier==='COD'
+            ? courierOrders.filter(o=>{
+                if(pt.key==='active')    return !['Delivered','Cancelled'].includes(o.status);
+                if(pt.key==='Delivered') return o.status==='Delivered';
+                if(pt.key==='Cancelled') return o.status==='Cancelled';
+                return false;
+              }).length
+            : courierOrders.filter(o=>(o.paymentStatus||'No Payment')===pt.key&&o.status!=='Cancelled').length;
           const isActive=curPayTab===pt.key;
           return `<button onclick="window._cdPayTab='${pt.key}';renderCourierDashboard();"
             style="padding:5px 14px;font-size:11.5px;font-weight:600;
@@ -7818,20 +7839,26 @@ function _deductOrderItems(items, orderDate, label) {
     const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
     if(!inv) return;
     if(inv.itemType === 'fixprice') {
-      const qty = Math.max(0, parseInt(item.qty)||1);
+      // qty: prefer integer, but support decimal input (round to nearest whole)
+      const qty = Math.max(1, Math.round(parseFloat(item.qty)||1));
       const before = parseFloat(inv.qty)||0;
       inv.qty = parseFloat((before - qty).toFixed(4));
-      S.stockLog.push({ productCode:inv.code, productName:inv.name||inv.code,
+      S.stockLog.push({ productCode:inv.code, productName:inv.desc||inv.name||inv.code,
         type:'out', qty, unit:'pcs',
-        date:logDate, notes:'Stock Out – '+label, before, after:inv.qty });
+        date:logDate, notes:'Stock Out: '+(inv.desc||inv.code)+' x'+qty+' – '+label, before, after:inv.qty });
       deducted = true;
-    } else if((parseFloat(item.grams)||0) > 0) {
-      const grams = parseFloat(item.grams);
+    } else {
+      // Grams-type item: prefer item.grams, fall back to item.qty (manual entry)
+      const grams = parseFloat(item.grams)||parseFloat(item.qty)||0;
+      if(grams <= 0) {
+        console.warn('[INV] Grams=0 for', item.code, '— skipping deduction');
+        return;
+      }
       const before = parseFloat(inv.grams)||0;
       inv.grams = parseFloat((before - grams).toFixed(4));
-      S.stockLog.push({ productCode:inv.code, productName:inv.name||inv.code,
+      S.stockLog.push({ productCode:inv.code, productName:inv.desc||inv.name||inv.code,
         type:'out', qty:grams, unit:'g',
-        date:logDate, notes:'Stock Out – '+label, before, after:inv.grams });
+        date:logDate, notes:'Stock Out: '+(inv.desc||inv.code)+' '+grams+'g – '+label, before, after:inv.grams });
       deducted = true;
     }
   });
@@ -7848,20 +7875,25 @@ function _restoreOrderItems(items, orderDate, label) {
     const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
     if(!inv) return;
     if(inv.itemType === 'fixprice') {
-      const qty = Math.max(0, parseInt(item.qty)||1);
+      const qty = Math.max(1, Math.round(parseFloat(item.qty)||1));
       const before = parseFloat(inv.qty)||0;
       inv.qty = parseFloat((before + qty).toFixed(4));
-      S.stockLog.push({ productCode:inv.code, productName:inv.name||inv.code,
+      S.stockLog.push({ productCode:inv.code, productName:inv.desc||inv.name||inv.code,
         type:'return', qty, unit:'pcs',
-        date:logDate, notes:'Stock Return – '+label, before, after:inv.qty });
+        date:logDate, notes:'Stock Return: '+(inv.desc||inv.name||inv.code)+' x'+qty+' – '+label, before, after:inv.qty });
       restored = true;
-    } else if((parseFloat(item.grams)||0) > 0) {
-      const grams = parseFloat(item.grams);
+    } else {
+      // Grams-type item: prefer item.grams, fall back to item.qty (manual entry)
+      const grams = parseFloat(item.grams)||parseFloat(item.qty)||0;
+      if(grams <= 0) {
+        console.warn('[INV] Grams=0 for', item.code, '— skipping restore');
+        return;
+      }
       const before = parseFloat(inv.grams)||0;
       inv.grams = parseFloat((before + grams).toFixed(4));
-      S.stockLog.push({ productCode:inv.code, productName:inv.name||inv.code,
+      S.stockLog.push({ productCode:inv.code, productName:inv.desc||inv.name||inv.code,
         type:'return', qty:grams, unit:'g',
-        date:logDate, notes:'Stock Return – '+label, before, after:inv.grams });
+        date:logDate, notes:'Stock Return: '+(inv.desc||inv.name||inv.code)+' '+grams+'g – '+label, before, after:inv.grams });
       restored = true;
     }
   });
@@ -7961,9 +7993,16 @@ function saveOrder() {
     }
   }
 
+  // Re-compute all row totals before reading — ensures fresh values even if oninput didn't fire
+  if(typeof window.calcEnc === 'function') window.calcEnc();
+  // Re-read items AFTER calcEnc to get up-to-date totals
+  const items2 = getItems('enc-items-tbody');
   const sf2 = parseFloat(document.getElementById('enc-shipping').value)||0;
-  const iT = items.reduce((s,it) => s+it.total, 0);
-  const totalDiscount = items.reduce((s,it) => s+(it.discount||0), 0);
+  // Use items2 (freshly computed) for all downstream math
+  items.splice(0, items.length, ...items2);
+  // Round to 2dp to eliminate float accumulation across 100+ items
+  const iT = Math.round(items.reduce((s,it) => s+(it.total||0), 0) * 100) / 100;
+  const totalDiscount = Math.round(items.reduce((s,it) => s+(it.discount||0), 0) * 100) / 100;
   // FEAT3: Global/overall discount (separate from per-item discounts)
   const globalDiscount = parseFloat(document.getElementById('enc-global-discount')?.value)||0;
   const globalDiscountReason = document.getElementById('enc-global-discount-reason')?.value.trim()||'';
@@ -8025,7 +8064,7 @@ function saveOrder() {
     landmark: document.getElementById('enc-landmark').value,
     date: date || today(),
     admin, assignedRider, paymentMethod,
-    shipping: sf2, items, itemsTotal: iT, totalDiscount: totalDiscountAll, grandTotal: Math.max(0, iT + sf2 - globalDiscount),
+    shipping: sf2, items, itemsTotal: iT, totalDiscount: totalDiscountAll, grandTotal: Math.round(Math.max(0, iT + sf2 - globalDiscount) * 100) / 100,
     trackingNumber, dateOfPayment, dateOfDropoff,
     payments,
     status: 'Preparing', checkerStatus: 'Pending',
@@ -9062,7 +9101,6 @@ function renderRemitPage() {
 
       <!-- ── Expandable Body ── -->
       <div id="${safeId}" style="display:${allRemitted?'none':'block'};">
-
         <!-- Remit Log Summary -->
         <div style="padding:10px 14px 0;font-size:10.5px;font-weight:700;color:var(--gold);border-bottom:1px solid rgba(255,255,255,0.05);padding-bottom:6px;margin-bottom:4px;">
           📋 Remit Entries
@@ -10443,6 +10481,30 @@ function _confirmDelivered(orderIdx, renderFn) {
   if(currentRole==='owner') renderDash();
 }
 
+// ── COD Delivery view for Checker ────────────────────────────────
+let _codDeliveryTab = 'Delivered'; // Delivered | Cancelled | Returned
+
+// ── COD Delivery Sidebar Page ─────────────────────────────────────
+let codDeliveryTab = 'active';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function toggleLbcRow(id) {
   const el = document.getElementById('lbc-expand-'+id);
   const arrow = document.getElementById('lbc-arrow-'+id);
@@ -10453,6 +10515,16 @@ function toggleLbcRow(id) {
   if(addrEl) addrEl.style.display = hidden ? '' : 'none';
   if(arrow) arrow.textContent = hidden ? '▼' : '▶';
 }
+
+// ── Encode form collapse/expand ──────────────────────────────────
+let _encFormCollapsed = true; // default: minimized
+
+
+
+
+// Called when encode modal opens — reset collapse state
+
+
 
 function lbcdUpdateStatus(orderIdx, newStatus) {
   if(newStatus === 'RTO') { _promptRTO(orderIdx,'lbc'); return; }
