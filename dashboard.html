@@ -6604,9 +6604,8 @@ function renderPnl(){
       <span style="font-size:11px;color:var(--muted);">${label}</span>
     </div>
     ${sH('REVENUE')}
-    ${row('Total Sales (Items + Shipping − Discounts)',p(totalSales),'var(--green)',false,true)}
+    ${row('Total Sales (Items)',p(totalSales),'var(--green)',false,true)}
     ${row('  ↳ Items Sales',p(totalItemsSales),'var(--green)',true)}
-    ${row('  ↳ Shipping Collected',p(totalShippingRev),'var(--green)',true)}
     ${totalDiscountsAll>0?row('  ↳ Discounts Given','('+p(totalDiscountsAll)+')','var(--orange)',true):''}
     ${row('TOTAL COST (COGS: Cost/g×g or Cost/pc×qty)',totalCOGS?'('+p(totalCOGS)+')':'₱0.00','var(--red)',false,true)}
     ${row('GROSS PROFIT',p(grossProfit),grossProfit>=0?'var(--green)':'var(--red)',false,true)}
