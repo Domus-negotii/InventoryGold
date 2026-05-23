@@ -3094,7 +3094,7 @@ function renderMyOrders() {
     <td><span class="checker-tag ${o.checkerStatus==='Verified'?'verified':'pending'}">${o.checkerStatus}</span></td>
     <td style="display:flex;gap:3px;flex-wrap:wrap;">
       ${o.checkerStatus!=='Verified'
-        ? `<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})"></button>`
+        ? `<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>`
         : `<span style="font-size:9.5px;color:var(--muted);padding:2px 6px;">🔒 Verified</span>`}
       ${currentRole==='owner' ? `<button class="btn btn-blue btn-sm" onclick="openInvoice(${i})">🖨️</button>` : ''}
       ${o.checkerStatus!=='Verified'
@@ -3489,7 +3489,7 @@ function renderChecker(){
                 : `<button class="btn btn-outline btn-sm" onclick="togglePrinted(${i})" style="font-size:10px;padding:2px 7px;">🖨️ Print</button>`}
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
-              ${!isLocked?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>`:''}
+              ${!isLocked?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})"></button>`:''}
               ${currentRole==='owner'?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" title="CEO Edit">✏️ Edit</button>`:''}
               ${o.status==='Cancelled'
                 ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
