@@ -2637,7 +2637,7 @@ function validateDateInput(input) {
 }
 
 const onum=i=>'GOE-'+String(i+1).padStart(5,'0');
-const sclass=s=>({'In Transit':'transit','Delivering':'delivering','Delivered':'delivered','Cancelled':'cancelled','For Return':'return','Returned':'returned','Preparing':'delivering','Ready':'blue','Out for Delivery':'gold','Update':'return'}[s]||'transit');
+const sclass=s=>({'In Transit':'transit','Delivering':'delivering','Delivered':'delivered','Cancelled':'cancelled','RTO':'cancelled','For Return':'return','Returned':'returned','Preparing':'delivering','Ready':'blue','Out for Delivery':'gold','Update':'return'}[s]||'transit');
 function toast(msg,t=2500){
   // Don't overwrite an active delete confirmation toast
   if(_pendingDelete) return;
@@ -3082,7 +3082,7 @@ function renderMyOrders() {
       <div class="stat-card gold"><div class="stat-label">My Total Orders</div><div class="stat-value">${list.length}</div></div>
       <div class="stat-card blue"><div class="stat-label">In Transit</div><div class="stat-value">${list.filter(({o})=>['Preparing','Ready','Out for Delivery'].includes(o.status)).length}</div></div>
       <div class="stat-card green"><div class="stat-label">Incentive</div><div class="stat-value">${p(del.length*25)}</div><div class="stat-sub">${del.length}×₱25</div></div>
-      <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${list.filter(({o})=>['Cancelled','Update'].includes(o.status)).length}</div></div>
+      <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${list.filter(({o})=>['Cancelled','RTO','Update'].includes(o.status)).length}</div></div>
       <div class="stat-card purple"><div class="stat-label">Pending Checker</div><div class="stat-value">${list.filter(({o})=>o.checkerStatus==='Pending').length}</div></div>
     </div>`;
   }
@@ -3226,7 +3226,7 @@ function renderOrders() {
       <div class="stat-card green"><div class="stat-label">Delivered</div><div class="stat-value">${del.length}</div></div>
       <div class="stat-card blue"><div class="stat-label">In Transit</div><div class="stat-value">${list.filter(({o})=>['Preparing','Ready','Out for Delivery'].includes(o.status)).length}</div></div>
       <div class="stat-card orange"><div class="stat-label">Total Revenue</div><div class="stat-value">${p(del.reduce((s,{o})=>s+o.grandTotal,0))}</div></div>
-      <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${list.filter(({o})=>['Cancelled','Update'].includes(o.status)).length}</div></div>
+      <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${list.filter(({o})=>['Cancelled','RTO','Update'].includes(o.status)).length}</div></div>
       <div class="stat-card purple"><div class="stat-label">Pending Check</div><div class="stat-value">${list.filter(({o})=>o.checkerStatus==='Pending').length}</div></div>
     </div>`;
   }
@@ -3399,7 +3399,7 @@ function renderChecker(){
     const count = S.orders.filter(o=>
       o.paymentMethod===method &&
       (o.paymentStatus||'No Payment')==='Fully Paid' &&
-      o.status!=='Cancelled'
+      (o.status!=='Cancelled'&&o.status!=='RTO')
     ).length;
     const tabBtn = [...document.querySelectorAll('#checker-tabs .tab-btn')]
       .find(b=>b.textContent.includes(method));
@@ -3418,7 +3418,7 @@ function renderChecker(){
     const method = o.paymentMethod || 'COD';
     if(method !== checkerTab) return false;
     // Exclude cancelled orders from checker view (they go to Remitter)
-    if(o.status === 'Cancelled') return false;
+    if(o.status === 'Cancelled' || o.status === 'RTO') return false;
     // LBC/EMS/FedEx: only show Fully Paid orders — admin sets payment status, not checker
     if(_isCourierTab && (o.paymentStatus||'No Payment') !== 'Fully Paid') return false;
     if(filt && o.checkerStatus !== filt) return false;
@@ -4275,8 +4275,8 @@ function delRider(i){
 function renderDailyParcels(){
   const d=document.getElementById('daily-date').value||today();
   const filtered=S.orders.filter(o=>o.date===d);
-  const _activeFiltered=filtered.filter(o=>o.status!=='Cancelled');
-  const _cancelledFiltered=filtered.filter(o=>o.status==='Cancelled');
+  const _activeFiltered=filtered.filter(o=>o.status!=='Cancelled'&&o.status!=='RTO');
+  const _cancelledFiltered=filtered.filter(o=>o.status==='Cancelled'||o.status==='RTO');
   document.getElementById('daily-summary').textContent=`${_activeFiltered.length} parcels | Total: ${p(_activeFiltered.reduce((s,o)=>s+o.grandTotal,0))}${_cancelledFiltered.length?' | '+_cancelledFiltered.length+' cancelled':''}`;
   document.getElementById('daily-tbody').innerHTML=filtered.length?S.orders.map((o,i)=>{
     if(o.date!==d)return '';
@@ -5008,7 +5008,7 @@ function renderDailySales(){
     <div class="stats-grid">
       <div class="stat-card gold"><div class="stat-label">Encoded (${d})</div><div class="stat-value">${dayO.length}</div></div>
       <div class="stat-card green"><div class="stat-label">Sales Recognized</div><div class="stat-value">${del.length}</div></div>
-      <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${dayO.filter(o=>['Cancelled','Update'].includes(o.status)).length}</div></div>
+      <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${dayO.filter(o=>['Cancelled','RTO','Update'].includes(o.status)).length}</div></div>
       <div class="stat-card blue"><div class="stat-label">Total Remit</div><div class="stat-value">${p(overall)}</div></div>
     </div>
     <div class="two-col">
@@ -5059,7 +5059,7 @@ function printDailySales(){
         <div class="print-row"><span>GCASH</span><span>₱0.00</span></div>
         <div class="print-row total-row"><span>OVERALL</span><span>${p(overallR)}</span></div>
       </div>
-      <div class="print-box"><div class="print-box-title">Daily Parcels Summary</div><div class="print-row"><span>Total Parcels</span><span style="font-weight:700;">${dayO.length}</span></div><div class="print-row"><span>Delivered</span><span style="color:#27ae60;font-weight:700;">${del.length}</span></div><div class="print-row"><span>Cancel/Return</span><span style="color:#c0392b;font-weight:700;">${dayO.filter(o=>['Cancelled','Update'].includes(o.status)).length}</span></div></div>
+      <div class="print-box"><div class="print-box-title">Daily Parcels Summary</div><div class="print-row"><span>Total Parcels</span><span style="font-weight:700;">${dayO.length}</span></div><div class="print-row"><span>Delivered</span><span style="color:#27ae60;font-weight:700;">${del.length}</span></div><div class="print-row"><span>Cancel/Return</span><span style="color:#c0392b;font-weight:700;">${dayO.filter(o=>['Cancelled','RTO','Update'].includes(o.status)).length}</span></div></div>
     </div>
     <div class="print-section-title">Admin Daily Incentives</div>
     <table class="print-table"><thead><tr><th>Admin</th><th>Parcels Delivered</th><th>Incentive</th></tr></thead><tbody>${Object.entries(adminDel).map(([a,c])=>`<tr><td style="font-weight:600;">${a}</td><td>${c}</td><td style="color:#27ae60;font-weight:700;">${p(c*25)}</td></tr>`).join('')}<tr style="background:#fff8e8;font-weight:700;"><td>TOTAL</td><td>${del.length}</td><td>${p(del.length*25)}</td></tr></tbody></table>
@@ -6014,7 +6014,7 @@ function renderCalendar(){
     if(!dateMap[o.date])dateMap[o.date]={orders:0,delivered:0,revenue:0,cancelled:0};
     dateMap[o.date].orders++;
     if(o.status==='Delivered'){dateMap[o.date].delivered++;dateMap[o.date].revenue+=o.grandTotal;}
-    if(['Cancelled','Update'].includes(o.status))dateMap[o.date].cancelled++;
+    if(['Cancelled','RTO','Update'].includes(o.status))dateMap[o.date].cancelled++;
   });
 
   let cells='';
@@ -6057,7 +6057,7 @@ function openDayDetail(dateStr){
       <div style="background:var(--navy);border-radius:7px;padding:10px;"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Orders</div><div style="font-size:18px;font-weight:700;color:var(--blue);">${dayO.length}</div></div>
       <div style="background:var(--navy);border-radius:7px;padding:10px;"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Delivered</div><div style="font-size:18px;font-weight:700;color:var(--green);">${del.length}</div></div>
       <div style="background:var(--navy);border-radius:7px;padding:10px;"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Revenue</div><div style="font-size:16px;font-weight:700;color:var(--gold);">${p(revenue)}</div></div>
-      <div style="background:var(--navy);border-radius:7px;padding:10px;"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Cancel/Return</div><div style="font-size:18px;font-weight:700;color:var(--red);">${dayO.filter(o=>['Cancelled','Update'].includes(o.status)).length}</div></div>
+      <div style="background:var(--navy);border-radius:7px;padding:10px;"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Cancel/Return</div><div style="font-size:18px;font-weight:700;color:var(--red);">${dayO.filter(o=>['Cancelled','RTO','Update'].includes(o.status)).length}</div></div>
     </div>
     ${Object.keys(adminMap).length?`<div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Admin Incentives</div>${Object.entries(adminMap).map(([a,c])=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--navy-border);"><span style="font-weight:500;">${a}</span><span style="color:var(--green);">${c} parcels → ${p(c*25)}</span></div>`).join('')}`:''}
     ${dayO.length?`<div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 6px;">Orders</div>${dayO.map(o=>`<div style="font-size:11.5px;padding:4px 0;border-bottom:1px solid var(--navy-border);display:flex;justify-content:space-between;"><span>${o.name}</span><span><span class="status ${sclass(o.status)}">${o.status}</span> <strong style="color:var(--green);">${p(o.grandTotal)}</strong></span></div>`).join('')}`:'<div style="color:var(--muted);font-size:12px;padding:10px 0;">No orders on this date</div>'}
@@ -6099,7 +6099,7 @@ function renderCourierDashboard(){
   }
 
   const courierOrders = allCourierOrders.filter(o=>o.paymentMethod===curCourier);
-  const payTabOrders  = courierOrders.filter(o=>(o.paymentStatus||'No Payment')===curPayTab && o.status!=='Cancelled');
+  const payTabOrders  = courierOrders.filter(o=>(o.paymentStatus||'No Payment')===curPayTab && (o.status!=='Cancelled'&&o.status!=='RTO'));
 
   const canEdit = (o) => isOwner || (o.checkerStatus !== 'Verified');
 
@@ -6117,7 +6117,7 @@ function renderCourierDashboard(){
               background:${curCourier===c?'var(--gold)':'rgba(255,255,255,0.07)'};
               color:${curCourier===c?'#000':'var(--text)'};transition:all 0.15s;">
             ${c==='LBC'?'📦':'✈️'} ${c}
-            <span style="font-size:10px;margin-left:4px;opacity:0.8;">(${allCourierOrders.filter(o=>o.paymentMethod===c&&o.status!=='Cancelled').length})</span>
+            <span style="font-size:10px;margin-left:4px;opacity:0.8;">(${allCourierOrders.filter(o=>o.paymentMethod===c&&(o.status!=='Cancelled'&&o.status!=='RTO')).length})</span>
           </button>`).join('')}
       </div>
       <!-- Payment sub-tabs -->
@@ -6130,7 +6130,7 @@ function renderCourierDashboard(){
                 if(pt.key==='Cancelled') return o.status==='Cancelled';
                 return false;
               }).length
-            : courierOrders.filter(o=>(o.paymentStatus||'No Payment')===pt.key&&o.status!=='Cancelled').length;
+            : courierOrders.filter(o=>(o.paymentStatus||'No Payment')===pt.key&&(o.status!=='Cancelled'&&o.status!=='RTO')).length;
           const isActive=curPayTab===pt.key;
           return `<button onclick="window._cdPayTab='${pt.key}';renderCourierDashboard();"
             style="padding:5px 14px;font-size:11.5px;font-weight:600;
@@ -6216,7 +6216,7 @@ function renderAdminSheets(){
       if(!adminMap[a]) adminMap[a]={name:a,total:0,delivered:0,cancelled:0,revenue:0,incentive:0};
       adminMap[a].total+=share;
       if(o.status==='Delivered'){adminMap[a].delivered+=share;adminMap[a].revenue+=o.grandTotal*share;}
-      if(['Cancelled','Update'].includes(o.status)) adminMap[a].cancelled+=share;
+      if(['Cancelled','RTO','Update'].includes(o.status)) adminMap[a].cancelled+=share;
       adminMap[a].incentive=adminMap[a].delivered*25;
     });
   });
@@ -8356,7 +8356,7 @@ function setTrackingTab(tab) {
 }
 
 function renderTracking() {
-  const TRACK_STATUSES = ['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'];
+  const TRACK_STATUSES = ['Preparing','Ready','Out for Delivery','Delivered','RTO','Cancelled','Update'];
   const COD_UPDATE_STATUSES = ['Preparing','Ready for Pick-up'];
   const colors = {'Preparing':'orange','Ready':'blue','Out for Delivery':'gold','Delivered':'green','Cancelled':'red','Update':'purple'};
   // Stats — COD only
@@ -8630,7 +8630,7 @@ function populateRemitParcels() {
   const myOrders = S.orders.map((o,i)=>({...o,idx:i}))
     .filter(o=>o.assignedRider===rider.name && (!df || o.date===df));
   const delivered = myOrders.filter(o=>o.status==='Delivered');
-  const cancelled = myOrders.filter(o=>['Cancelled','Update'].includes(o.status));
+  const cancelled = myOrders.filter(o=>['Cancelled','RTO','Update'].includes(o.status));
   // Use DELIVERED-only SF for accurate deduction calculation
   const deliveredSF = delivered.reduce((s,o)=>s+(o.shipping||0),0);
   const totalSF = myOrders.reduce((s,o)=>s+(o.shipping||0),0); // gross SF display
@@ -8859,7 +8859,7 @@ function saveRemit() {
   const myOrders = S.orders.map((o,i)=>({...o,idx:i}))
     .filter(o=>o.assignedRider===rider.name && o.date===date);
   const delivered   = myOrders.filter(o=>o.status==='Delivered');
-  const cancelled   = myOrders.filter(o=>['Cancelled','Update'].includes(o.status));
+  const cancelled   = myOrders.filter(o=>['Cancelled','RTO','Update'].includes(o.status));
   const deliveredSF = delivered.reduce((s,o)=>s+(o.shipping||0),0);
   const codSubtotal = delivered.reduce((s,o)=>s+(o.grandTotal||0),0);
   const sf10        = deliveredSF * 0.10;
@@ -8997,9 +8997,9 @@ function renderRemitPage() {
       .filter(o=>o.assignedRider===riderName && (!df||o.date===df));
 
     const delivered  = riderOrders.filter(o=>o.status==='Delivered');
-    const cancelled  = riderOrders.filter(o=>o.status==='Cancelled');
+    const cancelled  = riderOrders.filter(o=>o.status==='Cancelled'||o.status==='RTO');
     const forUpdate  = riderOrders.filter(o=>o.status==='Update');
-    const inTransit  = riderOrders.filter(o=>!['Delivered','Cancelled','Update'].includes(o.status));
+    const inTransit  = riderOrders.filter(o=>!['Delivered','Cancelled','RTO','Update'].includes(o.status));
 
     // ── Per-order details: items display ──
     const renderOrderItems = (o) => {
@@ -9054,7 +9054,7 @@ function renderRemitPage() {
             </tr>`).join('')}
             <tr style="background:rgba(201,168,76,0.06);font-weight:700;">
               <td colspan="4" style="color:${titleColor};">Total</td>
-              <td style="color:${titleColor};">${p(orders.reduce((s,o)=>s+(o.status!=='Cancelled'?o.grandTotal||0:0),0))}</td>
+              <td style="color:${titleColor};">${p(orders.reduce((s,o)=>s+((o.status!=='Cancelled'&&o.status!=='RTO')?o.grandTotal||0:0),0))}</td>
               <td></td>
             </tr>
           </tbody>
@@ -9894,7 +9894,7 @@ function renderOrderMgmt() {
   // ── Filter: only Verified + Ready to Pick-up orders (no Preparing, no Cancelled) ──
   const list = S.orders.map((o,i)=>({o,i})).filter(({o}) => {
     if((o.paymentMethod||'COD') !== method) return false;
-    if(o.status === 'Cancelled') return false;
+    if(o.status === 'Cancelled' || o.status === 'RTO') return false;
     if(o.status === 'Delivered' || o.lbcStatus === 'Delivered') return false;
     // Must be Verified by checker
     if(o.verificationStatus !== 'Verified') return false;
@@ -10441,7 +10441,7 @@ function _confirmRTO(orderIdx, renderFn) {
   document.getElementById('_rto-overlay')?.remove();
   S.orders[orderIdx].rtoReason = reason;
   S.orders[orderIdx].lbcStatus = 'RTO';
-  S.orders[orderIdx].status = 'Cancelled';
+  S.orders[orderIdx].status = 'RTO'; // RTO is separate from Cancelled — stays visible in delivery tabs
   save();
   toast('↩️ Status → RTO');
   if(renderFn==='lbc') renderLbcDelivery();
@@ -10997,7 +10997,7 @@ function renderCheckerDeleted() {
     reason: o.cancelReason||'—',
     orderNum: onum(i),
     _fromActive: true
-  })).filter(o=>o.status==='Cancelled');
+  })).filter(o=>o.status==='Cancelled'||o.status==='RTO');
 
   const allDeleted = [
     ...S.deletedOrders.map(d=>({...d,_fromActive:false})),
