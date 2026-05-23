@@ -2582,6 +2582,10 @@ if(!S.specialPasswords) S.specialPasswords={remitter:'remit2026',sorter:'sort202
 if(S.inventory) S.inventory.forEach(it=>{ if(!it.itemType) it.itemType='grams'; });
 // Migrate existing orders — add new fields if missing
 if(S.orders) S.orders.forEach(o=>{
+  // Backfill dateDelivered for already-Delivered COD (for Daily Sales / PnL accuracy)
+  if(o.status==='Delivered' && (o.paymentMethod||'COD')==='COD' && !o.dateDelivered) {
+    o.dateDelivered = o.date;
+  }
   if(!o.paymentMethod) o.paymentMethod='COD';
   if(!o.paymentStatus) o.paymentStatus=(o.paymentMethod==='COD')?'COD':'No Payment';
   if(!o.paymentNotes) o.paymentNotes='';
@@ -4053,6 +4057,10 @@ function updateStatus(i,v){
   }
 
   S.orders[i].status=stored;
+  // Store delivery date for accurate Daily Sales / PnL recognition
+  if(stored === 'Delivered' && !S.orders[i].dateDelivered) {
+    S.orders[i].dateDelivered = today();
+  }
   save();
   toast('Status → '+v);
   renderTracking();
@@ -4253,7 +4261,9 @@ function delRider(i){
 function renderDailyParcels(){
   const d=document.getElementById('daily-date').value||today();
   const filtered=S.orders.filter(o=>o.date===d);
-  document.getElementById('daily-summary').textContent=`${filtered.length} parcels | Total: ${p(filtered.reduce((s,o)=>s+o.grandTotal,0))}`;
+  const _activeFiltered=filtered.filter(o=>o.status!=='Cancelled');
+  const _cancelledFiltered=filtered.filter(o=>o.status==='Cancelled');
+  document.getElementById('daily-summary').textContent=`${_activeFiltered.length} parcels | Total: ${p(_activeFiltered.reduce((s,o)=>s+o.grandTotal,0))}${_cancelledFiltered.length?' | '+_cancelledFiltered.length+' cancelled':''}`;
   document.getElementById('daily-tbody').innerHTML=filtered.length?S.orders.map((o,i)=>{
     if(o.date!==d)return '';
     return `<tr onclick="openDailyDetail(${i})" style="cursor:pointer;" title="Click to view order details">
@@ -4948,8 +4958,14 @@ function renderDailySales(){
   if(!document.getElementById('ds-date').value)document.getElementById('ds-date').value=today();
   const d=document.getElementById('ds-date').value;
   const allO=S.orders;
-  // COD: counted on delivery date (o.date) when status is Delivered
-  const codDel = allO.filter(o=>o.date===d && o.status==='Delivered' && (o.paymentMethod||'COD')==='COD');
+  // COD: counted on dateDelivered (actual delivery date), falling back to encode date o.date
+  // This ensures orders encoded on one day but delivered on another are counted correctly
+  const codDel = allO.filter(o=>{
+    if(o.status!=='Delivered') return false;
+    if((o.paymentMethod||'COD')!=='COD') return false;
+    const delivDate = o.dateDelivered || o.date; // use actual delivery date
+    return delivDate === d;
+  });
   // LBC/EMS/FedEx: counted on Full Payment Date (o.dateOfPayment), must be Verified
   const courierDel = allO.filter(o=>
     (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx') &&
@@ -5048,7 +5064,7 @@ let payTab='daily';
 function switchPayTab(t){payTab=t;document.querySelectorAll('#pay-tabs .tab-btn').forEach((b,i)=>b.classList.toggle('active',['daily','weekly'][i]===t));renderPayroll(t);}
 function renderPayroll(tab){
   const el=document.getElementById('payroll-content');
-  const list=S.payroll.filter(i=>i.period===tab);
+  const list=(S.payroll||[]).filter(i=>i.period===tab);
   el.innerHTML=`<div class="stats-grid">
     <div class="stat-card gold"><div class="stat-label">Total Salaries</div><div class="stat-value">${p(list.reduce((s,i)=>s+(i.totalSalary||0),0))}</div></div>
     <div class="stat-card green"><div class="stat-label">Parcel Incentives</div><div class="stat-value">${p(list.reduce((s,i)=>s+(i.parcelInc||0),0))}</div></div>
@@ -5057,7 +5073,7 @@ function renderPayroll(tab){
   </div>
   <div class="card"><div class="table-wrap"><table>
     <thead><tr><th>Employee</th><th>Role</th><th>Date</th><th>Base Pay</th><th>Parcel Inc.</th><th>Other Inc.</th><th>SSS</th><th>PhilHealth</th><th>Pag-IBIG</th><th>W/Tax</th><th>Other D.</th><th>Total Salary</th><th>Actions</th></tr></thead>
-    <tbody>${list.length?list.map(item=>{const gi=S.payroll.indexOf(item);return `<tr>
+    <tbody>${list.length?list.map(item=>{const gi=(S.payroll||[]).indexOf(item);return `<tr>
       <td style="font-weight:600;">${item.name}</td><td>${item.role}</td><td>${item.date||'—'}</td>
       <td>${p(item.basePay)}</td>
       <td style="color:var(--green);">${p(item.parcelInc)}</td>
@@ -5323,11 +5339,11 @@ function delPay(i){_confirmDel(`Delete payroll entry for "${S.payroll[i]?.name}"
 
 // ============ EXPENSES ============
 function renderExpenses(){
-  const total=S.expenses.reduce((s,e)=>s+parseFloat(e.amount||0),0);
-  const thisMonth=S.expenses.filter(e=>e.date?.startsWith(new Date().toISOString().slice(0,7))).reduce((s,e)=>s+parseFloat(e.amount||0),0);
-  document.getElementById('exp-stats').innerHTML=`<div class="stat-card red"><div class="stat-label">Total Expenses</div><div class="stat-value">${p(total)}</div></div><div class="stat-card orange"><div class="stat-label">This Month</div><div class="stat-value">${p(thisMonth)}</div></div><div class="stat-card blue"><div class="stat-label">Entries</div><div class="stat-value">${S.expenses.length}</div></div>`;
-  document.getElementById('expense-tbody').innerHTML=[...S.expenses].reverse().map((e,ri)=>{
-    const i=S.expenses.length-1-ri;
+  const total=(S.expenses||[]).reduce((s,e)=>s+parseFloat(e.amount||0),0);
+  const thisMonth=(S.expenses||[]).filter(e=>e.date?.startsWith(new Date().toISOString().slice(0,7))).reduce((s,e)=>s+parseFloat(e.amount||0),0);
+  document.getElementById('exp-stats').innerHTML=`<div class="stat-card red"><div class="stat-label">Total Expenses</div><div class="stat-value">${p(total)}</div></div><div class="stat-card orange"><div class="stat-label">This Month</div><div class="stat-value">${p(thisMonth)}</div></div><div class="stat-card blue"><div class="stat-label">Entries</div><div class="stat-value">${(S.expenses||[]).length}</div></div>`;
+  document.getElementById('expense-tbody').innerHTML=[...(S.expenses||[])].reverse().map((e,ri)=>{
+    const i=(S.expenses||[]).length-1-ri;
     return `<tr><td>${e.date}</td><td>${e.desc}</td><td><span class="status blue" style="font-size:9.5px;">${e.category}</span></td><td style="color:var(--red);font-weight:600;">${p(e.amount)}</td>
     <td style="display:flex;gap:3px;"><button class="btn btn-outline btn-sm" onclick="openEditExp(${i})">✏️</button><button class="btn btn-red btn-sm" onclick="delExp(${i})">🗑️</button></td></tr>`;
   }).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:26px;">No expenses</td></tr>';
@@ -6452,7 +6468,11 @@ function setPnlRange(preset) {
     document.getElementById('pnl-from').value = fmt(now);
     document.getElementById('pnl-to').value   = fmt(now);
   } else if(preset==='week') {
-    const wStart = new Date(now); wStart.setDate(now.getDate()-now.getDay());
+    const wStart = new Date(now);
+    // Week starts Monday (day 1); Sunday (day 0) goes back 6 days
+    const day = now.getDay(); // 0=Sun, 1=Mon...6=Sat
+    const diff = day === 0 ? 6 : day - 1; // days since Monday
+    wStart.setDate(now.getDate() - diff);
     document.getElementById('pnl-from').value = fmt(wStart);
     document.getElementById('pnl-to').value   = fmt(now);
   } else if(preset==='month') {
@@ -6480,16 +6500,25 @@ function renderPnl(){
   const fP = S.payroll.filter(i=>i.date>=from && i.date<=to);
 
   // === SALES (New structure: exclude shipping from Total Sales) ===
-  const codDelivered = S.orders.filter(o=>
-    o.status==='Delivered' && (o.paymentMethod||'COD')==='COD' && o.date>=from && o.date<=to);
+  // COD: use dateDelivered for accurate period matching; fall back to encode date
+  const codDelivered = S.orders.filter(o=>{
+    if(o.status!=='Delivered') return false;
+    if((o.paymentMethod||'COD')!=='COD') return false;
+    const delivDate = o.dateDelivered || o.date;
+    return delivDate>=from && delivDate<=to;
+  });
   const courierVerified = S.orders.filter(o=>
     (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx') &&
     o.paymentStatus==='Fully Paid' && o.verificationStatus==='Verified' &&
     (o.dateOfPayment||'').slice(0,10)>=from && (o.dateOfPayment||'').slice(0,10)<=to);
   const incomeOrders = [...codDelivered, ...courierVerified];
 
-  // TOTAL SALES = product price only (itemsTotal), NO shipping fee
-  const totalSales = incomeOrders.reduce((s,o)=>s+o.itemsTotal,0);
+  // TOTAL SALES = grandTotal (items + shipping - discounts) = what customer actually paid
+  // This matches Dashboard revenue and Daily Sales figures exactly
+  const totalSales = incomeOrders.reduce((s,o)=>s+(o.grandTotal||0),0);
+  const totalItemsSales = incomeOrders.reduce((s,o)=>s+(o.itemsTotal||0),0);
+  const totalShippingRev = incomeOrders.reduce((s,o)=>s+(parseFloat(o.shipping)||0),0);
+  const totalDiscountsAll = incomeOrders.reduce((s,o)=>s+(parseFloat(o.totalDiscount)||0),0);
   // TOTAL COST = cost of goods sold (pergram × grams or pergram × qty for each item)
   // ── COGS helper: look up capital/cost price from inventory by product code ──
   // order items store the SELLING price (pergram / fixPrice), NOT the cost price.
@@ -6554,7 +6583,10 @@ function renderPnl(){
       <span style="font-size:11px;color:var(--muted);">${label}</span>
     </div>
     ${sH('REVENUE')}
-    ${row('TOTAL SALES (Products only — excl. Shipping)',p(totalSales),'var(--green)',false,true)}
+    ${row('Total Sales (Items + Shipping − Discounts)',p(totalSales),'var(--green)',false,true)}
+    ${row('  ↳ Items Sales',p(totalItemsSales),'var(--green)',true)}
+    ${row('  ↳ Shipping Collected',p(totalShippingRev),'var(--green)',true)}
+    ${totalDiscountsAll>0?row('  ↳ Discounts Given','('+p(totalDiscountsAll)+')','var(--orange)',true):''}
     ${row('TOTAL COST (COGS: Cost/g×g or Cost/pc×qty)',totalCOGS?'('+p(totalCOGS)+')':'₱0.00','var(--red)',false,true)}
     ${row('GROSS PROFIT',p(grossProfit),grossProfit>=0?'var(--green)':'var(--red)',false,true)}
     ${div}
@@ -6572,10 +6604,10 @@ function renderPnl(){
   document.getElementById('pnl-breakdown').innerHTML=`
     <div class="card">
       <div class="card-header"><span class="card-title">Sales Breakdown</span></div>
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">COD Delivered</span><span><strong>${codDelivered.length}</strong> — ${p(codDelivered.reduce((s,o)=>s+o.itemsTotal,0))}</span></div>
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">LBC Verified</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='LBC').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='LBC').reduce((s,o)=>s+o.itemsTotal,0))}</span></div>
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">EMS Verified</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='EMS').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='EMS').reduce((s,o)=>s+o.itemsTotal,0))}</span></div>
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">FedEx Verified</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='FedEx').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='FedEx').reduce((s,o)=>s+o.itemsTotal,0))}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">COD Delivered</span><span><strong>${codDelivered.length}</strong> — ${p(codDelivered.reduce((s,o)=>s+(o.grandTotal||0),0))}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">LBC Verified</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='LBC').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='LBC').reduce((s,o)=>s+(o.grandTotal||0),0))}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">EMS Verified</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='EMS').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='EMS').reduce((s,o)=>s+(o.grandTotal||0),0))}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">FedEx Verified</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='FedEx').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='FedEx').reduce((s,o)=>s+(o.grandTotal||0),0))}</span></div>
       <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;font-weight:700;"><span>Total Parcels</span><span style="color:var(--green);">${incomeOrders.length}</span></div>
     </div>
     <div class="card" style="margin-top:13px;">
@@ -6594,13 +6626,19 @@ function printPnl(){
   const from = document.getElementById('pnl-from')?.value || today();
   const to   = document.getElementById('pnl-to')?.value   || today();
   const label = from===to ? from : `${from} → ${to}`;
-  const codDelivered = S.orders.filter(o=>o.status==='Delivered'&&(o.paymentMethod||'COD')==='COD'&&o.date>=from&&o.date<=to);
+  const codDelivered = S.orders.filter(o=>{
+    if(o.status!=='Delivered') return false;
+    if((o.paymentMethod||'COD')!=='COD') return false;
+    const delivDate = o.dateDelivered || o.date;
+    return delivDate>=from && delivDate<=to;
+  });
   const courierVerified = S.orders.filter(o=>
     (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx')&&
     o.paymentStatus==='Fully Paid'&&o.verificationStatus==='Verified'&&
     (o.dateOfPayment||'').slice(0,10)>=from&&(o.dateOfPayment||'').slice(0,10)<=to);
   const incomeOrders=[...codDelivered,...courierVerified];
-  const totalSales=incomeOrders.reduce((s,o)=>s+o.itemsTotal,0);
+  const totalSales=incomeOrders.reduce((s,o)=>s+(o.grandTotal||0),0);
+  const totalShippingRevPrint=incomeOrders.reduce((s,o)=>s+(parseFloat(o.shipping)||0),0);
   const totalCOGS=incomeOrders.reduce((s,o)=>{
     return s+(o.items||[]).reduce((is,it)=>{
       const inv=(S.inventory||[]).find(p=>p.code&&it.code&&p.code.toUpperCase()===it.code.toUpperCase());
@@ -7663,6 +7701,10 @@ function riderUpdateStatus(orderIdx, newStatus) {
   };
   const storedStatus = statusMap[newStatus] || newStatus;
   S.orders[orderIdx].status = storedStatus;
+  // Store actual delivery date for accurate Daily Sales & PnL recognition
+  if(storedStatus === 'Delivered' && !S.orders[orderIdx].dateDelivered) {
+    S.orders[orderIdx].dateDelivered = today();
+  }
   save(); toast('Status updated → ' + newStatus);
   renderRiderParcels();
   refreshUpdateBadge();
@@ -9150,7 +9192,7 @@ function saveCashbond() {
 function renderCashbondPage() {
   const el = document.getElementById('cashbond-page-content'); if(!el) return;
   const df = document.getElementById('cashbond-page-date')?.value||'';
-  let log = S.cashbondLog;
+  let log = S.cashbondLog||[];
   if(df) log = log.filter(e=>e.date===df);
   if(!log.length) {
     el.innerHTML = `<div class="card"><p style="color:var(--muted);padding:20px;text-align:center;">Walang cashbond entries${df?' para sa petsang ito':''}.</p></div>`;
@@ -9158,7 +9200,7 @@ function renderCashbondPage() {
   }
   // Group by person
   const byPerson = {};
-  log.forEach(e=>{ if(!byPerson[e.person]) byPerson[e.person]=[]; byPerson[e.person].push({...e, idx:S.cashbondLog.indexOf(e)}); });
+  log.forEach(e=>{ if(!byPerson[e.person]) byPerson[e.person]=[]; byPerson[e.person].push({...e, idx:(S.cashbondLog||[]).indexOf(e)}); });
   el.innerHTML = `<div class="stats-grid" style="margin-bottom:13px;">
     <div class="stat-card gold"><div class="stat-label">Contributors</div><div class="stat-value">${Object.keys(byPerson).length}</div></div>
     <div class="stat-card green"><div class="stat-label">Total Collected</div><div class="stat-value">${p(log.reduce((s,e)=>s+e.amount,0))}</div></div>
@@ -10205,6 +10247,7 @@ function renderLbcDelivery() {
   const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
     const pm = o.paymentMethod||'COD';
     if(pm !== 'LBC') return false;
+    if(o.status === 'Cancelled') return false;
     if((o.lbcStatus||'') !== activeStatus) return false;
     if(df && o.date !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q)
@@ -10450,6 +10493,7 @@ function renderEmsDelivery() {
   // EMS orders only with matching lbcStatus
   const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
     if(o.paymentMethod !== 'EMS') return false;
+    if(o.status === 'Cancelled') return false;
     if((o.lbcStatus||'') !== activeStatus) return false;
     if(df && o.date !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q)
@@ -10755,6 +10799,7 @@ function renderFedexDelivery() {
 
   const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
     if(o.paymentMethod !== 'FedEx') return false;
+    if(o.status === 'Cancelled') return false;
     if((o.lbcStatus||'') !== activeStatus) return false;
     if(df && o.date !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q)
