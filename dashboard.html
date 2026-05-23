@@ -6538,7 +6538,8 @@ function renderPnl(){
   // This matches Dashboard revenue and Daily Sales figures exactly
   const totalSales = incomeOrders.reduce((s,o)=>s+(o.grandTotal||0),0);
   const totalItemsSales = incomeOrders.reduce((s,o)=>s+(o.itemsTotal||0),0);
- 
+  const totalShippingRev = incomeOrders.reduce((s,o)=>s+(parseFloat(o.shipping)||0),0);
+  const totalDiscountsAll = incomeOrders.reduce((s,o)=>s+(parseFloat(o.totalDiscount)||0),0);
   // TOTAL COST = cost of goods sold (pergram × grams or pergram × qty for each item)
   // ── COGS helper: look up capital/cost price from inventory by product code ──
   // order items store the SELLING price (pergram / fixPrice), NOT the cost price.
@@ -6603,8 +6604,9 @@ function renderPnl(){
       <span style="font-size:11px;color:var(--muted);">${label}</span>
     </div>
     ${sH('REVENUE')}
-    ${row('Total Sales (Items)',p(totalSales),'var(--green)',false,true)}
+    ${row('Total Sales (Items + Shipping − Discounts)',p(totalSales),'var(--green)',false,true)}
     ${row('  ↳ Items Sales',p(totalItemsSales),'var(--green)',true)}
+    ${row('  ↳ Shipping Collected',p(totalShippingRev),'var(--green)',true)}
     ${totalDiscountsAll>0?row('  ↳ Discounts Given','('+p(totalDiscountsAll)+')','var(--orange)',true):''}
     ${row('TOTAL COST (COGS: Cost/g×g or Cost/pc×qty)',totalCOGS?'('+p(totalCOGS)+')':'₱0.00','var(--red)',false,true)}
     ${row('GROSS PROFIT',p(grossProfit),grossProfit>=0?'var(--green)':'var(--red)',false,true)}
@@ -7589,7 +7591,6 @@ function renderRiderParcels() {
                 onchange="riderItemStatus(${o.idx},${ii},this.value)">
                 <option${itemSt==='Pending'?' selected':''}>Pending</option>
                 <option${itemSt==='Delivered'?' selected':''}>Delivered</option>
-                <option${itemSt==='For update'?' selected':''}>For Update</option>
                 <option${itemSt==='Cancelled'?' selected':''}>Cancelled (All)</option>
               </select>`
             }
