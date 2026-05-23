@@ -172,8 +172,9 @@ select.form-control{cursor:pointer;}
 /* TABS */
 .section-tabs{display:flex;gap:6px;flex-wrap:wrap;}
 .tab-btn{padding:5px 13px;border-radius:7px;border:1px solid var(--navy-border);background:transparent;color:var(--muted);cursor:pointer;font-size:11.5px;font-family:var(--fb);transition:all 0.18s;}
-.tab-btn.active{background:transparent;color:var(--gold);border-color:transparent;border-bottom:2px solid var(--gold);font-weight:700;padding-bottom:5px;box-shadow:none !important;}
-.tab-btn:focus,.tab-btn:focus-visible,.tab-btn.active:focus,.tab-btn.active:focus-visible{outline:none;box-shadow:none !important;background:transparent !important;}
+.tab-btn.active{background:var(--gold);color:#1a1a2e;border-color:var(--gold);border-bottom:2px solid var(--gold);font-weight:700;padding-bottom:5px;box-shadow:none !important;border-radius:7px;}
+.tab-btn:focus,.tab-btn:focus-visible{outline:none;box-shadow:none !important;}
+.tab-btn.active:focus,.tab-btn.active:focus-visible{outline:none;box-shadow:none !important;background:var(--gold) !important;color:#1a1a2e !important;}
 .tab-btn:hover:not(.active){border-color:transparent;color:var(--gold);border-bottom:2px solid rgba(201,168,76,0.35);padding-bottom:5px;}
 
 /* RIDER LOCATION TABS */
@@ -566,6 +567,7 @@ async function _directWriteFirebase(data, opts){
     });
     if(r.ok){
       _lastKnownWriteTs = Date.now();
+      window._dwfRetryCount = 0; // reset retry counter on success
       _setSyncStatus('online','var(--green)','☁ Synced ✓');
       setTimeout(()=>_setSyncStatus('online','var(--green)','☁ Online'),2500);
       return true;
@@ -576,6 +578,18 @@ async function _directWriteFirebase(data, opts){
     }
   } catch(e) {
     console.warn('Firebase sync error:',e.message);
+    _setSyncStatus('error','var(--red)','⚠ Sync Error — Retrying...');
+    // Auto-retry with exponential backoff (1.5s, 3s) — critical for 30-50 user stability
+    window._dwfRetryCount = (window._dwfRetryCount||0) + 1;
+    if(window._dwfRetryCount <= 2) {
+      const delay = 1500 * window._dwfRetryCount;
+      setTimeout(async()=>{
+        try{ if(window._fbReady) await _directWriteFirebase(); }catch(e2){}
+      }, delay);
+    } else {
+      window._dwfRetryCount = 0;
+      toast('⚠ Sync failed. Please check your connection.');
+    }
     _setSyncStatus('offline','var(--muted)','● Offline');
     return false;
   } finally {
@@ -1099,12 +1113,11 @@ function _showRulesHint() {
     </div>
     <!-- Shipping method tabs -->
     <div class="section-tabs no-print" style="margin-bottom:13px;" id="checker-tabs">
-      <button class="tab-btn active" onclick="setCheckerTab('COD')">🏍️ COD</button>
-      <button class="tab-btn" onclick="setCheckerTab('LBC')">📦 LBC</button>
-      <button class="tab-btn" onclick="setCheckerTab('EMS')">✈️ EMS</button>
-      <button class="tab-btn" onclick="setCheckerTab('FedEx')">📦 FedEx</button>
-      <button class="tab-btn" onclick="setCheckerTab('UPDATE')" id="checker-tab-update-btn">🔔 For Update</button>
-      <button class="tab-btn" onclick="setCheckerTab('DELETED')" id="checker-tab-deleted-btn">🗑️ Recently Deleted</button>
+      <button class="tab-btn active" data-tab="COD" onclick="setCheckerTab('COD')">🏍️ COD</button>
+      <button class="tab-btn" data-tab="LBC" onclick="setCheckerTab('LBC')">📦 LBC</button>
+      <button class="tab-btn" data-tab="EMS" onclick="setCheckerTab('EMS')">✈️ EMS</button>
+      <button class="tab-btn" data-tab="FedEx" onclick="setCheckerTab('FedEx')">📦 FedEx</button>
+      <button class="tab-btn" data-tab="DELETED" onclick="setCheckerTab('DELETED')" id="checker-tab-deleted-btn">🗑️ Recently Deleted</button>
     </div>
     <div class="card no-print">
       <div class="card-header">
@@ -1895,9 +1908,10 @@ function _showRulesHint() {
     <div class="action-row no-print" style="flex-wrap:wrap;gap:10px;">
       <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
         <div class="section-tabs" style="margin:0;" id="coddelivery-tabs">
-          <button class="tab-btn active" onclick="setCodDelivTab('Delivered')">✅ Delivered</button>
-          <button class="tab-btn" onclick="setCodDelivTab('Cancelled')">🚫 Cancelled</button>
-          <button class="tab-btn" onclick="setCodDelivTab('Returned')">↩️ Returned</button>
+          <button class="tab-btn active" data-tab="ForUpdate" onclick="setCodDelivTab('ForUpdate')">🔔 For Update</button>
+          <button class="tab-btn" data-tab="Cancelled" onclick="setCodDelivTab('Cancelled')">🚫 Cancelled</button>
+          <button class="tab-btn" data-tab="Returned" onclick="setCodDelivTab('Returned')">↩️ Returned</button>
+          <button class="tab-btn" data-tab="Delivered" onclick="setCodDelivTab('Delivered')">✅ Delivered</button>
         </div>
       </div>
       <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
@@ -2756,7 +2770,7 @@ function gotoPage(name){
 function renderPage(n){
   ({dashboard:()=>{applyDashCeoLock();if(currentRole==='owner')renderDash();},
     riderdash:()=>{},calendar:()=>{if(currentRole==='owner')renderCalendar();else{const p2=document.getElementById('page-calendar');if(p2)p2.innerHTML='<div style="text-align:center;padding:60px;"><div style="font-size:48px;">🔐</div><div style="font-family:var(--fh);font-size:20px;color:var(--gold);margin:10px 0;">CEO Only</div><p style="color:var(--muted);">Sales Calendar is restricted to CEO access.</p></div>';}},
-    orders:initOrdersPage,checker:()=>setCheckerTab(checkerTab),tracking:()=>{renderTracking();refreshUpdateBadge();},ordermgmt:renderOrderMgmt,lbcdelivery:renderLbcDelivery,emsdelivery:renderEmsDelivery,fedexdelivery:renderFedexDelivery,coddelivery:renderCodDelivPage,
+    orders:initOrdersPage,checker:()=>setCheckerTab(checkerTab),tracking:()=>{renderTracking();refreshUpdateBadge();},ordermgmt:renderOrderMgmt,lbcdelivery:renderLbcDelivery,emsdelivery:renderEmsDelivery,fedexdelivery:renderFedexDelivery,coddelivery:()=>{ _codDelivTab='ForUpdate'; renderCodDelivPage(); },
     riders:renderRiders,dailyparcels:renderDailyParcels,sorting:renderSorting,returns:renderReturns,deletedorders:renderDeletedOrders,
     dailysales:renderDailySales,payroll:()=>renderPayroll(payTab),expenses:renderExpenses,
     pnl:renderPnl,inventory:()=>switchInvTab(invTab),adminsheets:renderAdminSheets,settings:renderSettings,
@@ -3076,7 +3090,7 @@ function initOrdersPage() {
     _renderOwnerOrdersView();
   }
   // Always render the courier dashboard below (for both admin and owner)
-  setTimeout(()=>{ try{ renderCourierDashboard(); }catch(e){} }, 50);
+  setTimeout(()=>{ try{ renderCourierDashboard(); }catch(e){ console.warn('[Courier]',e); } }, 120);
 }
 
 // ── ADMIN VIEW: Personal sheet only ────────────────────────────
@@ -3416,8 +3430,10 @@ let checkerTab = 'COD';
 
 function setCheckerTab(tab) {
   checkerTab = tab;
-  document.querySelectorAll('#checker-tabs .tab-btn').forEach((b,i) =>
-    b.classList.toggle('active', ['LBC','EMS','FedEx','UPDATE','DELETED'][i] === tab));
+  // Value-based active state via data-tab attribute (reliable, no regex)
+  document.querySelectorAll('#checker-tabs .tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
   const labels = {COD:'🏍️ COD – Checker Queue', LBC:'📦 LBC – Checker Queue', EMS:'✈️ EMS – Checker Queue', FedEx:'📦 FedEx – Checker Queue', UPDATE:'🔔 For Update – COD Parcels', DELETED:'🗑️ Recently Deleted / Cancelled'};
   // Show/hide the right panel
   const tableArea = document.getElementById('checker-table-area');
@@ -3931,8 +3947,8 @@ function openInvoice(i){
   const bizAddress=biz.address||'Las Pinas City, Metro Manila, PH';
   const bizPhone=biz.contact||'0917-130-7239';
   const bizFb=biz.social||'FB: Goldchelle Online Enterprise';
-  // Admin name = logged-in user
-  const adminName = (currentUser&&currentUser.name&&currentUser.name!=='Owner') ? currentUser.name : (o.admin||'');
+  // Admin name = the ENCODER (locked to order data, not print session user)
+  const adminName = o.admin || o.encodedBy || o.adminName || (currentUser?.name||'')
 
   // ── Build thermal-optimised receipt HTML (74 mm, B&W) ──────────────
   const W  = 'width:100%;';
@@ -3979,7 +3995,7 @@ function openInvoice(i){
     ${fld('Name:',o.name)}
     ${fld('Address:',o.address+(o.landmark?' — '+o.landmark:''))}
     ${fld('Contact:',o.contact+(o.backupContact?' / '+o.backupContact:''))}
-    ${fld('Admin:', o.adminList && o.adminList.length>1 ? o.adminList.join(' / ') : adminName)}
+    ${fld('Admin:', o.admin || adminName)}
     ${fld('Date:',o.date)}
     ${fld('Method:',o.paymentMethod||'COD')}
   ${(o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||(o.paymentMethod==='FedEx'&&o.trackingNumber))?fld('Tracking #:',o.trackingNumber):''}
@@ -4353,8 +4369,8 @@ function renderDailyParcels(){
   const d=document.getElementById('daily-date').value||today();
   const filtered=S.orders.filter(o=>o.date===d);
   const _activeFiltered=filtered.filter(o=>o.status!=='Cancelled'&&o.status!=='RTO');
-  const _cancelledFiltered=filtered.filter(o=>o.status==='Cancelled'||o.status==='RTO');
-  document.getElementById('daily-summary').textContent=`${_activeFiltered.length} parcels | Total: ${p(_activeFiltered.reduce((s,o)=>s+o.grandTotal,0))}${_cancelledFiltered.length?' | '+_cancelledFiltered.length+' cancelled':''}`;
+  const _cancelledFiltered=filtered.filter(o=>['Cancelled','RTO'].includes(o.status));
+  document.getElementById('daily-summary').textContent=`${_activeFiltered.length} parcels | Total: ${p(_activeFiltered.reduce((s,o)=>s+o.grandTotal,0))}${_cancelledFiltered.length?' | '+_cancelledFiltered.length+' void/RTO':''}`;
   document.getElementById('daily-tbody').innerHTML=filtered.length?S.orders.map((o,i)=>{
     if(o.date!==d)return '';
     return `<tr onclick="openDailyDetail(${i})" style="cursor:pointer;" title="Click to view order details">
@@ -6155,8 +6171,21 @@ if(typeof window._cdPayTab    === 'undefined') window._cdPayTab    = 'No Payment
 function renderCourierDashboard(){
   const el = document.getElementById('courier-dashboard-content');
   if(!el) return;
+  if(!S.orders){
+    el.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:12px;">⏳ Loading courier data...</div>';
+    setTimeout(()=>{try{renderCourierDashboard();}catch(e){}},600);
+    return;
+  }
 
   const COURIER_TABS = ['LBC','EMS','FedEx','COD'];
+
+  // ── State vars must be defined BEFORE PAYMENT_TABS (which uses curCourier) ──
+  const curCourier = window._cdCourierTab || 'LBC';
+  const _rawPayTab = window._cdPayTab || 'No Payment';
+  // When COD is active, payment keys like 'No Payment'/'Partial'/'Fully Paid' don't apply — default to 'Delivered'
+  const curPayTab = curCourier==='COD' && !['Delivered','Cancelled','Returned'].includes(_rawPayTab)
+    ? 'Delivered' : _rawPayTab;
+
   // For COD: logistical sub-tabs; for LBC/EMS/FedEx: payment sub-tabs
   const COD_TABS = [
     {key:'Delivered',  label:'✅ Delivered',  color:'var(--green)'},
@@ -6170,16 +6199,11 @@ function renderCourierDashboard(){
     {key:'Delivered',  label:'📦 Delivered',  color:'var(--blue)'},
   ];
 
-  const curCourier = window._cdCourierTab || 'LBC';
-  const _rawPayTab = window._cdPayTab || 'No Payment';
-  // When COD is active, payment keys like 'No Payment'/'Partial'/'Fully Paid' don't apply — default to 'Delivered'
-  const curPayTab = curCourier==='COD' && !['Delivered','Cancelled','Returned'].includes(_rawPayTab)
-    ? 'Delivered' : _rawPayTab;
   const loggedAdmin = currentUser?.name || '';
   const isOwner = currentRole === 'owner';
 
   // For admin: only their own orders. For owner: all orders.
-  let allCourierOrders = S.orders.map((o,i)=>({...o,idx:i}))
+  let allCourierOrders = (S.orders||[]).map((o,i)=>({...o,idx:i}))
     .filter(o=>{
       const pm = o.paymentMethod||'COD';
       return ['COD','LBC','EMS','FedEx'].includes(pm);
@@ -6238,7 +6262,7 @@ function renderCourierDashboard(){
               background:${curCourier===c?'var(--gold)':'rgba(255,255,255,0.07)'};
               color:${curCourier===c?'#000':'var(--text)'};transition:all 0.15s;">
             ${c==='COD'?'🏍️':c==='LBC'?'📦':'✈️'} ${c}
-            <span style="font-size:10px;margin-left:4px;opacity:0.8;">(${allCourierOrders.filter(o=>(o.paymentMethod||'COD')===c&&(o.status!=='Cancelled'&&o.status!=='RTO')).length})</span>
+            <span style="font-size:10px;margin-left:4px;opacity:0.8;">(${allCourierOrders.filter(o=>(o.paymentMethod||'COD')===c).length})</span>
           </button>`).join('')}
       </div>
       <!-- Payment sub-tabs -->
@@ -6844,10 +6868,10 @@ function renderDash(){
     <div class="stat-card orange"><div class="stat-label">Today</div><div class="stat-value">${todayO}</div><div class="stat-sub">Orders encoded</div></div>
     <div class="stat-card red"><div class="stat-label">Pending Verify</div><div class="stat-value">${pending}</div><div class="stat-sub">Checker queue</div></div>
     <div class="stat-card purple"><div class="stat-label">Expenses</div><div class="stat-value">${p(expTotal)}</div><div class="stat-sub">Total recorded</div></div>`;
-  const statuses=['Preparing','Ready','Out for Delivery','Delivered','Cancelled','Update'];
+  const statuses=['Preparing','Ready','Out for Delivery','Delivered','RTO','Cancelled','Update'];
   document.getElementById('dash-status').innerHTML=statuses.map(s=>{
     const cnt=S.orders.filter(o=>o.status===s).length,pct=total?Math.round(cnt/total*100):0;
-    const sc = {'Preparing':'orange','Ready':'blue','Out for Delivery':'gold','Delivered':'green','Cancelled':'red','Update':'return'}[s]||'transit';
+    const sc = {'Preparing':'orange','Ready':'blue','Out for Delivery':'gold','Delivered':'green','RTO':'cancelled','Cancelled':'red','Update':'return'}[s]||'transit';
     return `<div style="margin-bottom:8px;"><div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px;"><span class="status ${sc}">${s}</span><span style="color:var(--muted);">${cnt} (${pct}%)</span></div><div style="background:var(--navy-border);border-radius:3px;height:4px;"><div style="background:var(--gold);width:${pct}%;height:4px;border-radius:3px;"></div></div></div>`;
   }).join('');
   const adminDel={};
@@ -7332,6 +7356,8 @@ async function save(){
   }
   // Firebase-only: write immediately, no localStorage data cache
   if(window._fbReady) {
+    // Bump local timestamp BEFORE write so SAR doesn't skip our own update
+    _lastKnownWriteTs = Date.now() - 1;
     await _directWriteFirebase();
   }
 }
@@ -9205,7 +9231,7 @@ function renderRemitPage() {
       <div class="card-header" style="cursor:pointer;user-select:none;" onclick="toggleRemitRider('${safeId}')">
         <span class="card-title" style="font-size:14px;">
           🏍️ ${riderName}
-          <span id="${safeId}_arrow" style="font-size:11px;color:var(--muted);margin-left:8px;">${allRemitted?'▶':'▼'}</span>
+          <span id="${safeId}_arrow" style="font-size:11px;color:var(--muted);margin-left:8px;">▶</span>
         </span>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;" onclick="event.stopPropagation()">
           <span style="font-size:11px;color:var(--muted);">${entries.length} entry/entries · ${remittedCount} Remitted</span>
@@ -9218,7 +9244,7 @@ function renderRemitPage() {
       </div>
 
       <!-- ── Expandable Body ── -->
-      <div id="${safeId}" style="display:${allRemitted?'none':'block'};">
+      <div id="${safeId}" style="display:none;">
         <!-- Remit Log Summary -->
         <div style="padding:10px 14px 0;font-size:10.5px;font-weight:700;color:var(--gold);border-bottom:1px solid rgba(255,255,255,0.05);padding-bottom:6px;margin-bottom:4px;">
           📋 Remit Entries
@@ -9915,11 +9941,22 @@ function startAutoRefresh(){
       const fbData = await window.loadFromFirebase();
       if(!fbData) return;
 
+      // MODAL GUARD: If user has the encode modal open, preserve their
+      // in-progress order edits — skip overwriting S.orders until they close it.
+      // Other arrays (inventory, riders, etc.) can still be refreshed safely.
+      const _encModalOpen = document.getElementById('modal-encode')?.classList.contains('active');
+
       // Firebase IS the source of truth — replace all arrays directly
       // EXCEPTION: inventory uses code-based merge so local stock changes aren't overwritten
-      ['orders','riders','locations','payroll','expenses','stockLog',
-       'adminNames','adminAccounts','remitLog','cashbondLog','benefitsLog',
-       'returnLog','deletedOrders','mergeLog'].forEach(k=>{
+      // MODAL GUARD: don't overwrite S.orders if encode modal is open
+      const _keysToSync = _encModalOpen
+        ? ['riders','locations','payroll','expenses','stockLog',
+           'adminNames','adminAccounts','remitLog','cashbondLog','benefitsLog',
+           'returnLog','deletedOrders','mergeLog']  // skip 'orders' while user is editing
+        : ['orders','riders','locations','payroll','expenses','stockLog',
+           'adminNames','adminAccounts','remitLog','cashbondLog','benefitsLog',
+           'returnLog','deletedOrders','mergeLog'];
+      _keysToSync.forEach(k=>{
         if(Array.isArray(fbData[k])) S[k] = fbData[k];
       });
       // Inventory: Firebase IS the source of truth after save() writes it
@@ -9957,6 +9994,11 @@ function startAutoRefresh(){
       if(!S.specialPasswords) S.specialPasswords={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
       if(!S.govSettings) S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
 
+      // Debounce: skip render if one is already scheduled (prevents storms with 50 users)
+      if(window._sarRenderPending) return;
+      window._sarRenderPending = true;
+      setTimeout(()=>{ window._sarRenderPending = false; }, 200);
+
       // Re-render active page
       const renderMap = {
         dashboard:()=>renderDash?.(),
@@ -9984,11 +10026,14 @@ function startAutoRefresh(){
         lbcdelivery:()=>renderLbcDelivery?.(),
         emsdelivery:()=>renderEmsDelivery?.(),
         fedexdelivery:()=>renderFedexDelivery?.(),
+        coddelivery:()=>{ if(typeof renderCodDelivPage==='function') renderCodDelivPage(); },
+        sorting:()=>renderSorting?.(),
+        returns:()=>renderReturns?.(),
       };
       try { renderMap[_activePage]?.(); } catch(e){}
       if(currentRole==='rider') try{renderRiderParcels();}catch(e){}
     } catch(e){ console.warn('Auto-refresh error:',e.message); }
-  }, 3000); // every 3 seconds
+  }, 4000); // every 4 seconds — balanced for 30-50 concurrent users
 }
 
 // ============================================================
@@ -10645,13 +10690,14 @@ let _encFormCollapsed = true; // default: minimized
 
 
 // ── COD Delivery Page (Checker) ──────────────────────────────────
-let _codDelivTab = 'Delivered';
+let _codDelivTab = 'ForUpdate'; // Default: For Update tab (priority focus)
 
 function setCodDelivTab(tab) {
   _codDelivTab = tab;
-  document.querySelectorAll('#coddelivery-tabs .tab-btn').forEach((b,i)=>
-    b.classList.toggle('active', ['Delivered','Cancelled','Returned'][i] === tab)
-  );
+  // Value-based active state via data-tab attribute
+  document.querySelectorAll('#coddelivery-tabs .tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
   renderCodDelivPage();
 }
 
@@ -10668,16 +10714,17 @@ function renderCodDelivPage() {
   const allCOD = (S.orders||[]).filter(o=>(o.paymentMethod||'COD')==='COD');
 
   // Stats
+  const updateCount= allCOD.filter(o=>o.status==='Update').length;
   const delivCount = allCOD.filter(o=>o.status==='Delivered').length;
   const cancelCount= allCOD.filter(o=>o.status==='Cancelled').length;
   const returnCount= allCOD.filter(o=>o.status==='RTO'||o.lbcStatus==='RTO').length;
   const totalRev   = allCOD.filter(o=>o.status==='Delivered').reduce((s,o)=>s+(o.grandTotal||0),0);
 
   if(statsEl) statsEl.innerHTML = `
-    <div class="stat-card green" onclick="setCodDelivTab('Delivered')" style="cursor:pointer;">
-      <div class="stat-label">✅ Delivered</div>
-      <div class="stat-value">${delivCount}</div>
-      <div class="stat-sub">${p(totalRev)}</div>
+    <div class="stat-card blue" onclick="setCodDelivTab('ForUpdate')" style="cursor:pointer;">
+      <div class="stat-label">🔔 For Update</div>
+      <div class="stat-value">${updateCount}</div>
+      <div class="stat-sub">Needs rider action</div>
     </div>
     <div class="stat-card red" onclick="setCodDelivTab('Cancelled')" style="cursor:pointer;">
       <div class="stat-label">🚫 Cancelled</div>
@@ -10687,23 +10734,30 @@ function renderCodDelivPage() {
       <div class="stat-label">↩️ Returned (RTO)</div>
       <div class="stat-value">${returnCount}</div>
     </div>
+    <div class="stat-card green" onclick="setCodDelivTab('Delivered')" style="cursor:pointer;">
+      <div class="stat-label">✅ Delivered</div>
+      <div class="stat-value">${delivCount}</div>
+      <div class="stat-sub">${p(totalRev)}</div>
+    </div>
   `;
 
   // Filter for current tab
   let list = allCOD.map((o,ri)=>({o,i:(S.orders||[]).indexOf(o)})).filter(({o})=>{
+    if(tab==='ForUpdate') return o.status==='Update'; // stored as 'Update', displayed as 'For Update'
     if(tab==='Delivered') return o.status==='Delivered';
     if(tab==='Cancelled') return o.status==='Cancelled';
     if(tab==='Returned')  return o.status==='RTO'||o.lbcStatus==='RTO';
     return false;
   });
   if(df) list=list.filter(({o})=>{
-    const d=tab==='Delivered'?(o.dateDelivered||o.date):o.date;
+    const d=(tab==='Delivered')?(o.dateDelivered||o.date):o.date;
     return d===df;
   });
   if(q) list=list.filter(({o,i})=>[o.name,o.contact,onum(i)].join(' ').toLowerCase().includes(q));
 
   if(!list.length){
-    contentEl.innerHTML=`<div class="card"><div style="text-align:center;color:var(--muted);padding:40px;">No ${tab} COD orders found.</div></div>`;
+    const emptyLabel = tab==='ForUpdate'?'For Update':tab;
+    contentEl.innerHTML=`<div class="card"><div style="text-align:center;color:var(--muted);padding:40px;">No ${emptyLabel} COD orders found.</div></div>`;
     return;
   }
 
@@ -10712,7 +10766,9 @@ function renderCodDelivPage() {
     const safeId = 'cod-row-'+i;
     const dateCol = tab==='Delivered'?(o.dateDelivered||o.date):o.date;
     const statusColor = o.status==='Delivered'?'var(--green)':o.status==='Cancelled'?'var(--red)':'var(--orange)';
-    const reason = o.cancelReason||o.rtoReason||'—';
+    const reason = tab==='ForUpdate'
+      ? (o.updateReason||o.riderNote||o.paymentNotes||'Needs rider update')
+      : (o.cancelReason||o.rtoReason||'—');
     const itemsList = (o.items||[]).map(it=>`${it.desc||it.code} ×${it.qty||it.grams||1}${it.grams?'g':''}`).join(', ');
     return `
       <div class="card" style="margin-bottom:6px;cursor:pointer;" onclick="toggleCodRow('${safeId}')">
@@ -10724,7 +10780,7 @@ function renderCodDelivPage() {
             <span style="font-size:11px;">${dateCol}</span>
             <span style="color:var(--green);font-weight:700;">${p(o.grandTotal)}</span>
             <span style="font-size:10.5px;font-weight:700;color:${statusColor};padding:2px 8px;background:rgba(255,255,255,0.05);border-radius:4px;">${o.status}</span>
-            ${reason!=='—'?'<span style="font-size:10px;color:var(--red);">📝 '+reason+'</span>':''}
+            ${(reason&&reason!=='—')?'<span style="font-size:10px;color:'+(tab==='ForUpdate'?'var(--orange)':'var(--red)')+';">'+( tab==='ForUpdate'?'🔔 ':'📝 ')+reason+'</span>':''}
           </div>
           <span id="${safeId}-arrow" style="color:var(--muted);font-size:12px;">▶</span>
         </div>
@@ -10735,6 +10791,18 @@ function renderCodDelivPage() {
             <div><span style="color:var(--muted);font-size:10px;">RIDER</span><br>${o.assignedRider||'—'}</div>
             <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:10px;">ITEMS</span><br>${itemsList||'—'}</div>
             ${reason!=='—'?'<div style="grid-column:1/-1;"><span style="color:var(--red);font-size:10px;">REASON</span><br>'+reason+'</div>':''}
+          </div>
+          <div style="display:flex;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid var(--navy-border);">
+            <button onclick="event.stopPropagation();_editSource='cod-delivery';openEditOrder(${i})"
+              style="background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.3);color:var(--gold);
+                     padding:5px 14px;border-radius:6px;cursor:pointer;font-size:11.5px;font-weight:600;">
+              ✏️ Edit Order
+            </button>
+            <button onclick="event.stopPropagation();openInvoice(${i})"
+              style="background:rgba(255,255,255,0.05);border:1px solid var(--navy-border);color:var(--muted);
+                     padding:5px 14px;border-radius:6px;cursor:pointer;font-size:11.5px;">
+              🖨️ Print Receipt
+            </button>
           </div>
         </div>
       </div>`;
