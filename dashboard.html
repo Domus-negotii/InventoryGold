@@ -38,6 +38,40 @@ body{background:var(--navy);color:var(--white);font-family:var(--fb);min-height:
 .nav-section{padding:9px 0 2px;}
 .nav-label{font-size:8.5px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;padding:0 13px 4px;}
 .nav-item{display:flex;align-items:center;gap:8px;padding:7px 13px;cursor:pointer;font-size:12px;font-weight:700;color:var(--muted);transition:all 0.18s;border-left:3px solid transparent;}
+/* Encode form grid - professional aligned layout */
+#enc-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px 16px;
+  align-items: start;
+}
+#enc-form-grid .form-group label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  margin-bottom: 4px;
+  display: block;
+}
+#enc-form-grid .form-group input,
+#enc-form-grid .form-group select {
+  font-size: 12.5px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  width: 100%;
+  box-sizing: border-box;
+}
+#enc-form-grid [style*="grid-column:1/-1"],
+#enc-form-grid .form-group:has(#enc-address) {
+  grid-column: 1 / -1;
+}
+/* enc-form-collapsed-bar visibility control */
+#enc-form-collapsed-bar { display: none; }
+#enc-form-collapsed-bar.visible { display: block; }
+/* Encode modal toggle animation */
+#enc-form-fields { transition: none; }
+
 /* Sidebar collapse */
 .sidebar{transition:width 0.22s ease,left 0.22s ease;}
 .sidebar.collapsed{width:0;overflow:hidden;border-right:none;}
@@ -1157,6 +1191,18 @@ function _showRulesHint() {
     </div>
   </div>
 
+  <!-- ── COD Delivery Monitor (below Checker Verify) ── -->
+  <div class="card no-print" style="margin-top:16px;" id="checker-cod-delivery-section">
+    <div class="card-header" style="cursor:pointer;user-select:none;" onclick="toggleCodDeliverySection()">
+      <span class="card-title">🏍️ COD Delivery Monitor</span>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <span style="font-size:11px;color:var(--muted);">Delivered · Cancelled · Returned COD orders</span>
+        <span id="cod-delivery-arrow" style="font-size:12px;color:var(--muted);">▼</span>
+      </div>
+    </div>
+    <div id="checker-cod-delivery-content" style="padding:0 14px 14px;"></div>
+  </div>
+
   <!-- TRACKING -->
   <div class="page page-lockable" id="page-tracking">
   <!-- Finance Lock Overlay -->
@@ -2012,8 +2058,26 @@ function _showRulesHint() {
 <!-- Encode/Edit Order -->
 <div class="modal-overlay" id="modal-encode">
   <div class="modal" style="max-width:900px;">
-    <div class="modal-header"><span class="modal-title" id="encode-title">Encode New Order</span><button class="modal-close" onclick="closeModal('modal-encode')">✕</button></div>
-    <div class="form-grid" id="enc-form-fields">
+    <div class="modal-header">
+      <span class="modal-title" id="encode-title">Encode New Order</span>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button id="enc-form-toggle" onclick="toggleEncForm()" style="background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.3);color:var(--gold);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;" title="Minimize/Maximize form">
+          <span id="enc-form-toggle-icon">▲</span> <span id="enc-form-toggle-label">Minimize</span>
+        </button>
+        <button class="modal-close" onclick="closeModal('modal-encode')">✕</button>
+      </div>
+    </div>
+    <div id="enc-form-collapsed-bar" style="display:none;padding:10px 14px;background:rgba(201,168,76,0.06);border-radius:6px;margin-bottom:8px;cursor:pointer;display:none;" onclick="toggleEncForm()">
+      <span style="font-size:11.5px;color:var(--muted);">📋 Customer details hidden — click to expand</span>
+      <span id="enc-form-collapsed-preview" style="font-size:11.5px;color:var(--gold);margin-left:12px;font-weight:600;"></span>
+    </div>
+    <div id="enc-form-fields" style="display:none;">
+    <div id="enc-form-grid">
+      <!-- ── Section: Customer Info ── -->
+      <div style="grid-column:1/-1;display:flex;align-items:center;gap:8px;margin-bottom:4px;margin-top:4px;">
+        <span style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--gold);opacity:0.7;">👤 Customer Info</span>
+        <div style="flex:1;height:1px;background:rgba(201,168,76,0.15);"></div>
+      </div>
       <div class="form-group"><label>Customer Name *</label><input class="form-control enc-tab" id="enc-name" placeholder="Full name" onkeydown="encNextField(event,this)"></div>
       <div class="form-group"><label>CP Number * <span style="font-size:10px;color:var(--muted);">(exactly 11 digits)</span></label>
         <input class="form-control enc-tab" id="enc-contact" placeholder="09xxxxxxxxx" maxlength="11"
@@ -2056,6 +2120,11 @@ function _showRulesHint() {
         <div id="enc-payments-tbody" style="display:flex;flex-direction:column;gap:5px;"></div>
         <div style="font-size:10px;color:var(--muted);margin-top:4px;">💡 Tip: Mag-add ng payment row para sa bawat installment. Bawat ref# may kasamang amount.</div>
       </div>
+      <!-- ── Section: Order Details ── -->
+      <div style="grid-column:1/-1;display:flex;align-items:center;gap:8px;margin-top:8px;margin-bottom:4px;">
+        <span style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--gold);opacity:0.7;">📦 Order Details</span>
+        <div style="flex:1;height:1px;background:rgba(201,168,76,0.15);"></div>
+      </div>
       <div class="form-group"><label>Admin Name *</label>
         <div id="enc-admin-wrapper">
           <!-- Populated by populateAdminDropdown() based on role -->
@@ -2085,6 +2154,8 @@ function _showRulesHint() {
         📍 <span id="enc-rider-loc"></span> &nbsp;|&nbsp; 📞 <span id="enc-rider-contact"></span>
       </div>
     </div>
+    </div><!-- /enc-form-grid -->
+    </div><!-- /enc-form-fields -->
     <hr class="divider">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;flex-wrap:wrap;gap:7px;">
       <span style="font-size:11px;font-weight:600;color:var(--gold);">ORDER ITEMS</span>
@@ -2985,6 +3056,7 @@ function openEditOrder(i){
   document.getElementById('enc-items-tbody').innerHTML='';
   o.items.forEach(it=>addItemRow('enc-items-tbody','calcEnc',it));
   calcEnc(); openModal('modal-encode');
+  _resetEncFormState(editIdx === '' ? true : false); // new=minimized, edit=expanded
 }
 // delOrder defined below in saveOrder block
 
@@ -3343,10 +3415,9 @@ function setCheckerTab(tab) {
   document.getElementById('checker-cod-table').style.display = isLbc ? 'none' : '';
   document.getElementById('checker-lbc-table').style.display = isLbc ? '' : 'none';
   renderChecker();
-}
-
-
-function getMissingFieldsWarning(o, verifSt) {
+  // Also refresh COD delivery monitor
+  setTimeout(()=>{ try{ renderCheckerCodDelivery(); }catch(e){} }, 50);
+}function getMissingFieldsWarning(o, verifSt) {
   const isCourier = o.paymentMethod==='LBC' || o.paymentMethod==='EMS' || o.paymentMethod==='FedEx';
   const isFedEx = o.paymentMethod==='FedEx';
   if(!isCourier || verifSt==='Verified') return '';
@@ -3490,7 +3561,7 @@ function renderChecker(){
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
               ${!isLocked?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>`:''}
-             
+              ${currentRole==='owner'?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" title="CEO Edit">✏️ Edit</button>`:''}
               ${o.status==='Cancelled'
                 ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
                 :o.checkerStatus!=='Verified'
@@ -6065,12 +6136,18 @@ function renderCourierDashboard(){
   const el = document.getElementById('courier-dashboard-content');
   if(!el) return;
 
-  const COURIER_TABS = ['LBC','EMS','FedEx'];
-  const PAYMENT_TABS = [
-    {key:'No Payment', label:'⏳ Unpaid', color:'var(--red)'},
-    {key:'Partial',    label:'💳 Partially Paid', color:'var(--orange)'},
-    {key:'Fully Paid', label:'✅ Fully Paid', color:'var(--green)'},
-  ];
+  const COURIER_TABS = ['COD','LBC','EMS','FedEx'];
+  const PAYMENT_TABS = curCourier==='COD'
+    ? [
+        {key:'active',    label:'🚴 Active/Pending', color:'var(--blue)'},
+        {key:'Delivered', label:'✅ Delivered', color:'var(--green)'},
+        {key:'Cancelled', label:'🚫 Cancelled', color:'var(--red)'},
+      ]
+    : [
+        {key:'No Payment', label:'⏳ Unpaid', color:'var(--red)'},
+        {key:'Partial',    label:'💳 Partially Paid', color:'var(--orange)'},
+        {key:'Fully Paid', label:'✅ Fully Paid', color:'var(--green)'},
+      ];
 
   const curCourier = window._cdCourierTab || 'LBC';
   const curPayTab  = window._cdPayTab    || 'No Payment';
@@ -6079,13 +6156,21 @@ function renderCourierDashboard(){
 
   // For admin: only their own orders. For owner: all orders.
   let allCourierOrders = S.orders.map((o,i)=>({...o,idx:i}))
-    .filter(o=>['LBC','EMS','FedEx'].includes(o.paymentMethod||''));
+    .filter(o=>['COD','LBC','EMS','FedEx'].includes(o.paymentMethod||'COD'));
   if(!isOwner && loggedAdmin) {
     allCourierOrders = allCourierOrders.filter(o=>(o.admin||'').toUpperCase()===loggedAdmin.toUpperCase());
   }
 
-  const courierOrders = allCourierOrders.filter(o=>o.paymentMethod===curCourier);
-  const payTabOrders  = courierOrders.filter(o=>(o.paymentStatus||'No Payment')===curPayTab && o.status!=='Cancelled');
+  const courierOrders = allCourierOrders.filter(o=>(o.paymentMethod||'COD')===curCourier);
+  // COD: filter by status tab; LBC/EMS/FedEx: filter by paymentStatus tab
+  const payTabOrders = curCourier==='COD'
+    ? courierOrders.filter(o=>{
+        if(curPayTab==='active')    return !['Delivered','Cancelled'].includes(o.status);
+        if(curPayTab==='Delivered') return o.status==='Delivered';
+        if(curPayTab==='Cancelled') return o.status==='Cancelled';
+        return true;
+      })
+    : courierOrders.filter(o=>(o.paymentStatus||'No Payment')===curPayTab && o.status!=='Cancelled');
 
   const canEdit = (o) => isOwner || (o.checkerStatus !== 'Verified');
 
@@ -6098,18 +6183,25 @@ function renderCourierDashboard(){
       <!-- Courier tabs -->
       <div style="display:flex;gap:6px;padding:10px 14px 0;border-bottom:1px solid rgba(255,255,255,0.07);">
         ${COURIER_TABS.map(c=>`
-          <button onclick="window._cdCourierTab='${c}';window._cdPayTab=window._cdPayTab||'No Payment';renderCourierDashboard();"
+          <button onclick="window._cdCourierTab='${c}';window._cdPayTab=${c==='COD'?"'active'":"window._cdPayTab||'No Payment'"};renderCourierDashboard();"
             style="padding:7px 18px;font-size:12px;font-weight:600;border:none;border-radius:6px 6px 0 0;cursor:pointer;
               background:${curCourier===c?'var(--gold)':'rgba(255,255,255,0.07)'};
               color:${curCourier===c?'#000':'var(--text)'};transition:all 0.15s;">
-            ${c==='LBC'?'📦':'✈️'} ${c}
-            <span style="font-size:10px;margin-left:4px;opacity:0.8;">(${allCourierOrders.filter(o=>o.paymentMethod===c&&o.status!=='Cancelled').length})</span>
+            ${c==='COD'?'🏍️':c==='LBC'?'📦':c==='EMS'?'✈️':'📦'} ${c}
+            <span style="font-size:10px;margin-left:4px;opacity:0.8;">(${allCourierOrders.filter(o=>(o.paymentMethod||'COD')===c&&o.status!=='Cancelled').length})</span>
           </button>`).join('')}
       </div>
       <!-- Payment sub-tabs -->
       <div style="display:flex;gap:4px;padding:8px 14px;background:rgba(0,0,0,0.08);">
         ${PAYMENT_TABS.map(pt=>{
-          const cnt=courierOrders.filter(o=>(o.paymentStatus||'No Payment')===pt.key&&o.status!=='Cancelled').length;
+          const cnt = curCourier==='COD'
+            ? courierOrders.filter(o=>{
+                if(pt.key==='active')    return !['Delivered','Cancelled'].includes(o.status);
+                if(pt.key==='Delivered') return o.status==='Delivered';
+                if(pt.key==='Cancelled') return o.status==='Cancelled';
+                return false;
+              }).length
+            : courierOrders.filter(o=>(o.paymentStatus||'No Payment')===pt.key&&o.status!=='Cancelled').length;
           const isActive=curPayTab===pt.key;
           return `<button onclick="window._cdPayTab='${pt.key}';renderCourierDashboard();"
             style="padding:5px 14px;font-size:11.5px;font-weight:600;
@@ -9048,7 +9140,7 @@ function renderRemitPage() {
       <div class="card-header" style="cursor:pointer;user-select:none;" onclick="toggleRemitRider('${safeId}')">
         <span class="card-title" style="font-size:14px;">
           🏍️ ${riderName}
-          <span id="${safeId}_arrow" style="font-size:11px;color:var(--muted);margin-left:8px;">${allRemitted?'▶':'▼'}</span>
+          <span id="${safeId}_arrow" style="font-size:11px;color:var(--muted);margin-left:8px;">▶</span>
         </span>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;" onclick="event.stopPropagation()">
           <span style="font-size:11px;color:var(--muted);">${entries.length} entry/entries · ${remittedCount} Remitted</span>
@@ -9061,8 +9153,7 @@ function renderRemitPage() {
       </div>
 
       <!-- ── Expandable Body ── -->
-      <div id="${safeId}" style="display:${allRemitted?'none':'block'};">
-
+      <div id="${safeId}" style="display:none;"><!-- all cards start collapsed -->
         <!-- Remit Log Summary -->
         <div style="padding:10px 14px 0;font-size:10.5px;font-weight:700;color:var(--gold);border-bottom:1px solid rgba(255,255,255,0.05);padding-bottom:6px;margin-bottom:4px;">
           📋 Remit Entries
@@ -10443,6 +10534,100 @@ function _confirmDelivered(orderIdx, renderFn) {
   if(currentRole==='owner') renderDash();
 }
 
+// ── COD Delivery view for Checker ────────────────────────────────
+let _codDeliveryTab = 'Delivered'; // Delivered | Cancelled | Returned
+
+function toggleCodDeliverySection() {
+  const el    = document.getElementById('checker-cod-delivery-content');
+  const arrow = document.getElementById('cod-delivery-arrow');
+  if (!el) return;
+  const hidden = el.style.display === 'none';
+  el.style.display = hidden ? 'block' : 'none';
+  if (arrow) arrow.textContent = hidden ? '▼' : '▶';
+}
+
+function setCheckerCodTab(tab) {
+  _codDeliveryTab = tab;
+  renderCheckerCodDelivery();
+}
+
+function renderCheckerCodDelivery() {
+  const el = document.getElementById('checker-cod-delivery-content');
+  if (!el) return;
+  const q   = (document.getElementById('cod-del-search')?.value || '').toLowerCase();
+  const df  = document.getElementById('cod-del-date')?.value || '';
+  const tab = _codDeliveryTab;
+
+  const codOrders = S.orders.map((o,i) => ({o,i})).filter(({o}) => {
+    if ((o.paymentMethod||'COD') !== 'COD') return false;
+    if (tab === 'Delivered') return o.status === 'Delivered';
+    if (tab === 'Cancelled') return o.status === 'Cancelled';
+    if (tab === 'Returned')  return o.status === 'RTO' || (o.itemStatuses && Object.values(o.itemStatuses).includes('Cancelled'));
+    return false;
+  }).filter(({o}) => {
+    if (df) {
+      const d = tab === 'Delivered' ? (o.dateDelivered||o.date) : o.date;
+      if (d !== df) return false;
+    }
+    if (q && !o.name.toLowerCase().includes(q) && !(o.contact||'').includes(q)) return false;
+    return true;
+  });
+
+  // Tab counts
+  const allCod = S.orders.filter(o=>(o.paymentMethod||'COD')==='COD');
+  const delivCount = allCod.filter(o=>o.status==='Delivered').length;
+  const cancelCount = allCod.filter(o=>o.status==='Cancelled').length;
+  const returnCount = allCod.filter(o=>o.status==='RTO' || (o.itemStatuses&&Object.values(o.itemStatuses).includes('Cancelled'))).length;
+
+  const tabStyle = (t) => {
+    const active = _codDeliveryTab === t;
+    return `padding:6px 16px;font-size:11.5px;font-weight:600;border:none;border-radius:6px 6px 0 0;cursor:pointer;
+      background:${active?'var(--gold)':'rgba(255,255,255,0.07)'};color:${active?'#000':'var(--muted)'};`;
+  };
+
+  const rows = codOrders.map(({o,i}) => {
+    const statusColor = o.status==='Delivered'?'var(--green)':o.status==='Cancelled'?'var(--red)':'var(--orange)';
+    const date = tab==='Delivered' ? (o.dateDelivered||o.date) : o.date;
+    const rider = o.assignedRider || '—';
+    return `<tr>
+      <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
+      <td style="font-weight:500;">${o.name}<br><span style="color:var(--muted);font-size:9px;">${o.contact||''}</span></td>
+      <td style="font-size:11px;">${o.admin||'—'}</td>
+      <td style="font-size:11px;">${rider}</td>
+      <td style="font-size:11px;">${date}</td>
+      <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
+      <td><span style="font-size:10.5px;font-weight:700;color:${statusColor};padding:3px 8px;background:rgba(255,255,255,0.06);border-radius:5px;">${o.status}</span></td>
+      <td style="font-size:10.5px;color:var(--muted);">${o.cancelReason||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="margin-top:8px;">
+      <div style="display:flex;gap:4px;border-bottom:1px solid rgba(255,255,255,0.07);margin-bottom:0;">
+        <button style="${tabStyle('Delivered')}" onclick="setCheckerCodTab('Delivered')">✅ Delivered (${delivCount})</button>
+        <button style="${tabStyle('Cancelled')}" onclick="setCheckerCodTab('Cancelled')">🚫 Cancelled (${cancelCount})</button>
+        <button style="${tabStyle('Returned')}"  onclick="setCheckerCodTab('Returned')">↩️ Returned (${returnCount})</button>
+      </div>
+      <div style="display:flex;gap:8px;padding:8px 0;align-items:center;">
+        <input class="form-control" style="width:180px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / CP #" id="cod-del-search" oninput="renderCheckerCodDelivery()">
+        <input type="date" class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" id="cod-del-date" oninput="renderCheckerCodDelivery()">
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('cod-del-date').value='';renderCheckerCodDelivery()">All Dates</button>
+        <span style="font-size:11px;color:var(--muted);margin-left:auto;">${codOrders.length} record${codOrders.length!==1?'s':''}</span>
+      </div>
+      ${codOrders.length===0
+        ? `<div style="text-align:center;color:var(--muted);padding:30px;">No ${tab} COD orders found.</div>`
+        : `<div class="table-wrap"><table style="font-size:11px;">
+          <thead><tr style="background:rgba(201,168,76,0.08);">
+            <th>Order #</th><th>Customer</th><th>Admin</th><th>Rider</th>
+            <th>${tab==='Delivered'?'Delivered Date':'Date'}</th>
+            <th>Amount</th><th>Status</th><th>Reason</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>`
+      }
+    </div>`;
+}
+
 function toggleLbcRow(id) {
   const el = document.getElementById('lbc-expand-'+id);
   const arrow = document.getElementById('lbc-arrow-'+id);
@@ -10452,6 +10637,55 @@ function toggleLbcRow(id) {
   el.style.display = hidden ? '' : 'none';
   if(addrEl) addrEl.style.display = hidden ? '' : 'none';
   if(arrow) arrow.textContent = hidden ? '▼' : '▶';
+}
+
+// ── Encode form collapse/expand ──────────────────────────────────
+let _encFormCollapsed = true; // default: minimized
+
+function toggleEncForm() {
+  _encFormCollapsed = !_encFormCollapsed;
+  const fields   = document.getElementById('enc-form-fields');
+  const bar      = document.getElementById('enc-form-collapsed-bar');
+  const icon     = document.getElementById('enc-form-toggle-icon');
+  const lbl      = document.getElementById('enc-form-toggle-label');
+  const preview  = document.getElementById('enc-form-collapsed-preview');
+  if (!fields) return;
+  if (_encFormCollapsed) {
+    fields.style.display = 'none';
+    if (bar) { bar.style.display = 'block'; }
+    if (icon) icon.textContent = '▼';
+    if (lbl)  lbl.textContent  = 'Expand';
+    // Show customer name preview
+    const nm = document.getElementById('enc-name')?.value;
+    if (preview && nm) preview.textContent = nm;
+    else if (preview) preview.textContent = '';
+  } else {
+    fields.style.display = 'block';
+    if (bar) bar.style.display = 'none';
+    if (icon) icon.textContent = '▲';
+    if (lbl)  lbl.textContent  = 'Minimize';
+  }
+}
+
+// Called when encode modal opens — reset collapse state
+function _resetEncFormState(collapsed) {
+  _encFormCollapsed = collapsed ?? true;
+  const fields = document.getElementById('enc-form-fields');
+  const bar    = document.getElementById('enc-form-collapsed-bar');
+  const icon   = document.getElementById('enc-form-toggle-icon');
+  const lbl    = document.getElementById('enc-form-toggle-label');
+  if (!fields) return;
+  if (_encFormCollapsed) {
+    fields.style.display = 'none';
+    if (bar) bar.style.display = 'block';
+    if (icon) icon.textContent = '▼';
+    if (lbl)  lbl.textContent  = 'Expand';
+  } else {
+    fields.style.display = 'block';
+    if (bar) bar.style.display = 'none';
+    if (icon) icon.textContent = '▲';
+    if (lbl)  lbl.textContent  = 'Minimize';
+  }
 }
 
 function lbcdUpdateStatus(orderIdx, newStatus) {
