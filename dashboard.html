@@ -725,6 +725,28 @@ const _FB_MERGE_KEYS = [
 // Track last known write timestamp to avoid redundant full re-fetches
 let _lastKnownWriteTs = 0;
 
+// ── Safe order merge: Firebase wins for existing orders, local wins for
+// recently-encoded orders not yet synced (prevents blind overwrite race) ──
+function _mergeOrders(fbOrders, localOrders) {
+  if (!Array.isArray(fbOrders)) return localOrders || [];
+  if (!Array.isArray(localOrders) || !localOrders.length) return fbOrders;
+  // Index Firebase orders by _id
+  const fbIds = new Set(fbOrders.filter(o => o._id).map(o => o._id));
+  // Keep local orders that:
+  // 1. Have an _id (all new orders do)
+  // 2. Are NOT yet in Firebase (not synced yet)
+  // 3. Were created within the last 90 seconds (grace window)
+  const now = Date.now();
+  const grace = 90000;
+  const localOnly = localOrders.filter(lo => {
+    if (!lo._id || fbIds.has(lo._id)) return false;
+    const age = now - new Date(lo.createdAt || 0).getTime();
+    return age < grace;
+  });
+  // Firebase order list + any locally-pending orders not yet in Firebase
+  return localOnly.length ? [...fbOrders, ...localOnly] : fbOrders;
+}
+
 // ── UUID generator for record identity ───────────────────────────────────────
 function _uuid(){
   return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>
@@ -3354,7 +3376,7 @@ function renderMyOrders() {
         : ''}
     </td></tr>`;
 
-  const methodLabels = { COD:'🏍️ COD Orders', LBC:'📦 LBC Orders', EMS:'✈️ EMS Orders', FedEx:'📦 FedEx Orders'};
+  const methodLabels = {LBC:'📦 LBC Orders', EMS:'✈️ EMS Orders', FedEx:'📦 FedEx Orders', COD:'🏍️ COD Orders'};
   const methodColors = {LBC:'var(--blue)', EMS:'var(--green)', FedEx:'var(--orange)', COD:'var(--gold)'};
 
   let html = '';
@@ -7992,7 +8014,7 @@ function renderRiderParcels() {
         <div class="info-row"><span style="color:var(--red);">Less: SF 10% (Company)</span><strong style="color:var(--red);">-${p(sf10_dash)}</strong></div>
         <div class="info-row"><span style="color:var(--red);">Less: Cashbond (₱100)</span><strong style="color:var(--red);">-${p(cashbond_dash)}</strong></div>
         <div class="info-row"><span style="color:var(--red);">Less: Parcel Fee (₱10 × ${del.length})</span><strong style="color:var(--red);">-${p(parcelFee_dash)}</strong></div>
-       
+        <div class="info-row"><span style="color:var(--red);">Less: Benefits</span><strong style="color:var(--red);">-${p(riderBenefits_dash)}</strong></div>
 
         <div style="border-top:1px solid var(--navy-border);margin:6px 0;"></div>
 
@@ -8279,7 +8301,7 @@ function renderPayments(payments, addBlankIfEmpty=false) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-function saveOrder() {
+async function saveOrder() {
   // ── CONCURRENCY GATE ─────────────────────────────────────────
   // Prevents double-submit (rapid click) AND concurrent encodes from
   // two admins on the same device session / browser tab.
@@ -8477,7 +8499,7 @@ function saveOrder() {
     S.orders.push(o);
     toast('✅ Order saved! Inventory will be deducted upon Checker verification.');
   }
-  save(); closeModal('modal-encode');
+  await save(); closeModal('modal-encode');
   const _wasCourierEdit = (_editSource === 'courier-dashboard');
   _editSource = '';
   // Always refresh dash stats + orders table (top section)
@@ -10170,17 +10192,22 @@ function startAutoRefresh(){
 
       // Firebase IS the source of truth — replace all arrays directly
       // EXCEPTION: inventory uses code-based merge so local stock changes aren't overwritten
+      // EXCEPTION: orders uses _id-based merge to preserve locally-encoded orders not yet in Firebase
       // MODAL GUARD: don't overwrite S.orders if encode modal is open
       const _keysToSync = _encModalOpen
         ? ['riders','locations','payroll','expenses','stockLog',
            'adminNames','adminAccounts','remitLog','cashbondLog','benefitsLog',
            'returnLog','deletedOrders','mergeLog']  // skip 'orders' while user is editing
-        : ['orders','riders','locations','payroll','expenses','stockLog',
+        : ['riders','locations','payroll','expenses','stockLog',
            'adminNames','adminAccounts','remitLog','cashbondLog','benefitsLog',
            'returnLog','deletedOrders','mergeLog'];
       _keysToSync.forEach(k=>{
         if(Array.isArray(fbData[k])) S[k] = fbData[k];
       });
+      // Orders: merge instead of blind replace — preserves locally-added orders not yet synced
+      if(!_encModalOpen && Array.isArray(fbData.orders)) {
+        S.orders = _mergeOrders(fbData.orders, S.orders);
+      }
       // Inventory: Firebase IS the source of truth after save() writes it
       // Replace local S.inventory with Firebase version on every poll
       // This ensures all devices see deductions/returns immediately
@@ -12110,12 +12137,17 @@ document.addEventListener('visibilitychange', async ()=>{
     // ── Check global clear ──
     if(_applyGlobalClear(fbData)) return;
 
-    // ── Firebase-only: replace S directly ──
-    ['orders','riders','locations','payroll','expenses','inventory','stockLog',
+    // ── Firebase-only: merge S directly (orders use _id-merge, rest full replace) ──
+    const _localOrdersBackup = S.orders ? [...S.orders] : [];
+    ['riders','locations','payroll','expenses','inventory','stockLog',
      'adminNames','adminAccounts','remitLog','cashbondLog','benefitsLog',
      'returnLog','deletedOrders','mergeLog'].forEach(k=>{
       if(Array.isArray(fbData[k])) S[k] = fbData[k];
     });
+    // Orders: safe merge — don't blindly overwrite locally-pending encodes
+    if(Array.isArray(fbData.orders)) {
+      S.orders = _mergeOrders(fbData.orders, _localOrdersBackup);
+    }
     ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
       if(fbData[k] && typeof fbData[k]==='object') S[k] = fbData[k];
     });
