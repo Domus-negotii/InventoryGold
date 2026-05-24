@@ -199,8 +199,10 @@ tr:hover td{background:rgba(201,168,76,0.03);}
 #enc-sf-group{grid-column:span 1;}
 #enc-method-group{grid-column:span 2;}
 /* Row 4+: All full width */
-#enc-date-purchase-group,#enc-date-payment-group,#enc-date-dropoff-group,
+#enc-date-purchase-group,
 #enc-payments-group,#enc-items-area,#enc-global-discount-group{grid-column:1/-1;}
+/* enc-date-payment-group and enc-date-dropoff-group are now OUTSIDE the form-grid
+   (relocated below Reference No section) — must NOT inherit grid-column:1/-1 */
 .form-group{display:flex;flex-direction:column;gap:4px;}
 .form-group label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;}
 .form-control{background:var(--navy);border:1px solid var(--navy-border);border-radius:7px;padding:7px 10px;color:var(--white);font-family:var(--fb);font-size:12px;outline:none;transition:border 0.18s;width:100%;}
@@ -2193,14 +2195,6 @@ function _showRulesHint() {
         <label>Date of Purchase <span style="font-size:10px;color:var(--red);font-weight:600;" id="enc-date-hint">* Required (mm/dd/yy)</span></label>
         <input type="date" class="form-control enc-tab" id="enc-date" required oninput="validateDateInput(this)" onkeydown="encNextField(event,this)" placeholder="mm/dd/yy">
       </div>
-      <div class="form-group" id="enc-date-payment-group" style="display:none;">
-        <label>Date of Payment <span style="font-size:10px;color:var(--muted);">(editable)</span></label>
-        <input type="date" class="form-control enc-tab" id="enc-date-payment" onkeydown="encNextField(event,this)" oninput="validateDateInput(this)">
-      </div>
-      <div class="form-group" id="enc-date-dropoff-group" style="display:none;">
-        <label>Date of Drop-off <span style="font-size:10px;color:var(--muted);">(editable)</span></label>
-        <input type="date" class="form-control enc-tab" id="enc-date-dropoff" onkeydown="encNextField(event,this)" oninput="validateDateInput(this)">
-      </div>
       <!-- ROW 3: Tracking (col-1) | SF (col-1) | Method (col-2) -->
       <div class="form-group" id="enc-tracking-group" style="display:none;">
         <label>Tracking # <span id="enc-tracking-label-hint" style="font-size:10px;color:var(--muted);">(12 digits)</span></label>
@@ -2273,13 +2267,14 @@ function _showRulesHint() {
           style="width:140px;font-size:13px;" oninput="calcEnc()" onfocus="this.select()"
           placeholder="0.00">
         <div style="flex:1;">
-          <input type="text" class="form-control" id="enc-global-discount-reason" placeholder="Reason (e.g. Shipping discount, Promo...)"
+          <input type="text" class="form-control" id="enc-global-discount-reason"
+            placeholder="Order note / Promo reason (e.g. Paid via GCash, Free SF, Voucher...)"
             style="font-size:11.5px;">
         </div>
       </div>
-      <div style="font-size:10.5px;color:var(--muted);margin-top:5px;">
-        💡 Use this for discounts that apply to the whole order (e.g. shipping promo). 
-        This discount persists even if individual items are cancelled.
+      <div style="font-size:10px;color:var(--muted);margin-top:5px;line-height:1.5;">
+        💡 <strong style="color:var(--muted);">Discount (₱):</strong> Leave at 0 if no price reduction. &nbsp;|&nbsp;
+        <strong style="color:var(--blue);">Order Note:</strong> Always fill in if customer paid upfront — this note syncs to the Rider Dashboard and Remit view automatically.
       </div>
     </div>
     <input type="hidden" id="enc-edit-idx" value="">
@@ -2297,6 +2292,27 @@ function _showRulesHint() {
       </div>
       <div id="enc-payments-tbody" style="display:flex;flex-direction:column;gap:5px;"></div>
       <div style="font-size:10px;color:var(--muted);margin-top:4px;">💡 Tip: Mag-add ng payment row para sa bawat installment. Bawat ref# may kasamang amount.</div>
+    </div>
+    <!-- ── Date of Payment + Date of Drop-off (side-by-side 50/50) ── -->
+    <div id="enc-date-payment-group" style="display:none;margin-top:12px;margin-bottom:4px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;width:100%;box-sizing:border-box;">
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0;">
+          <label style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">
+            Date of Payment <span style="font-size:9px;color:var(--muted);text-transform:none;">(editable)</span>
+          </label>
+          <input type="date" class="form-control enc-tab" id="enc-date-payment"
+            onkeydown="encNextField(event,this)" oninput="validateDateInput(this)"
+            style="width:100%;box-sizing:border-box;">
+        </div>
+        <div id="enc-date-dropoff-group" style="display:flex;flex-direction:column;gap:4px;min-width:0;">
+          <label style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">
+            Date of Drop-off <span style="font-size:9px;color:var(--muted);text-transform:none;">(editable)</span>
+          </label>
+          <input type="date" class="form-control enc-tab" id="enc-date-dropoff"
+            onkeydown="encNextField(event,this)" oninput="validateDateInput(this)"
+            style="width:100%;box-sizing:border-box;">
+        </div>
+      </div>
     </div>
     <!-- ── Conditional Payment Status for LBC/EMS/FedEx ── -->
     <div id="enc-payment-status-group" style="display:none;margin-top:10px;">
@@ -2575,17 +2591,9 @@ function _showRulesHint() {
       <div class="info-row"><span style="color:var(--red);">Less: SF 10% (Company)</span><span id="remit-sf-10" style="color:var(--red);">-₱0.00</span></div>
       <div class="info-row"><span style="color:var(--red);">Less: Cashbond (₱100)</span><span id="remit-cashbond-display" style="color:var(--red);">-₱100.00</span></div>
       <div class="info-row"><span style="color:var(--red);">Less: Parcel Fee (₱10/parcel)</span><span id="remit-parcel-fee-display" style="color:var(--red);">-₱0.00</span></div>
-      <div class="info-row" style="align-items:center;">
-        <span style="color:var(--red);">Less: Benefits</span>
-        <div style="display:flex;align-items:center;gap:6px;">
-          <span style="color:var(--muted);font-size:10.5px;">₱</span>
-          <input type="number" id="remit-benefits-input" value="0" min="0" step="0.01"
-            style="width:90px;font-size:11.5px;padding:2px 6px;border-radius:5px;border:1px solid var(--navy-border);background:var(--navy);color:var(--red);text-align:right;"
-            onfocus="this.select()"
-            oninput="recalcRemitNet()">
-          <span id="remit-benefits-cut" style="display:none;">-₱0.00</span>
-        </div>
-      </div>
+      <!-- Benefits input hidden — removed per business rule update; kept as hidden field for data compat -->
+      <input type="hidden" id="remit-benefits-input" value="0">
+      <span id="remit-benefits-cut" style="display:none;"></span>
       <div class="info-row" style="border-bottom:1px solid var(--navy-border);padding-bottom:8px;"><span style="color:var(--gold);font-weight:600;">= Rider's Net SF</span><span id="remit-sf-rider-share" style="color:var(--gold);font-weight:700;">₱0.00</span></div>
       <div class="info-row" style="border-bottom:none;font-size:14px;background:rgba(46,204,138,0.07);padding:8px;border-radius:7px;margin-top:6px;">
         <strong>🏦 Net Total to Remit</strong>
@@ -2705,23 +2713,34 @@ function _showRulesHint() {
       <div class="form-group" style="grid-column:1/-1"><label>Item Description *</label>
         <input class="form-control" id="ret-item-desc" placeholder="e.g. 18K Gold Pendant 10V89 — 2.5g">
       </div>
-      <div class="form-group"><label>Qty / Grams Returned *</label>
-        <input type="number" class="form-control" id="ret-qty-grams" value="0" min="0" step="any" placeholder="e.g. 2.5 (grams) or 1 (qty)">
-      </div>
-      <div class="form-group"><label>Unit</label>
-        <select class="form-control" id="ret-unit">
-          <option value="grams">Grams (g)</option>
-          <option value="pcs">Pieces (pcs)</option>
-        </select>
-      </div>
-      <div class="form-group"><label>Reason for Return *</label>
-        <input class="form-control" id="ret-reason" placeholder="e.g. Customer changed mind, Rider brought back...">
-      </div>
-      <div class="form-group"><label>Restore to Inventory?</label>
-        <select class="form-control" id="ret-restore-inv">
-          <option value="no">No — do not restore</option>
-          <option value="yes">Yes — restore stock</option>
-        </select>
+      <!-- ── 4-Column return fields: fixed widths prevent label clipping ── -->
+      <div style="grid-column:1/-1;display:grid;grid-template-columns:160px 110px 1fr 190px;gap:12px;align-items:end;margin-top:2px;">
+        <div style="min-width:0;">
+          <label style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:5px;">Qty / Grams Returned *</label>
+          <input type="number" class="form-control" id="ret-qty-grams" value="0" min="0" step="any"
+            placeholder="e.g. 2.5"
+            style="width:100%;box-sizing:border-box;font-size:13px;">
+        </div>
+        <div style="min-width:0;">
+          <label style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:5px;">Unit</label>
+          <select class="form-control" id="ret-unit" style="width:100%;box-sizing:border-box;">
+            <option value="grams">Grams (g)</option>
+            <option value="pcs">Pieces (pcs)</option>
+          </select>
+        </div>
+        <div style="min-width:0;">
+          <label style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:5px;">Reason for Return *</label>
+          <input class="form-control" id="ret-reason"
+            placeholder="e.g. Customer changed mind, Rider brought back..."
+            style="width:100%;box-sizing:border-box;">
+        </div>
+        <div style="min-width:0;">
+          <label style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:5px;">Restore to Inventory?</label>
+          <select class="form-control" id="ret-restore-inv" style="width:100%;box-sizing:border-box;">
+            <option value="no">No — do not restore</option>
+            <option value="yes">Yes — restore stock</option>
+          </select>
+        </div>
       </div>
       <div class="form-group" style="grid-column:1/-1"><label>Staff / Received By *</label>
         <input class="form-control" id="ret-received-by" placeholder="Name of staff who received the return">
@@ -3179,7 +3198,6 @@ function openEditOrder(i){
   // Restore LBC/INTL extra dates and show/hide their groups
   const editIsLbc = (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx');
   const pmtGrp2=document.getElementById('enc-date-payment-group'); if(pmtGrp2) pmtGrp2.style.display=editIsLbc?'':'none';
-  const dofGrp2=document.getElementById('enc-date-dropoff-group'); if(dofGrp2) dofGrp2.style.display=editIsLbc?'':'none';
   const pmtInp3=document.getElementById('enc-date-payment'); if(pmtInp3) pmtInp3.value=o.dateOfPayment||'';
   const dofInp3=document.getElementById('enc-date-dropoff'); if(dofInp3) dofInp3.value=o.dateOfDropoff||'';
   const hint2=document.getElementById('enc-date-hint'); if(hint2) hint2.textContent='* Required (mm/dd/yy)';
@@ -3329,7 +3347,7 @@ function renderMyOrders() {
     if(loggedAdmin && o.admin.toUpperCase() !== loggedAdmin.toUpperCase()) return false;
     if(mf && (o.paymentMethod||'COD') !== mf) return false;
     if(df && o.date !== df) return false;
-    if(q && !o.name.toLowerCase().includes(q) && !(o.contact||'').includes(q) && !onum(i).includes(q)) return false;
+    if(q && !o.name.toLowerCase().includes(q) && !(o.contact||'').toLowerCase().includes(q) && !onum(i).toLowerCase().includes(q)) return false;
     return true;
   });
 
@@ -3465,7 +3483,7 @@ function renderOrders() {
     if(_ownerAdminTab !== 'ALL' && o.admin.toUpperCase() !== _ownerAdminTab.toUpperCase()) return false;
     if(mf && (o.paymentMethod||'COD') !== mf) return false;
     if(df && o.date !== df) return false;
-    if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q) && !(o.contact||'').includes(q)) return false;
+    if(q && !o.name.toLowerCase().includes(q) && !onum(i).toLowerCase().includes(q) && !(o.contact||'').toLowerCase().includes(q)) return false;
     if(o.status === 'Cancelled' && currentRole === 'admin') return false; // Admin sees only active orders
     return true;
   });
@@ -3532,7 +3550,7 @@ function printOwnerAdminSheet() {
     if(_ownerAdminTab!=='ALL' && o.admin.toUpperCase()!==_ownerAdminTab.toUpperCase()) return false;
     if(mf && (o.paymentMethod||'COD')!==mf) return false;
     if(df && o.date!==df) return false;
-    if(q && !o.name.toLowerCase().includes(q) && !(o.contact||'').includes(q)) return false;
+    if(q && !o.name.toLowerCase().includes(q) && !(o.contact||'').toLowerCase().includes(q)) return false;
     return true;
   });
   const del = list.filter(o=>o.status==='Delivered');
@@ -3641,7 +3659,6 @@ const PAYMENT_STATUSES = ['No Payment','Partial','Fully Paid'];
 function payColor(s){ return s==='Fully Paid'?'var(--green)':s==='Partial'?'var(--orange)':'var(--red)'; }
 
 function renderChecker(){
-  // v2-fixed-checkerCanEditODZ
   const filt = document.getElementById('checker-filter')?.value||'';
   const q = (document.getElementById('checker-search')?.value||'').toLowerCase();
   const df = document.getElementById('checker-date')?.value||'';
@@ -3686,7 +3703,7 @@ function renderChecker(){
     if(_isCourierTab && (o.paymentStatus||'No Payment') !== 'Fully Paid') return false;
     if(filt && o.checkerStatus !== filt) return false;
     if(df && o.date !== df) return false;
-    if(q && !o.name.toLowerCase().includes(q) && !(o.contact||'').includes(q) && !onum(S.orders.indexOf(o)).includes(q)) return false;
+    if(q && !o.name.toLowerCase().includes(q) && !(o.contact||'').toLowerCase().includes(q) && !onum(S.orders.indexOf(o)).toLowerCase().includes(q)) return false;
     return true;
   });
 
@@ -4956,30 +4973,28 @@ function renderReturnLog() {
     </div>
     <div class="card">
       <div class="card-header"><span class="card-title">📋 Return Log (Manual Records)</span></div>
-      <div class="table-wrap"><table style="font-size:11px;">
+      <div class="table-wrap"><table style="font-size:11px;border-collapse:separate;border-spacing:0;">
         <thead><tr style="background:rgba(201,168,76,0.08);">
-          <th>Date</th><th>Order #</th><th>Customer</th><th>Item</th><th>Qty/Grams</th>
-          <th>Reason</th><th>Inv Restored?</th><th>Received By</th><th>Notes</th>
-          ${isCEO?'<th>Del</th>':''}
+          <th style="padding:8px 10px;">Date</th><th style="padding:8px 10px;">Order #</th><th style="padding:8px 10px;">Customer</th><th style="padding:8px 10px;">Item</th><th style="padding:8px 10px;">Qty/Grams</th>
+          <th style="padding:8px 10px;">Reason</th><th style="padding:8px 10px;">Inv Restored?</th><th style="padding:8px 10px;">Received By</th><th style="padding:8px 10px;">Notes</th>
+          ${isCEO?'<th style="padding:8px 10px;">Del</th>':''}
         </tr></thead>
         <tbody>
           ${log.map((e,ri)=>{
-            // Find actual index in full array
             const actualIdx = S.returnLog.indexOf(e);
-                    // Lookup customer name from order
             const orderIdx = S.orders.findIndex((_,i)=>onum(i)===e.orderNum);
             const customerName = orderIdx>=0 ? S.orders[orderIdx].name : '—';
-            return `<tr>
-              <td>${e.date}</td>
-              <td style="color:var(--gold);font-weight:600;">${e.orderNum||'—'}</td>
-              <td style="font-size:10.5px;">${customerName}</td>
-              <td style="font-size:10.5px;max-width:140px;">${e.itemDesc}</td>
-              <td style="font-weight:600;">${e.qtyGrams||'—'} ${e.unit||''}</td>
-              <td style="font-size:10px;">${e.reason}</td>
-              <td>${e.restoredToInv?'<span style="color:var(--green);">✅ Yes</span>':'<span style="color:var(--muted);">No</span>'}</td>
-              <td style="font-size:10.5px;font-weight:600;">${e.receivedBy}</td>
-              <td style="font-size:10px;">${e.notes||'—'}</td>
-              ${isCEO?`<td><button class="btn btn-red btn-sm" onclick="delReturnLog(${actualIdx})">🗑️</button></td>`:''}
+            return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+              <td style="padding:8px 10px;white-space:nowrap;">${e.date}</td>
+              <td style="padding:8px 10px;color:var(--gold);font-weight:600;white-space:nowrap;">${e.orderNum||'—'}</td>
+              <td style="padding:8px 10px;font-size:10.5px;max-width:120px;">${customerName}</td>
+              <td style="padding:8px 10px;font-size:10.5px;max-width:140px;">${e.itemDesc}</td>
+              <td style="padding:8px 10px;font-weight:600;white-space:nowrap;">${e.qtyGrams||'—'} ${e.unit||''}</td>
+              <td style="padding:8px 10px;font-size:10px;max-width:120px;">${e.reason}</td>
+              <td style="padding:8px 10px;">${e.restoredToInv?'<span style="color:var(--green);">✅ Yes</span>':'<span style="color:var(--muted);">No</span>'}</td>
+              <td style="padding:8px 10px;font-size:10.5px;font-weight:600;white-space:nowrap;">${e.receivedBy}</td>
+              <td style="padding:8px 10px;font-size:10px;">${e.notes||'—'}</td>
+              ${isCEO?`<td style="padding:8px 10px;"><button class="btn btn-red btn-sm" onclick="delReturnLog(${actualIdx})">🗑️</button></td>`:''}
             </tr>`;
           }).join('')}
         </tbody>
@@ -5021,7 +5036,7 @@ function renderSorting() {
   // Search filter — name or contact number
   if(sq) orders = orders.filter(o=>
     o.name.toLowerCase().includes(sq) ||
-    (o.contact||'').includes(sq) ||
+    (o.contact||'').toLowerCase().includes(sq) ||
     onum(o.idx).toLowerCase().includes(sq)
   );
   // Only show active parcels by default (unless status filtered)
@@ -6335,10 +6350,10 @@ function closeDayDetail(){document.getElementById('cal-detail').classList.remove
 // ============ ADMIN SHEETS ============
 
 // ── Tab state for Admin Sheets and Courier Dashboard ─────────────────────
-if(typeof window._asCourierTab === 'undefined') window._asCourierTab = 'LBC';
+if(typeof window._asCourierTab === 'undefined') window._asCourierTab = 'COD';
 if(typeof window._asPayTab    === 'undefined') window._asPayTab    = 'No Payment';
-if(typeof window._cdCourierTab === 'undefined') window._cdCourierTab = 'LBC';
-if(typeof window._cdPayTab    === 'undefined') window._cdPayTab    = 'No Payment';
+if(typeof window._cdCourierTab === 'undefined') window._cdCourierTab = 'COD';
+if(typeof window._cdPayTab    === 'undefined') window._cdPayTab    = 'Encoded';
 
 // ── Courier Orders Dashboard (LBC/EMS/FedEx) with Edit/Delete ────────────────
 function renderCourierDashboard(){
@@ -6350,10 +6365,10 @@ function renderCourierDashboard(){
     return;
   }
 
-  const COURIER_TABS = ['LBC','EMS','FedEx','COD'];
+  const COURIER_TABS = ['COD','LBC','EMS','FedEx'];
 
   // ── State vars must be defined BEFORE PAYMENT_TABS (which uses curCourier) ──
-  const curCourier = window._cdCourierTab || 'LBC';
+  const curCourier = window._cdCourierTab || 'COD';
   const _rawPayTab = window._cdPayTab || 'No Payment';
   // When COD is active, payment keys like 'No Payment'/'Partial'/'Fully Paid' don't apply — default to 'Delivered'
   const curPayTab = curCourier==='COD' && !['Encoded','Delivered','Cancelled'].includes(_rawPayTab)
@@ -7815,10 +7830,10 @@ function renderRiderParcels() {
       .map(r => r.date)
   );
   const myOrders = allMyOrders.filter(o => {
-    // Only hide DELIVERED orders on already-remitted dates.
-    // Active orders (Preparing/Ready/OFD/Update) must always be visible
-    // even if their encoded date was remitted, so riders never miss live work.
-    if(remittedDates.has(o.date) && o.status === 'Delivered') return false;
+    // Once a date is remitted, hide all terminal-status orders for that date:
+    // Delivered, Cancelled, and For Update (Update) — remitter already processed them.
+    // Active orders (Preparing/Ready/OFD) stay visible regardless of remit status.
+    if(remittedDates.has(o.date) && ['Delivered','Cancelled','Update'].includes(o.status)) return false;
     return true;
   });
   // Apply date filter:
@@ -7833,7 +7848,7 @@ function renderRiderParcels() {
   }
   if(filt) filtered = filtered.filter(o => o.status === filt);
   if(q) filtered = filtered.filter(o =>
-    o.name.toLowerCase().includes(q) || (o.contact||'').includes(q) || onum(o.idx).includes(q));
+    o.name.toLowerCase().includes(q) || (o.contact||'').toLowerCase().includes(q) || onum(o.idx).includes(q));
 
   // ── Earnings Summary — mirrors Riders Remit formula exactly ──
   const del = myOrders.filter(o => o.status === 'Delivered');
@@ -7955,7 +7970,14 @@ function renderRiderParcels() {
 
     const remitAmt = o.status==='Delivered' ? o.grandTotal : 0;
     const hasCancelledItems = cancelledCount > 0;
-    return `<tr style="background:rgba(201,168,76,0.03);">
+    // Show note for ANY non-empty reason — covers 'bayad na', 'Paid via GCash', promos
+    const _hasNote = !!(o.globalDiscountReason && o.globalDiscountReason.trim());
+    const _noteText = _hasNote ? o.globalDiscountReason.trim() : '';
+    const _discAmt  = o.globalDiscount > 0 ? ` — <strong>-${p(o.globalDiscount)}</strong>` : '';
+    const _discBanner = _hasNote
+      ? `<tr style="background:rgba(74,144,217,0.08);border-left:3px solid var(--blue);"><td colspan="8" style="padding:4px 12px;"><span style="font-size:9.5px;color:var(--blue);font-weight:600;">🏷️ Order Note / Promo:</span> <em style="font-size:9.5px;color:var(--white);">${_noteText}</em>${_discAmt}</td></tr>`
+      : '';
+    return `${_discBanner}<tr style="background:rgba(201,168,76,0.03);">
       <td style="color:var(--gold);font-weight:600;">${onum(o.idx)}</td>
       <td style="font-weight:500;">${o.name}</td>
       <td>${o.contact}</td>
@@ -8014,7 +8036,6 @@ function renderRiderParcels() {
         <div class="info-row"><span style="color:var(--red);">Less: SF 10% (Company)</span><strong style="color:var(--red);">-${p(sf10_dash)}</strong></div>
         <div class="info-row"><span style="color:var(--red);">Less: Cashbond (₱100)</span><strong style="color:var(--red);">-${p(cashbond_dash)}</strong></div>
         <div class="info-row"><span style="color:var(--red);">Less: Parcel Fee (₱10 × ${del.length})</span><strong style="color:var(--red);">-${p(parcelFee_dash)}</strong></div>
-        <div class="info-row"><span style="color:var(--red);">Less: Benefits</span><strong style="color:var(--red);">-${p(riderBenefits_dash)}</strong></div>
 
         <div style="border-top:1px solid var(--navy-border);margin:6px 0;"></div>
 
@@ -8552,7 +8573,6 @@ function openEncodeModal() {
   const tnErr2=document.getElementById('enc-tracking-err'); if(tnErr2) tnErr2.textContent='';
   // Reset extra LBC/INTL date fields (hidden for new COD orders)
   const pmtGrp3=document.getElementById('enc-date-payment-group'); if(pmtGrp3) pmtGrp3.style.display='none';
-  const dofGrp3=document.getElementById('enc-date-dropoff-group'); if(dofGrp3) dofGrp3.style.display='none';
   const pmtInp4=document.getElementById('enc-date-payment'); if(pmtInp4) pmtInp4.value='';
   const dofInp4=document.getElementById('enc-date-dropoff'); if(dofInp4) dofInp4.value='';
   const paymentsGrp4=document.getElementById('enc-payments-group'); if(paymentsGrp4) paymentsGrp4.style.display='none';
@@ -8741,7 +8761,7 @@ function renderTracking() {
   // Filter COD orders
   const filtered = S.orders.map((o,i)=>({o,i})).filter(({o}) => {
     if((o.paymentMethod||'COD') !== 'COD') return false;
-    if(q && !o.name.toLowerCase().includes(q) && !onum(S.orders.indexOf(o)).includes(q) && !(o.contact||'').includes(q)) return false;
+    if(q && !o.name.toLowerCase().includes(q) && !onum(S.orders.indexOf(o)).toLowerCase().includes(q) && !(o.contact||'').toLowerCase().includes(q)) return false;
     if(filt && o.status!==filt) return false;
     if(df && o.date!==df) return false;
     return true;
@@ -9409,7 +9429,8 @@ function renderRemitPage() {
           </div>`;
         }
         return `<div style="font-size:9.5px;">${it.code}: ${it.desc} ×${totalQty}${unit} = ${p(it.total)}${discTag}${remarkTag}</div>`;
-      }).join('');
+      }).join('') + (o.globalDiscountReason && o.globalDiscountReason.trim()
+        ? `<div style="margin-top:4px;padding:3px 7px;background:rgba(74,144,217,0.1);border-left:2px solid var(--blue);border-radius:3px;font-size:9px;"><span style="color:var(--blue);font-weight:700;">🏷️ Order Note:</span> <em style="color:var(--white);">${o.globalDiscountReason.trim()}</em>${o.globalDiscount>0?' — <strong style="color:var(--red);">-'+p(o.globalDiscount)+'</strong>':''}</div>` : '');
     };
 
     // ── Sections of orders ──
@@ -9417,56 +9438,49 @@ function renderRemitPage() {
       if(!orders.length) return '';
       return `
         <div style="margin:10px 0 6px;font-size:11px;font-weight:700;color:${titleColor};">${icon} ${title} (${orders.length})</div>
-        <div class="table-wrap"><table style="font-size:10.5px;">
+        <div class="table-wrap"><table style="font-size:10.5px;width:100%;table-layout:fixed;border-collapse:collapse;">
+          <colgroup>
+            <col style="width:72px;">   <!-- Order # -->
+            <col style="width:130px;">  <!-- Customer -->
+            <col>                        <!-- Items (flexible) -->
+            <col style="width:80px;">   <!-- SF — matches parent Total SF -->
+            <col style="width:110px;">  <!-- Amount — matches parent COD Subtotal -->
+            <col style="width:110px;">  <!-- Rider Remark — matches parent Net to Remit -->
+            <col style="width:130px;">  <!-- Cancel Reason -->
+          </colgroup>
           <thead><tr style="background:rgba(201,168,76,0.07);">
-            <th style="width:70px;">Order #</th>
-            <th>Customer</th>
-            <th>Items</th>
-            <th>SF</th>
-            <th>Amount</th>
-            <th>Rider Remark</th>
-            <th>Cancel Reason</th>
+            <th style="padding:6px 8px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;">Order #</th>
+            <th style="padding:6px 8px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;">Customer</th>
+            <th style="padding:6px 8px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;">Items</th>
+            <th style="padding:6px 8px;text-align:right;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;">SF</th>
+            <th style="padding:6px 8px;text-align:right;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;">Amount</th>
+            <th style="padding:6px 8px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;">Rider Remark</th>
+            <th style="padding:6px 8px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;">Cancel Reason</th>
           </tr></thead>
           <tbody>
-            ${orders.map(o=>`<tr>
-              <td style="color:var(--gold);font-size:10px;font-weight:700;">${onum(o.oi)}</td>
-              <td style="font-weight:600;font-size:10.5px;">${o.name}<br><span style="color:var(--muted);font-size:9px;">${o.contact||''}</span></td>
-              <td>${renderOrderItems(o)}</td>
-              <td style="color:var(--blue);white-space:nowrap;">${p(o.shipping||0)}</td>
-              <td style="font-weight:700;white-space:nowrap;${o.status==='Cancelled'?'color:var(--muted);text-decoration:line-through;':'color:var(--green);'}">${p(o.grandTotal||0)}</td>
-              <td style="font-size:9.5px;color:var(--orange);">${o.riderRemarks||'—'}</td>
-              <td style="font-size:9.5px;">${o.cancelReason?`<span style="color:var(--red);font-weight:600;">❌ ${o.cancelReason}</span>`:o.status==='Cancelled'?`<span style="color:var(--muted);">No reason recorded</span>`:'—'}</td>
+            ${orders.map(o=>`<tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
+              <td style="padding:6px 8px;color:var(--gold);font-size:10px;font-weight:700;text-align:left;word-break:break-all;">${onum(o.oi)}</td>
+              <td style="padding:6px 8px;text-align:left;word-break:break-word;">
+                <div style="font-weight:600;font-size:10.5px;">${o.name}</div>
+                <div style="color:var(--muted);font-size:9px;margin-top:1px;">${o.contact||''}</div>
+              </td>
+              <td style="padding:6px 8px;text-align:left;">${renderOrderItems(o)}</td>
+              <td style="padding:6px 8px;text-align:right;color:var(--blue);white-space:nowrap;">${p(o.shipping||0)}</td>
+              <td style="padding:6px 8px;text-align:right;font-weight:700;white-space:nowrap;${o.status==='Cancelled'?'color:var(--muted);text-decoration:line-through;':'color:var(--green);'}">${p(o.grandTotal||0)}</td>
+              <td style="padding:6px 8px;text-align:left;font-size:9.5px;color:var(--orange);word-break:break-word;">${o.riderRemarks||'—'}</td>
+              <td style="padding:6px 8px;text-align:left;font-size:9.5px;word-break:break-word;">${o.cancelReason?`<span style="color:var(--red);font-weight:600;">❌ ${o.cancelReason}</span>`:o.status==='Cancelled'?`<span style="color:var(--muted);">No reason</span>`:'—'}</td>
             </tr>`).join('')}
-            <tr style="background:rgba(201,168,76,0.06);font-weight:700;">
-              <td colspan="4" style="color:${titleColor};">Total</td>
-              <td style="color:${titleColor};">${p(orders.reduce((s,o)=>s+((o.status!=='Cancelled'&&o.status!=='RTO')?o.grandTotal||0:0),0))}</td>
-              <td></td>
+            <tr style="background:rgba(201,168,76,0.06);font-weight:700;border-top:2px solid rgba(201,168,76,0.2);">
+              <td colspan="3" style="padding:7px 8px;color:${titleColor};text-align:left;font-size:10.5px;">Subtotal</td>
+              <td style="padding:7px 8px;text-align:right;color:var(--blue);font-size:10.5px;">${p(orders.reduce((s,o)=>s+(o.shipping||0),0))}</td>
+              <td style="padding:7px 8px;text-align:right;color:${titleColor};font-size:12px;font-weight:800;">${p(orders.reduce((s,o)=>s+((o.status!=='Cancelled'&&o.status!=='RTO')?o.grandTotal||0:0),0))}</td>
+              <td colspan="2"></td>
             </tr>
           </tbody>
         </table></div>`;
     };
 
     // ── Remit log summary rows ──
-    const remitRows = entries.map(e=>{
-      const st=e.remitStatus||'For Remittance';
-      return `<tr>
-        <td style="white-space:nowrap;">${e.date}</td>
-        <td style="text-align:center;">${e.parcelCount||0}</td>
-        <td style="color:var(--green);font-weight:600;">${e.deliveredCount||0}</td>
-        <td style="color:${(e.cancelledCount||0)>0?'var(--red)':'var(--muted)'};">${e.cancelledCount||0}</td>
-        <td>${p(e.totalSF||0)}</td>
-        <td style="color:var(--red);">-${p(e.sf10||0)}</td>
-        <td style="color:var(--red);">-${p(e.totalBenefits||e.manualBenefits||0)}</td>
-        <td style="color:var(--blue);font-weight:600;">${p(e.codSubtotal||e.subtotal||0)}</td>
-        <td style="color:var(--gold);font-weight:700;">${p(e.netTotal||e.netEarn||0)}</td>
-        <td style="font-weight:600;color:${statusColor(st)};">${statusIcon(st)} ${st}</td>
-        <td style="display:flex;gap:4px;flex-wrap:nowrap;">
-          <button class="btn btn-outline btn-sm" onclick="openRemitModal(${e.idx})">✏️</button>
-          ${st!=='Remitted'?`<button class="btn btn-red btn-sm" onclick="delRemit(${e.idx})">🗑️</button>`:''}
-        </td>
-      </tr>`;
-    }).join('');
-
     return `<div class="card" style="margin-bottom:14px;">
       <!-- ── Rider Header (click to expand/collapse) ── -->
       <div class="card-header" style="cursor:pointer;user-select:none;" onclick="toggleRemitRider('${safeId}')">
@@ -9474,8 +9488,8 @@ function renderRemitPage() {
           🏍️ ${riderName}
           <span id="${safeId}_arrow" style="font-size:11px;color:var(--muted);margin-left:8px;">▶</span>
         </span>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;" onclick="event.stopPropagation()">
-          <span style="font-size:11px;color:var(--muted);">${entries.length} entry/entries · ${remittedCount} Remitted</span>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;" onclick="event.stopPropagation()">
+          <span style="font-size:11px;color:var(--muted);">${entries.length} entr${entries.length===1?'y':'ies'} · ${remittedCount} Remitted</span>
           ${delivered.length?`<span style="font-size:11px;color:var(--green);font-weight:600;">✅ ${delivered.length} delivered</span>`:''}
           ${(cancelled.length+forUpdate.length)?`<span style="font-size:11px;color:var(--red);font-weight:600;">⚠️ ${cancelled.length+forUpdate.length} cancel/update</span>`:''}
           <span style="font-size:11.5px;color:var(--blue);font-weight:600;">Subtotal: ${p(grandSubtotal)}</span>
@@ -9487,24 +9501,61 @@ function renderRemitPage() {
       <!-- ── Expandable Body ── -->
       <div id="${safeId}" style="display:none;">
         <!-- Remit Log Summary -->
-        <div style="padding:10px 14px 0;font-size:10.5px;font-weight:700;color:var(--gold);border-bottom:1px solid rgba(255,255,255,0.05);padding-bottom:6px;margin-bottom:4px;">
+        <div style="padding:10px 14px 6px;font-size:10.5px;font-weight:700;color:var(--gold);border-bottom:1px solid rgba(255,255,255,0.05);">
           📋 Remit Entries
         </div>
         <div class="table-wrap" style="padding:0 14px 10px;">
-          <table style="font-size:11px;">
+          <table style="font-size:11px;border-collapse:collapse;width:100%;table-layout:fixed;">
+            <colgroup>
+              <col style="width:90px;">   <!-- Date -->
+              <col style="width:62px;">   <!-- Parcels -->
+              <col style="width:48px;">   <!-- Del -->
+              <col style="width:44px;">   <!-- Cx -->
+              <col style="width:90px;">   <!-- Total SF -->
+              <col style="width:80px;">   <!-- −10% -->
+              <col style="width:110px;">  <!-- COD Subtotal -->
+              <col style="width:110px;">  <!-- Net to Remit -->
+              <col style="width:110px;">  <!-- Status -->
+              <col style="width:80px;">   <!-- Actions -->
+            </colgroup>
             <thead><tr style="background:rgba(201,168,76,0.08);">
-              <th>Date</th><th>Parcels</th><th>✅ Del</th><th style="color:var(--red);">❌ Cx</th>
-              <th>Total SF</th><th>−10%</th><th>−Benefits</th>
-              <th style="color:var(--blue);">COD Subtotal</th>
-              <th style="color:var(--gold);">Net to Remit</th>
-              <th>Status</th><th>Actions</th>
+              <th style="padding:8px 10px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Date</th>
+              <th style="padding:8px 6px;text-align:center;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Parcels</th>
+              <th style="padding:8px 6px;text-align:center;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;color:var(--green);border-bottom:1px solid rgba(255,255,255,0.07);">✅ Del</th>
+              <th style="padding:8px 6px;text-align:center;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;color:var(--red);border-bottom:1px solid rgba(255,255,255,0.07);">❌ Cx</th>
+              <th style="padding:8px 10px;text-align:right;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Total SF</th>
+              <th style="padding:8px 10px;text-align:right;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;color:var(--red);border-bottom:1px solid rgba(255,255,255,0.07);">−10%</th>
+              <th style="padding:8px 10px;text-align:right;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;color:var(--blue);border-bottom:1px solid rgba(255,255,255,0.07);">COD Subtotal</th>
+              <th style="padding:8px 10px;text-align:right;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;color:var(--gold);border-bottom:1px solid rgba(255,255,255,0.07);">Net to Remit</th>
+              <th style="padding:8px 10px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Status</th>
+              <th style="padding:8px 10px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Actions</th>
             </tr></thead>
             <tbody>
-              ${remitRows}
-              <tr style="background:rgba(201,168,76,0.08);font-weight:700;font-size:11.5px;">
-                <td colspan="7" style="color:var(--gold);">TOTAL — ${riderName}</td>
-                <td style="color:var(--blue);">${p(grandSubtotal)}</td>
-                <td style="color:var(--gold);">${p(grandNet)}</td>
+              ${entries.map(e=>{
+                const st=e.remitStatus||'For Remittance';
+                return `<tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
+                  <td style="padding:7px 10px;white-space:nowrap;text-align:left;">${e.date}</td>
+                  <td style="padding:7px 6px;text-align:center;">${e.parcelCount||0}</td>
+                  <td style="padding:7px 6px;text-align:center;color:var(--green);font-weight:600;">${e.deliveredCount||0}</td>
+                  <td style="padding:7px 6px;text-align:center;color:${(e.cancelledCount||0)>0?'var(--red)':'var(--muted)'};">${e.cancelledCount||0}</td>
+                  <td style="padding:7px 10px;text-align:right;">${p(e.totalSF||0)}</td>
+                  <td style="padding:7px 10px;text-align:right;color:var(--red);">-${p(e.sf10||0)}</td>
+                  <td style="padding:7px 10px;text-align:right;color:var(--blue);font-weight:600;">${p(e.codSubtotal||e.subtotal||0)}</td>
+                  <td style="padding:7px 10px;text-align:right;color:var(--gold);font-weight:700;">${p(e.netTotal||e.netEarn||0)}</td>
+                  <td style="padding:7px 10px;font-weight:600;color:${statusColor(st)};white-space:nowrap;text-align:left;">${statusIcon(st)} ${st}</td>
+                  <td style="padding:7px 10px;text-align:left;">
+                    <div style="display:flex;gap:4px;">
+                      <button class="btn btn-outline btn-sm" onclick="openRemitModal(${e.idx})">✏️</button>
+                      ${st!=='Remitted'?`<button class="btn btn-red btn-sm" onclick="delRemit(${e.idx})">🗑️</button>`:''}
+                    </div>
+                  </td>
+                </tr>`;
+              }).join('')}
+              <!-- TOTAL footer row — colspan matches column positions exactly -->
+              <tr style="background:rgba(201,168,76,0.1);font-weight:700;font-size:11.5px;border-top:2px solid rgba(201,168,76,0.25);">
+                <td colspan="6" style="padding:8px 10px;color:var(--gold);text-align:left;">TOTAL — ${riderName}</td>
+                <td style="padding:8px 10px;text-align:right;color:var(--blue);font-size:12px;">${p(grandSubtotal)}</td>
+                <td style="padding:8px 10px;text-align:right;color:var(--gold);font-size:12px;">${p(grandNet)}</td>
                 <td colspan="2"></td>
               </tr>
             </tbody>
@@ -10337,10 +10388,10 @@ function renderOrderMgmt() {
     return 'var(--muted)';
   };
 
-  const ALL_STATUSES_LBC   = ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery','RTO'];
-  const ALL_STATUSES_EMS   = ['Ready to Pick-up','Drop off at EMS','Out for Delivery','RTO'];
-  const ALL_STATUSES_FEDEX = ['Ready to Pick-up','Drop off at FedEx','Out for Delivery','RTO'];
-  const OFD_CHOICES_SORTER = ['Out for Delivery','RTO'];
+  const ALL_STATUSES_LBC   = ['Ready to Pick-up','Drop off at LBC','ODZ/Incomplete Details','Out for Delivery'];
+  const ALL_STATUSES_EMS   = ['Ready to Pick-up','Drop off at EMS','Out for Delivery'];
+  const ALL_STATUSES_FEDEX = ['Ready to Pick-up','Drop off at FedEx','Out for Delivery'];
+  const OFD_CHOICES_SORTER = ['Out for Delivery','RTO']; // RTO only available when OFD
 
   const getOmStatuses = (currentLbcSt, method) => {
     if(currentLbcSt === 'Out for Delivery') return OFD_CHOICES_SORTER;
@@ -10465,12 +10516,10 @@ function onPaymentMethodChange() {
     if(err) err.textContent = '';
   }
 
-  // Extra date fields — show for LBC, EMS & FedEx only
+  // Extra date fields — show for LBC, EMS & FedEx only (dropoff is nested inside payment group)
   const pmtGrp = document.getElementById('enc-date-payment-group');
-  const dofGrp = document.getElementById('enc-date-dropoff-group');
   const paymentsGrp = document.getElementById('enc-payments-group');
   if(pmtGrp) pmtGrp.style.display = isLbc ? '' : 'none';
-  if(dofGrp) dofGrp.style.display = isLbc ? '' : 'none';
   if(paymentsGrp) {
     paymentsGrp.style.display = isLbc ? '' : 'none';
     if(isLbc && document.getElementById('enc-payments-tbody')?.children.length === 0) {
@@ -10699,7 +10748,7 @@ function renderLbcDelivery() {
     if((o.lbcStatus||'') !== activeStatus) return false;
     if(df && o.date !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).toLowerCase().includes(q)
-       && !(o.contact||'').includes(q) && !(o.trackingNumber||'').toLowerCase().includes(q)) return false;
+       && !(o.contact||'').toLowerCase().includes(q) && !(o.trackingNumber||'').toLowerCase().includes(q)) return false;
     return true;
   });
 
@@ -11039,7 +11088,7 @@ function renderCodDelivPage() {
             <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:10px;">ITEMS</span><br>${itemsList||'—'}</div>
             ${reason!=='—'?'<div style="grid-column:1/-1;"><span style="color:var(--red);font-size:10px;">REASON</span><br>'+reason+'</div>':''}
           </div>
-          <div style="display:flex;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid var(--navy-border);">
+          <div style="display:flex;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid var(--navy-border);flex-wrap:wrap;">
             ${tab==='ForUpdate'?`<button onclick="event.stopPropagation();(function(){var _ep=document.getElementById('${safeId}-editpane');_ep.style.display=_ep.style.display==='none'?'block':'none';})()"
               style="background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.3);color:var(--gold);
                      padding:5px 14px;border-radius:6px;cursor:pointer;font-size:11.5px;font-weight:600;">
@@ -11055,6 +11104,11 @@ function renderCodDelivPage() {
                      padding:5px 14px;border-radius:6px;cursor:pointer;font-size:11.5px;">
               🖨️ Print
             </button>
+            ${tab==='ForUpdate'?`<button onclick="event.stopPropagation();codDelivCancelOrder(${i})"
+              style="background:#dc2626;border:none;color:#fff;
+                     padding:5px 14px;border-radius:6px;cursor:pointer;font-size:11.5px;font-weight:700;margin-left:auto;">
+              ❌ Cancel Order
+            </button>`:''}
           </div>
           ${tab==='ForUpdate'?`
           <div id="${safeId}-editpane" style="display:none;margin-top:10px;padding:12px;background:rgba(201,168,76,0.05);border:1px solid rgba(201,168,76,0.2);border-radius:8px;" onclick="event.stopPropagation()">
@@ -11104,7 +11158,7 @@ function saveCodForUpdateDispatch(orderIdx, safeId) {
   if(!delivDate){toast('\u26a0 Please select a Delivery Date.');return;}
   var o=S.orders[orderIdx];
   if(!o){toast('\u26a0 Order not found.');return;}
-  o.status='Ready';
+  o.status='Preparing';
   o.scheduledDelivery=delivDate;
   o.date=delivDate;  // override order date → rider sees it on the scheduled delivery date
   if(riderSel&&riderSel!==o.assignedRider)o.assignedRider=riderSel;
@@ -11113,11 +11167,52 @@ function saveCodForUpdateDispatch(orderIdx, safeId) {
   o.dispatchedAt=new Date().toISOString();
   o.dispatchedBy=(currentUser&&currentUser.name)||'';
   save();
-  toast('\u2705 Dispatched! Order set to Ready for '+delivDate+'.');
+  toast('\u2705 Schedule set to '+delivDate+'. Status → Preparing (sorter will assign to rider).');
   setTimeout(function(){try{renderCodDelivPage();}catch(e){}},120);
   if(_activePage==='ordermgmt')    try{renderOrderMgmt();}catch(e){}
   if(_activePage==='riderdash')    try{renderRiderParcels();}catch(e){}
   if(_activePage==='dailyparcels') try{renderDailyParcels();}catch(e){}
+}
+
+// ── COD Delivery → Cancel Order (For Update tab) ─────────────────────────
+function codDelivCancelOrder(orderIdx) {
+  const o = S.orders[orderIdx];
+  if(!o) { toast('⚠ Order not found.'); return; }
+  if(o.status === 'Cancelled' || o.status === 'RTO') { toast('⚠ Already cancelled.'); return; }
+  if(window._codCancelLock) { toast('⏳ Please wait, processing...'); return; }
+  window._codCancelLock = true;
+  _confirmDel('Cancel ' + onum(orderIdx) + ' — ' + o.name + '? This will restore inventory.', function() {
+    window._codCancelLock = false;
+    if(S.orders[orderIdx]?.status === 'Cancelled') { toast('⚠ Already cancelled.'); return; }
+    var restored = false;
+    if(_invDeducted(o)) {
+      restored = _restoreOrderItems(
+        o.items || [], today(),
+        'COD Delivery Cancel – ' + o.name + ' (' + onum(orderIdx) + ')',
+        o._id || String(orderIdx)
+      );
+    }
+    S.orders[orderIdx].status       = 'Cancelled';
+    S.orders[orderIdx].cancelReason = 'Cancelled from COD Delivery (For Update)';
+    S.orders[orderIdx].cancelledBy  = (currentUser && currentUser.name) || 'Checker';
+    S.orders[orderIdx].cancelledAt  = new Date().toISOString();
+    if(!S.deletedOrders) S.deletedOrders = [];
+    if(!S.deletedOrders.some(function(d){ return d.orderNum === onum(orderIdx); })) {
+      S.deletedOrders.push({
+        cancelledAt: S.orders[orderIdx].cancelledAt,
+        cancelledBy: S.orders[orderIdx].cancelledBy,
+        reason: 'Cancelled from COD Delivery (For Update)',
+        orderNum: onum(orderIdx),
+        name: o.name, contact: o.contact||'', address: o.address||'',
+        admin: o.admin||'', date: o.date, paymentMethod: o.paymentMethod||'COD',
+        grandTotal: o.grandTotal||0, items: o.items||[], status: 'Cancelled',
+      });
+    }
+    save();
+    toast('❌ ' + onum(orderIdx) + ' cancelled' + (restored ? ' & inventory restored' : '') + '.');
+    renderCodDelivPage();
+  });
+  setTimeout(function(){ window._codCancelLock = false; }, 8000);
 }
 
 function toggleCodRow(id) {
@@ -11181,7 +11276,7 @@ function renderEmsDelivery() {
     if((o.lbcStatus||'') !== activeStatus) return false;
     if(df && o.date !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).toLowerCase().includes(q)
-       && !(o.contact||'').includes(q) && !(o.trackingNumber||'').toLowerCase().includes(q)) return false;
+       && !(o.contact||'').toLowerCase().includes(q) && !(o.trackingNumber||'').toLowerCase().includes(q)) return false;
     return true;
   });
 
@@ -11335,9 +11430,13 @@ function confirmCheckerCancel() {
   errEl.textContent = '';
   const o = S.orders[orderIdx];
   if(!o) return;
-  // IDEMPOTENCY: block if already cancelled/RTO — prevents double inventory restore
+  // IDEMPOTENCY: block if already cancelled/RTO — prevents double inventory restore AND duplicate deletedOrders entries
   if(o.status === 'Cancelled' || o.status === 'RTO') {
     toast('⚠ Order is already Cancelled / Returned.'); closeModal('modal-checker-cancel'); return;
+  }
+  // IDEMPOTENCY: also check deletedOrders to prevent duplicate log entries
+  if((S.deletedOrders||[]).some(d => d.orderNum === onum(orderIdx))) {
+    toast('⚠ Order is already in the cancelled log.'); closeModal('modal-checker-cancel'); return;
   }
   // Save to deletedOrders log before removing
   if(!S.deletedOrders) S.deletedOrders = [];
@@ -11407,7 +11506,7 @@ function renderDeletedOrders() {
   const list = S.deletedOrders.map((d,i)=>({d,i})).filter(({d}) => {
     if(mf && (d.paymentMethod||'COD') !== mf) return false;
     if(df && d.cancelledAt && !d.cancelledAt.startsWith(df)) return false;
-    if(q && !d.name.toLowerCase().includes(q) && !(d.contact||'').includes(q)
+    if(q && !d.name.toLowerCase().includes(q) && !(d.contact||'').toLowerCase().includes(q)
        && !(d.orderNum||'').toLowerCase().includes(q) && !(d.reason||'').toLowerCase().includes(q)) return false;
     return true;
   });
@@ -11491,7 +11590,7 @@ function renderFedexDelivery() {
     if((o.lbcStatus||'') !== activeStatus) return false;
     if(df && o.date !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).toLowerCase().includes(q)
-       && !(o.contact||'').includes(q) && !(o.trackingNumber||'').toLowerCase().includes(q)) return false;
+       && !(o.contact||'').toLowerCase().includes(q) && !(o.trackingNumber||'').toLowerCase().includes(q)) return false;
     return true;
   });
 
@@ -11624,7 +11723,7 @@ function renderCheckerDeleted() {
     if(mf && (d.paymentMethod||'COD') !== mf) return false;
     if(df && d.cancelledAt && !d.cancelledAt.startsWith(df)) return false;
     if(q && !d.name.toLowerCase().includes(q)
-       && !(d.contact||'').includes(q)
+       && !(d.contact||'').toLowerCase().includes(q)
        && !(d.orderNum||'').toLowerCase().includes(q)
        && !(d.reason||'').toLowerCase().includes(q)
        && !(d.admin||'').toLowerCase().includes(q)) return false;
@@ -11839,8 +11938,8 @@ function detectDuplicates(orders) {
       const dateMatch = (oj.date||'') === dateI;
       const nameMatch  = dateMatch && _nameFuzzyMatch(oi.name, oj.name);
       const contactMatch = dateMatch && contactI && contactI === _normContact(oj.contact);
-      // Address match works across dates — flag potential duplicate delivery location
-      const addrMatch = _addressFuzzyMatch(oi.address, oj.address);
+      // Address match only within same day — prevents cross-date false-positive grouping
+      const addrMatch = dateMatch && _addressFuzzyMatch(oi.address, oj.address);
       if(nameMatch || contactMatch || addrMatch) union(i,j);
     }
   }
@@ -11981,6 +12080,12 @@ function confirmMerge() {
   const oA = S.orders[_mergeIdxA];
   const oB = S.orders[_mergeIdxB];
   if(!oA || !oB) return;
+
+  // Same-day requirement: only allow merging orders with the same date
+  if(oA.date !== oB.date) {
+    toast(`⚠️ Hindi pwedeng i-merge! ${onum(_mergeIdxA)} is ${oA.date} and ${onum(_mergeIdxB)} is ${oB.date}. Same day lang ang pwedeng i-merge.`);
+    return;
+  }
 
   const sfChoice = document.querySelector('input[name="merge-sf"]:checked')?.value || 'higher';
   let mergedSF;
