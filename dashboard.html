@@ -1139,7 +1139,14 @@ function _showRulesHint() {
     <div id="orders-stats-row"></div>
     <!-- Main orders table card -->
     <div id="orders-main-view"></div>
-    <!-- Courier Orders Dashboard (LBC/EMS/FedEx) -->
+    <!-- Courier Orders Dashboard search (static — never wiped by renderCourierDashboard) -->
+    <div id="courier-search-wrap" style="display:none;padding:10px 0 0;">
+      <input class="form-control" id="cd-global-search"
+        placeholder="🔍 Search Order # / Customer / Contact / Tracking #"
+        style="width:100%;font-size:12px;padding:7px 11px;border-radius:7px;"
+        oninput="renderCourierDashboard()">
+    </div>
+    <!-- Courier Orders Dashboard (LBC/EMS/FedEx/COD) -->
     <div id="courier-dashboard-content"></div>
   </div>
 
@@ -2546,7 +2553,17 @@ function _showRulesHint() {
       <div class="info-row"><span style="color:var(--red);">Less: SF 10% (Company)</span><span id="remit-sf-10" style="color:var(--red);">-₱0.00</span></div>
       <div class="info-row"><span style="color:var(--red);">Less: Cashbond (₱100)</span><span id="remit-cashbond-display" style="color:var(--red);">-₱100.00</span></div>
       <div class="info-row"><span style="color:var(--red);">Less: Parcel Fee (₱10/parcel)</span><span id="remit-parcel-fee-display" style="color:var(--red);">-₱0.00</span></div>
-      
+      <div class="info-row" style="align-items:center;">
+        <span style="color:var(--red);">Less: Benefits</span>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="color:var(--muted);font-size:10.5px;">₱</span>
+          <input type="number" id="remit-benefits-input" value="0" min="0" step="0.01"
+            style="width:90px;font-size:11.5px;padding:2px 6px;border-radius:5px;border:1px solid var(--navy-border);background:var(--navy);color:var(--red);text-align:right;"
+            onfocus="this.select()"
+            oninput="recalcRemitNet()">
+          <span id="remit-benefits-cut" style="display:none;">-₱0.00</span>
+        </div>
+      </div>
       <div class="info-row" style="border-bottom:1px solid var(--navy-border);padding-bottom:8px;"><span style="color:var(--gold);font-weight:600;">= Rider's Net SF</span><span id="remit-sf-rider-share" style="color:var(--gold);font-weight:700;">₱0.00</span></div>
       <div class="info-row" style="border-bottom:none;font-size:14px;background:rgba(46,204,138,0.07);padding:8px;border-radius:7px;margin-top:6px;">
         <strong>🏦 Net Total to Remit</strong>
@@ -3337,7 +3354,7 @@ function renderMyOrders() {
         : ''}
     </td></tr>`;
 
-  const methodLabels = {LBC:'📦 LBC Orders', EMS:'✈️ EMS Orders', FedEx:'📦 FedEx Orders', COD:'🏍️ COD Orders'};
+  const methodLabels = { COD:'🏍️ COD Orders', LBC:'📦 LBC Orders', EMS:'✈️ EMS Orders', FedEx:'📦 FedEx Orders'};
   const methodColors = {LBC:'var(--blue)', EMS:'var(--green)', FedEx:'var(--orange)', COD:'var(--gold)'};
 
   let html = '';
@@ -6375,15 +6392,14 @@ function renderCourierDashboard(){
       })
     : payTabOrders;
 
+  // Show the static search bar (hidden until dashboard loads)
+  const _searchWrap = document.getElementById('courier-search-wrap');
+  if(_searchWrap) _searchWrap.style.display = '';
+
   const canEdit = (o) => isOwner || (o.checkerStatus !== 'Verified');
 
   el.innerHTML = `
-    <div class="card" style="margin-top:14px;">
-      <div style="padding:10px 14px 0;">
-        <input class="form-control" id="cd-global-search" placeholder="🔍 Search Order # / Customer / Contact / Tracking #"
-          style="width:100%;font-size:12px;padding:7px 11px;border-radius:7px;"
-          oninput="renderCourierDashboard()">
-      </div>
+    <div class="card" style="margin-top:8px;">
       <div class="card-header">
         <span class="card-title">📦 Courier Orders Dashboard</span>
         <span style="font-size:11px;color:var(--muted);">${allCourierOrders.length} total courier orders</span>
@@ -7976,7 +7992,7 @@ function renderRiderParcels() {
         <div class="info-row"><span style="color:var(--red);">Less: SF 10% (Company)</span><strong style="color:var(--red);">-${p(sf10_dash)}</strong></div>
         <div class="info-row"><span style="color:var(--red);">Less: Cashbond (₱100)</span><strong style="color:var(--red);">-${p(cashbond_dash)}</strong></div>
         <div class="info-row"><span style="color:var(--red);">Less: Parcel Fee (₱10 × ${del.length})</span><strong style="color:var(--red);">-${p(parcelFee_dash)}</strong></div>
-        <div class="info-row"><span style="color:var(--red);">Less: Benefits</span><strong style="color:var(--red);">-${p(riderBenefits_dash)}</strong></div>
+       
 
         <div style="border-top:1px solid var(--navy-border);margin:6px 0;"></div>
 
