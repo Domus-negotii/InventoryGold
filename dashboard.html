@@ -38,6 +38,54 @@ body{background:var(--navy);color:var(--white);font-family:var(--fb);min-height:
 .nav-section{padding:9px 0 2px;}
 .nav-label{font-size:8.5px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;padding:0 13px 4px;}
 .nav-item{display:flex;align-items:center;gap:8px;padding:7px 13px;cursor:pointer;font-size:12px;font-weight:700;color:var(--muted);transition:all 0.18s;border-left:3px solid transparent;}
+/* ── Inventory modal layout ──────────────────────────────────────*/
+#modal-inventory .modal { max-width:560px; }
+#modal-inventory .inv-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px 14px;
+  align-items: start;
+}
+#modal-inventory .inv-grid .form-group { display: flex; flex-direction: column; }
+#modal-inventory .inv-grid .form-group label {
+  font-size: 10.5px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.4px;
+  margin-bottom: 4px;
+}
+/* Uniform heights for all inventory inputs/selects */
+#modal-inventory .form-control,
+#modal-inventory select,
+#modal-inventory input[type="number"],
+#modal-inventory input[type="text"] {
+  height: 36px; padding: 6px 10px; font-size: 12.5px;
+  border: 1px solid var(--navy-border); border-radius: 6px;
+  background: var(--navy); color: var(--text);
+  width: 100%; box-sizing: border-box;
+}
+/* Metal category radio buttons — uniform with inputs */
+#modal-inventory .inv-cat-radio {
+  display: flex; gap: 8px; margin-top: 0;
+}
+#modal-inventory .inv-cat-radio label {
+  height: 36px; display: flex; align-items: center;
+  justify-content: center; gap: 6px;
+  font-size: 12.5px; cursor: pointer;
+  padding: 0 16px; border-radius: 6px;
+  border: 1.5px solid var(--navy-border);
+  flex: 1; text-transform: none; letter-spacing: 0;
+  transition: border-color 0.15s, background 0.15s;
+}
+#modal-inventory .inv-cat-radio label:has(input:checked) {
+  border-color: var(--gold); background: rgba(201,168,76,0.08);
+}
+/* Full-width rows */
+#modal-inventory .inv-full { grid-column: 1 / -1; }
+/* form-actions spacing */
+#modal-inventory .form-actions {
+  display: flex; gap: 8px; margin-top: 16px;
+  padding-top: 14px; border-top: 1px solid var(--navy-border);
+}
+
 /* Uniform form control heights across encode modal */
 #modal-encode .form-control,#modal-encode select,#modal-encode input[type="date"],#modal-encode input[type="number"],#modal-encode input[type="text"],#modal-encode textarea{
   height:36px;padding:6px 10px;font-size:12.5px;
@@ -2131,13 +2179,13 @@ function _showRulesHint() {
         <div id="enc-payments-tbody" style="display:flex;flex-direction:column;gap:5px;"></div>
         <div style="font-size:10px;color:var(--muted);margin-top:4px;">💡 Tip: Mag-add ng payment row para sa bawat installment. Bawat ref# may kasamang amount.</div>
       </div>
-      <div class="form-group" id="enc-admin-group"><label>Admin Name *</label>
-        <div id="enc-admin-wrapper">
-          <!-- Populated by populateAdminDropdown() based on role -->
-          <select class="form-control enc-tab" id="enc-admin" onkeydown="encNextField(event,this)">
-            <option value="">-- Select Admin --</option>
-          </select>
-        </div>
+      <!-- ROW 3: Tracking (col-1) | SF (col-1) | Method (col-2) -->
+      <div class="form-group" id="enc-tracking-group" style="display:none;">
+        <label>Tracking # <span id="enc-tracking-label-hint" style="font-size:10px;color:var(--muted);">(12 digits)</span></label>
+        <input class="form-control enc-tab" id="enc-tracking-number" placeholder="000000000000" maxlength="22"
+          oninput="validateTrackingNum(this)"
+          onkeydown="encNextField(event,this)">
+        <div id="enc-tracking-err" style="font-size:10.5px;color:var(--red);min-height:14px;margin-top:2px;"></div>
       </div>
       <div class="form-group" id="enc-sf-group"><label>Shipping Fee (₱)</label><input type="number" class="form-control enc-tab" id="enc-shipping" value="0" min="0" oninput="calcEnc()" onfocus="this.select()" onkeydown="encNextField(event,this)"></div>
       <div class="form-group" id="enc-method-group"><label>Shipping Method *</label>
@@ -2148,12 +2196,15 @@ function _showRulesHint() {
           <option value="FedEx">📦 FedEx – Payment First, FedEx Delivers</option>
         </select>
       </div>
-      <div class="form-group" id="enc-tracking-group" style="display:none;">
-        <label>LBC Tracking Number <span id="enc-tracking-label-hint" style="font-size:10px;color:var(--muted);">(12 digits)</span></label>
-        <input class="form-control enc-tab" id="enc-tracking-number" placeholder="000000000000" maxlength="22"
-          oninput="validateTrackingNum(this)"
-          onkeydown="encNextField(event,this)">
-        <div id="enc-tracking-err" style="font-size:10.5px;color:var(--red);min-height:14px;margin-top:2px;"></div>
+      <!-- ROW 4: Admin Name (full width) -->
+      <div class="form-group" id="enc-admin-group" style="grid-column:1/-1;">
+        <label>Admin Name *</label>
+        <div id="enc-admin-wrapper" style="max-width:260px;">
+          <!-- Populated by populateAdminDropdown() based on role -->
+          <select class="form-control enc-tab" id="enc-admin" onkeydown="encNextField(event,this)">
+            <option value="">-- Select Admin --</option>
+          </select>
+        </div>
       </div>
       <input type="hidden" id="enc-rider" value="">
       <div id="enc-rider-info" style="display:none;font-size:10.5px;color:var(--muted);margin-top:4px;">
@@ -2362,34 +2413,67 @@ function _showRulesHint() {
 <div class="modal-overlay" id="modal-inventory">
   <div class="modal" style="max-width:520px;">
     <div class="modal-header"><span class="modal-title" id="inv-modal-title">Add Product</span><button class="modal-close" onclick="closeModal('modal-inventory')">✕</button></div>
-    <div class="form-group" style="margin-bottom:12px;">
-      <label>Item Type</label>
-      <select class="form-control" id="inv-type" onchange="toggleInvType()">
-        <option value="grams">⚖️ By Grams (gold/silver – no fixed qty)</option>
-        <option value="fixprice">🏷️ Fix Price (specific qty, no grams)</option>
-      </select>
-    </div>
-    <div class="form-group" style="margin-bottom:12px;">
-      <label>Metal Category</label>
-      <div style="display:flex;gap:8px;margin-top:4px;">
-        <label id="inv-cat-gold-lbl" style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:6px 16px;border-radius:7px;border:1.5px solid var(--gold);flex:1;justify-content:center;">
-          <input type="radio" name="inv-category" id="inv-cat-gold" value="gold" checked> 🥇 Gold
-        </label>
-        <label id="inv-cat-silver-lbl" style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:6px 16px;border-radius:7px;border:1.5px solid var(--navy-border);flex:1;justify-content:center;">
-          <input type="radio" name="inv-category" id="inv-cat-silver" value="silver"> 🥈 Silver
-        </label>
+    <div class="inv-grid">
+      <!-- Row 1: Item Type (full width) -->
+      <div class="form-group inv-full">
+        <label>Item Type</label>
+        <select class="form-control" id="inv-type" onchange="toggleInvType()">
+          <option value="grams">⚖️ By Grams (gold/silver)</option>
+          <option value="fixprice">🏷️ Fix Price (specific qty)</option>
+        </select>
       </div>
-    </div>
-    <div class="form-grid">
-      <div class="form-group"><label>Serial Code *</label><input class="form-control" id="inv-code" placeholder="e.g. 18KP10V89" onkeydown="invNextField(event,this)"></div>
-      <div class="form-group"><label>Description *</label><input class="form-control" id="inv-desc" onkeydown="invNextField(event,this)"></div>
-      <div class="form-group inv-grams-row"><label>Grams (total in stock)</label><input type="number" class="form-control" id="inv-grams" value="0" oninput="calcInv()" onkeydown="invNextField(event,this)"></div>
-      <div class="form-group inv-grams-row"><label>Per Gram (₱)</label><input type="number" class="form-control" id="inv-pergram" value="0.00" step="0.01" oninput="calcInv()" onkeydown="invNextField(event,this)"></div>
-      <div class="form-group inv-grams-row"><label>Capital / Cost per gram (₱)</label><input type="number" class="form-control" id="inv-capital-gram" value="0.00" step="0.01" oninput="calcInv()" onkeydown="invNextField(event,this)" placeholder="Cost price per gram"></div>
-      <div class="form-group inv-grams-row"><label>Unit Value (auto)</label><input class="form-control" id="inv-unitval" readonly style="background:rgba(201,168,76,0.08);color:var(--gold);"></div>
-      <div class="form-group inv-fixprice-row" style="display:none;"><label>Fix Price (₱) per unit</label><input type="number" class="form-control" id="inv-fixprice" value="0.00" step="0.01" onkeydown="invNextField(event,this)"></div>
-      <div class="form-group inv-fixprice-row" style="display:none;"><label>Capital / Cost per unit (₱)</label><input type="number" class="form-control" id="inv-capital-fix" value="0.00" step="0.01" onkeydown="invNextField(event,this)" placeholder="Cost price per unit"></div>
-      <div class="form-group inv-fixprice-row" style="display:none;"><label>Quantity *</label><input type="number" class="form-control" id="inv-qty" value="0" min="0" onkeydown="invNextField(event,this)"></div>
+      <!-- Row 2: Metal Category (full width) -->
+      <div class="form-group inv-full">
+        <label>Metal Category</label>
+        <div class="inv-cat-radio">
+          <label id="inv-cat-gold-lbl">
+            <input type="radio" name="inv-category" id="inv-cat-gold" value="gold" checked> 🥇 Gold
+          </label>
+          <label id="inv-cat-silver-lbl">
+            <input type="radio" name="inv-category" id="inv-cat-silver" value="silver"> 🥈 Silver
+          </label>
+        </div>
+      </div>
+      <!-- Row 3: Code + Description -->
+      <div class="form-group">
+        <label>Serial Code *</label>
+        <input class="form-control" id="inv-code" placeholder="e.g. 18KP10V89" onkeydown="invNextField(event,this)">
+      </div>
+      <div class="form-group">
+        <label>Description *</label>
+        <input class="form-control" id="inv-desc" onkeydown="invNextField(event,this)">
+      </div>
+      <!-- Row 4: Grams + Per Gram (grams mode) -->
+      <div class="form-group inv-grams-row">
+        <label>Grams (total in stock)</label>
+        <input type="number" class="form-control" id="inv-grams" value="0" oninput="calcInv()" onkeydown="invNextField(event,this)">
+      </div>
+      <div class="form-group inv-grams-row">
+        <label>Per Gram (₱)</label>
+        <input type="number" class="form-control" id="inv-pergram" value="0.00" step="0.01" oninput="calcInv()" onkeydown="invNextField(event,this)">
+      </div>
+      <!-- Row 5: Capital + Unit Value (grams mode) -->
+      <div class="form-group inv-grams-row">
+        <label>Capital / Cost per gram (₱)</label>
+        <input type="number" class="form-control" id="inv-capital-gram" value="0.00" step="0.01" oninput="calcInv()" onkeydown="invNextField(event,this)" placeholder="Cost price per gram">
+      </div>
+      <div class="form-group inv-grams-row">
+        <label>Unit Value (auto)</label>
+        <input class="form-control" id="inv-unitval" readonly style="background:rgba(201,168,76,0.08);color:var(--gold);">
+      </div>
+      <!-- Fix price mode rows -->
+      <div class="form-group inv-fixprice-row" style="display:none;">
+        <label>Fix Price (₱) per unit</label>
+        <input type="number" class="form-control" id="inv-fixprice" value="0.00" step="0.01" onkeydown="invNextField(event,this)">
+      </div>
+      <div class="form-group inv-fixprice-row" style="display:none;">
+        <label>Capital / Cost per unit (₱)</label>
+        <input type="number" class="form-control" id="inv-capital-fix" value="0.00" step="0.01" onkeydown="invNextField(event,this)" placeholder="Cost price per unit">
+      </div>
+      <div class="form-group inv-fixprice-row" style="display:none;">
+        <label>Quantity *</label>
+        <input type="number" class="form-control" id="inv-qty" value="0" min="0" onkeydown="invNextField(event,this)">
+      </div>
     </div>
     <input type="hidden" id="inv-edit-idx" value="">
     <div class="form-actions"><button class="btn btn-gold" onclick="saveInv()">💾 Save</button><button class="btn btn-outline" onclick="closeModal('modal-inventory')">Cancel</button></div>
@@ -3794,7 +3878,7 @@ function updateVerifStatus(orderIdx, status) {
     // ── Restore inventory on Un-verify ───────────────────────────
     if(_invDeducted(o)) {
       _restoreOrderItems(o.items||[], today(),
-        `LBC/INTL Unverified – ${o.name} (${onum(orderIdx)})`);
+        `LBC/INTL Unverified – ${o.name} (${onum(orderIdx)})`, o._id||String(orderIdx));
       S.orders[orderIdx].inventoryDeducted = false;
     }
     o.verificationStatus = 'Not Verified';
@@ -3889,7 +3973,7 @@ function unverifyOrder(i){
   // Deduction happened at Verify — so restore it here.
   if(_invDeducted(o)) {
     _restoreOrderItems(o.items, today(),
-      'Checker unverified – '+o.name+' ('+onum(i)+')');
+      'Checker unverified – '+o.name+' ('+onum(i)+')', o._id||String(i));
     S.orders[i].inventoryDeducted = false;
   }
   S.orders[i].checkerStatus='Pending';
@@ -4257,7 +4341,7 @@ function resolveUpdate(orderIdx, newStatus) {
     let restored = false;
     if(_invDeducted(o)) {
       restored = _restoreOrderItems(o.items||[], today(),
-        `Checker For Update Cancel – ${o.name} (${onum(orderIdx)})`);
+        `Checker For Update Cancel – ${o.name} (${onum(orderIdx)})`, o._id||'order');
       S.orders[orderIdx].inventoryDeducted = false;
       S.orders[orderIdx].checkerStatus = 'Pending';
     }
@@ -6183,14 +6267,14 @@ function renderCourierDashboard(){
   const curCourier = window._cdCourierTab || 'LBC';
   const _rawPayTab = window._cdPayTab || 'No Payment';
   // When COD is active, payment keys like 'No Payment'/'Partial'/'Fully Paid' don't apply — default to 'Delivered'
-  const curPayTab = curCourier==='COD' && !['Delivered','Cancelled','Returned'].includes(_rawPayTab)
-    ? 'Delivered' : _rawPayTab;
+  const curPayTab = curCourier==='COD' && !['Encoded','Delivered','Cancelled'].includes(_rawPayTab)
+    ? 'Encoded' : _rawPayTab;
 
   // For COD: logistical sub-tabs; for LBC/EMS/FedEx: payment sub-tabs
   const COD_TABS = [
-    {key:'Delivered',  label:'✅ Delivered',  color:'var(--green)'},
-    {key:'Cancelled',  label:'🚫 Cancelled',  color:'var(--red)'},
-    {key:'Returned',   label:'↩️ Returned',   color:'var(--orange)'},
+    {key:'Encoded',   label:'📋 Encoded',   color:'var(--blue)'},
+    {key:'Delivered', label:'✅ Delivered',  color:'var(--green)'},
+    {key:'Cancelled', label:'🚫 Cancelled',  color:'var(--red)'},
   ];
   const PAYMENT_TABS = curCourier === 'COD' ? COD_TABS : [
     {key:'No Payment', label:'⏳ Unpaid',     color:'var(--red)'},
@@ -6219,10 +6303,10 @@ function renderCourierDashboard(){
   let payTabOrders;
   if(curCourier === 'COD') {
     // COD: logistical buckets
-    if(curPayTab === 'Delivered')  payTabOrders = courierOrders.filter(o=>o.status==='Delivered');
-    else if(curPayTab === 'Cancelled') payTabOrders = courierOrders.filter(o=>o.status==='Cancelled');
-    else if(curPayTab === 'Returned')  payTabOrders = courierOrders.filter(o=>o.status==='RTO' || o.lbcStatus==='RTO');
-    else payTabOrders = courierOrders.filter(o=>o.status==='Delivered');
+    if(curPayTab === 'Encoded')    payTabOrders = courierOrders.filter(o=>!['Delivered','Cancelled','RTO'].includes(o.status));
+    else if(curPayTab === 'Delivered')  payTabOrders = courierOrders.filter(o=>o.status==='Delivered');
+    else if(curPayTab === 'Cancelled')  payTabOrders = courierOrders.filter(o=>o.status==='Cancelled');
+    else payTabOrders = courierOrders.filter(o=>!['Delivered','Cancelled','RTO'].includes(o.status));
   } else {
     // LBC/EMS/FedEx: payment buckets (unchanged)
     payTabOrders = curPayTab==='Delivered'
@@ -6257,7 +6341,7 @@ function renderCourierDashboard(){
       <!-- Courier tabs -->
       <div style="display:flex;gap:6px;padding:10px 14px 0;border-bottom:1px solid rgba(255,255,255,0.07);">
         ${COURIER_TABS.map(c=>`
-          <button onclick="(function(){window._cdCourierTab='${c}';window._cdPayTab='${c}'==='COD'?'Delivered':(window._cdPayTab==='Delivered'||window._cdPayTab==='Cancelled'||window._cdPayTab==='Returned'?'No Payment':window._cdPayTab||'No Payment');renderCourierDashboard();})()"
+          <button onclick="(function(){window._cdCourierTab='${c}';window._cdPayTab='${c}'==='COD'?'Encoded':(window._cdPayTab==='Encoded'||window._cdPayTab==='Delivered'||window._cdPayTab==='Cancelled'?'No Payment':window._cdPayTab||'No Payment');renderCourierDashboard();})()"
             style="padding:7px 18px;font-size:12px;font-weight:600;border:none;border-radius:6px 6px 0 0;cursor:pointer;
               background:${curCourier===c?'var(--gold)':'rgba(255,255,255,0.07)'};
               color:${curCourier===c?'#000':'var(--text)'};transition:all 0.15s;">
@@ -6269,9 +6353,9 @@ function renderCourierDashboard(){
       <div style="display:flex;gap:4px;padding:8px 14px;background:rgba(0,0,0,0.08);">
         ${PAYMENT_TABS.map(pt=>{
           const cnt = curCourier==='COD'
-            ? pt.key==='Delivered'  ? courierOrders.filter(o=>o.status==='Delivered').length
+            ? pt.key==='Encoded'    ? courierOrders.filter(o=>!['Delivered','Cancelled','RTO'].includes(o.status)).length
+            : pt.key==='Delivered'  ? courierOrders.filter(o=>o.status==='Delivered').length
             : pt.key==='Cancelled'  ? courierOrders.filter(o=>o.status==='Cancelled').length
-            : pt.key==='Returned'   ? courierOrders.filter(o=>o.status==='RTO'||o.lbcStatus==='RTO').length
             : 0
             : pt.key==='Delivered'
             ? courierOrders.filter(o=>o.status==='Delivered').length
@@ -6300,7 +6384,7 @@ function renderCourierDashboard(){
                <thead><tr style="background:rgba(201,168,76,0.08);">
                  <th>Order #</th><th>Date</th><th>Customer</th>
                  ${isOwner?'<th>Admin</th>':''}
-                 <th>${curCourier==='COD'?(curPayTab==='Cancelled'||curPayTab==='Returned'?'Reason':'—'):'Tracking #'}</th><th>Items Total</th><th>SF</th>
+                 <th>${curCourier==='COD'?(curPayTab==='Cancelled'?'Reason':'Status'):'Tracking #'}</th><th>Items Total</th><th>SF</th>
                  ${curPayTab==='Partial'?'<th>Notes</th>':''}
                  <th>Grand Total</th><th>Status</th><th>Verif</th><th>Actions</th>
                </tr></thead>
@@ -6310,7 +6394,7 @@ function renderCourierDashboard(){
                    <td style="white-space:nowrap;">${o.date}</td>
                    <td style="font-weight:500;">${o.name}<br><span style="color:var(--muted);font-size:9px;">${o.contact||''}</span></td>
                    ${isOwner?`<td style="font-size:10.5px;">${o.admin||'—'}</td>`:''}
-                   <td style="font-size:10px;color:${curCourier==='COD'?'var(--muted)':'var(--blue)'}">${curCourier==='COD'?(o.cancelReason||o.rtoReason||'—'):(o.trackingNumber||'—')}</td>
+                   <td style="font-size:10px;color:${curCourier==='COD'?'var(--gold)':'var(--blue)'}">${curCourier==='COD'?(curPayTab==='Cancelled'?(o.cancelReason||'—'):o.status):(o.trackingNumber||'—')}</td>
                    <td>${p(o.itemsTotal||0)}</td>
                    <td>${p(o.shipping||0)}</td>
                    ${curPayTab==='Partial'?`<td style="font-size:10px;color:var(--orange);">${o.paymentNotes||'—'}</td>`:''}
@@ -7033,7 +7117,7 @@ function doLogin(){
   if(currentRole==='rider'){
     initApp().then(()=>{
       gotoPage('riderdash');
-      const p=document.getElementById('rider-dash-login-prompt'); if(p)p.style.display='none';
+      const _rdLoginEl=document.getElementById('rider-dash-login-prompt'); if(_rdLoginEl)_rdLoginEl.style.display='none';
       const d=document.getElementById('rider-dash-content'); if(d)d.style.display='block';
       const n=document.getElementById('rider-dash-name'); if(n)n.textContent=currentRider.name;
       const l=document.getElementById('rider-dash-location'); if(l){
@@ -7356,9 +7440,10 @@ async function save(){
   }
   // Firebase-only: write immediately, no localStorage data cache
   if(window._fbReady) {
-    // Bump local timestamp BEFORE write so SAR doesn't skip our own update
-    _lastKnownWriteTs = Date.now() - 1;
-    await _directWriteFirebase();
+    window._writeActive = true;          // block SAR during in-flight write
+    _lastKnownWriteTs = Date.now() - 1; // prevent SAR from skipping own update
+    try     { await _directWriteFirebase(); }
+    finally { window._writeActive = false; }
   }
 }
 
@@ -7690,7 +7775,7 @@ function renderRiderParcels() {
     <div class="stat-card orange"><div class="stat-label">Out for Delivery</div><div class="stat-value">${myOrders.filter(o=>o.status==='Out for Delivery').length}</div></div>
     <div class="stat-card purple"><div class="stat-label">For Update</div><div class="stat-value">${myOrders.filter(o=>o.status==='Update').length}</div></div>`;
 
-  const RIDER_STATUSES = ['Ready for Pick-up','Out for Delivery','Delivered','Cancelled','For Update'];
+  const RIDER_STATUSES = ['Ready for Pick-up','Out for Delivery','Delivered','For Update','Cancelled'];
   const tbody = document.getElementById('rider-parcels-tbody');
 
   // Total to Remit uses correct formula (mirrors Remit modal)
@@ -7875,7 +7960,18 @@ function riderUpdateStatus(orderIdx, newStatus) {
   if(storedStatus === 'Delivered' && !S.orders[orderIdx].dateDelivered) {
     S.orders[orderIdx].dateDelivered = today();
   }
-  save(); toast('Status updated → ' + newStatus);
+  save();
+  if(storedStatus === 'Update') {
+    toast('🔔 Marked For Update — routed to COD Delivery monitor.');
+    // Auto-navigate checker/admin to COD Delivery → For Update tab
+    if(currentRole !== 'rider') {
+      _codDelivTab = 'ForUpdate';
+      // Don't force navigation — just refresh COD delivery if it's active
+      if(_activePage === 'coddelivery') renderCodDelivPage();
+    }
+  } else {
+    toast('Status updated → ' + newStatus);
+  }
   renderRiderParcels();
   refreshUpdateBadge();
 }
@@ -8010,7 +8106,19 @@ function _deductOrderItems(items, orderDate, label) {
 }
 
 // Restore order items back to inventory. Returns true if anything was restored.
-function _restoreOrderItems(items, orderDate, label) {
+function _restoreOrderItems(items, orderDate, label, orderRef) {
+  // ── IDEMPOTENCY GATE ─────────────────────────────────────────
+  // orderRef = unique id of the order being restored (onum or _id).
+  // If the same orderRef is passed twice in a 30-second window we skip
+  // the second call — prevents duplicate stock injection under concurrency.
+  if (orderRef) {
+    if (!window._restoredRefs) window._restoredRefs = new Set();
+    if (window._restoredRefs.has(String(orderRef))) {
+      console.warn('[INV] Duplicate restore blocked:', orderRef); return false;
+    }
+    window._restoredRefs.add(String(orderRef));
+    setTimeout(()=>{ if(window._restoredRefs) window._restoredRefs.delete(String(orderRef)); }, 30000);
+  }
   // Restores qty/grams to Products table with decimal-safe math
   let restored = false;
   const logDate = today();
@@ -8095,6 +8203,19 @@ function renderPayments(payments, addBlankIfEmpty=false) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function saveOrder() {
+  // ── CONCURRENCY GATE ─────────────────────────────────────────
+  // Prevents double-submit (rapid click) AND concurrent encodes from
+  // two admins on the same device session / browser tab.
+  if (window._encodingInProgress) {
+    toast('⏳ Already saving — please wait a moment.'); return;
+  }
+  window._encodingInProgress = true;
+  // Disable every Save Order button immediately
+  document.querySelectorAll('[onclick="saveOrder()"]').forEach(b => {
+    b.disabled = true; b.style.opacity = '0.55'; b.textContent = '⏳ Saving…';
+  });
+  try {
+  // ── END CONCURRENCY GATE (try opens here, finally at function end) ──
   const name = document.getElementById('enc-name').value.trim();
   const contact = document.getElementById('enc-contact').value.replace(/\D/g,'');
   const backupContact = (document.getElementById('enc-backup-contact')?.value||'').replace(/\D/g,'');
@@ -8150,7 +8271,7 @@ function saveOrder() {
   // FEAT3: Global/overall discount (separate from per-item discounts)
   const globalDiscount = parseFloat(document.getElementById('enc-global-discount')?.value)||0;
   const globalDiscountReason = document.getElementById('enc-global-discount-reason')?.value.trim()||'';
-  const totalDiscountAll = totalDiscount + globalDiscount;
+  const totalDiscountAll = Math.round(((parseFloat(totalDiscount)||0)+(parseFloat(globalDiscount)||0))*100)/100;
   const editIdx = document.getElementById('enc-edit-idx').value;
   const isLbcMethod = paymentMethod === 'LBC' || paymentMethod === 'EMS' || paymentMethod === 'FedEx';
   const trackingNumber = (paymentMethod === 'LBC' || paymentMethod === 'EMS' || paymentMethod === 'FedEx') ? (document.getElementById('enc-tracking-number')?.value.trim()||'') : '';
@@ -8208,7 +8329,7 @@ function saveOrder() {
     landmark: document.getElementById('enc-landmark').value,
     date: date || today(),
     admin, assignedRider, paymentMethod,
-    shipping: sf2, items, itemsTotal: iT, totalDiscount: totalDiscountAll, grandTotal: Math.round(Math.max(0, iT + sf2 - globalDiscount) * 100) / 100,
+    shipping: sf2, items, itemsTotal: iT, totalDiscount: totalDiscountAll, grandTotal: Math.round(Math.max(0,(isNaN(iT)?0:iT)+(isNaN(sf2)?0:sf2)-(isNaN(globalDiscount)?0:globalDiscount))*100)/100,
     trackingNumber, dateOfPayment, dateOfDropoff,
     payments,
     status: 'Preparing', checkerStatus: 'Pending',
@@ -8257,7 +8378,7 @@ function saveOrder() {
     const hadDeducted = _invDeducted(orig);
     if(hadDeducted) {
       // Restore old items, deduct new items
-      _restoreOrderItems(orig.items||[], today(), 'Edit restore – '+name);
+      _restoreOrderItems(orig.items||[], today(), 'Edit restore – '+name, orig._id||'orig');
       o.inventoryDeducted = _deductOrderItems(items, today(), 'Edit deduct – '+name+' ('+admin+')');
     } else {
       o.inventoryDeducted = false;
@@ -8289,6 +8410,13 @@ function saveOrder() {
   setTimeout(()=>{ try { renderCourierDashboard(); } catch(e){} }, 80);
   // If checker page is open on another view, refresh that too
   if(_activePage === 'checker') try { renderChecker(); } catch(e) {}
+  } finally {
+    // ── Always release the encoding lock ─────────────────────────
+    window._encodingInProgress = false;
+    document.querySelectorAll('[onclick="saveOrder()"]').forEach(b => {
+      b.disabled = false; b.style.opacity = ''; b.textContent = '💾 Save Order';
+    });
+  }
 }
 function delOrder(i){
   _confirmDel(`Delete order ${onum(i)} for "${S.orders[i]?.name}"?`, ()=>{
@@ -8297,7 +8425,7 @@ function delOrder(i){
     let restored = false;
     if(o && _invDeducted(o)) {
       restored = _restoreOrderItems(o.items||[], today(),
-        'Order deleted – '+o.name+' ('+onum(i)+')');
+        'Order deleted – '+o.name+' ('+onum(i)+')', o._id||String(i));
     }
     S.orders.splice(i,1); save();
     toast(restored ? '🗑️ Order deleted. Inventory restored.' : '🗑️ Order deleted.');
@@ -9895,7 +10023,9 @@ function startAutoRefresh(){
   if(_autoRefreshTimer) clearInterval(_autoRefreshTimer);
   _autoRefreshTimer = setInterval(async ()=>{
     if(!window._fbReady || !window.loadFromFirebase) return;
-    if(_syncPending) return;
+    if(_syncPending)           return;  // DWF in progress
+    if(window._writeActive)    return;  // save() in-flight write
+    if(window._encodingInProgress) return; // admin mid-encode
     try {
       // Lightweight check: only fetch _lastWrite + _pwVersion
       const checkUrl = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}&mask.fieldPaths=_lastWrite&mask.fieldPaths=_pwVersion&mask.fieldPaths=lastGlobalClear`;
@@ -10027,8 +10157,6 @@ function startAutoRefresh(){
         emsdelivery:()=>renderEmsDelivery?.(),
         fedexdelivery:()=>renderFedexDelivery?.(),
         coddelivery:()=>{ if(typeof renderCodDelivPage==='function') renderCodDelivPage(); },
-        sorting:()=>renderSorting?.(),
-        returns:()=>renderReturns?.(),
       };
       try { renderMap[_activePage]?.(); } catch(e){}
       if(currentRole==='rider') try{renderRiderParcels();}catch(e){}
@@ -10793,22 +10921,83 @@ function renderCodDelivPage() {
             ${reason!=='—'?'<div style="grid-column:1/-1;"><span style="color:var(--red);font-size:10px;">REASON</span><br>'+reason+'</div>':''}
           </div>
           <div style="display:flex;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid var(--navy-border);">
-            <button onclick="event.stopPropagation();_editSource='cod-delivery';openEditOrder(${i})"
+            ${tab==='ForUpdate'?`<button onclick="event.stopPropagation();(function(){var _ep=document.getElementById('${safeId}-editpane');_ep.style.display=_ep.style.display==='none'?'block':'none';})()"
               style="background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.3);color:var(--gold);
                      padding:5px 14px;border-radius:6px;cursor:pointer;font-size:11.5px;font-weight:600;">
+              📅 Schedule Delivery
+            </button>`:''}
+            <button onclick="event.stopPropagation();_editSource='cod-delivery';openEditOrder(${i})"
+              style="background:rgba(255,255,255,0.05);border:1px solid var(--navy-border);color:var(--muted);
+                     padding:5px 14px;border-radius:6px;cursor:pointer;font-size:11.5px;">
               ✏️ Edit Order
             </button>
             <button onclick="event.stopPropagation();openInvoice(${i})"
               style="background:rgba(255,255,255,0.05);border:1px solid var(--navy-border);color:var(--muted);
                      padding:5px 14px;border-radius:6px;cursor:pointer;font-size:11.5px;">
-              🖨️ Print Receipt
+              🖨️ Print
             </button>
           </div>
+          ${tab==='ForUpdate'?`
+          <div id="${safeId}-editpane" style="display:none;margin-top:10px;padding:12px;background:rgba(201,168,76,0.05);border:1px solid rgba(201,168,76,0.2);border-radius:8px;" onclick="event.stopPropagation()">
+            <div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:10px;">📅 SCHEDULE FOR DELIVERY</div>
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px;">
+              <div>
+                <label style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">Delivery Date *</label>
+                <input type="date" id="${safeId}-delivdate" min="${today()}" value="${o.scheduledDelivery||today()}"
+                  style="height:34px;padding:5px 9px;font-size:12px;border:1px solid var(--navy-border);border-radius:6px;background:var(--navy);color:var(--text);width:100%;box-sizing:border-box;">
+              </div>
+              <div>
+                <label style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">Assign Rider</label>
+                <select id="${safeId}-rider"
+                  style="height:34px;padding:5px 9px;font-size:12px;border:1px solid var(--navy-border);border-radius:6px;background:var(--navy);color:var(--text);width:100%;box-sizing:border-box;">
+                  <option value="${o.assignedRider||''}">${o.assignedRider||'— Keep current —'}</option>
+                  ${(S.riders||[]).filter(r=>r.name&&r.name!==o.assignedRider).map(r=>'<option value="'+r.name+'">'+r.name+'</option>').join('')}
+                </select>
+              </div>
+              <div style="grid-column:1/-1;">
+                <label style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">Correction Notes</label>
+                <input type="text" id="${safeId}-notes" value="${o.updateReason||''}" placeholder="Address fix, contact update, etc."
+                  style="height:34px;padding:5px 9px;font-size:12px;border:1px solid var(--navy-border);border-radius:6px;background:var(--navy);color:var(--text);width:100%;box-sizing:border-box;">
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button onclick="event.stopPropagation();saveCodForUpdateDispatch(${i},'${safeId}')"
+                style="background:var(--gold);color:#1a1a2e;border:none;padding:7px 20px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;flex:1;">
+                ✅ Save & Dispatch
+              </button>
+              <button onclick="event.stopPropagation();document.getElementById('${safeId}-editpane').style.display='none'"
+                style="background:rgba(255,255,255,0.05);border:1px solid var(--navy-border);color:var(--muted);padding:7px 14px;border-radius:6px;cursor:pointer;font-size:12px;">
+                Cancel
+              </button>
+            </div>
+          </div>`:''}
         </div>
       </div>`;
   }).join('');
 
   contentEl.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">${list.length} order${list.length!==1?'s':''} · Click row to expand</div>${rows}`;
+}
+
+function saveCodForUpdateDispatch(orderIdx, safeId) {
+  var delivDate = document.getElementById(safeId+'-delivdate') ? document.getElementById(safeId+'-delivdate').value : '';
+  var riderSel  = document.getElementById(safeId+'-rider') ? document.getElementById(safeId+'-rider').value : '';
+  var notes     = document.getElementById(safeId+'-notes') ? document.getElementById(safeId+'-notes').value : '';
+  if(!delivDate){toast('\u26a0 Please select a Delivery Date.');return;}
+  var o=S.orders[orderIdx];
+  if(!o){toast('\u26a0 Order not found.');return;}
+  o.status='Ready';
+  o.scheduledDelivery=delivDate;
+  if(riderSel&&riderSel!==o.assignedRider)o.assignedRider=riderSel;
+  if(notes)o.correctionNotes=notes;
+  o.updateReason='';
+  o.dispatchedAt=new Date().toISOString();
+  o.dispatchedBy=(currentUser&&currentUser.name)||'';
+  save();
+  toast('\u2705 Dispatched! Order set to Ready for '+delivDate+'.');
+  setTimeout(function(){try{renderCodDelivPage();}catch(e){}},120);
+  if(_activePage==='ordermgmt')    try{renderOrderMgmt();}catch(e){}
+  if(_activePage==='riderdash')    try{renderRiderParcels();}catch(e){}
+  if(_activePage==='dailyparcels') try{renderDailyParcels();}catch(e){}
 }
 
 function toggleCodRow(id) {
@@ -11026,6 +11215,10 @@ function confirmCheckerCancel() {
   errEl.textContent = '';
   const o = S.orders[orderIdx];
   if(!o) return;
+  // IDEMPOTENCY: block if already cancelled/RTO — prevents double inventory restore
+  if(o.status === 'Cancelled' || o.status === 'RTO') {
+    toast('⚠ Order is already Cancelled / Returned.'); closeModal('modal-checker-cancel'); return;
+  }
   // Save to deletedOrders log before removing
   if(!S.deletedOrders) S.deletedOrders = [];
   S.deletedOrders.push({
@@ -11060,7 +11253,7 @@ function confirmCheckerCancel() {
   let restored = false;
   if(_invDeducted(o)) {
     restored = _restoreOrderItems(o.items||[], today(),
-      `Checker cancelled ${onum(orderIdx)} – ${o.name}`);
+      `Checker cancelled ${onum(orderIdx)} – ${o.name}`, o._id||String(orderIdx));
   }
 
   // Save cancel reason ON the order snapshot in remitLog (for remitter view)
