@@ -570,6 +570,7 @@ function _setSyncStatus(status, color, text) {
 // ── Debounced write — prevents Firestore quota exhaustion on 30 devices ──
 let _syncDebounceTimer = null;
 let _syncPending = false;
+let _retryPending = false; // blocks SAR during write-retry window to prevent stale-data overwrite
 
 window.syncToFirebase = async function() {
   // Firebase-only mode: direct write, no debounce
@@ -631,11 +632,14 @@ async function _directWriteFirebase(data, opts){
     window._dwfRetryCount = (window._dwfRetryCount||0) + 1;
     if(window._dwfRetryCount <= 2) {
       const delay = 1500 * window._dwfRetryCount;
+      _retryPending = true; // block SAR from loading stale Firebase data during retry window
       setTimeout(async()=>{
+        _retryPending = false;
         try{ if(window._fbReady) await _directWriteFirebase(); }catch(e2){}
       }, delay);
     } else {
       window._dwfRetryCount = 0;
+      _retryPending = false;
       toast('⚠ Sync failed. Please check your connection.');
     }
     _setSyncStatus('offline','var(--muted)','● Offline');
@@ -1777,7 +1781,7 @@ function _showRulesHint() {
       </div>
       <div class="table-wrap">
         <table><thead><tr>
-          <th>Order #</th><th>Customer</th><th>CP #</th><th>City</th><th>Date</th>
+          <th>Order #</th><th>Customer</th><th>CP #</th><th>Address / City</th><th>Date</th>
           <th>Amount</th><th>Status</th><th>Update Status</th><th>Remarks</th>
         </tr></thead>
         <tbody id="rider-parcels-tbody"></tbody>
@@ -1819,6 +1823,10 @@ function _showRulesHint() {
       <div id="remit-page-total-net" style="display:none;background:rgba(46,204,138,0.1);border:1px solid var(--green);border-radius:8px;padding:6px 14px;font-size:12px;">
         <span style="color:var(--muted);">Total Net (All Riders):</span>
         <strong id="remit-page-total-net-val" style="color:var(--green);font-size:15px;margin-left:6px;">₱0.00</strong>
+      </div>
+      <div id="remit-page-total-cut" style="display:none;background:rgba(224,138,48,0.1);border:1px solid var(--orange);border-radius:8px;padding:6px 14px;font-size:12px;">
+        <div style="font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Total Company Cut (10% SF)</div>
+        <strong id="remit-page-total-cut-val" style="color:var(--orange);font-size:15px;">₱0.00</strong>
       </div>
       <button class="btn btn-gold" onclick="openRemitModal()">+ Add Remit Entry</button>
     </div>
@@ -2164,21 +2172,6 @@ function _showRulesHint() {
         <label>Date of Drop-off <span style="font-size:10px;color:var(--muted);">(editable)</span></label>
         <input type="date" class="form-control enc-tab" id="enc-date-dropoff" onkeydown="encNextField(event,this)" oninput="validateDateInput(this)">
       </div>
-      <!-- Ref No. / Installment Payments (LBC/EMS/FedEx only) -->
-      <div id="enc-payments-group" style="display:none;grid-column:1/-1;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-          <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">
-            Reference No. &amp; Payment History <span style="color:var(--red);font-size:9px;">* Required when Date of Payment is set</span>
-          </label>
-          <button type="button" class="btn btn-outline btn-sm" onclick="addPaymentRow()" style="font-size:10px;">+ Add Payment</button>
-        </div>
-        <!-- Column headers -->
-        <div style="display:grid;grid-template-columns:1fr 1fr 130px 100px auto;gap:6px;padding:0 0 3px;font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.4px;">
-          <span>Ref. No. *</span><span>Amount (₱)</span><span>Date</span><span>Time</span><span></span>
-        </div>
-        <div id="enc-payments-tbody" style="display:flex;flex-direction:column;gap:5px;"></div>
-        <div style="font-size:10px;color:var(--muted);margin-top:4px;">💡 Tip: Mag-add ng payment row para sa bawat installment. Bawat ref# may kasamang amount.</div>
-      </div>
       <!-- ROW 3: Tracking (col-1) | SF (col-1) | Method (col-2) -->
       <div class="form-group" id="enc-tracking-group" style="display:none;">
         <label>Tracking # <span id="enc-tracking-label-hint" style="font-size:10px;color:var(--muted);">(12 digits)</span></label>
@@ -2261,6 +2254,21 @@ function _showRulesHint() {
       </div>
     </div>
     <input type="hidden" id="enc-edit-idx" value="">
+    <!-- ── Ref No. / Payment History (LBC/EMS/FedEx only) — relocated below Global Discount ── -->
+    <div id="enc-payments-group" style="display:none;margin-top:10px;padding:10px 14px;background:rgba(74,144,217,0.05);border:1px solid rgba(74,144,217,0.2);border-radius:8px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">
+          Reference No. &amp; Payment History <span style="color:var(--red);font-size:9px;">* Required when Date of Payment is set</span>
+        </label>
+        <button type="button" class="btn btn-outline btn-sm" onclick="addPaymentRow()" style="font-size:10px;">+ Add Payment</button>
+      </div>
+      <!-- Column headers -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 130px 100px auto;gap:6px;padding:0 0 3px;font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.4px;">
+        <span>Ref. No. *</span><span>Amount (₱)</span><span>Date</span><span>Time</span><span></span>
+      </div>
+      <div id="enc-payments-tbody" style="display:flex;flex-direction:column;gap:5px;"></div>
+      <div style="font-size:10px;color:var(--muted);margin-top:4px;">💡 Tip: Mag-add ng payment row para sa bawat installment. Bawat ref# may kasamang amount.</div>
+    </div>
     <!-- ── Conditional Payment Status for LBC/EMS/FedEx ── -->
     <div id="enc-payment-status-group" style="display:none;margin-top:10px;">
       <label style="font-weight:700;font-size:12px;">📋 Order Payment Status</label>
@@ -2538,17 +2546,7 @@ function _showRulesHint() {
       <div class="info-row"><span style="color:var(--red);">Less: SF 10% (Company)</span><span id="remit-sf-10" style="color:var(--red);">-₱0.00</span></div>
       <div class="info-row"><span style="color:var(--red);">Less: Cashbond (₱100)</span><span id="remit-cashbond-display" style="color:var(--red);">-₱100.00</span></div>
       <div class="info-row"><span style="color:var(--red);">Less: Parcel Fee (₱10/parcel)</span><span id="remit-parcel-fee-display" style="color:var(--red);">-₱0.00</span></div>
-      <div class="info-row" style="align-items:center;">
-        <span style="color:var(--red);">Less: Benefits</span>
-        <div style="display:flex;align-items:center;gap:6px;">
-          <span style="color:var(--muted);font-size:10.5px;">₱</span>
-          <input type="number" id="remit-benefits-input" value="0" min="0" step="0.01"
-            style="width:90px;font-size:11.5px;padding:2px 6px;border-radius:5px;border:1px solid var(--navy-border);background:var(--navy);color:var(--red);text-align:right;"
-            onfocus="this.select()"
-            oninput="recalcRemitNet()">
-          <span id="remit-benefits-cut" style="display:none;">-₱0.00</span>
-        </div>
-      </div>
+      
       <div class="info-row" style="border-bottom:1px solid var(--navy-border);padding-bottom:8px;"><span style="color:var(--gold);font-weight:600;">= Rider's Net SF</span><span id="remit-sf-rider-share" style="color:var(--gold);font-weight:700;">₱0.00</span></div>
       <div class="info-row" style="border-bottom:none;font-size:14px;background:rgba(46,204,138,0.07);padding:8px;border-radius:7px;margin-top:6px;">
         <strong>🏦 Net Total to Remit</strong>
@@ -2884,7 +2882,7 @@ function addItemRow(tbodyId, calcFn, it={}) {
     row.dataset.unitPrice = unitPrice;
   }
   row.innerHTML = `
-    <td><input class="form-control" style="width:90px;font-size:11px;" value="${it.code||''}" placeholder="Code" onkeydown="rowTabNext(event,this)" onblur="autoFillFromCode(this)"></td>
+    <td><input class="form-control" style="width:90px;font-size:11px;" value="${it.code||''}" placeholder="Code" onkeydown="rowTabNext(event,this)" oninput="debounceCodeLookup(this)" onblur="autoFillFromCode(this,false)"></td>
     <td><input class="form-control" style="width:150px;font-size:11px;" value="${it.desc||''}" placeholder="Description" onkeydown="rowTabNext(event,this)"></td>
     <td><input type="number" class="form-control row-qg-input" style="width:70px;font-size:11px;" value="${qgVal}" min="0" step="any" placeholder="Qty/g" oninput="calcEnc()" onkeydown="rowTabNext(event,this)"></td>
     <td><input type="number" class="form-control row-pg-input" style="width:80px;font-size:11px;" value="${pg}" placeholder="Per gram" oninput="calcEnc()" onkeydown="rowTabNext(event,this)"></td>
@@ -2897,49 +2895,96 @@ function addItemRow(tbodyId, calcFn, it={}) {
   window[calcFn]?.();
 }
 
-function autoFillFromCode(codeInput) {
+// ── Serial Code debounce lookup (fires 350ms after user stops typing) ──
+let _codeLookupTimer = null;
+function debounceCodeLookup(input) {
+  clearTimeout(_codeLookupTimer);
+  _codeLookupTimer = setTimeout(() => autoFillFromCode(input, true), 350);
+}
+
+function autoFillFromCode(codeInput, forceReset=false) {
   const code = codeInput.value.trim().toUpperCase();
-  if(!code) return;
-  const inv = S.inventory.find(it => it.code.toUpperCase() === code);
-  if(!inv) return;
   const row = codeInput.closest('tr');
   if(!row) return;
-  const descInput = row.querySelectorAll('input')[1];
-  const qgInput = row.querySelector('.row-qg-input');
-  const pgInput = row.querySelector('.row-pg-input');
-  const subtotalInput = row.querySelector('.row-subtotal-input');
-  const totalInput = row.querySelector('.row-total-input');
-  const discountInput = row.querySelector('.row-discount-input');
+  const descInput    = row.querySelectorAll('input')[1];
+  const qgInput      = row.querySelector('.row-qg-input');
+  const pgInput      = row.querySelector('.row-pg-input');
+  const subtotalInput= row.querySelector('.row-subtotal-input');
+  const totalInput   = row.querySelector('.row-total-input');
+  const discountInput= row.querySelector('.row-discount-input');
 
-  if(descInput && !descInput.value) descInput.value = inv.desc;
+  if(!code) {
+    // Empty code → wipe all fields
+    if(descInput)     descInput.value   = '';
+    if(qgInput)       qgInput.value     = 0;
+    if(pgInput)       pgInput.value     = 0;
+    if(subtotalInput) subtotalInput.value = '0.00';
+    if(totalInput)    totalInput.value   = '0.00';
+    delete row.dataset.unitPrice;
+    window.calcEnc?.();
+    return;
+  }
 
-  // ── PRICE LOCK: if the row already has a price/total (editing existing order),
-  // do NOT overwrite with the current live inventory price ──────────────────────
-  const existingPg = parseFloat(pgInput?.value) || 0;
-  const existingTotal = parseFloat(totalInput?.value) || 0;
+  const inv = (S.inventory||[]).find(it => it.code.toUpperCase() === code);
+
+  if(!inv) {
+    // Code not found → reset numeric fields (anti-sticking guard)
+    if(forceReset) {
+      if(qgInput)       qgInput.value      = 0;
+      if(pgInput)       pgInput.value      = 0;
+      if(subtotalInput) subtotalInput.value = '0.00';
+      if(totalInput)    totalInput.value    = '0.00';
+      delete row.dataset.unitPrice;
+      window.calcEnc?.();
+    }
+    return;
+  }
+
+  // ── Valid match found ── always update description
+  if(descInput) descInput.value = inv.desc;
+
+  if(forceReset) {
+    // Code was CHANGED → always pull fresh pricing from inventory
+    if(inv.itemType === 'fixprice') {
+      if(qgInput)  { qgInput.value = 1; qgInput.placeholder = 'Qty'; }
+      if(pgInput)  pgInput.value = 0;
+      const fixVal  = inv.fixPrice || 0;
+      row.dataset.unitPrice = fixVal;
+      const discVal = parseFloat(discountInput?.value)||0;
+      const subtotal = fixVal * (parseFloat(qgInput?.value)||1);
+      if(subtotalInput) subtotalInput.value = subtotal.toFixed(2);
+      if(totalInput)    totalInput.value    = Math.max(0, subtotal - discVal).toFixed(2);
+    } else {
+      delete row.dataset.unitPrice;
+      if(pgInput)  pgInput.value = inv.pergram || 0;
+      if(qgInput && !parseFloat(qgInput.value)) qgInput.value = 0;
+    }
+    window.calcEnc?.();
+    return;
+  }
+
+  // ── onblur path: price-lock guard (editing existing order) ──
+  const existingPg    = parseFloat(pgInput?.value)    || 0;
+  const existingTotal = parseFloat(totalInput?.value)  || 0;
   const hasExistingPrice = existingPg > 0 || existingTotal > 0;
 
   if(inv.itemType === 'fixprice') {
     if(qgInput && !parseFloat(qgInput.value)) { qgInput.value = 1; qgInput.placeholder = 'Qty'; }
     if(!hasExistingPrice) {
-      // New row — fill from live inventory price
       if(pgInput) pgInput.value = 0;
-      const fixVal = inv.fixPrice || 0;
+      const fixVal  = inv.fixPrice || 0;
       row.dataset.unitPrice = fixVal;
-      const discVal = parseFloat(discountInput?.value)||0;
-      const subtotal = fixVal * (parseFloat(qgInput?.value)||1);
+      const discVal   = parseFloat(discountInput?.value)||0;
+      const subtotal  = fixVal * (parseFloat(qgInput?.value)||1);
       if(subtotalInput) subtotalInput.value = subtotal.toFixed(2);
-      if(totalInput) totalInput.value = Math.max(0, subtotal - discVal).toFixed(2);
+      if(totalInput)    totalInput.value    = Math.max(0, subtotal - discVal).toFixed(2);
     }
-    // else: existing price — keep it as-is (price lock)
   } else {
     if(!hasExistingPrice) {
-      // New row — fill from live inventory price
       delete row.dataset.unitPrice;
-      if(pgInput) pgInput.value = inv.pergram || 0;
+      if(pgInput)  pgInput.value = inv.pergram || 0;
       if(qgInput && !parseFloat(qgInput.value)) qgInput.value = 0;
     }
-    // else: existing price — keep stored pergram (price lock)
   }
   window.calcEnc?.();
 }
@@ -3576,7 +3621,7 @@ function renderChecker(){
     const count = S.orders.filter(o=>
       o.paymentMethod===method &&
       (o.paymentStatus||'No Payment')==='Fully Paid' &&
-      (o.status!=='Cancelled'&&o.status!=='RTO')
+      (o.status!=='Cancelled'&&o.status!=='RTO'&&o.status!=='Delivered')
     ).length;
     const tabBtn = [...document.querySelectorAll('#checker-tabs .tab-btn')]
       .find(b=>b.textContent.includes(method));
@@ -3596,6 +3641,8 @@ function renderChecker(){
     if(method !== checkerTab) return false;
     // Exclude cancelled orders from checker view (they go to Remitter)
     if(o.status === 'Cancelled' || o.status === 'RTO') return false;
+    // Exclude delivered orders — they appear in their respective Delivery monitoring pages
+    if(o.status === 'Delivered') return false;
     // LBC/EMS/FedEx: only show Fully Paid orders — admin sets payment status, not checker
     if(_isCourierTab && (o.paymentStatus||'No Payment') !== 'Fully Paid') return false;
     if(filt && o.checkerStatus !== filt) return false;
@@ -3731,7 +3778,6 @@ function renderChecker(){
           const isLocked = ['Ready','Out for Delivery','Delivered','Cancelled','Update'].includes(o.status);
           const isDroppedOff = ['Drop off at LBC','Drop off at EMS','Drop off at FedEx','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'].includes(o.lbcStatus||'');
           const isODZ = (o.lbcStatus||'') === 'ODZ/Incomplete Details';
-          const checkerCanEditODZ = isODZ && (currentRole==='checker'||currentRole==='owner');
           rows += `<tr>
             <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
             <td style="font-weight:500;">${o.name}</td>
@@ -3781,9 +3827,6 @@ function renderChecker(){
                 : `<button class="btn btn-outline btn-sm" onclick="togglePrinted(${i})" style="font-size:10px;padding:2px 7px;">🖨️ Print</button>`}
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
-              ${checkerCanEditODZ
-                ? '<button class="btn btn-outline btn-sm" onclick="openEditOrder('+i+')" style="font-size:10.5px;">✏️ Edit ODZ</button>'
-                : ''}
               ${currentRole==='owner'?'<button class="btn btn-outline btn-sm" onclick="openEditOrder('+i+')" title="CEO Edit" style="font-size:10.5px;">✏️ Edit</button>':''}
               ${isDroppedOff
                 ? '<span style="font-size:9.5px;color:var(--blue);padding:2px 6px;background:rgba(74,144,217,0.1);border-radius:4px;">🔒 Dropped Off</span>'
@@ -4293,6 +4336,7 @@ function confirmReDeliver(orderIdx) {
   if(!chosenDate) { toast('⚠️ Pumili ng petsa para sa re-delivery.'); return; }
   document.getElementById('_redeliver-overlay')?.remove();
   S.orders[orderIdx].date = chosenDate;
+  S.orders[orderIdx].scheduledDelivery = chosenDate; // reflect in rider/COD views
   S.orders[orderIdx].status = 'Preparing';
   S.orders[orderIdx].riderRemarks = '';
   S.orders[orderIdx].checkerCancelledDirect = false;
@@ -5015,9 +5059,7 @@ function renderSorting() {
                 border:1px solid ${isOFD?'rgba(224,138,48,0.3)':'rgba(224,85,85,0.3)'};border-radius:5px;padding:4px 8px;text-align:center;">
                 🔒 ${isOFD?'On the way — hindi na maaari i-edit':'Hindi pa na-verify ng Checker'}
                </div>`
-            : sortLocked
-              ? `<div style="font-size:10px;color:${isOFD?'var(--orange)':'var(--red)'};background:rgba(201,48,48,0.1);border:1px solid rgba(201,48,48,0.3);border-radius:5px;padding:4px 8px;text-align:center;">⏳ Pending Checker Verification</div>`
-              : `<select style="width:100%;font-size:10px;padding:2px 5px;border-radius:5px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);"
+            : `<select style="width:100%;font-size:10px;padding:2px 5px;border-radius:5px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);"
                 onchange="sortReassign(${o.idx},this.value)" onclick="event.stopPropagation()">
                 <option value="">🔀 Move to rider...</option>
                 ${S.riders.map(r=>`<option value="${encodeURIComponent(r.name)}"${r.name===o.assignedRider?' selected':''}>${r.name} (📍${(r.locations&&r.locations.length?r.locations:(r.location?[r.location]:[])).join(', ')||'?'})</option>`).join('')}
@@ -5091,9 +5133,13 @@ function sortDrop(e, colEl) {
   const prevRider = S.orders[idx].assignedRider || '—';
   if(S.orders[idx].assignedRider === newRider) return; // no change
   S.orders[idx].assignedRider = newRider;
+  // Auto-advance to Ready when a verified Preparing order is assigned to a rider
+  if(newRider && S.orders[idx].status === 'Preparing' && (S.orders[idx].checkerStatus||'Pending') === 'Verified') {
+    S.orders[idx].status = 'Ready';
+  }
   save();
   renderSorting();
-  toast(`✅ ${onum(idx)} → ${newRider||'Unassigned'} (was: ${prevRider})`);
+  toast(`✅ ${onum(idx)} → ${newRider||'Unassigned'} (was: ${prevRider})${newRider && S.orders[idx].status==='Ready' ? ' — Ready na para sa rider!' : ''}`);
 }
 
 // ── Dropdown reassign ──
@@ -5107,9 +5153,13 @@ function sortReassign(orderIdx, encodedRider) {
   const prev = S.orders[orderIdx].assignedRider || '—';
   if(S.orders[orderIdx].assignedRider === newRider) return; // no change
   S.orders[orderIdx].assignedRider = newRider;
+  // Auto-advance to Ready when a verified Preparing order is assigned to a rider
+  if(newRider && S.orders[orderIdx].status === 'Preparing' && (S.orders[orderIdx].checkerStatus||'Pending') === 'Verified') {
+    S.orders[orderIdx].status = 'Ready';
+  }
   save();
   renderSorting();
-  toast(`✅ ${onum(orderIdx)} reassigned → ${newRider||'Unassigned'} (was: ${prev})`);
+  toast(`✅ ${onum(orderIdx)} reassigned → ${newRider||'Unassigned'} (was: ${prev})${newRider && S.orders[orderIdx].status==='Ready' ? ' — Ready na!' : ''}`);
 }
 
 // ── Add empty rider slot (for a rider with no parcels yet) ──
@@ -6319,9 +6369,9 @@ function renderCourierDashboard(){
   // Apply global search filter
   const _cdSearch=(document.getElementById('cd-global-search')?.value||'').toLowerCase().trim();
   const searchFiltered=_cdSearch
-    ? payTabOrders.filter(({o,idx})=>{
-        const i=S.orders.indexOf(o);
-        return [o.name,o.contact,onum(i),(o.trackingNumber||'')].some(v=>(v||'').toLowerCase().includes(_cdSearch));
+    ? payTabOrders.filter(item=>{
+        return [item.name,item.contact,onum(item.idx),(item.trackingNumber||'')]
+          .some(v=>(v||'').toLowerCase().includes(_cdSearch));
       })
     : payTabOrders;
 
@@ -7727,12 +7777,22 @@ function renderRiderParcels() {
       .map(r => r.date)
   );
   const myOrders = allMyOrders.filter(o => {
-    // Hide ALL orders whose date matches a remitted date — rider already submitted these
-    if(remittedDates.has(o.date)) return false;
+    // Only hide DELIVERED orders on already-remitted dates.
+    // Active orders (Preparing/Ready/OFD/Update) must always be visible
+    // even if their encoded date was remitted, so riders never miss live work.
+    if(remittedDates.has(o.date) && o.status === 'Delivered') return false;
     return true;
   });
-  // Apply date filter (default = today)
-  let filtered = df ? myOrders.filter(o => o.date === df) : myOrders.filter(o => o.date === today());
+  // Apply date filter:
+  // Active (non-terminal) orders always show regardless of date — rider must see all pending work.
+  // Delivered / Cancelled respect the date filter (historical).
+  const ACTIVE_STATUSES = ['Preparing','Ready','Out for Delivery','Update'];
+  let filtered;
+  if(df) {
+    filtered = myOrders.filter(o => o.date === df || ACTIVE_STATUSES.includes(o.status));
+  } else {
+    filtered = [...myOrders]; // no date filter → show all assigned orders
+  }
   if(filt) filtered = filtered.filter(o => o.status === filt);
   if(q) filtered = filtered.filter(o =>
     o.name.toLowerCase().includes(q) || (o.contact||'').includes(q) || onum(o.idx).includes(q));
@@ -7834,7 +7894,7 @@ function renderRiderParcels() {
                   <option${itemSt==='For Update'?' selected':''}>For Update</option>
               </select>`
             }
-            ${!isCancelledItem && totalQty > 1 ? `
+            ${!isCancelledItem && totalQty > 1 && !isGramsItem ? `
             <div style="display:flex;align-items:center;gap:3px;margin-top:2px;">
               <span style="font-size:9px;color:var(--muted);">Cancel qty:</span>
               <input type="number" min="0" max="${remainQty}" step="${isGramsItem?0.01:1}"
@@ -7861,7 +7921,7 @@ function renderRiderParcels() {
       <td style="color:var(--gold);font-weight:600;">${onum(o.idx)}</td>
       <td style="font-weight:500;">${o.name}</td>
       <td>${o.contact}</td>
-      <td>${o.city||'—'}</td>
+      <td style="font-size:10.5px;max-width:170px;">${o.address||'—'}${o.city?'<br><span style="color:var(--muted);font-size:9px;">📍 '+o.city+'</span>':''}${o.landmark?'<br><span style="color:var(--muted);font-size:9px;">🏠 '+o.landmark+'</span>':''}</td>
       <td>${o.date}</td>
       <td style="font-weight:600;">
         ${hasCancelledItems
@@ -9235,13 +9295,15 @@ function renderRemitPage() {
   if(!filteredLog.length){
     el.innerHTML = `<div class="card"><p style="color:var(--muted);padding:20px;text-align:center;">Walang remit entries${df?' para sa petsang ito':''}.</p></div>`;
     const tEl=document.getElementById('remit-page-total-net'); if(tEl) tEl.style.display='none';
+    const cEl=document.getElementById('remit-page-total-cut'); if(cEl) cEl.style.display='none';
     return;
   }
 
   // ── Grand Total Net bar ───────────────────────────────────────────────────
-  const grandAllNet = filteredLog.reduce((s,e)=>s+(e.netTotal||e.netEarn||0),0);
-  const grandAllSub = filteredLog.reduce((s,e)=>s+(e.codSubtotal||e.subtotal||0),0);
-  const grandPending= filteredLog.filter(e=>(e.remitStatus||'For Remittance')!=='Remitted').length;
+  const grandAllNet  = filteredLog.reduce((s,e)=>s+(e.netTotal||e.netEarn||0),0);
+  const grandAllSub  = filteredLog.reduce((s,e)=>s+(e.codSubtotal||e.subtotal||0),0);
+  const grandAllSF10 = Math.round(filteredLog.reduce((s,e)=>s+(e.sf10||0),0)*100)/100;
+  const grandPending = filteredLog.filter(e=>(e.remitStatus||'For Remittance')!=='Remitted').length;
   const totEl = document.getElementById('remit-page-total-net');
   if(totEl){
     totEl.style.display='flex'; totEl.style.flexDirection='column'; totEl.style.gap='2px';
@@ -9252,6 +9314,13 @@ function renderRemitPage() {
         <span style="font-size:10.5px;color:var(--muted);">Subtotal: <strong style="color:var(--blue);">${p(grandAllSub)}</strong></span>
         ${grandPending>0?`<span style="font-size:10.5px;color:var(--orange);">⏳ ${grandPending} pending</span>`:'<span style="font-size:10.5px;color:var(--green);">✅ All Remitted</span>'}
       </div>`;
+  }
+  // ── Total Company Cut card ────────────────────────────────────────────────
+  const cutEl = document.getElementById('remit-page-total-cut');
+  if(cutEl){
+    cutEl.style.display='flex'; cutEl.style.flexDirection='column'; cutEl.style.gap='2px';
+    const cutValEl = document.getElementById('remit-page-total-cut-val');
+    if(cutValEl) cutValEl.textContent = p(grandAllSF10);
   }
 
   const statusColor = s=>s==='Remitted'?'var(--green)':s==='Remitting'?'var(--orange)':'var(--muted)';
@@ -9276,27 +9345,32 @@ function renderRemitPage() {
 
     // ── Per-order details: items display ──
     const renderOrderItems = (o) => {
-      const iS = o.itemStatuses||{};
+      const iS  = o.itemStatuses||{};
       const iCQ = o.itemCancelQty||{};
+      const iR  = o.itemRemarks||{};
       return o.items.map((it,ii)=>{
-        const isCx = iS[ii]==='Cancelled';
-        const cxQty = iCQ[ii]||0;
+        const isCx   = iS[ii]==='Cancelled';
+        const cxQty  = iCQ[ii]||0;
+        const remark = iR[ii]||'';
         const totalQty = it.grams||it.qty||1;
-        const unit = it.pergram>0?'g':'pcs';
-        const ppu = it.total/Math.max(1,totalQty);
-        const discTag = it.discount>0
+        const unit     = it.pergram>0?'g':'pcs';
+        const ppu      = it.total/Math.max(1,totalQty);
+        const discTag  = it.discount>0
           ? `<span style="color:var(--red);font-size:9px;font-weight:700;"> 🏷️-₱${it.discount.toFixed(2)}</span>`:'';
+        const remarkTag = remark
+          ? `<div style="font-size:9px;color:var(--orange);margin-top:2px;">💬 ${remark}</div>`:'' ;
         if(isCx)
-          return `<div style="color:var(--muted);text-decoration:line-through;font-size:9.5px;">[Cx] ${it.code}: ${it.desc} ×${totalQty}${unit} = ${p(it.total)}</div>`;
+          return `<div style="color:var(--muted);text-decoration:line-through;font-size:9.5px;">[Cx] ${it.code}: ${it.desc} ×${totalQty}${unit} = ${p(it.total)}${remarkTag}</div>`;
         if(cxQty>0){
           const cxAmt=cxQty*ppu; const remAmt=it.total-cxAmt;
           return `<div style="font-size:9.5px;">
             <span style="color:var(--text);">${it.code}: ${it.desc}</span>${discTag}
             <span style="color:var(--red);"> ❌${cxQty}${unit}=-${p(cxAmt)}</span>
             <span style="color:var(--green);"> ✅${totalQty-cxQty}${unit}=${p(remAmt)}</span>
+            ${remarkTag}
           </div>`;
         }
-        return `<div style="font-size:9.5px;">${it.code}: ${it.desc} ×${totalQty}${unit} = ${p(it.total)}${discTag}</div>`;
+        return `<div style="font-size:9.5px;">${it.code}: ${it.desc} ×${totalQty}${unit} = ${p(it.total)}${discTag}${remarkTag}</div>`;
       }).join('');
     };
 
@@ -10027,6 +10101,7 @@ function startAutoRefresh(){
     if(_syncPending)           return;  // DWF in progress
     if(window._writeActive)    return;  // save() in-flight write
     if(window._encodingInProgress) return; // admin mid-encode
+    if(_retryPending)          return;  // write failed, retry pending — don't load stale data
     try {
       // Lightweight check: only fetch _lastWrite + _pwVersion
       const checkUrl = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}&mask.fieldPaths=_lastWrite&mask.fieldPaths=_pwVersion&mask.fieldPaths=lastGlobalClear`;
@@ -10194,8 +10269,8 @@ function renderOrderMgmt() {
     const st = o.lbcStatus||'Preparing';
     if(st === 'Preparing') return false;
     if(df && o.date !== df) return false;
-    if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q)
-       && !(o.contact||'').includes(q) && !(o.trackingNumber||'').includes(q)) return false;
+    if(q && !o.name.toLowerCase().includes(q) && !onum(i).toLowerCase().includes(q)
+       && !(o.contact||'').toLowerCase().includes(q) && !(o.trackingNumber||'').toLowerCase().includes(q)) return false;
     return true;
   });
 
@@ -10580,8 +10655,8 @@ function renderLbcDelivery() {
     if(o.status === 'Cancelled') return false;
     if((o.lbcStatus||'') !== activeStatus) return false;
     if(df && o.date !== df) return false;
-    if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q)
-       && !(o.contact||'').includes(q) && !(o.trackingNumber||'').includes(q)) return false;
+    if(q && !o.name.toLowerCase().includes(q) && !onum(i).toLowerCase().includes(q)
+       && !(o.contact||'').includes(q) && !(o.trackingNumber||'').toLowerCase().includes(q)) return false;
     return true;
   });
 
@@ -10900,8 +10975,8 @@ function renderCodDelivPage() {
       : (o.cancelReason||o.rtoReason||'—');
     const itemsList = (o.items||[]).map(it=>`${it.desc||it.code} ×${it.qty||it.grams||1}${it.grams?'g':''}`).join(', ');
     return `
-      <div class="card" style="margin-bottom:6px;cursor:pointer;" onclick="toggleCodRow('${safeId}')">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;">
+      <div class="card" style="margin-bottom:6px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer;user-select:none;" onclick="toggleCodRow('${safeId}')">
           <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
             <span style="color:var(--gold);font-weight:700;">${onum(i)}</span>
             <span style="font-weight:600;">${o.name}</span>
@@ -10913,7 +10988,7 @@ function renderCodDelivPage() {
           </div>
           <span id="${safeId}-arrow" style="color:var(--muted);font-size:12px;">▶</span>
         </div>
-        <div id="${safeId}" style="display:none;padding:0 14px 12px;border-top:1px solid var(--navy-border);margin-top:4px;">
+        <div id="${safeId}" style="display:none;padding:0 14px 12px;border-top:1px solid var(--navy-border);margin-top:4px;" onclick="event.stopPropagation()">
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:11.5px;margin-top:8px;">
             <div><span style="color:var(--muted);font-size:10px;">ADDRESS</span><br>${o.address||'—'}</div>
             <div><span style="color:var(--muted);font-size:10px;">ADMIN</span><br>${o.admin||'—'}</div>
@@ -10988,6 +11063,7 @@ function saveCodForUpdateDispatch(orderIdx, safeId) {
   if(!o){toast('\u26a0 Order not found.');return;}
   o.status='Ready';
   o.scheduledDelivery=delivDate;
+  o.date=delivDate;  // override order date → rider sees it on the scheduled delivery date
   if(riderSel&&riderSel!==o.assignedRider)o.assignedRider=riderSel;
   if(notes)o.correctionNotes=notes;
   o.updateReason='';
@@ -11061,8 +11137,8 @@ function renderEmsDelivery() {
     if(o.status === 'Cancelled') return false;
     if((o.lbcStatus||'') !== activeStatus) return false;
     if(df && o.date !== df) return false;
-    if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q)
-       && !(o.contact||'').includes(q) && !(o.trackingNumber||'').includes(q)) return false;
+    if(q && !o.name.toLowerCase().includes(q) && !onum(i).toLowerCase().includes(q)
+       && !(o.contact||'').includes(q) && !(o.trackingNumber||'').toLowerCase().includes(q)) return false;
     return true;
   });
 
@@ -11371,8 +11447,8 @@ function renderFedexDelivery() {
     if(o.status === 'Cancelled') return false;
     if((o.lbcStatus||'') !== activeStatus) return false;
     if(df && o.date !== df) return false;
-    if(q && !o.name.toLowerCase().includes(q) && !onum(i).includes(q)
-       && !(o.contact||'').includes(q) && !(o.trackingNumber||'').includes(q)) return false;
+    if(q && !o.name.toLowerCase().includes(q) && !onum(i).toLowerCase().includes(q)
+       && !(o.contact||'').includes(q) && !(o.trackingNumber||'').toLowerCase().includes(q)) return false;
     return true;
   });
 
@@ -12009,6 +12085,7 @@ document.addEventListener('visibilitychange', async ()=>{
   if(document.visibilityState !== 'visible') return;
   if(!window._fbReady || !window.loadFromFirebase) return;
   if(!currentRole) return;
+  if(_retryPending || window._writeActive) return; // don't overwrite during pending write/retry
   try {
     _lastKnownWriteTs = 0; // force full re-fetch on tab focus
     const fbData = await window.loadFromFirebase();
