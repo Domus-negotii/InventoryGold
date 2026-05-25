@@ -3759,12 +3759,14 @@ function renderChecker(){
   const delCount = (S.deletedOrders||[]).length;
   const delBtn = document.getElementById('checker-tab-deleted-btn');
   if(delBtn) delBtn.textContent = delCount > 0 ? `🗑️ Recently Deleted (${delCount})` : '🗑️ Recently Deleted';
-  // Update LBC/EMS/FedEx tab badges with Fully Paid count (what checker sees)
+  // Update LBC/EMS/FedEx tab badges — exclude terminal courier statuses
+  const _BADGE_DONE = new Set(['ODZ/Incomplete Details','Out for Delivery','RTO','Delivered']);
   ['LBC','EMS','FedEx'].forEach(method=>{
     const count = S.orders.filter(o=>o&&
       o.paymentMethod===method &&
       (o.paymentStatus||'No Payment')==='Fully Paid' &&
-      (o.status!=='Cancelled'&&o.status!=='RTO'&&o.status!=='Delivered')
+      (o.status!=='Cancelled'&&o.status!=='RTO'&&o.status!=='Delivered') &&
+      !_BADGE_DONE.has(o.lbcStatus||'')
     ).length;
     const tabBtn = [...document.querySelectorAll('#checker-tabs .tab-btn')]
       .find(b=>b.textContent.includes(method));
@@ -3779,6 +3781,18 @@ function renderChecker(){
   const isLbc = checkerTab === 'LBC' || checkerTab === 'EMS' || checkerTab === 'FedEx';
 
   const _isCourierTab = checkerTab==='LBC'||checkerTab==='EMS'||checkerTab==='FedEx';
+
+  // COD: build remitted rider+date keys — these orders are done, no need in checker
+  const _checkerRemittedKeys = new Set(
+    checkerTab === 'COD'
+      ? (S.remitLog||[])
+          .filter(r => r.remitStatus === 'Remitted')
+          .map(r => `${r.riderName}|${r.date}`)
+      : []
+  );
+  // Courier statuses that should no longer appear in checker (already dispatched / done)
+  const _COURIER_DONE = new Set(['ODZ/Incomplete Details','Out for Delivery','RTO','Delivered']);
+
   const list = S.orders.map((o,i)=>({o,i})).filter(({o}) => {
     const method = o.paymentMethod || 'COD';
     if(method !== checkerTab) return false;
@@ -3786,6 +3800,12 @@ function renderChecker(){
     if(o.status === 'Cancelled' || o.status === 'RTO') return false;
     // Exclude delivered orders — they appear in their respective Delivery monitoring pages
     if(o.status === 'Delivered') return false;
+    // COD: hide orders whose rider+date is officially Remitted — checker's job is done
+    if(checkerTab === 'COD' && o.assignedRider && o.date) {
+      if(_checkerRemittedKeys.has(`${o.assignedRider}|${o.date}`)) return false;
+    }
+    // LBC/EMS/FedEx: hide orders already dispatched / in terminal courier status
+    if(_isCourierTab && _COURIER_DONE.has(o.lbcStatus||'')) return false;
     // LBC/EMS/FedEx: only show Fully Paid orders — admin sets payment status, not checker
     if(_isCourierTab && (o.paymentStatus||'No Payment') !== 'Fully Paid') return false;
     if(filt && o.checkerStatus !== filt) return false;
@@ -8884,12 +8904,23 @@ function renderTracking() {
       : []
   );
 
-  // Stats — counts must match table logic (active = all dates, terminal = filtered by date)
+  // Sorter: date filter is STRICT — show only exact date match
+  // Owner/Admin: active orders always show (staff needs to see all pending work)
+  const isSorterStrict = currentRole === 'sorter';
+
+  // Stats — counts must match table logic
   document.getElementById('tracking-stats').innerHTML = TRACK_STATUSES.map(s => {
     const count = S.orders.filter(o => {
       if(!o || o.status !== s) return false;
       if((o.paymentMethod||'COD') !== 'COD') return false;
-      if(df && !COD_ACTIVE.has(s) && o.date !== df) return false;
+      // Date filter
+      if(df) {
+        if(isSorterStrict) {
+          if(o.date !== df) return false; // strict: must match date exactly
+        } else {
+          if(!COD_ACTIVE.has(s) && o.date !== df) return false; // active bypass for owner/admin
+        }
+      }
       // Sorter: hide terminal orders whose rider+date combo is already remitted
       if(currentRole === 'sorter' && TERMINAL.has(s)) {
         const key = `${o.assignedRider||''}|${o.date}`;
@@ -8904,8 +8935,14 @@ function renderTracking() {
     if(!o) return false;
     if((o.paymentMethod||'COD') !== 'COD') return false;
     if(filt && o.status!==filt) return false;
-    // Date filter: active orders always shown, terminal orders filtered by date
-    if(df && !COD_ACTIVE.has(o.status) && o.date!==df) return false;
+    // Date filter
+    if(df) {
+      if(isSorterStrict) {
+        if(o.date !== df) return false; // sorter: strict date match
+      } else {
+        if(!COD_ACTIVE.has(o.status) && o.date!==df) return false; // owner/admin: active bypass
+      }
+    }
     // Sorter: hide terminal orders whose rider+date combo is officially remitted
     if(currentRole === 'sorter' && TERMINAL.has(o.status)) {
       const key = `${o.assignedRider||''}|${o.date}`;
@@ -10399,13 +10436,15 @@ function startAutoRefresh(){
       // Firebase IS the source of truth — replace all arrays directly
       // EXCEPTION: inventory uses code-based merge so local stock changes aren't overwritten
       // EXCEPTION: orders uses _id-based merge to preserve locally-encoded orders not yet in Firebase
+      // EXCEPTION: remitLog/cashbondLog/benefitsLog use _id-based merge to prevent race condition
+      //            where SAR fires between save() push and Firebase write completing
       // MODAL GUARD: don't overwrite S.orders if encode modal is open
       const _keysToSync = _encModalOpen
         ? ['riders','locations','payroll','expenses','stockLog',
-           'adminNames','adminAccounts','remitLog','cashbondLog','benefitsLog',
+           'adminNames','adminAccounts',
            'returnLog','deletedOrders','mergeLog']  // skip 'orders' while user is editing
         : ['riders','locations','payroll','expenses','stockLog',
-           'adminNames','adminAccounts','remitLog','cashbondLog','benefitsLog',
+           'adminNames','adminAccounts',
            'returnLog','deletedOrders','mergeLog'];
       _keysToSync.forEach(k=>{
         if(Array.isArray(fbData[k])) S[k] = fbData[k];
@@ -10414,6 +10453,19 @@ function startAutoRefresh(){
       if(!_encModalOpen && Array.isArray(fbData.orders)) {
         S.orders = _mergeOrders(fbData.orders, S.orders);
       }
+      // remitLog / cashbondLog / benefitsLog: _id-based merge — same as orders
+      // Prevents: remitter saves entry → SAR fires before Firebase confirms → entry wiped
+      ['remitLog','cashbondLog','benefitsLog'].forEach(key=>{
+        if(!Array.isArray(fbData[key])) return;
+        const fbArr = fbData[key];
+        const localArr = S[key]||[];
+        // Build map of Firebase entries by _id
+        const fbById = new Map(fbArr.filter(e=>e&&e._id).map(e=>[e._id, e]));
+        // Find local entries not yet in Firebase (recently added, write in-flight)
+        const localOnly = localArr.filter(e => e && e._id && !fbById.has(e._id));
+        // Merge: Firebase base + local-only additions
+        S[key] = [...fbArr, ...localOnly];
+      });
       // Inventory: Firebase IS the source of truth after save() writes it
       // Replace local S.inventory with Firebase version on every poll
       // This ensures all devices see deductions/returns immediately
@@ -10517,8 +10569,8 @@ function renderOrderMgmt() {
     // Must be Ready to Pick-up (not Preparing)
     const st = o.lbcStatus||'Preparing';
     if(st === 'Preparing') return false;
-    // Date filter: match encode date OR drop-off date (sorter searches by dropoff date)
-    if(df && o.date !== df && (o.dateOfDropoff||'') !== df) return false;
+    // Date filter: base on drop-off date ONLY (sorter searches by when parcel was dropped off)
+    if(df && (o.dateOfDropoff||'') !== df) return false;
     if(q && !o.name.toLowerCase().includes(q) && !onum(i).toLowerCase().includes(q)
        && !(o.contact||'').toLowerCase().includes(q) && !(o.trackingNumber||'').toLowerCase().includes(q)) return false;
     return true;
@@ -12445,7 +12497,7 @@ document.addEventListener('visibilitychange', async ()=>{
     // ── Firebase-only: merge S directly (orders use _id-merge, rest full replace) ──
     const _localOrdersBackup = S.orders ? [...S.orders] : [];
     ['riders','locations','payroll','expenses','inventory','stockLog',
-     'adminNames','adminAccounts','remitLog','cashbondLog','benefitsLog',
+     'adminNames','adminAccounts',
      'returnLog','deletedOrders','mergeLog'].forEach(k=>{
       if(Array.isArray(fbData[k])) S[k] = fbData[k];
     });
@@ -12453,6 +12505,15 @@ document.addEventListener('visibilitychange', async ()=>{
     if(Array.isArray(fbData.orders)) {
       S.orders = _mergeOrders(fbData.orders, _localOrdersBackup);
     }
+    // remitLog / cashbondLog / benefitsLog: _id-based merge — prevent race condition wipe
+    ['remitLog','cashbondLog','benefitsLog'].forEach(key=>{
+      if(!Array.isArray(fbData[key])) return;
+      const fbArr = fbData[key];
+      const localArr = S[key]||[];
+      const fbById = new Map(fbArr.filter(e=>e&&e._id).map(e=>[e._id, e]));
+      const localOnly = localArr.filter(e => e && e._id && !fbById.has(e._id));
+      S[key] = [...fbArr, ...localOnly];
+    });
     ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
       if(fbData[k] && typeof fbData[k]==='object') S[k] = fbData[k];
     });
