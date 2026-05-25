@@ -782,9 +782,9 @@ function _mergeOrders(fbOrders, localOrders) {
   // Index Firebase orders by _id (for new orders that have _id)
   const fbIds = new Set(fbOrders.filter(o => o && o._id).map(o => o._id));
 
-  // Grace window: 90 seconds — covers worst-case Firebase write + SAR cycle
+  // Grace window: 5 minutes — covers slow Firebase writes + multiple SAR cycles
   const now = Date.now();
-  const grace = 90000;
+  const grace = 300000;
 
   // Keep local orders that are NOT yet in Firebase
   const localOnly = localOrders.filter(lo => {
@@ -810,7 +810,7 @@ function _uuid(){
     (c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
 }
 // Stamp a _id on any object that doesn't have one yet
-function _stamp(obj){ if(!obj._id) obj._id=_uuid(); return obj; }
+function _stamp(obj){ if(!obj._id) obj._id=_uuid(); if(!obj.createdAt) obj.createdAt=new Date().toISOString(); return obj; }
 
 
 // ── Union-by-ID merge — safe for multi-device with offline support ────────────
@@ -5192,7 +5192,8 @@ function renderSorting() {
       // Lock card if not verified OR already OFD
       const isOFD = o.status === 'Out for Delivery';
       const notVerified = (o.checkerStatus||'Pending') !== 'Verified';
-      const sortLocked = isOFD || notVerified;
+      // Only lock OFD — sorter can still move Preparing/Ready parcels even if unverified
+      const sortLocked = isOFD;
       return `
       <div class="sort-card${isUnassigned?' sort-unassigned':''}${sortLocked?' sort-card-locked':''}"
         draggable="${sortLocked?'false':'true'}"
@@ -5204,7 +5205,10 @@ function renderSorting() {
             <div class="sort-card-name">${o.name}</div>
             <div class="sort-card-city">📍 ${o.city||o.address||'—'} &nbsp;📞 ${o.contact||'—'}</div>
           </div>
-          <span class="status ${sclass(o.status)} sort-card-status">${o.status}</span>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
+            <span class="status ${sclass(o.status)} sort-card-status">${o.status}</span>
+            ${notVerified?`<span style="font-size:9px;color:var(--orange);background:rgba(224,138,48,0.1);padding:1px 5px;border-radius:3px;">⏳ Pending Checker</span>`:''}
+          </div>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;border-top:1px solid var(--navy-border);padding-top:5px;">
           <span style="font-size:10px;color:var(--muted);">SF: ${p(o.shipping)}</span>
@@ -5212,9 +5216,9 @@ function renderSorting() {
         </div>
         <div style="margin-top:5px;">
           ${sortLocked
-            ? `<div style="font-size:10px;color:${isOFD?'var(--orange)':'var(--red)'};background:${isOFD?'rgba(224,138,48,0.1)':'rgba(224,85,85,0.1)'};
-                border:1px solid ${isOFD?'rgba(224,138,48,0.3)':'rgba(224,85,85,0.3)'};border-radius:5px;padding:4px 8px;text-align:center;">
-                🔒 ${isOFD?'On the way — hindi na maaari i-edit':'Hindi pa na-verify ng Checker'}
+            ? `<div style="font-size:10px;color:var(--orange);background:rgba(224,138,48,0.1);
+                border:1px solid rgba(224,138,48,0.3);border-radius:5px;padding:4px 8px;text-align:center;">
+                🔒 On the way — hindi na maaari i-edit
                </div>`
             : `<select style="width:100%;font-size:10px;padding:2px 5px;border-radius:5px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);"
                 onchange="sortReassign(${o.idx},this.value)" onclick="event.stopPropagation()">
@@ -5295,6 +5299,10 @@ function sortDrop(e, colEl) {
   if(newRider && S.orders[idx].status === 'Preparing' && (S.orders[idx].checkerStatus||'Pending') === 'Verified') {
     S.orders[idx].status = 'Ready';
   }
+  // Revert Ready→Preparing when unassigning (rider no longer picked up, needs re-sort)
+  if(!newRider && S.orders[idx].status === 'Ready') {
+    S.orders[idx].status = 'Preparing';
+  }
   save();
   renderSorting();
   toast(`✅ ${onum(idx)} → ${newRider||'Unassigned'} (was: ${prevRider})${newRider && S.orders[idx].status==='Ready' ? ' — Ready na para sa rider!' : ''}`);
@@ -5314,6 +5322,10 @@ function sortReassign(orderIdx, encodedRider) {
   // Auto-advance to Ready when a verified Preparing order is assigned to a rider
   if(newRider && S.orders[orderIdx].status === 'Preparing' && (S.orders[orderIdx].checkerStatus||'Pending') === 'Verified') {
     S.orders[orderIdx].status = 'Ready';
+  }
+  // Revert Ready→Preparing when unassigning
+  if(!newRider && S.orders[orderIdx].status === 'Ready') {
+    S.orders[orderIdx].status = 'Preparing';
   }
   save();
   renderSorting();
@@ -7413,7 +7425,7 @@ function applyRoleUI(){
       if(lockEl) lockEl.classList.add('unlocked');
     } else if(currentRole==='remitter' && ['ridersremit','cashbond','benefits','returns','incentives'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
-    } else if(currentRole==='checker' && ['checker','lbcdelivery','emsdelivery','fedexdelivery','coddelivery'].includes(page)){
+    } else if(currentRole==='checker' && ['checker','sorting','lbcdelivery','emsdelivery','fedexdelivery','coddelivery'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
     } else if(currentRole==='sorter' && ['tracking','sorting','ordermgmt','returns'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
@@ -7963,21 +7975,13 @@ function renderRiderParcels() {
     if(remittedDates.has(o.date) && ['Delivered','Cancelled','Update'].includes(o.status)) return false;
     return true;
   });
-  // Apply date filter — but NEVER hide orders that haven't been remitted yet.
-  // Rule: an order is only hidden when its date appears in remittedDates (officially remitted by owner).
-  // The date filter (df) is a VIEW filter only — it narrows what's displayed but never hides
-  // non-remitted orders so riders can always see their pending/active parcels.
-  const NON_TERMINAL = new Set(['Preparing','Ready','Out for Delivery','Update']);
+  // Apply date filter: strict match — show ONLY the selected date's orders.
+  // No bypass for active statuses; rider explicitly chose a date to view.
   let filtered;
   if(df) {
-    // Show: (a) orders matching the selected date, OR (b) non-terminal orders (always visible), OR (c) terminal orders not yet remitted
-    filtered = myOrders.filter(o =>
-      o.date === df ||
-      NON_TERMINAL.has(o.status) ||
-      !remittedDates.has(o.date)
-    );
+    filtered = myOrders.filter(o => o.date === df);
   } else {
-    filtered = [...myOrders]; // no date filter → show all assigned, non-remitted orders
+    filtered = [...myOrders]; // no filter → show all non-remitted orders
   }
   if(filt) filtered = filtered.filter(o => o.status === filt);
   if(q) filtered = filtered.filter(o =>
@@ -9474,6 +9478,21 @@ function saveRemit() {
 
   const editIdx = document.getElementById('remit-edit-idx').value;
   if(editIdx!=='') {
+    const oldEntry = S.remitLog[+editIdx] || {};
+    // If editing a previously Remitted entry, remove the auto-recorded cashbond/benefits
+    // to prevent duplicate entries in those logs
+    if(oldEntry.remitStatus === 'Remitted') {
+      const autoNote = `Auto-recorded on Remitted — ${oldEntry.riderName} (${oldEntry.date})`;
+      const remitNote = `Deducted from Remit — ${oldEntry.riderName} (${oldEntry.date})`;
+      S.cashbondLog = (S.cashbondLog||[]).filter(e =>
+        !(e.person === oldEntry.riderName && e.date === oldEntry.date &&
+          (e.notes === autoNote))
+      );
+      S.benefitsLog = (S.benefitsLog||[]).filter(e =>
+        !(e.person === oldEntry.riderName && e.date === oldEntry.date &&
+          (e.notes === remitNote || e.notes === autoNote))
+      );
+    }
     S.remitLog[+editIdx] = entry;
   } else {
     S.remitLog.push(entry);
@@ -9609,7 +9628,7 @@ function renderRemitPage() {
         const remarkTag = remark
           ? `<div style="font-size:9px;color:var(--orange);margin-top:2px;">💬 ${remark}</div>`:'' ;
         if(isCx)
-          return `<div style="color:var(--muted);text-decoration:line-through;font-size:9.5px;">[Cx] ${it.code}: ${it.desc} ×${totalQty}${unit} = ${p(it.total)}${remarkTag}</div>`;
+          return `<div style="color:var(--red);font-size:9.5px;">[Cx] ${it.code}: ${it.desc} ×${totalQty}${unit} = ${p(it.total)}${remarkTag}</div>`;
         if(cxQty>0){
           const cxAmt=cxQty*ppu; const remAmt=it.total-cxAmt;
           return `<div style="font-size:9.5px;">
@@ -9634,10 +9653,9 @@ function renderRemitPage() {
             <col style="width:72px;">   <!-- Order # -->
             <col style="width:130px;">  <!-- Customer -->
             <col>                        <!-- Items (flexible) -->
-            <col style="width:80px;">   <!-- SF — matches parent Total SF -->
-            <col style="width:110px;">  <!-- Amount — matches parent COD Subtotal -->
-            <col style="width:110px;">  <!-- Rider Remark — matches parent Net to Remit -->
-            <col style="width:130px;">  <!-- Cancel Reason -->
+            <col style="width:80px;">   <!-- SF -->
+            <col style="width:110px;">  <!-- Amount -->
+            <col style="width:130px;">  <!-- Rider Remark -->
           </colgroup>
           <thead><tr style="background:rgba(201,168,76,0.07);">
             <th style="padding:6px 8px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;">Order #</th>
@@ -9646,7 +9664,6 @@ function renderRemitPage() {
             <th style="padding:6px 8px;text-align:right;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;">SF</th>
             <th style="padding:6px 8px;text-align:right;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;">Amount</th>
             <th style="padding:6px 8px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;">Rider Remark</th>
-            <th style="padding:6px 8px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;">Cancel Reason</th>
           </tr></thead>
           <tbody>
             ${orders.map(o=>`<tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
@@ -9657,15 +9674,14 @@ function renderRemitPage() {
               </td>
               <td style="padding:6px 8px;text-align:left;">${renderOrderItems(o)}</td>
               <td style="padding:6px 8px;text-align:right;color:var(--blue);white-space:nowrap;">${p(o.shipping||0)}</td>
-              <td style="padding:6px 8px;text-align:right;font-weight:700;white-space:nowrap;${o.status==='Cancelled'?'color:var(--muted);text-decoration:line-through;':'color:var(--green);'}">${p(o.grandTotal||0)}</td>
+              <td style="padding:6px 8px;text-align:right;font-weight:700;white-space:nowrap;color:${o.status==='Cancelled'?'var(--red)':'var(--green)'};">${p(o.grandTotal||0)}</td>
               <td style="padding:6px 8px;text-align:left;font-size:9.5px;color:var(--orange);word-break:break-word;">${o.riderRemarks||'—'}</td>
-              <td style="padding:6px 8px;text-align:left;font-size:9.5px;word-break:break-word;">${o.cancelReason?`<span style="color:var(--red);font-weight:600;">❌ ${o.cancelReason}</span>`:o.status==='Cancelled'?`<span style="color:var(--muted);">No reason</span>`:'—'}</td>
             </tr>`).join('')}
             <tr style="background:rgba(201,168,76,0.06);font-weight:700;border-top:2px solid rgba(201,168,76,0.2);">
               <td colspan="3" style="padding:7px 8px;color:${titleColor};text-align:left;font-size:10.5px;">Subtotal</td>
               <td style="padding:7px 8px;text-align:right;color:var(--blue);font-size:10.5px;">${p(orders.reduce((s,o)=>s+(o.shipping||0),0))}</td>
               <td style="padding:7px 8px;text-align:right;color:${titleColor};font-size:12px;font-weight:800;">${p(orders.reduce((s,o)=>s+((o.status!=='Cancelled'&&o.status!=='RTO')?o.grandTotal||0:0),0))}</td>
-              <td colspan="2"></td>
+              <td></td>
             </tr>
           </tbody>
         </table></div>`;
@@ -12485,7 +12501,7 @@ document.addEventListener('visibilitychange', async ()=>{
   if(document.visibilityState !== 'visible') return;
   if(!window._fbReady || !window.loadFromFirebase) return;
   if(!currentRole) return;
-  if(_retryPending || window._writeActive) return; // don't overwrite during pending write/retry
+  if(_retryPending || window._writeActive || window._encodingInProgress) return; // don't overwrite during pending write/retry/encode
   try {
     _lastKnownWriteTs = 0; // force full re-fetch on tab focus
     const fbData = await window.loadFromFirebase();
