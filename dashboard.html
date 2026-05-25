@@ -1433,7 +1433,8 @@ function _showRulesHint() {
   </div>
 
   <!-- PARCEL SORTING -->
-  <div class="page" id="page-sorting">
+  <div class="page page-lockable" id="page-sorting">
+  <div class="finance-lock unlocked" id="lock-sorting"></div>
     <div class="action-row no-print" style="flex-wrap:wrap;gap:10px;">
       <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
         <span style="font-size:12px;color:var(--muted);">🔀 Drag parcels between riders to reassign.</span>
@@ -1460,7 +1461,8 @@ function _showRulesHint() {
   </div>
 
   <!-- RETURNS -->
-  <div class="page" id="page-returns">
+  <div class="page page-lockable" id="page-returns">
+  <div class="finance-lock unlocked" id="lock-returns"></div>
     <!-- Stats -->
     <div class="stats-grid" id="return-stats"></div>
 
@@ -2004,7 +2006,8 @@ function _showRulesHint() {
 </div>
 
   <!-- ORDER MANAGEMENT (LBC + EMS + FedEx) -->
-  <div class="page" id="page-ordermgmt">
+  <div class="page page-lockable" id="page-ordermgmt">
+  <div class="finance-lock unlocked" id="lock-ordermgmt"></div>
     <div class="action-row no-print" style="flex-wrap:wrap;gap:10px;">
       <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
         <div class="section-tabs" style="margin:0;" id="ordermgmt-tabs">
@@ -7170,7 +7173,7 @@ function renderDash(){
 // Default hashed password storage — uses simple hash for demo
 // In production Firebase, store hash server-side
 const DEFAULT_OWNER_PW = 'goldchelle2024';
-const FIN_PAGES = ['dailysales','payroll','expenses','pnl','adminsheets','settings','checker','tracking','riders','inventory','ridersremit','cashbond','benefits'];
+const FIN_PAGES = ['dailysales','payroll','expenses','pnl','adminsheets','settings','checker','tracking','riders','inventory','ridersremit','cashbond','benefits','sorting','ordermgmt','returns','incentives'];
 
 // selectedRole and unlockedPages for auth flow
 let selectedRole = null;
@@ -7375,11 +7378,11 @@ function applyRoleUI(){
     const lockEl=document.getElementById('lock-'+page);
     if(currentRole==='owner'){
       if(lockEl) lockEl.classList.add('unlocked');
-    } else if(currentRole==='remitter' && ['ridersremit','cashbond','benefits','returns'].includes(page)){
+    } else if(currentRole==='remitter' && ['ridersremit','cashbond','benefits','returns','incentives'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
     } else if(currentRole==='checker' && ['checker','lbcdelivery','emsdelivery','fedexdelivery','coddelivery'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
-    } else if(currentRole==='sorter' && ['tracking','sorting','ordermgmt'].includes(page)){
+    } else if(currentRole==='sorter' && ['tracking','sorting','ordermgmt','returns'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
     } else {
       if(lockEl) lockEl.classList.remove('unlocked');
@@ -7927,15 +7930,21 @@ function renderRiderParcels() {
     if(remittedDates.has(o.date) && ['Delivered','Cancelled','Update'].includes(o.status)) return false;
     return true;
   });
-  // Apply date filter:
-  // Active (non-terminal) orders always show regardless of date — rider must see all pending work.
-  // Delivered / Cancelled respect the date filter (historical).
-  const ACTIVE_STATUSES = ['Preparing','Ready','Out for Delivery','Update','Delivered'];
+  // Apply date filter — but NEVER hide orders that haven't been remitted yet.
+  // Rule: an order is only hidden when its date appears in remittedDates (officially remitted by owner).
+  // The date filter (df) is a VIEW filter only — it narrows what's displayed but never hides
+  // non-remitted orders so riders can always see their pending/active parcels.
+  const NON_TERMINAL = new Set(['Preparing','Ready','Out for Delivery','Update']);
   let filtered;
   if(df) {
-    filtered = myOrders.filter(o => o.date === df || ACTIVE_STATUSES.includes(o.status));
+    // Show: (a) orders matching the selected date, OR (b) non-terminal orders (always visible), OR (c) terminal orders not yet remitted
+    filtered = myOrders.filter(o =>
+      o.date === df ||
+      NON_TERMINAL.has(o.status) ||
+      !remittedDates.has(o.date)
+    );
   } else {
-    filtered = [...myOrders]; // no date filter → show all assigned orders
+    filtered = [...myOrders]; // no date filter → show all assigned, non-remitted orders
   }
   if(filt) filtered = filtered.filter(o => o.status === filt);
   if(q) filtered = filtered.filter(o =>
@@ -8841,20 +8850,32 @@ function renderTracking() {
   const TRACK_STATUSES = ['Preparing','Ready','Out for Delivery','Delivered','RTO','Cancelled','Update'];
   const COD_UPDATE_STATUSES = ['Preparing','Ready for Pick-up'];
   const colors = {'Preparing':'orange','Ready':'blue','Out for Delivery':'gold','Delivered':'green','Cancelled':'red','Update':'purple'};
-  // Stats — COD only
-  document.getElementById('tracking-stats').innerHTML = TRACK_STATUSES.map(s =>
-    `<div class="stat-card ${colors[s]||'gold'}"><div class="stat-label">${s}</div><div class="stat-value">${S.orders.filter(o=>o&&o.status===s&&(o.paymentMethod||'COD')==='COD').length}</div></div>`
-  ).join('');
   const q = (document.getElementById('track-search')?.value||'').toLowerCase();
   const filt = document.getElementById('track-filter')?.value||'';
   const df = document.getElementById('track-date')?.value||'';
 
-  // Filter COD orders
-  const filtered = S.orders.map((o,i)=>({o,i})).filter(({o}) => {
+  // Active statuses always show regardless of date — staff must see all pending work.
+  // Terminal statuses (Delivered/Cancelled/RTO) respect the date filter.
+  const COD_ACTIVE = new Set(['Preparing','Ready','Out for Delivery','Update']);
+
+  // Stats — counts must match table logic (active = all dates, terminal = filtered by date)
+  document.getElementById('tracking-stats').innerHTML = TRACK_STATUSES.map(s => {
+    const count = S.orders.filter(o => {
+      if(!o || o.status !== s) return false;
+      if((o.paymentMethod||'COD') !== 'COD') return false;
+      if(df && !COD_ACTIVE.has(s) && o.date !== df) return false;
+      return true;
+    }).length;
+    return `<div class="stat-card ${colors[s]||'gold'}"><div class="stat-label">${s}</div><div class="stat-value">${count}</div></div>`;
+  }).join('');
+  const filtered = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
+    if(!o) return false;
     if((o.paymentMethod||'COD') !== 'COD') return false;
-    if(q && !o.name.toLowerCase().includes(q) && !onum(S.orders.indexOf(o)).toLowerCase().includes(q) && !(o.contact||'').toLowerCase().includes(q)) return false;
     if(filt && o.status!==filt) return false;
-    if(df && o.date!==df) return false;
+    // Date filter: active orders always shown, terminal orders filtered by date
+    if(df && !COD_ACTIVE.has(o.status) && o.date!==df) return false;
+    // Search filter
+    if(q && !o.name.toLowerCase().includes(q) && !(o.contact||'').toLowerCase().includes(q) && !onum(i).toLowerCase().includes(q)) return false;
     return true;
   });
 
