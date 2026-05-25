@@ -7423,7 +7423,7 @@ function applyRoleUI(){
     const lockEl=document.getElementById('lock-'+page);
     if(currentRole==='owner'){
       if(lockEl) lockEl.classList.add('unlocked');
-    } else if(currentRole==='remitter' && ['ridersremit','cashbond','benefits','returns','incentives'].includes(page)){
+    } else if(currentRole==='remitter' && ['ridersremit','cashbond','benefits','sorting','returns','incentives'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
     } else if(currentRole==='checker' && ['checker','sorting','lbcdelivery','emsdelivery','fedexdelivery','coddelivery'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
@@ -11417,38 +11417,40 @@ function codDelivCancelOrder(orderIdx) {
   if(window._codCancelLock) { toast('⏳ Please wait, processing...'); return; }
   window._codCancelLock = true;
   _confirmDel('Cancel ' + onum(orderIdx) + ' — ' + o.name + '? Inventory will be auto-restored.', function() {
-    window._codCancelLock = false;
-    if(S.orders[orderIdx]?.status === 'Cancelled') { toast('⚠ Already cancelled.'); return; }
+    // Re-check status after dialog — user may have double-clicked or order already changed
+    const freshOrder = S.orders[orderIdx];
+    if(!freshOrder || freshOrder.status === 'Cancelled' || freshOrder.status === 'RTO') {
+      toast('⚠ Already cancelled.');
+      window._codCancelLock = false;
+      return;
+    }
+    // Guard: if inventoryRestored is already true, don't restore again (prevents double inventory on double-click)
+    if(freshOrder.inventoryRestored === true) {
+      toast('⚠ Inventory already restored for this order.');
+      window._codCancelLock = false;
+      return;
+    }
 
     // ── Auto-restore inventory ───────────────────────────────────────────────
-    // Restore ALL items that were deducted from inventory.
-    // Logic: if inventoryDeducted===true, restore items that are NOT already
-    // individually cancelled (those were never deducted, so skip them).
-    // If inventoryDeducted is false/undefined but items exist, try anyway — 
-    // safe because _restoreOrderItems uses stockLog to track idempotency.
     var restored = false;
-    var itemsToRestore = (o.items||[]).filter(function(it, ii) {
-      // Skip items already individually cancelled by the rider
-      // (their value was already deducted from grandTotal but NOT from inventory)
-      var itemSt = (o.itemStatuses||{})[ii];
+    var itemsToRestore = (freshOrder.items||[]).filter(function(it, ii) {
+      var itemSt = (freshOrder.itemStatuses||{})[ii];
       return itemSt !== 'Cancelled';
     });
     if(itemsToRestore.length > 0) {
       restored = _restoreOrderItems(
         itemsToRestore, today(),
-        'COD Delivery Cancel – ' + o.name + ' (' + onum(orderIdx) + ')',
-        o._id || String(orderIdx)
+        'COD Delivery Cancel – ' + freshOrder.name + ' (' + onum(orderIdx) + ')',
+        freshOrder._id || String(orderIdx)
       );
     }
-    // Also handle any per-item partial cancel qty adjustments already done —
-    // those are accounted for in grandTotal but NOT in inventory, so we only
-    // restore full items above (partial qty cancels don't touch inventory per system design).
 
-    S.orders[orderIdx].status       = 'Cancelled';
-    S.orders[orderIdx].cancelReason = 'Cancelled from COD Delivery (For Update)';
-    S.orders[orderIdx].cancelledBy  = (currentUser && currentUser.name) || 'Checker';
-    S.orders[orderIdx].cancelledAt  = new Date().toISOString();
-    S.orders[orderIdx].inventoryRestored = restored; // flag for audit
+    S.orders[orderIdx].status          = 'Cancelled';
+    S.orders[orderIdx].cancelReason    = 'Cancelled from COD Delivery (For Update)';
+    S.orders[orderIdx].cancelledBy     = (currentUser && currentUser.name) || 'Checker';
+    S.orders[orderIdx].cancelledAt     = new Date().toISOString();
+    S.orders[orderIdx].inventoryRestored = true; // flag: block any future double-restore
+
     if(!S.deletedOrders) S.deletedOrders = [];
     if(!S.deletedOrders.some(function(d){ return d.orderNum === onum(orderIdx); })) {
       S.deletedOrders.push({
@@ -11456,9 +11458,9 @@ function codDelivCancelOrder(orderIdx) {
         cancelledBy: S.orders[orderIdx].cancelledBy,
         reason: 'Cancelled from COD Delivery (For Update)',
         orderNum: onum(orderIdx),
-        name: o.name, contact: o.contact||'', address: o.address||'',
-        admin: o.admin||'', date: o.date, paymentMethod: o.paymentMethod||'COD',
-        grandTotal: o.grandTotal||0, items: o.items||[], status: 'Cancelled',
+        name: freshOrder.name, contact: freshOrder.contact||'', address: freshOrder.address||'',
+        admin: freshOrder.admin||'', date: freshOrder.date, paymentMethod: freshOrder.paymentMethod||'COD',
+        grandTotal: freshOrder.grandTotal||0, items: freshOrder.items||[], status: 'Cancelled',
       });
     }
     save();
@@ -11467,8 +11469,9 @@ function codDelivCancelOrder(orderIdx) {
     else if(itemsToRestore.length === 0) msg += ' (no items to restore)';
     else msg += ' ⚠ Check inventory manually';
     toast(msg);
+    // Release lock AFTER everything is done
+    window._codCancelLock = false;
     renderCodDelivPage();
-    // Refresh tracking if open
     if(_activePage==='tracking') try{renderTracking();}catch(e){}
     if(currentRole==='owner') try{renderDash();}catch(e){}
   });
@@ -11695,6 +11698,10 @@ function confirmCheckerCancel() {
   if(o.status === 'Cancelled' || o.status === 'RTO') {
     toast('⚠ Order is already Cancelled / Returned.'); closeModal('modal-checker-cancel'); return;
   }
+  // IDEMPOTENCY: block if inventory already restored
+  if(o.inventoryRestored === true) {
+    toast('⚠ Inventory already restored for this order.'); closeModal('modal-checker-cancel'); return;
+  }
   // IDEMPOTENCY: also check deletedOrders to prevent duplicate log entries
   if((S.deletedOrders||[]).some(d => d.orderNum === onum(orderIdx))) {
     toast('⚠ Order is already in the cancelled log.'); closeModal('modal-checker-cancel'); return;
@@ -11752,6 +11759,7 @@ function confirmCheckerCancel() {
   S.orders[orderIdx].cancelReason = reason;
   S.orders[orderIdx].cancelledBy = currentUser?.name || 'Checker';
   S.orders[orderIdx].cancelledAt = new Date().toISOString();
+  S.orders[orderIdx].inventoryRestored = true; // block future double-restore
   save();
   closeModal('modal-checker-cancel');
   toast(`❌ Order cancelled${restored ? ' & inventory restored' : ''}. Reason: ${reason}`);
