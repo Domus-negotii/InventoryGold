@@ -921,7 +921,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-admin" onclick="selectRole('admin')">
           <div class="role-icon">👤</div>
-          <div class="role-name">Admin / Staff</div>
+          <div class="role-name">CHR</div>
           <div class="role-desc">Orders &amp; Operations</div>
         </div>
       </div>
@@ -939,7 +939,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-sorter" onclick="selectRole('sorter')" style="padding:10px 8px;text-align:center;">
           <div style="font-size:20px;">📦</div>
-          <div class="role-name" style="font-size:11px;">Parcel Sorter</div>
+          <div class="role-name" style="font-size:11px;">Dispatcher</div>
           <div class="role-desc" style="font-size:9px;">Sort &amp; Track</div>
         </div>
         <div class="role-btn" id="role-checker" onclick="selectRole('checker')" style="padding:10px 8px;text-align:center;">
@@ -1327,7 +1327,7 @@ function _showRulesHint() {
         </div>
         <div class="table-wrap"><table>
           <thead><tr>
-            <th>Order #</th><th>Customer</th><th>CP #</th><th>Address</th><th>Admin</th>
+            <th>Order #</th><th>Customer</th><th>Address</th><th>Admin</th>
             <th>Method</th><th>Order Date</th><th>Items</th><th>Total</th>
             <th>Payment Status</th><th style="color:var(--red);">Cancel Reason</th>
             <th>Cancelled By</th><th>Cancelled At</th>
@@ -1716,32 +1716,32 @@ function _showRulesHint() {
           <div style="display:flex;flex-direction:column;gap:9px;">
             <div style="display:grid;grid-template-columns:170px 130px 1fr;align-items:center;gap:10px;">
               <label style="font-size:12px;color:var(--muted);">SSS Contribution</label>
-              <input type="number" class="form-control" id="gs-sss" style="text-align:right;" placeholder="0.00" oninput="previewGov()">
+              <input type="number" class="form-control" id="gs-sss" style="text-align:right;" placeholder="0.00" oninput="previewGov()" onwheel="return false;">
               <span style="font-size:11px;color:var(--muted);">₱ per payroll period</span>
             </div>
             <div style="display:grid;grid-template-columns:170px 130px 1fr;align-items:center;gap:10px;">
               <label style="font-size:12px;color:var(--muted);">PhilHealth</label>
-              <input type="number" class="form-control" id="gs-philhealth" style="text-align:right;" placeholder="0.00" oninput="previewGov()">
+              <input type="number" class="form-control" id="gs-philhealth" style="text-align:right;" placeholder="0.00" oninput="previewGov()" onwheel="return false;">
               <span style="font-size:11px;color:var(--muted);">₱ per payroll period</span>
             </div>
             <div style="display:grid;grid-template-columns:170px 130px 1fr;align-items:center;gap:10px;">
               <label style="font-size:12px;color:var(--muted);">Pag-IBIG (HDMF)</label>
-              <input type="number" class="form-control" id="gs-pagibig" style="text-align:right;" placeholder="0.00" oninput="previewGov()">
+              <input type="number" class="form-control" id="gs-pagibig" style="text-align:right;" placeholder="0.00" oninput="previewGov()" onwheel="return false;">
               <span style="font-size:11px;color:var(--muted);">₱ per payroll period</span>
             </div>
             <div style="display:grid;grid-template-columns:170px 130px 1fr;align-items:center;gap:10px;">
               <label style="font-size:12px;color:var(--muted);">Withholding Tax</label>
-              <input type="number" class="form-control" id="gs-tax" style="text-align:right;" placeholder="0.00" oninput="previewGov()">
+              <input type="number" class="form-control" id="gs-tax" style="text-align:right;" placeholder="0.00" oninput="previewGov()" onwheel="return false;">
               <span style="font-size:11px;color:var(--muted);">₱ per payroll period</span>
             </div>
             <div style="display:grid;grid-template-columns:170px 130px 1fr;align-items:center;gap:10px;">
               <label style="font-size:12px;color:var(--muted);">Other Deductions</label>
-              <input type="number" class="form-control" id="gs-other" style="text-align:right;" placeholder="0.00" oninput="previewGov()">
+              <input type="number" class="form-control" id="gs-other" style="text-align:right;" placeholder="0.00" oninput="previewGov()" onwheel="return false;">
               <span style="font-size:11px;color:var(--muted);">₱ per payroll period</span>
             </div>
             <div style="display:grid;grid-template-columns:170px 130px 1fr;align-items:center;gap:10px;">
               <label style="font-size:12px;color:var(--muted);">Parcel Incentive Rate</label>
-              <input type="number" class="form-control" id="gs-parcel-rate" style="text-align:right;" placeholder="25" oninput="previewGov()">
+              <input type="number" class="form-control" id="gs-parcel-rate" style="text-align:right;" placeholder="25" oninput="previewGov()" onwheel="return false;">
               <span style="font-size:11px;color:var(--muted);">₱ per successful parcel</span>
             </div>
           </div>
@@ -2173,7 +2173,7 @@ function _showRulesHint() {
           <label style="font-size:12px;"><input type="radio" name="merge-sf" value="higher" checked onchange="updateMergePreview()"> Use higher SF</label>
           <label style="font-size:12px;"><input type="radio" name="merge-sf" value="lower" onchange="updateMergePreview()"> Use lower SF</label>
           <label style="font-size:12px;"><input type="radio" name="merge-sf" value="custom" onchange="updateMergePreview()"> Custom:
-            <input type="number" id="merge-sf-custom" min="0" value="0" style="width:80px;font-size:11px;padding:2px 6px;margin-left:4px;" oninput="updateMergePreview()">
+            <input type="number" id="merge-sf-custom" min="0" value="0" style="width:80px;font-size:11px;padding:2px 6px;margin-left:4px;" oninput="updateMergePreview()" onwheel="return false;">
           </label>
         </div>
       </div>
@@ -2255,7 +2255,7 @@ function _showRulesHint() {
       <div class="form-group" id="enc-sf-group">
         <label>Shipping Fee (₱)</label>
         <input type="number" class="form-control enc-tab" id="enc-shipping" value="0" min="0"
-          oninput="calcEnc()" onfocus="this.select()" onkeydown="encNextField(event,this)">
+          oninput="calcEnc()" onfocus="this.select()" onkeydown="encNextField(event,this)" onwheel="return false;">
       </div>
       <div class="form-group" id="enc-method-group">
         <label>Shipping Method *</label>
@@ -2309,8 +2309,8 @@ function _showRulesHint() {
     <div style="text-align:right;margin-top:10px;font-size:12.5px;line-height:2;">
       SF: <strong style="color:var(--gold);" id="enc-sf-disp">₱0.00</strong> &nbsp;|&nbsp;
       Items (net): <strong style="color:var(--gold);" id="enc-items-disp">₱0.00</strong> &nbsp;|&nbsp;
-      Discount: <strong style="color:var(--red);" id="enc-discount-disp">-₱0.00</strong> &nbsp;|&nbsp;
-      <span style="font-size:14px;">Grand Total: <strong style="color:var(--green);" id="enc-grand-disp">₱0.00</strong></span>
+      Discount: <strong style="color:var(--red);" id="enc-discount-disp">-₱0.00</strong>
+      <span id="enc-grand-disp" style="display:none;">₱0.00</span>
     </div>
     <!-- ── Overall/Global Discount Box ── -->
     <div class="form-group" style="margin-top:10px;padding:10px 14px;background:rgba(224,85,85,0.06);border:1px solid rgba(224,85,85,0.2);border-radius:8px;">
@@ -2318,7 +2318,7 @@ function _showRulesHint() {
       <div style="display:flex;align-items:center;gap:10px;margin-top:6px;">
         <input type="number" class="form-control" id="enc-global-discount" min="0" value="0"
           style="width:140px;font-size:13px;" oninput="calcEnc()" onfocus="this.select()"
-          placeholder="0.00">
+          placeholder="0.00" onwheel="return false;">
         <div style="flex:1;">
           <input type="text" class="form-control" id="enc-global-discount-reason"
             placeholder="Order note / Promo reason (e.g. Paid via GCash, Free SF, Voucher...)"
@@ -2462,33 +2462,33 @@ function _showRulesHint() {
       </select></div>
       <div class="form-group"><label>Period</label><select class="form-control" id="pay-period"><option value="daily">Daily</option><option value="weekly">Weekly</option></select></div>
       <div class="form-group"><label>Pay Date</label><input type="date" class="form-control" id="pay-date" oninput="validateDateInput(this)"></div>
-      <div class="form-group"><label>Daily Rate (₱)</label><input type="number" class="form-control" id="pay-rate" value="0" oninput="calcPay()"></div>
-      <div class="form-group"><label>Days Worked</label><input type="number" class="form-control" id="pay-days" value="1" oninput="calcPay()"></div>
-      <div class="form-group"><label>Successful Parcels</label><input type="number" class="form-control" id="pay-parcels" value="0" oninput="calcPay()"></div>
-      <div class="form-group"><label>₱ per Parcel</label><input type="number" class="form-control" id="pay-rate-per" value="25" oninput="calcPay()"></div>
-      <div class="form-group"><label>Other Incentives (₱)</label><input type="number" class="form-control" id="pay-other" value="0" oninput="calcPay()"></div>
-      <div class="form-group"><label>Tip (₱)</label><input type="number" class="form-control" id="pay-tip" value="0" oninput="calcPay()"></div>
-      <div class="form-group"><label>COD (₱)</label><input type="number" class="form-control" id="pay-cod" value="0" oninput="calcPay()"></div>
-      <div class="form-group"><label>LBC (₱)</label><input type="number" class="form-control" id="pay-lbc" value="0" oninput="calcPay()"></div>
-      <div class="form-group"><label>5% Incentives (₱)</label><input type="number" class="form-control" id="pay-incentives5" value="0" oninput="calcPay()"></div>
+      <div class="form-group"><label>Daily Rate (₱)</label><input type="number" class="form-control" id="pay-rate" value="0" oninput="calcPay()" onwheel="return false;"></div>
+      <div class="form-group"><label>Days Worked</label><input type="number" class="form-control" id="pay-days" value="1" oninput="calcPay()" onwheel="return false;"></div>
+      <div class="form-group"><label>Successful Parcels</label><input type="number" class="form-control" id="pay-parcels" value="0" oninput="calcPay()" onwheel="return false;"></div>
+      <div class="form-group"><label>₱ per Parcel</label><input type="number" class="form-control" id="pay-rate-per" value="25" oninput="calcPay()" onwheel="return false;"></div>
+      <div class="form-group"><label>Other Incentives (₱)</label><input type="number" class="form-control" id="pay-other" value="0" oninput="calcPay()" onwheel="return false;"></div>
+      <div class="form-group"><label>Tip (₱)</label><input type="number" class="form-control" id="pay-tip" value="0" oninput="calcPay()" onwheel="return false;"></div>
+      <div class="form-group"><label>COD (₱)</label><input type="number" class="form-control" id="pay-cod" value="0" oninput="calcPay()" onwheel="return false;"></div>
+      <div class="form-group"><label>LBC (₱)</label><input type="number" class="form-control" id="pay-lbc" value="0" oninput="calcPay()" onwheel="return false;"></div>
+      <div class="form-group"><label>5% Incentives (₱)</label><input type="number" class="form-control" id="pay-incentives5" value="0" oninput="calcPay()" onwheel="return false;"></div>
       <div class="form-group"><label>Period Label (e.g. Mar 24–Mar 31)</label><input class="form-control" id="pay-period-label" placeholder="e.g. Mar. 24 - Mar. 31"></div>
     </div>
     <hr class="divider">
     <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Deductions</div>
     <div class="form-grid" style="margin-bottom:12px;">
-      <div class="form-group"><label>Benefits (₱)</label><input type="number" class="form-control" id="pay-benefits" value="0" oninput="calcPay()"></div>
-      <div class="form-group"><label>Cashbond (₱)</label><input type="number" class="form-control" id="pay-cashbond" value="0" oninput="calcPay()"></div>
-      <div class="form-group"><label>Utang (₱)</label><input type="number" class="form-control" id="pay-utang" value="0" oninput="calcPay()"></div>
-      <div class="form-group"><label>Maynilad (₱)</label><input type="number" class="form-control" id="pay-maynilad" value="0" oninput="calcPay()"></div>
+      <div class="form-group"><label>Benefits (₱)</label><input type="number" class="form-control" id="pay-benefits" value="0" oninput="calcPay()" onwheel="return false;"></div>
+      <div class="form-group"><label>Cashbond (₱)</label><input type="number" class="form-control" id="pay-cashbond" value="0" oninput="calcPay()" onwheel="return false;"></div>
+      <div class="form-group"><label>Utang (₱)</label><input type="number" class="form-control" id="pay-utang" value="0" oninput="calcPay()" onwheel="return false;"></div>
+      <div class="form-group"><label>Maynilad (₱)</label><input type="number" class="form-control" id="pay-maynilad" value="0" oninput="calcPay()" onwheel="return false;"></div>
     </div>
     <hr class="divider">
     <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Government Remittances</div>
     <div class="remit-box">
-      <div class="remit-row"><span class="remit-label">SSS</span><input type="number" class="remit-input" id="gov-sss" value="0" oninput="calcPay()" placeholder="0.00"></div>
-      <div class="remit-row"><span class="remit-label">PhilHealth</span><input type="number" class="remit-input" id="gov-philhealth" value="0" oninput="calcPay()" placeholder="0.00"></div>
-      <div class="remit-row"><span class="remit-label">Pag-IBIG (HDMF)</span><input type="number" class="remit-input" id="gov-pagibig" value="0" oninput="calcPay()" placeholder="0.00"></div>
-      <div class="remit-row"><span class="remit-label">Withholding Tax</span><input type="number" class="remit-input" id="gov-tax" value="0" oninput="calcPay()" placeholder="0.00"></div>
-      <div class="remit-row"><span class="remit-label">Other Deductions</span><input type="number" class="remit-input" id="gov-other" value="0" oninput="calcPay()" placeholder="0.00"></div>
+      <div class="remit-row"><span class="remit-label">SSS</span><input type="number" class="remit-input" id="gov-sss" value="0" oninput="calcPay()" placeholder="0.00" onwheel="return false;"></div>
+      <div class="remit-row"><span class="remit-label">PhilHealth</span><input type="number" class="remit-input" id="gov-philhealth" value="0" oninput="calcPay()" placeholder="0.00" onwheel="return false;"></div>
+      <div class="remit-row"><span class="remit-label">Pag-IBIG (HDMF)</span><input type="number" class="remit-input" id="gov-pagibig" value="0" oninput="calcPay()" placeholder="0.00" onwheel="return false;"></div>
+      <div class="remit-row"><span class="remit-label">Withholding Tax</span><input type="number" class="remit-input" id="gov-tax" value="0" oninput="calcPay()" placeholder="0.00" onwheel="return false;"></div>
+      <div class="remit-row"><span class="remit-label">Other Deductions</span><input type="number" class="remit-input" id="gov-other" value="0" oninput="calcPay()" placeholder="0.00" onwheel="return false;"></div>
       <div class="remit-total"><span>Total Deductions</span><span id="gov-total-deduct" style="color:var(--red);">₱0.00</span></div>
     </div>
     <div style="background:var(--navy);border-radius:8px;padding:12px;margin-top:11px;font-size:12.5px;">
@@ -2521,7 +2521,7 @@ function _showRulesHint() {
         <option>Others</option>
       </select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Description *</label><input class="form-control" id="exp-desc"></div>
-      <div class="form-group"><label>Amount (₱) *</label><input type="number" class="form-control" id="exp-amount" min="0"></div>
+      <div class="form-group"><label>Amount (₱) *</label><input type="number" class="form-control" id="exp-amount" min="0" onwheel="return false;"></div>
     </div>
     <input type="hidden" id="exp-edit-idx" value="">
     <div class="form-actions"><button class="btn btn-gold" onclick="saveExp()">💾 Save</button><button class="btn btn-outline" onclick="closeModal('modal-expense')">Cancel</button></div>
@@ -2565,16 +2565,16 @@ function _showRulesHint() {
       <!-- Row 4: Grams + Per Gram (grams mode) -->
       <div class="form-group inv-grams-row">
         <label>Grams (total in stock)</label>
-        <input type="number" class="form-control" id="inv-grams" value="0" oninput="calcInv()" onkeydown="invNextField(event,this)">
+        <input type="number" class="form-control" id="inv-grams" value="0" oninput="calcInv()" onkeydown="invNextField(event,this)" onwheel="return false;">
       </div>
       <div class="form-group inv-grams-row">
         <label>Per Gram (₱)</label>
-        <input type="number" class="form-control" id="inv-pergram" value="0.00" step="0.01" oninput="calcInv()" onkeydown="invNextField(event,this)">
+        <input type="number" class="form-control" id="inv-pergram" value="0.00" step="0.01" oninput="calcInv()" onkeydown="invNextField(event,this)" onwheel="return false;">
       </div>
       <!-- Row 5: Capital + Unit Value (grams mode) -->
       <div class="form-group inv-grams-row">
         <label>Capital / Cost per gram (₱)</label>
-        <input type="number" class="form-control" id="inv-capital-gram" value="0.00" step="0.01" oninput="calcInv()" onkeydown="invNextField(event,this)" placeholder="Cost price per gram">
+        <input type="number" class="form-control" id="inv-capital-gram" value="0.00" step="0.01" oninput="calcInv()" onkeydown="invNextField(event,this)" placeholder="Cost price per gram" onwheel="return false;">
       </div>
       <div class="form-group inv-grams-row">
         <label>Unit Value (auto)</label>
@@ -2583,15 +2583,15 @@ function _showRulesHint() {
       <!-- Fix price mode rows -->
       <div class="form-group inv-fixprice-row" style="display:none;">
         <label>Fix Price (₱) per unit</label>
-        <input type="number" class="form-control" id="inv-fixprice" value="0.00" step="0.01" onkeydown="invNextField(event,this)">
+        <input type="number" class="form-control" id="inv-fixprice" value="0.00" step="0.01" onkeydown="invNextField(event,this)" onwheel="return false;">
       </div>
       <div class="form-group inv-fixprice-row" style="display:none;">
         <label>Capital / Cost per unit (₱)</label>
-        <input type="number" class="form-control" id="inv-capital-fix" value="0.00" step="0.01" onkeydown="invNextField(event,this)" placeholder="Cost price per unit">
+        <input type="number" class="form-control" id="inv-capital-fix" value="0.00" step="0.01" onkeydown="invNextField(event,this)" placeholder="Cost price per unit" onwheel="return false;">
       </div>
       <div class="form-group inv-fixprice-row" style="display:none;">
         <label>Quantity *</label>
-        <input type="number" class="form-control" id="inv-qty" value="0" min="0" onkeydown="invNextField(event,this)">
+        <input type="number" class="form-control" id="inv-qty" value="0" min="0" onkeydown="invNextField(event,this)" onwheel="return false;">
       </div>
     </div>
     <input type="hidden" id="inv-edit-idx" value="">
@@ -2619,7 +2619,7 @@ function _showRulesHint() {
           <option value="return">Return to Stock</option>
         </select>
       </div>
-      <div class="form-group"><label>Quantity / Grams *</label><input type="number" class="form-control" id="stock-qty" value="1" min="1"></div>
+      <div class="form-group"><label>Quantity / Grams *</label><input type="number" class="form-control" id="stock-qty" value="1" min="1" onwheel="return false;"></div>
       <div class="form-group"><label>Date</label><input type="date" class="form-control" id="stock-date" oninput="validateDateInput(this)"></div>
       <div class="form-group" style="grid-column:1/-1"><label>Reference / Notes</label><input class="form-control" id="stock-notes" placeholder="Order #, supplier, reason..."></div>
     </div>
@@ -2664,7 +2664,7 @@ function _showRulesHint() {
           <span style="color:var(--red);font-size:11px;">-</span>
           <input type="number" id="remit-benefits-input" value="0" min="0" step="0.01"
             style="width:110px;text-align:right;padding:3px 8px;font-size:12px;border-radius:5px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);"
-            oninput="recalcRemitNet()" placeholder="0.00">
+            oninput="recalcRemitNet()" placeholder="0.00" onwheel="return false;">
           <span style="font-size:9.5px;color:var(--muted);">auto → Benefits Log</span>
         </div>
       </div>
@@ -2712,7 +2712,7 @@ function _showRulesHint() {
     <div class="form-grid">
       <div class="form-group"><label>Employee/Rider *</label><div id="cb-person-wrapper"><input class="form-control" id="cb-person" placeholder="Name"></div></div>
       <div class="form-group"><label>Type</label><select class="form-control" id="cb-type"><option value="rider">Rider</option><option value="staff">Staff</option></select></div>
-      <div class="form-group"><label>Amount (₱)</label><input type="number" class="form-control" id="cb-amount" value="100" min="0"></div>
+      <div class="form-group"><label>Amount (₱)</label><input type="number" class="form-control" id="cb-amount" value="100" min="0" onwheel="return false;"></div>
       <div class="form-group" style="grid-column:1/-1"><label>Notes</label><input class="form-control" id="cb-notes" placeholder="e.g. Weekly deduction"></div>
     </div>
     <input type="hidden" id="cb-edit-idx" value="">
@@ -2728,7 +2728,7 @@ function _showRulesHint() {
       <div class="form-group"><label>Employee/Rider *</label><input class="form-control" id="ben-person" placeholder="Name"></div>
       <div class="form-group"><label>Type</label><select class="form-control" id="ben-type"><option value="rider">Rider</option><option value="staff">Staff</option></select></div>
       <div class="form-group"><label>Date *</label><input type="date" class="form-control" id="ben-date" oninput="validateDateInput(this)"></div>
-      <div class="form-group"><label>Benefits (₱) *</label><input type="number" class="form-control" id="ben-amount" value="0" min="0" oninput="calcBen()"></div>
+      <div class="form-group"><label>Benefits (₱) *</label><input type="number" class="form-control" id="ben-amount" value="0" min="0" oninput="calcBen()" onwheel="return false;"></div>
       <div class="form-group" style="grid-column:1/-1"><label>Notes</label><input class="form-control" id="ben-notes" placeholder="e.g. Monthly benefit deduction"></div>
     </div>
     <div style="background:var(--navy);border-radius:8px;padding:10px;margin-top:10px;font-size:13px;">
@@ -2794,7 +2794,7 @@ function _showRulesHint() {
           <label style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:5px;">Qty / Grams Returned *</label>
           <input type="number" class="form-control" id="ret-qty-grams" value="0" min="0" step="any"
             placeholder="e.g. 2.5"
-            style="width:100%;box-sizing:border-box;font-size:13px;">
+            style="width:100%;box-sizing:border-box;font-size:13px;" onwheel="return false;">
         </div>
         <div style="min-width:0;">
           <label style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:5px;">Unit</label>
@@ -3027,12 +3027,12 @@ function addItemRow(tbodyId, calcFn, it={}) {
   row.innerHTML = `
     <td><input class="form-control" style="width:90px;font-size:11px;" value="${it.code||''}" placeholder="Code" onkeydown="rowTabNext(event,this)" oninput="debounceCodeLookup(this)" onblur="autoFillFromCode(this,false)"></td>
     <td><input class="form-control" style="width:150px;font-size:11px;" value="${it.desc||''}" placeholder="Description" onkeydown="rowTabNext(event,this)"></td>
-    <td><input type="number" class="form-control row-qg-input" style="width:70px;font-size:11px;" value="${qgVal}" min="0" step="any" placeholder="Qty/g" oninput="calcEnc()" onkeydown="rowTabNext(event,this)"></td>
-    <td><input type="number" class="form-control row-pg-input" style="width:80px;font-size:11px;" value="${pg}" placeholder="Per gram" oninput="calcEnc()" onkeydown="rowTabNext(event,this)"></td>
-    <td><input type="number" class="form-control row-subtotal-input" style="width:85px;font-size:11px;color:var(--muted);background:rgba(38,53,84,0.4);" value="${subtotalVal}" step="0.01" readonly tabindex="-1"></td>
-    <td><input type="number" class="form-control row-discount-input" style="width:75px;font-size:11px;color:var(--red);" value="${discVal}" step="0.01" min="0" placeholder="0" oninput="calcEnc()" onkeydown="rowTabNext(event,this)"></td>
+    <td><input type="number" class="form-control row-qg-input" style="width:70px;font-size:11px;" value="${qgVal}" min="0" step="any" placeholder="Qty/g" oninput="calcEnc()" onkeydown="rowTabNext(event,this)" onwheel="return false;"></td>
+    <td><input type="number" class="form-control row-pg-input" style="width:80px;font-size:11px;" value="${pg}" placeholder="Per gram" oninput="calcEnc()" onkeydown="rowTabNext(event,this)" onwheel="return false;"></td>
+    <td><input type="number" class="form-control row-subtotal-input" style="width:85px;font-size:11px;color:var(--muted);background:rgba(38,53,84,0.4);" value="${subtotalVal}" step="0.01" readonly tabindex="-1" onwheel="return false;"></td>
+    <td><input type="number" class="form-control row-discount-input" style="width:75px;font-size:11px;color:var(--red);" value="${discVal}" step="0.01" min="0" placeholder="0" oninput="calcEnc()" onkeydown="rowTabNext(event,this)" onwheel="return false;"></td>
     <td><input class="form-control row-discount-remark" style="width:110px;font-size:10.5px;color:var(--muted);" value="${discRemarkVal}" placeholder="Discount reason" onkeydown="rowTabNext(event,this)"></td>
-    <td><input type="number" class="form-control row-total-input" style="width:85px;font-size:11px;color:var(--gold);font-weight:600;background:rgba(201,168,76,0.08);" value="${totalVal}" step="0.01" readonly tabindex="-1"></td>
+    <td><input type="number" class="form-control row-total-input" style="width:85px;font-size:11px;color:var(--gold);font-weight:600;background:rgba(201,168,76,0.08);" value="${totalVal}" step="0.01" readonly tabindex="-1" onwheel="return false;"></td>
     <td><button class="btn btn-red btn-sm" onclick="this.closest('tr').remove();calcEnc()">✕</button></td>`;
   document.getElementById(tbodyId).appendChild(row);
   window[calcFn]?.();
@@ -4076,7 +4076,7 @@ function updateVerifStatus(orderIdx, status) {
     // Guard: only deduct once — skip if already deducted
     if(!o.inventoryDeducted) {
       const didDeduct = _deductOrderItems(o.items||[], today(),
-        `LBC/INTL Checker verified – ${o.name} (${onum(orderIdx)})`);
+        `LBC/INTL Checker verified – ${o.name} (${onum(orderIdx)})`, o._id||String(orderIdx));
       if(didDeduct) S.orders[orderIdx].inventoryDeducted = true;
     }
     o.verificationStatus = 'Verified';
@@ -4136,7 +4136,7 @@ function verifyOrder(i){
   // Guard: ONLY deduct if not already deducted — prevents double entries
   if(!S.orders[i].inventoryDeducted) {
     const didDeduct = _deductOrderItems(o.items, today(),
-      'Checker verified – '+o.name+' ('+onum(i)+')');
+      'Checker verified – '+o.name+' ('+onum(i)+')', o._id||String(i));
     if(didDeduct) S.orders[i].inventoryDeducted = true;
   }
   // Save the inventory deduction to Firebase immediately
@@ -6389,6 +6389,23 @@ document.addEventListener('DOMContentLoaded', function() {
     sps.addEventListener('input',onStockProductSearch);
     sps.addEventListener('change',onStockProductSearch);
   }
+
+  // ── GLOBAL: Prevent mouse scroll from changing number inputs ─────────────
+  // Uses event delegation on document so it catches ALL inputs — including
+  // dynamically created ones (encode modal item rows, remit modal, etc.)
+  // passive:false required to call preventDefault()
+  document.addEventListener('wheel', function(e) {
+    if(document.activeElement && document.activeElement.type === 'number') {
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  // Also blur number inputs on wheel so they lose focus before scroll fires
+  document.addEventListener('wheel', function(e) {
+    if(document.activeElement && document.activeElement.type === 'number') {
+      document.activeElement.blur();
+    }
+  }, { passive: true });
 });
 
 // ============ SALES CALENDAR ============
@@ -7958,9 +7975,14 @@ function renderRiderParcels() {
   const filt = document.getElementById('rider-status-filter')?.value || '';
   const q = (document.getElementById('rider-parcel-search')?.value||'').toLowerCase();
   const df = document.getElementById('rider-date-filter')?.value || '';
-  // Get all orders assigned to this rider
+  // Get all orders assigned to this rider — exclude checker-cancelled (they go to Recently Deleted)
   const allMyOrders = S.orders.map((o,i) => ({...o, idx:i}))
-    .filter(o => o.assignedRider === currentRider.name);
+    .filter(o => {
+      if(o.assignedRider !== currentRider.name) return false;
+      // Checker-cancelled = status Cancelled with cancelledBy set — not rider's concern
+      if(o.status === 'Cancelled' && o.cancelledBy) return false;
+      return true;
+    });
   // Hide orders only when the remittance for that date is officially marked Remitted.
   // Delivered orders MUST remain visible until the rider's remittance is approved —
   // riders need to see Delivered orders to verify their collection before handing over.
@@ -8089,7 +8111,7 @@ function renderRiderParcels() {
               <span style="font-size:9px;color:var(--muted);">Cancel qty:</span>
               <input type="number" min="0" max="${remainQty}" step="${isGramsItem?0.01:1}"
                 value="${cancelledQty}" style="width:55px;font-size:10px;padding:1px 4px;border-radius:4px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);"
-                onchange="riderItemPartialCancel(${o.idx},${ii},this.value,${totalQty},${isGramsItem?1:0})">
+                onchange="riderItemPartialCancel(${o.idx},${ii},this.value,${totalQty},${isGramsItem?1:0})" onwheel="return false;">
               <span style="font-size:9px;color:var(--muted);">/ ${totalQty}${isGramsItem?'g':''}</span>
             </div>` : ''}
             ${isCancelledItem || cancelledQty > 0 ? `
@@ -8328,7 +8350,17 @@ function riderItemPartialCancel(orderIdx, itemIdx, cancelQtyStr, totalQty, isGra
 
 // ── INVENTORY HELPERS ─────────────────────────────────────────────────────────
 // Deduct order items from inventory. Returns true if anything was deducted.
-function _deductOrderItems(items, orderDate, label) {
+function _deductOrderItems(items, orderDate, label, orderRef) {
+  // ── IDEMPOTENCY GATE ─────────────────────────────────────────
+  // If same orderRef passed twice within 30s, block second deduction.
+  if(orderRef) {
+    if(!window._deductedRefs) window._deductedRefs = new Set();
+    if(window._deductedRefs.has(String(orderRef))) {
+      console.warn('[INV] Duplicate deduction blocked:', orderRef); return false;
+    }
+    window._deductedRefs.add(String(orderRef));
+    setTimeout(()=>{ if(window._deductedRefs) window._deductedRefs.delete(String(orderRef)); }, 30000);
+  }
   // Deducts qty/grams from Products table with decimal-safe math
   let deducted = false;
   const logDate = today();
@@ -8427,7 +8459,7 @@ function addPaymentRow(refno='', amount='', date='', time='') {
   row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 130px 100px auto;gap:6px;align-items:center;margin-bottom:3px;';
   row.innerHTML = `
     <input class="form-control" style="font-size:11px;" placeholder="Reference No. *" value="${refno}" data-role="refno">
-    <input type="number" class="form-control" style="font-size:11px;" placeholder="Amount (₱)" value="${amount}" min="0" step="0.01" data-role="amount">
+    <input type="number" class="form-control" style="font-size:11px;" placeholder="Amount (₱)" value="${amount}" min="0" step="0.01" data-role="amount" onwheel="return false;">
     <input type="date" class="form-control" style="font-size:11px;" value="${date}" data-role="date" title="Payment Date">
     <input type="time" class="form-control" style="font-size:11px;" value="${time}" data-role="time" title="Payment Time (24h)">
     <button type="button" class="btn btn-red btn-sm" onclick="this.closest('.enc-payment-row').remove()" style="padding:3px 8px;">✕</button>`;
@@ -8635,9 +8667,8 @@ async function saveOrder() {
     // Unverified edits never affected stock — nothing to restore or deduct.
     const hadDeducted = _invDeducted(orig);
     if(hadDeducted) {
-      // Restore old items, deduct new items
       _restoreOrderItems(orig.items||[], today(), 'Edit restore – '+name, orig._id||'orig');
-      o.inventoryDeducted = _deductOrderItems(items, today(), 'Edit deduct – '+name+' ('+admin+')');
+      o.inventoryDeducted = _deductOrderItems(items, today(), 'Edit deduct – '+name+' ('+admin+')', (o._id||String(editOrderIdx))+'_edit');
     } else {
       o.inventoryDeducted = false;
     }
@@ -8917,6 +8948,8 @@ function renderTracking() {
     const count = S.orders.filter(o => {
       if(!o || o.status !== s) return false;
       if((o.paymentMethod||'COD') !== 'COD') return false;
+      // Checker-cancelled = has cancelledBy set → goes to Recently Deleted, not tracking
+      if(s === 'Cancelled' && o.cancelledBy) return false;
       // Date filter
       if(df) {
         if(isSorterStrict) {
@@ -8938,6 +8971,8 @@ function renderTracking() {
   const filtered = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
     if(!o) return false;
     if((o.paymentMethod||'COD') !== 'COD') return false;
+    // Checker-cancelled orders belong to Recently Deleted, not active tracking
+    if(o.status === 'Cancelled' && o.cancelledBy) return false;
     if(filt && o.status!==filt) return false;
     // Date filter
     if(df) {
@@ -9454,6 +9489,7 @@ function saveRemit() {
   const netTotal    = Math.max(0, codSubtotal - netSF);
 
   const entry = {
+    _id: _uuid(), // required for SAR _id-based merge to prevent race condition wipe
     riderName: rider.name,
     date,
     remitStatus,
@@ -9502,6 +9538,7 @@ function saveRemit() {
   if(remitStatus === 'Remitted') {
     S.cashbondLog = S.cashbondLog||[];
     S.cashbondLog.push({
+      _id: _uuid(),
       person: rider.name, type:'rider', date,
       amount: cashbond,
       notes: `Auto-recorded on Remitted — ${rider.name} (${date})`
@@ -9509,6 +9546,7 @@ function saveRemit() {
     if(manualBenefits > 0) {
       S.benefitsLog = S.benefitsLog||[];
       S.benefitsLog.push({
+        _id: _uuid(),
         person: rider.name, type:'rider', date,
         sss: 0, philhealth: 0, pagibig: 0, other: manualBenefits,
         notes: `Deducted from Remit — ${rider.name} (${date})`
@@ -9860,6 +9898,7 @@ function saveCashbond() {
   if(person === '__custom__') person = manualEl ? manualEl.value.trim() : '';
   if(!person) { toast('⚠️ Select or enter a name'); return; }
   const entry = {
+    _id: _uuid(),
     person, type: document.getElementById('cb-type').value,
     date: today(),
     amount: parseFloat(document.getElementById('cb-amount').value)||0,
@@ -9953,11 +9992,11 @@ function saveBenefits() {
   const amount = parseFloat(document.getElementById('ben-amount').value)||0;
   if(!amount) { toast('⚠️ Enter a benefits amount'); return; }
   const entry = {
+    _id: _uuid(),
     person, type: document.getElementById('ben-type').value,
     date: document.getElementById('ben-date').value || today(),
     amount,
     notes: document.getElementById('ben-notes').value,
-    // Keep compat fields zeroed so old code reading sss/philhealth/pagibig still works
     sss: 0, philhealth: 0, pagibig: 0, other: amount
   };
   const editIdx = document.getElementById('ben-edit-idx').value;
@@ -10482,28 +10521,61 @@ function startAutoRefresh(){
         // Merge: Firebase base + local-only additions
         S[key] = [...fbArr, ...localOnly];
       });
-      // Inventory: Firebase IS the source of truth after save() writes it
-      // Replace local S.inventory with Firebase version on every poll
-      // This ensures all devices see deductions/returns immediately
-      if(Array.isArray(fbData.inventory) && fbData.inventory.length>0){
-        // Build deleted codes set (merge from Firebase + local)
+      // Inventory: code-based merge that preserves recent LOCAL deductions/additions
+      // Problem: _deductOrderItems mutates S.inventory → save() starts → SAR fires →
+      //          Firebase still has old qty → blind replace restores old value → deduction lost.
+      // Fix: never replace local qty/grams with a HIGHER Firebase value when a write is in-flight.
+      //      Also: skip inventory update entirely if _writeActive (save in progress).
+      if(Array.isArray(fbData.inventory) && fbData.inventory.length > 0 && !window._writeActive){
         const fbDeleted = Array.isArray(fbData._deletedInventoryCodes) ? fbData._deletedInventoryCodes : [];
         const localDeleted = Array.isArray(S._deletedInventoryCodes) ? S._deletedInventoryCodes : [];
         const deletedCodes = new Set([...fbDeleted,...localDeleted].map(c=>(c||'').toUpperCase()));
-        // Firebase IS source of truth — replace local, but filter deleted codes
+
         const remoteByCode = new Map(
           fbData.inventory
             .filter(it=>!deletedCodes.has((it.code||'').toUpperCase()))
-            .map(it=>[it.code.toUpperCase(),it])
+            .map(it=>[it.code.toUpperCase(), it])
         );
-        // Keep locally-added items not yet in Firebase (save lag), unless deleted
-        const localOnlyItems=(S.inventory||[]).filter(it=>
-          !remoteByCode.has((it.code||'').toUpperCase())&&
-          !deletedCodes.has((it.code||'').toUpperCase())
-        );
-        S.inventory=[...remoteByCode.values(),...localOnlyItems];
-        // Sync deleted codes list
-        S._deletedInventoryCodes=[...deletedCodes];
+
+        // Merge: for each item, keep the LOWER qty/grams between local and Firebase
+        // (lower = more recently deducted; higher = stale Firebase before write confirmed)
+        // Exception: if local item was just added (not in Firebase yet), keep it
+        const merged = [];
+        const localByCode = new Map((S.inventory||[]).map(it=>[( it.code||'').toUpperCase(), it]));
+
+        remoteByCode.forEach((fbItem, code) => {
+          const localItem = localByCode.get(code);
+          if(!localItem) {
+            // Only in Firebase — take as-is
+            merged.push({...fbItem});
+            return;
+          }
+          // Both local and Firebase have it — merge qty/grams carefully
+          const merged_item = {...fbItem}; // start with Firebase version (has latest metadata)
+          if(fbItem.itemType === 'fixprice') {
+            const fbQty = parseFloat(fbItem.qty)||0;
+            const localQty = parseFloat(localItem.qty)||0;
+            // Keep lower value — protects against SAR restoring stale higher value
+            // Only take Firebase value if it's genuinely lower (another device also deducted)
+            merged_item.qty = Math.min(fbQty, localQty);
+          } else {
+            const fbGrams = parseFloat(fbItem.grams)||0;
+            const localGrams = parseFloat(localItem.grams)||0;
+            merged_item.grams = Math.min(fbGrams, localGrams);
+          }
+          merged.push(merged_item);
+        });
+
+        // Keep locally-added items not yet in Firebase
+        (S.inventory||[]).forEach(it => {
+          const code = (it.code||'').toUpperCase();
+          if(!remoteByCode.has(code) && !deletedCodes.has(code)) {
+            merged.push(it);
+          }
+        });
+
+        S.inventory = merged;
+        S._deletedInventoryCodes = [...deletedCodes];
       }
       // Config objects
       ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
@@ -11980,7 +12052,10 @@ function renderCheckerDeleted() {
   const mf = document.getElementById('checker-del-method')?.value||'';
   const df = document.getElementById('checker-del-date')?.value||'';
 
-  // Merge S.deletedOrders (old splice-based) + Cancelled orders from S.orders (new approach)
+  // Merge S.deletedOrders (saved snapshots) + Cancelled orders from S.orders (live)
+  // DEDUP: an order cancelled via confirmCheckerCancel appears in BOTH lists.
+  // Rule: S.deletedOrders takes precedence (has full snapshot + reason).
+  const deletedOrderNums = new Set((S.deletedOrders||[]).map(d=>d.orderNum));
   const cancelledActive = S.orders.map((o,i)=>({
     ...o, orderIdx:i,
     cancelledAt: o.cancelledAt||o.date,
@@ -11988,7 +12063,7 @@ function renderCheckerDeleted() {
     reason: o.cancelReason||'—',
     orderNum: onum(i),
     _fromActive: true
-  })).filter(o=>o.status==='Cancelled'||o.status==='RTO');
+  })).filter(o=>(o.status==='Cancelled'||o.status==='RTO') && !deletedOrderNums.has(onum(o.orderIdx)));
 
   const allDeleted = [
     ...S.deletedOrders.map(d=>({...d,_fromActive:false})),
@@ -12044,7 +12119,6 @@ function renderCheckerDeleted() {
         <div style="font-weight:600;">${d.name||'—'}</div>
         <div style="font-size:9.5px;color:var(--muted);">${d.contact||'—'}${d.backupContact?'<br>📱 '+d.backupContact:''}</div>
       </td>
-      <td style="font-size:10.5px;">${d.contact||'—'}</td>
       <td style="font-size:10px;max-width:160px;">${d.address||'—'}${d.landmark?'<br><span style="color:var(--muted);">🏠 '+d.landmark+'</span>':''}</td>
       <td style="font-size:11px;color:var(--blue);">${d.admin||'—'}</td>
       <td>
@@ -12520,7 +12594,7 @@ document.addEventListener('visibilitychange', async ()=>{
 
     // ── Firebase-only: merge S directly (orders use _id-merge, rest full replace) ──
     const _localOrdersBackup = S.orders ? [...S.orders] : [];
-    ['riders','locations','payroll','expenses','inventory','stockLog',
+    ['riders','locations','payroll','expenses','stockLog',
      'adminNames','adminAccounts',
      'returnLog','deletedOrders','mergeLog'].forEach(k=>{
       if(Array.isArray(fbData[k])) S[k] = fbData[k];
@@ -12528,6 +12602,28 @@ document.addEventListener('visibilitychange', async ()=>{
     // Orders: safe merge — don't blindly overwrite locally-pending encodes
     if(Array.isArray(fbData.orders)) {
       S.orders = _mergeOrders(fbData.orders, _localOrdersBackup);
+    }
+    // Inventory: same min-qty merge as SAR — never restore a higher stale value
+    if(Array.isArray(fbData.inventory) && fbData.inventory.length > 0) {
+      const _fbDel = Array.isArray(fbData._deletedInventoryCodes) ? fbData._deletedInventoryCodes : [];
+      const _lcDel = Array.isArray(S._deletedInventoryCodes) ? S._deletedInventoryCodes : [];
+      const _delCodes = new Set([..._fbDel,..._lcDel].map(c=>(c||'').toUpperCase()));
+      const _remoteMap = new Map(fbData.inventory.filter(it=>!_delCodes.has((it.code||'').toUpperCase())).map(it=>[it.code.toUpperCase(),it]));
+      const _localMap = new Map((S.inventory||[]).map(it=>[(it.code||'').toUpperCase(),it]));
+      const _mergedInv = [];
+      _remoteMap.forEach((fbIt,code) => {
+        const lcIt = _localMap.get(code);
+        if(!lcIt){ _mergedInv.push({...fbIt}); return; }
+        const mi = {...fbIt};
+        if(fbIt.itemType==='fixprice') mi.qty = Math.min(parseFloat(fbIt.qty)||0, parseFloat(lcIt.qty)||0);
+        else mi.grams = Math.min(parseFloat(fbIt.grams)||0, parseFloat(lcIt.grams)||0);
+        _mergedInv.push(mi);
+      });
+      (S.inventory||[]).forEach(it => {
+        if(!_remoteMap.has((it.code||'').toUpperCase()) && !_delCodes.has((it.code||'').toUpperCase())) _mergedInv.push(it);
+      });
+      S.inventory = _mergedInv;
+      S._deletedInventoryCodes = [..._delCodes];
     }
     // remitLog / cashbondLog / benefitsLog: _id-based merge — prevent race condition wipe
     ['remitLog','cashbondLog','benefitsLog'].forEach(key=>{
