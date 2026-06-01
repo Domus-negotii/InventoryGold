@@ -921,7 +921,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-admin" onclick="selectRole('admin')">
           <div class="role-icon">👤</div>
-          <div class="role-name">CHR</div>
+          <div class="role-name">CSR</div>
           <div class="role-desc">Orders &amp; Operations</div>
         </div>
       </div>
@@ -3724,7 +3724,7 @@ function setCheckerTab(tab) {
   document.getElementById('checker-lbc-table').style.display = isLbc ? '' : 'none';
   renderChecker();
   // Also refresh COD delivery monitor
-  setTimeout(()=>{ try{ renderCheckerCodDelivery(); }catch(e){} }, 50);
+  setTimeout(()=>{ try{ if(_activePage==='coddelivery') renderCodDelivPage(); }catch(e){} }, 50);
 }function getMissingFieldsWarning(o, verifSt) {
   const isCourier = o.paymentMethod==='LBC' || o.paymentMethod==='EMS' || o.paymentMethod==='FedEx';
   const isFedEx = o.paymentMethod==='FedEx';
@@ -4074,9 +4074,12 @@ function updateVerifStatus(orderIdx, status) {
     }
     // ── Deduct inventory on Verify (same as COD verifyOrder) ─────
     // Guard: only deduct once — skip if already deducted
+    // Clear any stale restore ref so re-verify after unverify always works
+    if(window._restoredRefs) { [...(window._restoredRefs||[])].forEach(k=>{ if(k.startsWith(o._id||String(orderIdx))) window._restoredRefs.delete(k); }); }
     if(!o.inventoryDeducted) {
+      const _lbcVerifyRef = (o._id||String(orderIdx)) + '_verify_' + Date.now();
       const didDeduct = _deductOrderItems(o.items||[], today(),
-        `LBC/INTL Checker verified – ${o.name} (${onum(orderIdx)})`, o._id||String(orderIdx));
+        `LBC/INTL Checker verified – ${o.name} (${onum(orderIdx)})`, _lbcVerifyRef);
       if(didDeduct) S.orders[orderIdx].inventoryDeducted = true;
     }
     o.verificationStatus = 'Verified';
@@ -4089,9 +4092,13 @@ function updateVerifStatus(orderIdx, status) {
     }
   } else {
     // ── Restore inventory on Un-verify ───────────────────────────
+    // Clear stale deduct refs so re-deduct on next verify works
+    if(window._deductedRefs) { [...(window._deductedRefs||[])].forEach(k=>{ if(k.startsWith(o._id||String(orderIdx))) window._deductedRefs.delete(k); }); }
     if(_invDeducted(o)) {
+      const _lbcRestoreRef = (o._id||String(orderIdx)) + '_restore_' + Date.now();
+      if(window._restoredRefs) { [...(window._restoredRefs||[])].forEach(k=>{ if(k.startsWith(o._id||String(orderIdx))) window._restoredRefs.delete(k); }); }
       _restoreOrderItems(o.items||[], today(),
-        `LBC/INTL Unverified – ${o.name} (${onum(orderIdx)})`, o._id||String(orderIdx));
+        `LBC/INTL Unverified – ${o.name} (${onum(orderIdx)})`, _lbcRestoreRef);
       S.orders[orderIdx].inventoryDeducted = false;
     }
     o.verificationStatus = 'Not Verified';
@@ -4134,9 +4141,12 @@ function verifyOrder(i){
   }
   // ── Deduct inventory on Checker Verify ────────────────────────
   // Guard: ONLY deduct if not already deducted — prevents double entries
+  // Clear any stale restore ref first (checker may have: verify → unverify → verify)
+  const _verifyRef = (o._id||String(i)) + '_verify_' + Date.now();
+  if(window._restoredRefs) window._restoredRefs.delete(o._id||String(i));
   if(!S.orders[i].inventoryDeducted) {
     const didDeduct = _deductOrderItems(o.items, today(),
-      'Checker verified – '+o.name+' ('+onum(i)+')', o._id||String(i));
+      'Checker verified – '+o.name+' ('+onum(i)+')', _verifyRef);
     if(didDeduct) S.orders[i].inventoryDeducted = true;
   }
   // Save the inventory deduction to Firebase immediately
@@ -4184,9 +4194,19 @@ function unverifyOrder(i){
   }
   // ── Restore inventory on Unverify ──────────────────────────────
   // Deduction happened at Verify — so restore it here.
+  // Clear the deduct ref so a subsequent re-verify can deduct again cleanly.
+  if(window._deductedRefs) {
+    // Clear all refs containing this order's id prefix
+    [...(window._deductedRefs||[])].forEach(k=>{ if(k.startsWith(o._id||String(i))) window._deductedRefs.delete(k); });
+  }
   if(_invDeducted(o)) {
+    const _restoreRef = (o._id||String(i)) + '_restore_' + Date.now();
+    // Also clear any stale restore refs for this order so restore is never blocked
+    if(window._restoredRefs) {
+      [...(window._restoredRefs||[])].forEach(k=>{ if(k.startsWith(o._id||String(i))) window._restoredRefs.delete(k); });
+    }
     _restoreOrderItems(o.items, today(),
-      'Checker unverified – '+o.name+' ('+onum(i)+')', o._id||String(i));
+      'Checker unverified – '+o.name+' ('+onum(i)+')', _restoreRef);
     S.orders[i].inventoryDeducted = false;
   }
   S.orders[i].checkerStatus='Pending';
@@ -5131,9 +5151,11 @@ function renderSorting() {
   const sf = document.getElementById('sort-status-filter')?.value || '';
   const sq = (document.getElementById('sort-search')?.value||'').toLowerCase().trim();
 
-  // Filter orders — COD only, non-cancelled only
+  // Filter orders — COD only, non-cancelled only, VERIFIED only (checker must verify first)
   let orders = S.orders.map((o,i)=>({...o,idx:i}))
-    .filter(o => (!o.paymentMethod || o.paymentMethod === 'COD') && o.status !== 'Cancelled');
+    .filter(o => (!o.paymentMethod || o.paymentMethod === 'COD')
+      && o.status !== 'Cancelled'
+      && (o.checkerStatus||'Pending') === 'Verified');
   if(df) orders = orders.filter(o=>o.date===df);
   if(sf) orders = orders.filter(o=>o.status===sf);
   // Search filter — name or contact number
@@ -7383,6 +7405,7 @@ function doLogin(){
         l.textContent=locs2.join(', ')||'—';
       }
       const rdf = document.getElementById('rider-date-filter');
+      // Default to today's date so rider sees their current orders immediately
       if(rdf && !rdf.value) rdf.value = today();
       renderRiderParcels();
     });
@@ -7975,12 +7998,17 @@ function renderRiderParcels() {
   const filt = document.getElementById('rider-status-filter')?.value || '';
   const q = (document.getElementById('rider-parcel-search')?.value||'').toLowerCase();
   const df = document.getElementById('rider-date-filter')?.value || '';
-  // Get all orders assigned to this rider — exclude checker-cancelled (they go to Recently Deleted)
+  // Get all orders assigned to this rider — exclude checker-cancelled and unready orders
+  // Rule: rider only sees orders that dispatcher marked READY (or beyond).
+  // "Preparing" = verified but dispatcher hasn't set Ready yet → NOT visible to rider yet.
+  const RIDER_VISIBLE_STATUSES = new Set(['Ready','Out for Delivery','Delivered','Cancelled','Update','RTO']);
   const allMyOrders = S.orders.map((o,i) => ({...o, idx:i}))
     .filter(o => {
       if(o.assignedRider !== currentRider.name) return false;
       // Checker-cancelled = status Cancelled with cancelledBy set — not rider's concern
       if(o.status === 'Cancelled' && o.cancelledBy) return false;
+      // Only show orders dispatcher marked Ready or beyond — not Preparing
+      if(!RIDER_VISIBLE_STATUSES.has(o.status)) return false;
       return true;
     });
   // Hide orders only when the remittance for that date is officially marked Remitted.
@@ -8948,6 +8976,8 @@ function renderTracking() {
     const count = S.orders.filter(o => {
       if(!o || o.status !== s) return false;
       if((o.paymentMethod||'COD') !== 'COD') return false;
+      // Unverified orders are not visible to dispatcher/sorter — checker must verify first
+      if((o.checkerStatus||'Pending') !== 'Verified') return false;
       // Checker-cancelled = has cancelledBy set → goes to Recently Deleted, not tracking
       if(s === 'Cancelled' && o.cancelledBy) return false;
       // Date filter
@@ -8971,6 +9001,8 @@ function renderTracking() {
   const filtered = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
     if(!o) return false;
     if((o.paymentMethod||'COD') !== 'COD') return false;
+    // Unverified orders not visible to dispatcher/sorter — checker must verify first
+    if((o.checkerStatus||'Pending') !== 'Verified') return false;
     // Checker-cancelled orders belong to Recently Deleted, not active tracking
     if(o.status === 'Cancelled' && o.cancelledBy) return false;
     if(filt && o.status!==filt) return false;
@@ -9515,6 +9547,9 @@ function saveRemit() {
   const editIdx = document.getElementById('remit-edit-idx').value;
   if(editIdx!=='') {
     const oldEntry = S.remitLog[+editIdx] || {};
+    // CRITICAL: preserve original _id — SAR _id-merge uses it to identify this entry.
+    // Generating a new _id on edit makes SAR think old entry was deleted + new one added → duplicate.
+    if(oldEntry._id) entry._id = oldEntry._id;
     // If editing a previously Remitted entry, remove the auto-recorded cashbond/benefits
     // to prevent duplicate entries in those logs
     if(oldEntry.remitStatus === 'Remitted') {
@@ -9905,7 +9940,14 @@ function saveCashbond() {
     notes: document.getElementById('cb-notes').value
   };
   const editIdx = document.getElementById('cb-edit-idx').value;
-  if(editIdx!=='') S.cashbondLog[+editIdx]=entry; else S.cashbondLog.push(entry);
+  if(editIdx!=='') {
+    // Preserve original _id so SAR merge doesn't create a duplicate
+    const oldCb = S.cashbondLog[+editIdx] || {};
+    if(oldCb._id) entry._id = oldCb._id;
+    S.cashbondLog[+editIdx]=entry;
+  } else {
+    S.cashbondLog.push(entry);
+  }
   save(); closeModal('modal-cashbond'); toast('✅ Cashbond entry saved!');
   renderCashbondPage();
 }
@@ -10000,7 +10042,14 @@ function saveBenefits() {
     sss: 0, philhealth: 0, pagibig: 0, other: amount
   };
   const editIdx = document.getElementById('ben-edit-idx').value;
-  if(editIdx!=='') S.benefitsLog[+editIdx]=entry; else S.benefitsLog.push(entry);
+  if(editIdx!=='') {
+    // Preserve original _id so SAR merge doesn't create a duplicate
+    const oldBen = S.benefitsLog[+editIdx] || {};
+    if(oldBen._id) entry._id = oldBen._id;
+    S.benefitsLog[+editIdx]=entry;
+  } else {
+    S.benefitsLog.push(entry);
+  }
   save(); closeModal('modal-benefits'); toast('✅ Benefits entry saved!');
   renderBenefitsPage();
 }
