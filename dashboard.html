@@ -929,7 +929,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-admin" onclick="selectRole('admin')">
           <div class="role-icon">👤</div>
-          <div class="role-name">Admin / Staff</div>
+          <div class="role-name">CSR</div>
           <div class="role-desc">Orders &amp; Operations</div>
         </div>
       </div>
@@ -947,7 +947,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-sorter" onclick="selectRole('sorter')" style="padding:10px 8px;text-align:center;">
           <div style="font-size:20px;">📦</div>
-          <div class="role-name" style="font-size:11px;">Parcel Sorter</div>
+          <div class="role-name" style="font-size:11px;"Dispatcher</div>
           <div class="role-desc" style="font-size:9px;">Sort &amp; Track</div>
         </div>
         <div class="role-btn" id="role-checker" onclick="selectRole('checker')" style="padding:10px 8px;text-align:center;">
@@ -3902,7 +3902,7 @@ function renderChecker(){
                 : `<button class="btn btn-outline btn-sm" onclick="togglePrinted(${i})" style="font-size:10px;padding:2px 7px;">🖨️ Print</button>`}
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
-              ${!isLocked?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>`:''}
+              ${!isLocked?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})"></button>`:''}
               ${currentRole==='owner'?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" title="CEO Edit">✏️ Edit</button>`:''}
               ${o.status==='Cancelled'
                 ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
@@ -4118,8 +4118,8 @@ function updateVerifStatus(orderIdx, status) {
   }
   save(); renderChecker();
   toast(`✅ Verification: ${status}${status==='Verified'?' — Inventory deducted.':' — Inventory restored.'}`);
-  // Refresh inventory UI so Products and Stock Ledger reflect deduction/restore immediately
-  try{ renderInv(invTab); }catch(e){}
+  // Refresh ALL inventory tabs immediately — both Products list and Stock Ledger
+  _refreshInvAllTabs();
 }
 
 function assignRiderFromChecker(orderIdx, riderName) {
@@ -4179,9 +4179,8 @@ function verifyOrder(i){
     : '✅ Order verified! Inventory deducted. Rider can now pick-up.';
   toast(_toastMsg);
   renderChecker();
-  // Refresh inventory UI so Products page and Stock Ledger reflect the deduction immediately
-  if(_activePage === 'inventory') try{ renderInv(invTab); }catch(e){}
-  else try{ renderInv(invTab); }catch(e){} // always refresh in background so data is ready when user switches
+  // Refresh ALL inventory tabs immediately — both Products list and Stock Ledger
+  _refreshInvAllTabs();
 }
 function unverifyOrder(i){
   const o = S.orders[i];
@@ -4231,8 +4230,8 @@ function unverifyOrder(i){
     if(!_nonRevertable.includes(S.orders[i].lbcStatus)) S.orders[i].lbcStatus = 'Preparing';
   }
   save(); toast('↩ Set back to Pending. Inventory restored.'); renderChecker();
-  // Refresh inventory UI so Products page and Stock Ledger reflect the restore immediately
-  try{ renderInv(invTab); }catch(e){}
+  // Refresh ALL inventory tabs immediately — both Products list and Stock Ledger
+  _refreshInvAllTabs();
 }
 
 // ============ INVOICE ============
@@ -4998,7 +4997,7 @@ function saveReturnLog() {
               const restoreQty = Math.max(1, Math.round(retQty));
               const before = parseFloat(inv.qty)||0;
               inv.qty = parseFloat((before + restoreQty).toFixed(4));
-              S.stockLog.push({ _id:_uuid(), 
+              S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), 
                 productCode:inv.code, productName:inv.desc||inv.code,
                 type:'return', qty:restoreQty, unit:'pcs', date:today(),
                 notes:'Manual Return: '+(inv.desc||inv.code)+' x'+restoreQty+' – '+receivedBy,
@@ -5010,7 +5009,7 @@ function saveReturnLog() {
               const restoreGrams = parseFloat(retQty.toFixed(4));
               const before = parseFloat(inv.grams)||0;
               inv.grams = parseFloat((before + restoreGrams).toFixed(4));
-              S.stockLog.push({ _id:_uuid(), 
+              S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), 
                 productCode:inv.code, productName:inv.desc||inv.code,
                 type:'return', qty:restoreGrams, unit:'g', date:today(),
                 notes:'Manual Return: '+(inv.desc||inv.code)+' '+restoreGrams+'g – '+receivedBy,
@@ -5039,13 +5038,13 @@ function saveReturnLog() {
         if(!useGrams || invByName.itemType === 'fixprice') {
           const before = parseFloat(invByName.qty)||0;
           invByName.qty = parseFloat((before + retQty).toFixed(4));
-          S.stockLog.push({ _id:_uuid(),  productCode:invByName.code, productName:invByName.name||invByName.code,
+          S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(),  productCode:invByName.code, productName:invByName.name||invByName.code,
             type:'return', qty:retQty, unit:'pcs', date:today(),
             notes:`Return – ${orderNum} – ${receivedBy}`, before, after:invByName.qty });
         } else {
           const before = parseFloat(invByName.grams)||0;
           invByName.grams = parseFloat((before + retQty).toFixed(4));
-          S.stockLog.push({ _id:_uuid(),  productCode:invByName.code, productName:invByName.name||invByName.code,
+          S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(),  productCode:invByName.code, productName:invByName.name||invByName.code,
             type:'return', qty:retQty, unit:'g', date:today(),
             notes:`Return – ${orderNum} – ${receivedBy}`, before, after:invByName.grams });
         }
@@ -5852,6 +5851,15 @@ function toggleInvType() {
 // ── Inventory search state (persists across re-renders) ──────
 const _invSearch = { q:'', type:'', lowStock:false, siQ:'', soQ:'', ledQ:'' };
 
+// ── Refresh inventory display immediately after deduct/restore ───────────
+// S.inventory and S.stockLog are updated in-memory by _deductOrderItems /
+// _restoreOrderItems. This just re-renders the current visible tab so the
+// user sees the change without switching pages.
+// When user clicks the Ledger tab, switchInvTab('ledger') reads fresh S.stockLog.
+function _refreshInvAllTabs() {
+  try { renderInv(invTab); } catch(e) {}
+}
+
 function renderInv(tab){
   const el=document.getElementById('inventory-content');
   if(tab==='list'){
@@ -5994,7 +6002,12 @@ function renderInv(tab){
     if(si && _invSearch[sqKey]){ si.focus(); si.setSelectionRange(si.value.length,si.value.length); }
 
   }else{
-    const allLogs=[...S.stockLog].sort((a,b)=>new Date(b.date)-new Date(a.date));
+    // Sort by timestamp descending — createdAt for precise ordering, date as fallback
+    const allLogs=[...S.stockLog].sort((a,b)=>{
+      const ta = a.createdAt ? new Date(a.createdAt).getTime() : new Date(a.date||0).getTime();
+      const tb = b.createdAt ? new Date(b.createdAt).getTime() : new Date(b.date||0).getTime();
+      return tb - ta;
+    });
     const lq = (_invSearch.ledQ||'').toLowerCase().trim();
     const logs = lq ? allLogs.filter(l=>{
       const prod=S.inventory.find(it=>it.code===l.productCode);
@@ -6217,7 +6230,7 @@ function saveInv(){
         if(!addQty){ toast('⚠️ Enter quantity to merge'); return; }
         const before = existing.qty;
         existing.qty += addQty;
-        S.stockLog.push({ _id:_uuid(), productCode:code,type:'in',qty:addQty,date:today(),
+        S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), productCode:code,type:'in',qty:addQty,date:today(),
           notes:'Merged stock-in (same serial code)',before,after:existing.qty});
         save(); closeModal('modal-inventory'); toast(`✅ Stock merged! ${existing.desc||desc} now has ${existing.qty} pcs.`);
         document.getElementById('inv-edit-idx').value='';
@@ -6228,7 +6241,7 @@ function saveInv(){
         if(!addGrams){ toast('⚠️ Enter grams to merge'); return; }
         const before = existing.grams;
         existing.grams += addGrams;
-        S.stockLog.push({ _id:_uuid(), productCode:code,type:'in',qty:addGrams,date:today(),
+        S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), productCode:code,type:'in',qty:addGrams,date:today(),
           notes:'Merged stock-in (same serial code)',before,after:existing.grams});
         save(); closeModal('modal-inventory'); toast(`✅ Stock merged! ${existing.desc||desc} now has ${existing.grams}g.`);
         document.getElementById('inv-edit-idx').value='';
@@ -6269,13 +6282,13 @@ function saveInv(){
       const roundTo2 = v => Math.round((v||0)*100)/100;
       if(t==='fixprice' && obj.qty !== (orig.qty||0)) {
         const diff = obj.qty - (orig.qty||0);
-        S.stockLog.push({ _id:_uuid(), productCode:code, type: diff>0?'in':'adj',
+        S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), productCode:code, type: diff>0?'in':'adj',
           qty:Math.abs(diff), date:today(),
           notes:`Edit adjustment (qty: ${orig.qty||0} → ${obj.qty})`,
           before:orig.qty||0, after:obj.qty});
       } else if(t==='grams' && roundTo2(obj.grams) !== roundTo2(orig.grams||0)) {
         const diff = roundTo2(obj.grams) - roundTo2(orig.grams||0);
-        S.stockLog.push({ _id:_uuid(), productCode:code, type: diff>0?'in':'adj',
+        S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), productCode:code, type: diff>0?'in':'adj',
           qty:Math.abs(diff), date:today(),
           notes:`Edit adjustment (grams: ${roundTo2(orig.grams||0)}g → ${roundTo2(obj.grams)}g)`,
           before:roundTo2(orig.grams||0), after:roundTo2(obj.grams)});
@@ -6402,7 +6415,7 @@ function saveStock(){
   );
   if(after<0){ toast('⚠️ Stock will go negative! Reduce the quantity or check your entry.'); return; }
   if(isGrams) it.grams=after; else it.qty=after;
-  S.stockLog.push({ _id:_uuid(), 
+  S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), 
     productCode:it.code, productName:it.name||it.code,
     type, qty, unit:isGrams?'g':'pcs',
     date:document.getElementById('stock-date').value||today(),
@@ -7739,7 +7752,15 @@ async function save(){
     window._writeActive = true;          // block SAR during in-flight write
     _lastKnownWriteTs = Date.now() - 1; // prevent SAR from skipping own update
     try     { await _directWriteFirebase(); }
-    finally { window._writeActive = false; }
+    finally {
+      window._writeActive = false;
+      // After write completes, refresh inventory display if it was involved
+      // (deduct/restore mutate S.inventory — ensure UI shows final persisted state)
+      if(window._invChangedThisSave) {
+        window._invChangedThisSave = false;
+        try { _refreshInvAllTabs(); } catch(e) {}
+      }
+    }
   }
 }
 
@@ -8404,6 +8425,7 @@ function _deductOrderItems(items, orderDate, label, orderRef) {
     window._deductedRefs.add(String(orderRef));
     setTimeout(()=>{ if(window._deductedRefs) window._deductedRefs.delete(String(orderRef)); }, 30000);
   }
+  window._invChangedThisSave = true; // signal save() to re-render inventory after write
   // Deducts qty/grams from Products table with decimal-safe math
   let deducted = false;
   const logDate = today();
@@ -8416,7 +8438,7 @@ function _deductOrderItems(items, orderDate, label, orderRef) {
       const qty = Math.max(1, Math.round(parseFloat(item.qty)||1));
       const before = parseFloat(inv.qty)||0;
       inv.qty = parseFloat((before - qty).toFixed(4));
-      S.stockLog.push({ _id:_uuid(), productCode:inv.code, productName:inv.desc||inv.name||inv.code,
+      S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), productCode:inv.code, productName:inv.desc||inv.name||inv.code,
         type:'out', qty, unit:'pcs',
         date:logDate, notes:'Stock Out: '+(inv.desc||inv.code)+' x'+qty+' – '+label, before, after:inv.qty });
       deducted = true;
@@ -8429,7 +8451,7 @@ function _deductOrderItems(items, orderDate, label, orderRef) {
       }
       const before = parseFloat(inv.grams)||0;
       inv.grams = parseFloat((before - grams).toFixed(4));
-      S.stockLog.push({ _id:_uuid(), productCode:inv.code, productName:inv.desc||inv.name||inv.code,
+      S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), productCode:inv.code, productName:inv.desc||inv.name||inv.code,
         type:'out', qty:grams, unit:'g',
         date:logDate, notes:'Stock Out: '+(inv.desc||inv.code)+' '+grams+'g – '+label, before, after:inv.grams });
       deducted = true;
@@ -8452,6 +8474,7 @@ function _restoreOrderItems(items, orderDate, label, orderRef) {
     window._restoredRefs.add(String(orderRef));
     setTimeout(()=>{ if(window._restoredRefs) window._restoredRefs.delete(String(orderRef)); }, 30000);
   }
+  window._invChangedThisSave = true; // signal save() to re-render inventory after write
   // Restores qty/grams to Products table with decimal-safe math
   let restored = false;
   const logDate = today();
@@ -8463,7 +8486,7 @@ function _restoreOrderItems(items, orderDate, label, orderRef) {
       const qty = Math.max(1, Math.round(parseFloat(item.qty)||1));
       const before = parseFloat(inv.qty)||0;
       inv.qty = parseFloat((before + qty).toFixed(4));
-      S.stockLog.push({ _id:_uuid(), productCode:inv.code, productName:inv.desc||inv.name||inv.code,
+      S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), productCode:inv.code, productName:inv.desc||inv.name||inv.code,
         type:'return', qty, unit:'pcs',
         date:logDate, notes:'Stock Return: '+(inv.desc||inv.name||inv.code)+' x'+qty+' – '+label, before, after:inv.qty });
       restored = true;
@@ -8476,7 +8499,7 @@ function _restoreOrderItems(items, orderDate, label, orderRef) {
       }
       const before = parseFloat(inv.grams)||0;
       inv.grams = parseFloat((before + grams).toFixed(4));
-      S.stockLog.push({ _id:_uuid(), productCode:inv.code, productName:inv.desc||inv.name||inv.code,
+      S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), productCode:inv.code, productName:inv.desc||inv.name||inv.code,
         type:'return', qty:grams, unit:'g',
         date:logDate, notes:'Stock Return: '+(inv.desc||inv.name||inv.code)+' '+grams+'g – '+label, before, after:inv.grams });
       restored = true;
