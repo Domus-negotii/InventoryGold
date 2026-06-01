@@ -674,8 +674,9 @@ async function _directWriteFirebase(data, opts){
       return false;
     }
   } catch(e) {
-    console.warn('Firebase sync error:',e.message);
-    _setSyncStatus('error','var(--red)','⚠ Sync Error — Retrying...');
+    const isNetErr = e.message === 'Failed to fetch' || e.message.includes('NetworkError') || e.name === 'TypeError' && e.message.includes('fetch');
+    if(!isNetErr) console.warn('[GCE] Firebase sync error:', e.message);
+    _setSyncStatus('error', isNetErr ? 'var(--muted)' : 'var(--red)', isNetErr ? '☁ Offline' : '⚠ Sync Error — Retrying...');
     // Auto-retry with exponential backoff (1.5s, 3s) — critical for 30-50 user stability
     window._dwfRetryCount = (window._dwfRetryCount||0) + 1;
     if(window._dwfRetryCount <= 2) {
@@ -755,9 +756,16 @@ window.loadFromFirebase = async function() {
     _setSyncStatus('online','var(--green)','☁ Online');
     return data;
   } catch(e) {
-    console.warn('Firebase load error:',e.message);
-    _setSyncStatus('rules','var(--orange)','☁ Rules!');
-    _showRulesHint();
+    // Network error (offline, DNS, timeout) → silent, expected during poor connectivity
+    const isNetErr = e.message === 'Failed to fetch' || e.message.includes('NetworkError') || e.message.includes('network') || e.name === 'TypeError' && e.message.includes('fetch');
+    if(!isNetErr) {
+      console.warn('[GCE] Firebase load error:', e.message);
+      _setSyncStatus('rules','var(--orange)','☁ Rules!');
+      _showRulesHint();
+    } else {
+      // Just show offline indicator — no console noise
+      _setSyncStatus('offline','var(--muted)','☁ Offline');
+    }
     return null;
   }
 };
@@ -921,7 +929,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-admin" onclick="selectRole('admin')">
           <div class="role-icon">👤</div>
-          <div class="role-name">CSR</div>
+          <div class="role-name">Admin / Staff</div>
           <div class="role-desc">Orders &amp; Operations</div>
         </div>
       </div>
@@ -939,7 +947,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-sorter" onclick="selectRole('sorter')" style="padding:10px 8px;text-align:center;">
           <div style="font-size:20px;">📦</div>
-          <div class="role-name" style="font-size:11px;">Dispatcher</div>
+          <div class="role-name" style="font-size:11px;">Parcel Sorter</div>
           <div class="role-desc" style="font-size:9px;">Sort &amp; Track</div>
         </div>
         <div class="role-btn" id="role-checker" onclick="selectRole('checker')" style="padding:10px 8px;text-align:center;">
@@ -4110,6 +4118,8 @@ function updateVerifStatus(orderIdx, status) {
   }
   save(); renderChecker();
   toast(`✅ Verification: ${status}${status==='Verified'?' — Inventory deducted.':' — Inventory restored.'}`);
+  // Refresh inventory UI so Products and Stock Ledger reflect deduction/restore immediately
+  try{ renderInv(invTab); }catch(e){}
 }
 
 function assignRiderFromChecker(orderIdx, riderName) {
@@ -4169,6 +4179,9 @@ function verifyOrder(i){
     : '✅ Order verified! Inventory deducted. Rider can now pick-up.';
   toast(_toastMsg);
   renderChecker();
+  // Refresh inventory UI so Products page and Stock Ledger reflect the deduction immediately
+  if(_activePage === 'inventory') try{ renderInv(invTab); }catch(e){}
+  else try{ renderInv(invTab); }catch(e){} // always refresh in background so data is ready when user switches
 }
 function unverifyOrder(i){
   const o = S.orders[i];
@@ -4218,6 +4231,8 @@ function unverifyOrder(i){
     if(!_nonRevertable.includes(S.orders[i].lbcStatus)) S.orders[i].lbcStatus = 'Preparing';
   }
   save(); toast('↩ Set back to Pending. Inventory restored.'); renderChecker();
+  // Refresh inventory UI so Products page and Stock Ledger reflect the restore immediately
+  try{ renderInv(invTab); }catch(e){}
 }
 
 // ============ INVOICE ============
@@ -4983,7 +4998,7 @@ function saveReturnLog() {
               const restoreQty = Math.max(1, Math.round(retQty));
               const before = parseFloat(inv.qty)||0;
               inv.qty = parseFloat((before + restoreQty).toFixed(4));
-              S.stockLog.push({
+              S.stockLog.push({ _id:_uuid(), 
                 productCode:inv.code, productName:inv.desc||inv.code,
                 type:'return', qty:restoreQty, unit:'pcs', date:today(),
                 notes:'Manual Return: '+(inv.desc||inv.code)+' x'+restoreQty+' – '+receivedBy,
@@ -4995,7 +5010,7 @@ function saveReturnLog() {
               const restoreGrams = parseFloat(retQty.toFixed(4));
               const before = parseFloat(inv.grams)||0;
               inv.grams = parseFloat((before + restoreGrams).toFixed(4));
-              S.stockLog.push({
+              S.stockLog.push({ _id:_uuid(), 
                 productCode:inv.code, productName:inv.desc||inv.code,
                 type:'return', qty:restoreGrams, unit:'g', date:today(),
                 notes:'Manual Return: '+(inv.desc||inv.code)+' '+restoreGrams+'g – '+receivedBy,
@@ -5024,13 +5039,13 @@ function saveReturnLog() {
         if(!useGrams || invByName.itemType === 'fixprice') {
           const before = parseFloat(invByName.qty)||0;
           invByName.qty = parseFloat((before + retQty).toFixed(4));
-          S.stockLog.push({ productCode:invByName.code, productName:invByName.name||invByName.code,
+          S.stockLog.push({ _id:_uuid(),  productCode:invByName.code, productName:invByName.name||invByName.code,
             type:'return', qty:retQty, unit:'pcs', date:today(),
             notes:`Return – ${orderNum} – ${receivedBy}`, before, after:invByName.qty });
         } else {
           const before = parseFloat(invByName.grams)||0;
           invByName.grams = parseFloat((before + retQty).toFixed(4));
-          S.stockLog.push({ productCode:invByName.code, productName:invByName.name||invByName.code,
+          S.stockLog.push({ _id:_uuid(),  productCode:invByName.code, productName:invByName.name||invByName.code,
             type:'return', qty:retQty, unit:'g', date:today(),
             notes:`Return – ${orderNum} – ${receivedBy}`, before, after:invByName.grams });
         }
@@ -6202,7 +6217,7 @@ function saveInv(){
         if(!addQty){ toast('⚠️ Enter quantity to merge'); return; }
         const before = existing.qty;
         existing.qty += addQty;
-        S.stockLog.push({productCode:code,type:'in',qty:addQty,date:today(),
+        S.stockLog.push({ _id:_uuid(), productCode:code,type:'in',qty:addQty,date:today(),
           notes:'Merged stock-in (same serial code)',before,after:existing.qty});
         save(); closeModal('modal-inventory'); toast(`✅ Stock merged! ${existing.desc||desc} now has ${existing.qty} pcs.`);
         document.getElementById('inv-edit-idx').value='';
@@ -6213,7 +6228,7 @@ function saveInv(){
         if(!addGrams){ toast('⚠️ Enter grams to merge'); return; }
         const before = existing.grams;
         existing.grams += addGrams;
-        S.stockLog.push({productCode:code,type:'in',qty:addGrams,date:today(),
+        S.stockLog.push({ _id:_uuid(), productCode:code,type:'in',qty:addGrams,date:today(),
           notes:'Merged stock-in (same serial code)',before,after:existing.grams});
         save(); closeModal('modal-inventory'); toast(`✅ Stock merged! ${existing.desc||desc} now has ${existing.grams}g.`);
         document.getElementById('inv-edit-idx').value='';
@@ -6254,13 +6269,13 @@ function saveInv(){
       const roundTo2 = v => Math.round((v||0)*100)/100;
       if(t==='fixprice' && obj.qty !== (orig.qty||0)) {
         const diff = obj.qty - (orig.qty||0);
-        S.stockLog.push({productCode:code, type: diff>0?'in':'adj',
+        S.stockLog.push({ _id:_uuid(), productCode:code, type: diff>0?'in':'adj',
           qty:Math.abs(diff), date:today(),
           notes:`Edit adjustment (qty: ${orig.qty||0} → ${obj.qty})`,
           before:orig.qty||0, after:obj.qty});
       } else if(t==='grams' && roundTo2(obj.grams) !== roundTo2(orig.grams||0)) {
         const diff = roundTo2(obj.grams) - roundTo2(orig.grams||0);
-        S.stockLog.push({productCode:code, type: diff>0?'in':'adj',
+        S.stockLog.push({ _id:_uuid(), productCode:code, type: diff>0?'in':'adj',
           qty:Math.abs(diff), date:today(),
           notes:`Edit adjustment (grams: ${roundTo2(orig.grams||0)}g → ${roundTo2(obj.grams)}g)`,
           before:roundTo2(orig.grams||0), after:roundTo2(obj.grams)});
@@ -6387,7 +6402,7 @@ function saveStock(){
   );
   if(after<0){ toast('⚠️ Stock will go negative! Reduce the quantity or check your entry.'); return; }
   if(isGrams) it.grams=after; else it.qty=after;
-  S.stockLog.push({
+  S.stockLog.push({ _id:_uuid(), 
     productCode:it.code, productName:it.name||it.code,
     type, qty, unit:isGrams?'g':'pcs',
     date:document.getElementById('stock-date').value||today(),
@@ -8401,7 +8416,7 @@ function _deductOrderItems(items, orderDate, label, orderRef) {
       const qty = Math.max(1, Math.round(parseFloat(item.qty)||1));
       const before = parseFloat(inv.qty)||0;
       inv.qty = parseFloat((before - qty).toFixed(4));
-      S.stockLog.push({ productCode:inv.code, productName:inv.desc||inv.name||inv.code,
+      S.stockLog.push({ _id:_uuid(), productCode:inv.code, productName:inv.desc||inv.name||inv.code,
         type:'out', qty, unit:'pcs',
         date:logDate, notes:'Stock Out: '+(inv.desc||inv.code)+' x'+qty+' – '+label, before, after:inv.qty });
       deducted = true;
@@ -8414,7 +8429,7 @@ function _deductOrderItems(items, orderDate, label, orderRef) {
       }
       const before = parseFloat(inv.grams)||0;
       inv.grams = parseFloat((before - grams).toFixed(4));
-      S.stockLog.push({ productCode:inv.code, productName:inv.desc||inv.name||inv.code,
+      S.stockLog.push({ _id:_uuid(), productCode:inv.code, productName:inv.desc||inv.name||inv.code,
         type:'out', qty:grams, unit:'g',
         date:logDate, notes:'Stock Out: '+(inv.desc||inv.code)+' '+grams+'g – '+label, before, after:inv.grams });
       deducted = true;
@@ -8448,7 +8463,7 @@ function _restoreOrderItems(items, orderDate, label, orderRef) {
       const qty = Math.max(1, Math.round(parseFloat(item.qty)||1));
       const before = parseFloat(inv.qty)||0;
       inv.qty = parseFloat((before + qty).toFixed(4));
-      S.stockLog.push({ productCode:inv.code, productName:inv.desc||inv.name||inv.code,
+      S.stockLog.push({ _id:_uuid(), productCode:inv.code, productName:inv.desc||inv.name||inv.code,
         type:'return', qty, unit:'pcs',
         date:logDate, notes:'Stock Return: '+(inv.desc||inv.name||inv.code)+' x'+qty+' – '+label, before, after:inv.qty });
       restored = true;
@@ -8461,7 +8476,7 @@ function _restoreOrderItems(items, orderDate, label, orderRef) {
       }
       const before = parseFloat(inv.grams)||0;
       inv.grams = parseFloat((before + grams).toFixed(4));
-      S.stockLog.push({ productCode:inv.code, productName:inv.desc||inv.name||inv.code,
+      S.stockLog.push({ _id:_uuid(), productCode:inv.code, productName:inv.desc||inv.name||inv.code,
         type:'return', qty:grams, unit:'g',
         date:logDate, notes:'Stock Return: '+(inv.desc||inv.name||inv.code)+' '+grams+'g – '+label, before, after:inv.grams });
       restored = true;
@@ -10345,9 +10360,15 @@ async function initApp(){
         if(syncEl){ syncEl.style.color='var(--green)'; syncEl.textContent='☁ Online (No Data)'; }
       }
     } catch(e) {
-      console.warn('Firebase load error:', e.message);
-      if(syncEl){ syncEl.style.color='var(--red)'; syncEl.textContent='☁ Load Failed'; }
-      toast('⚠️ Firebase load failed. Check connection.');
+      const isNetErr = e.message === 'Failed to fetch' || e.message.includes('NetworkError') || e.name === 'TypeError' && e.message.includes('fetch');
+      if(isNetErr) {
+        if(syncEl){ syncEl.style.color='var(--muted)'; syncEl.textContent='☁ Offline'; }
+        // Silent — will retry via SAR when back online
+      } else {
+        console.warn('[GCE] Firebase load error:', e.message);
+        if(syncEl){ syncEl.style.color='var(--red)'; syncEl.textContent='☁ Load Failed'; }
+        toast('⚠️ Firebase load failed. Check connection.');
+      }
     }
   } else {
     // Data already loaded by _preloadLoginData, or offline
@@ -10427,7 +10448,7 @@ async function _preloadLoginData(){
     // Refresh role dropdown if user already clicked a tab
     if(selectedRole) selectRole(selectedRole);
   } catch(e) {
-    console.warn('_preloadLoginData error:', e.message);
+    if(!e.message?.includes('fetch') && !e.message?.includes('Network')) console.warn('[GCE] _preloadLoginData error:', e.message);
     setTimeout(_preloadLoginData, 2000);
   }
 }
@@ -10544,10 +10565,10 @@ function startAutoRefresh(){
       //            where SAR fires between save() push and Firebase write completing
       // MODAL GUARD: don't overwrite S.orders if encode modal is open
       const _keysToSync = _encModalOpen
-        ? ['riders','locations','payroll','expenses','stockLog',
+        ? ['riders','locations','payroll','expenses',
            'adminNames','adminAccounts',
            'returnLog','deletedOrders','mergeLog']  // skip 'orders' while user is editing
-        : ['riders','locations','payroll','expenses','stockLog',
+        : ['riders','locations','payroll','expenses',
            'adminNames','adminAccounts',
            'returnLog','deletedOrders','mergeLog'];
       _keysToSync.forEach(k=>{
@@ -10557,17 +10578,14 @@ function startAutoRefresh(){
       if(!_encModalOpen && Array.isArray(fbData.orders)) {
         S.orders = _mergeOrders(fbData.orders, S.orders);
       }
-      // remitLog / cashbondLog / benefitsLog: _id-based merge — same as orders
-      // Prevents: remitter saves entry → SAR fires before Firebase confirms → entry wiped
-      ['remitLog','cashbondLog','benefitsLog'].forEach(key=>{
+      // remitLog / cashbondLog / benefitsLog / stockLog: _id-based merge
+      // Prevents: save entry → SAR fires before Firebase confirms → entry wiped
+      ['remitLog','cashbondLog','benefitsLog','stockLog'].forEach(key=>{
         if(!Array.isArray(fbData[key])) return;
         const fbArr = fbData[key];
         const localArr = S[key]||[];
-        // Build map of Firebase entries by _id
         const fbById = new Map(fbArr.filter(e=>e&&e._id).map(e=>[e._id, e]));
-        // Find local entries not yet in Firebase (recently added, write in-flight)
         const localOnly = localArr.filter(e => e && e._id && !fbById.has(e._id));
-        // Merge: Firebase base + local-only additions
         S[key] = [...fbArr, ...localOnly];
       });
       // Inventory: code-based merge that preserves recent LOCAL deductions/additions
@@ -10674,7 +10692,7 @@ function startAutoRefresh(){
       };
       try { renderMap[_activePage]?.(); } catch(e){}
       if(currentRole==='rider') try{renderRiderParcels();}catch(e){}
-    } catch(e){ console.warn('Auto-refresh error:',e.message); }
+    } catch(e){ if(!e.message?.includes('fetch') && !e.message?.includes('Network')) console.warn('[GCE] Auto-refresh error:',e.message); }
   }, 15000); // every 15 seconds — optimised for 30-device concurrent use within Firebase free tier balanced for 30-50 concurrent users
 }
 
@@ -12557,7 +12575,8 @@ function confirmMerge() {
 // This runs BEFORE login so all devices always use the owner's latest password.
 // Only fetches the password fields — lightweight, no full data load.
 (async function preloadPasswords(){
-  try {
+  const _isNetworkError = (e) => e.message === 'Failed to fetch' || e.message.includes('NetworkError') || e.message.includes('network') || e.message.includes('offline') || e.message.includes('ERR_') || e.name === 'TypeError';
+  const _tryFetch = async () => {
     const url = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}&mask.fieldPaths=ownerPwHash&mask.fieldPaths=specialPasswords&mask.fieldPaths=tabPasswords&mask.fieldPaths=adminAccounts`;
     const r = await fetch(url, {cache:'no-cache'});
     if(!r.ok) return;
@@ -12596,22 +12615,33 @@ function confirmMerge() {
     if(doc.fields.adminAccounts) {
       const accs = _fromFS(doc.fields.adminAccounts);
       if(Array.isArray(accs) && accs.length > 0) {
-        // Merge with local — remote wins for each name
         const local = S.adminAccounts||[];
         accs.forEach(ra => {
           const idx = local.findIndex(la => la.name === ra.name);
-          if(idx >= 0) local[idx] = ra; // update existing
-          else local.push(ra);          // add new
+          if(idx >= 0) local[idx] = ra;
+          else local.push(ra);
         });
         S.adminAccounts = local;
-        // Also sync adminNames
         const names = accs.map(a=>a.name).filter(Boolean);
         names.forEach(n => { if(!S.adminNames.includes(n)) S.adminNames.push(n); });
       }
     }
+  };
+
+  // First attempt immediately
+  try {
+    await _tryFetch();
   } catch(e) {
-    // Silent fail — offline, will use localStorage fallback
-    console.warn('Pre-login password fetch failed (offline?):', e.message);
+    if(!_isNetworkError(e)) {
+      // Only warn for non-network errors (auth issues, malformed response, etc.)
+      console.warn('[GCE] Pre-login fetch error:', e.message);
+    }
+    // Network error: silently retry once after 5 seconds (user may be loading page while connecting)
+    if(_isNetworkError(e)) {
+      setTimeout(async () => {
+        try { await _tryFetch(); } catch(e2) { /* still offline — silent */ }
+      }, 5000);
+    }
   }
 })();
 
@@ -12674,8 +12704,8 @@ document.addEventListener('visibilitychange', async ()=>{
       S.inventory = _mergedInv;
       S._deletedInventoryCodes = [..._delCodes];
     }
-    // remitLog / cashbondLog / benefitsLog: _id-based merge — prevent race condition wipe
-    ['remitLog','cashbondLog','benefitsLog'].forEach(key=>{
+    // remitLog / cashbondLog / benefitsLog / stockLog: _id-based merge — prevent race condition wipe
+    ['remitLog','cashbondLog','benefitsLog','stockLog'].forEach(key=>{
       if(!Array.isArray(fbData[key])) return;
       const fbArr = fbData[key];
       const localArr = S[key]||[];
@@ -12694,7 +12724,7 @@ document.addEventListener('visibilitychange', async ()=>{
 
     try{ renderPage(_activePage); }catch(e){}
     if(currentRole==='rider') try{renderRiderParcels();}catch(e){}
-  } catch(e){ console.warn('Visibility sync error:',e.message); }
+  } catch(e){ if(!e.message?.includes('fetch') && !e.message?.includes('Network')) console.warn('[GCE] Visibility sync error:',e.message); }
 });
 </script>
 </body>
