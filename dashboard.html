@@ -929,7 +929,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-admin" onclick="selectRole('admin')">
           <div class="role-icon">👤</div>
-          <div class="role-name">Admin / Staff</div>
+          <div class="role-name">CSR</div>
           <div class="role-desc">Orders &amp; Operations</div>
         </div>
       </div>
@@ -947,7 +947,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-sorter" onclick="selectRole('sorter')" style="padding:10px 8px;text-align:center;">
           <div style="font-size:20px;">📦</div>
-          <div class="role-name" style="font-size:11px;">Parcel Sorter</div>
+          <div class="role-name" style="font-size:11px;">Dispatcher</div>
           <div class="role-desc" style="font-size:9px;">Sort &amp; Track</div>
         </div>
         <div class="role-btn" id="role-checker" onclick="selectRole('checker')" style="padding:10px 8px;text-align:center;">
@@ -3902,7 +3902,7 @@ function renderChecker(){
                 : `<button class="btn btn-outline btn-sm" onclick="togglePrinted(${i})" style="font-size:10px;padding:2px 7px;">🖨️ Print</button>`}
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
-              ${!isLocked?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>`:''}
+           
               ${currentRole==='owner'?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" title="CEO Edit">✏️ Edit</button>`:''}
               ${o.status==='Cancelled'
                 ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
