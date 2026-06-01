@@ -1864,7 +1864,11 @@ function _showRulesHint() {
       <div class="card-header">
         <span class="card-title">My Assigned Parcels</span>
         <div style="display:flex;gap:7px;flex-wrap:wrap;">
-          <input type="date" class="form-control" style="width:148px;font-size:11px;padding:4px 8px;" id="rider-date-filter" oninput="renderRiderParcels()" title="Filter by date">
+          <input type="text" class="form-control" style="width:130px;font-size:11px;padding:4px 8px;letter-spacing:0.5px;" id="rider-date-filter"
+            placeholder="MM/DD/YYYY"
+            maxlength="10"
+            oninput="renderRiderParcels()"
+            title="Filter by date (MM/DD/YYYY)">
           <button class="btn btn-outline btn-sm" onclick="document.getElementById('rider-date-filter').value='';renderRiderParcels()" title="Show all dates">All</button>
           <input class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / CP#" id="rider-parcel-search" oninput="renderRiderParcels()">
           <select class="form-control" style="width:120px;font-size:11px;padding:4px 8px;" id="rider-status-filter" onchange="renderRiderParcels()">
@@ -2911,6 +2915,11 @@ let currentRole = null;
 // ============ UTILS ============
 const p=n=>{const v=parseFloat(n||0);return '₱'+(isNaN(v)?0:v).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});};
 const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+// MM/DD/YYYY display format for rider dashboard date input
+const todayMDY=()=>{const d=new Date();return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`;};
+// Convert MM/DD/YYYY → YYYY-MM-DD for o.date comparison. Returns '' if invalid format.
+const mdy2ymd=(s)=>{if(!s)return '';const p=s.trim().split('/');if(p.length!==3)return '';const[m,d,y]=p;if(!m||!d||!y||y.length!==4)return '';return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;};
+
 const tomorrow=()=>{const d=new Date();d.setDate(d.getDate()+1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 // ── Date input validator — prevents invalid dates like April 31 ──────────────
 function validateDateInput(input) {
@@ -3902,7 +3911,7 @@ function renderChecker(){
                 : `<button class="btn btn-outline btn-sm" onclick="togglePrinted(${i})" style="font-size:10px;padding:2px 7px;">🖨️ Print</button>`}
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
-           
+            
               ${currentRole==='owner'?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" title="CEO Edit">✏️ Edit</button>`:''}
               ${o.status==='Cancelled'
                 ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
@@ -7434,7 +7443,7 @@ function doLogin(){
       }
       const rdf = document.getElementById('rider-date-filter');
       // Default to today's date so rider sees their current orders immediately
-      if(rdf && !rdf.value) rdf.value = today();
+      if(rdf && !rdf.value) rdf.value = todayMDY();
       renderRiderParcels();
     });
   } else if(currentRole==='remitter'){
@@ -8033,7 +8042,9 @@ function renderRiderParcels() {
   if(!currentRider) return;
   const filt = document.getElementById('rider-status-filter')?.value || '';
   const q = (document.getElementById('rider-parcel-search')?.value||'').toLowerCase();
-  const df = document.getElementById('rider-date-filter')?.value || '';
+  const dfRaw = (document.getElementById('rider-date-filter')?.value || '').trim();
+  // Convert MM/DD/YYYY → YYYY-MM-DD to match o.date storage format
+  const df = mdy2ymd(dfRaw);
   // Get all orders assigned to this rider — exclude checker-cancelled and unready orders
   // Rule: rider only sees orders that dispatcher marked READY (or beyond).
   // "Preparing" = verified but dispatcher hasn't set Ready yet → NOT visible to rider yet.
@@ -8061,13 +8072,13 @@ function renderRiderParcels() {
     if(remittedDates.has(o.date) && ['Delivered','Cancelled','Update'].includes(o.status)) return false;
     return true;
   });
-  // Apply date filter: strict match — show ONLY the selected date's orders.
-  // No bypass for active statuses; rider explicitly chose a date to view.
+  // Date filter: exact string match — df is whatever user typed
+  // type="text" input means no browser date validation interference
   let filtered;
   if(df) {
     filtered = myOrders.filter(o => o.date === df);
   } else {
-    filtered = [...myOrders]; // no filter → show all non-remitted orders
+    filtered = [...myOrders];
   }
   if(filt) filtered = filtered.filter(o => o.status === filt);
   if(q) filtered = filtered.filter(o =>
@@ -8988,9 +8999,6 @@ function renderTracking() {
   const filt = document.getElementById('track-filter')?.value||'';
   const df = document.getElementById('track-date')?.value||'';
 
-  // Active statuses always show regardless of date — staff must see all pending work.
-  // Terminal statuses (Delivered/Cancelled/RTO) respect the date filter.
-  const COD_ACTIVE = new Set(['Preparing','Ready','Out for Delivery','Update']);
   // Terminal statuses that disappear from sorter view once remitted
   const TERMINAL = new Set(['Delivered','Cancelled','Update','RTO']);
 
@@ -9005,9 +9013,8 @@ function renderTracking() {
       : []
   );
 
-  // Sorter: date filter is STRICT — show only exact date match
-  // Owner/Admin: active orders always show (staff needs to see all pending work)
-  const isSorterStrict = currentRole === 'sorter';
+  // Date filter is STRICT for ALL roles — show only exact date match when df is set
+  // Removed active-status bypass: user explicitly typed a date, only that date should show
 
   // Stats — counts must match table logic
   document.getElementById('tracking-stats').innerHTML = TRACK_STATUSES.map(s => {
@@ -9018,14 +9025,8 @@ function renderTracking() {
       if((o.checkerStatus||'Pending') !== 'Verified') return false;
       // Checker-cancelled = has cancelledBy set → goes to Recently Deleted, not tracking
       if(s === 'Cancelled' && o.cancelledBy) return false;
-      // Date filter
-      if(df) {
-        if(isSorterStrict) {
-          if(o.date !== df) return false; // strict: must match date exactly
-        } else {
-          if(!COD_ACTIVE.has(s) && o.date !== df) return false; // active bypass for owner/admin
-        }
-      }
+      // Date filter: strict for all roles
+      if(df && o.date !== df) return false;
       // Sorter: hide terminal orders whose rider+date combo is already remitted
       if(currentRole === 'sorter' && TERMINAL.has(s)) {
         const key = `${o.assignedRider||''}|${o.date}`;
@@ -9044,14 +9045,8 @@ function renderTracking() {
     // Checker-cancelled orders belong to Recently Deleted, not active tracking
     if(o.status === 'Cancelled' && o.cancelledBy) return false;
     if(filt && o.status!==filt) return false;
-    // Date filter
-    if(df) {
-      if(isSorterStrict) {
-        if(o.date !== df) return false; // sorter: strict date match
-      } else {
-        if(!COD_ACTIVE.has(o.status) && o.date!==df) return false; // owner/admin: active bypass
-      }
-    }
+    // Date filter: strict for all roles
+    if(df && o.date !== df) return false;
     // Sorter: hide terminal orders whose rider+date combo is officially remitted
     if(currentRole === 'sorter' && TERMINAL.has(o.status)) {
       const key = `${o.assignedRider||''}|${o.date}`;
@@ -10412,7 +10407,7 @@ async function initApp(){
   setVal('remit-page-date', today());
   setVal('my-order-date', '');
   setVal('order-date-filter', today());
-  setVal('rider-date-filter', today());
+  setVal('rider-date-filter', todayMDY());
   setVal('enc-date', '');
   setVal('pay-date', today());
   setVal('exp-date', today());
