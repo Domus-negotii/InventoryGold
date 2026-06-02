@@ -790,6 +790,9 @@ function _mergeOrders(fbOrders, localOrders) {
   // Index Firebase orders by _id (for new orders that have _id)
   const fbIds = new Set(fbOrders.filter(o => o && o._id).map(o => o._id));
 
+  // Build local orders map by _id for fast lookup
+  const localById = new Map(localOrders.filter(o => o && o._id).map(o => [o._id, o]));
+
   // Grace window: 5 minutes — covers slow Firebase writes + multiple SAR cycles
   const now = Date.now();
   const grace = 300000;
@@ -805,11 +808,35 @@ function _mergeOrders(fbOrders, localOrders) {
       return age < grace; // only keep within grace window
     }
     // Legacy orders (no _id) — they are already in Firebase by array index
-    // Firebase array is source of truth; do NOT re-add them from local
     return false;
   });
 
-  return localOnly.length ? [...fbOrders, ...localOnly] : fbOrders;
+  // For orders that ARE in Firebase, preserve critical local flags that
+  // Firebase might not have persisted yet (write still in-flight).
+  // RULE: if local has inventoryDeducted=true, NEVER let Firebase overwrite it to false.
+  // Same for inventoryRestored and itemInventoryRestored.
+  const mergedFbOrders = fbOrders.map(fbO => {
+    if (!fbO || !fbO._id) return fbO;
+    const localO = localById.get(fbO._id);
+    if (!localO) return fbO;
+    // Preserve inventory flags from local if they are "more progressed" than Firebase
+    const merged = {...fbO};
+    if (localO.inventoryDeducted === true && !fbO.inventoryDeducted) {
+      merged.inventoryDeducted = true;
+    }
+    if (localO.inventoryRestored === true && !fbO.inventoryRestored) {
+      merged.inventoryRestored = true;
+    }
+    if (localO.itemInventoryRestored && Object.keys(localO.itemInventoryRestored).length > 0) {
+      merged.itemInventoryRestored = {...(fbO.itemInventoryRestored||{}), ...localO.itemInventoryRestored};
+    }
+    if (localO.itemStatuses && Object.keys(localO.itemStatuses).length > 0) {
+      merged.itemStatuses = {...(fbO.itemStatuses||{}), ...localO.itemStatuses};
+    }
+    return merged;
+  });
+
+  return localOnly.length ? [...mergedFbOrders, ...localOnly] : mergedFbOrders;
 }
 
 // ── UUID generator for record identity ───────────────────────────────────────
@@ -3911,7 +3938,7 @@ function renderChecker(){
                 : `<button class="btn btn-outline btn-sm" onclick="togglePrinted(${i})" style="font-size:10px;padding:2px 7px;">🖨️ Print</button>`}
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
-            
+          
               ${currentRole==='owner'?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" title="CEO Edit">✏️ Edit</button>`:''}
               ${o.status==='Cancelled'
                 ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
@@ -4089,15 +4116,23 @@ function updateVerifStatus(orderIdx, status) {
         return;
       }
     }
-    // ── Deduct inventory on Verify (same as COD verifyOrder) ─────
-    // Guard: only deduct once — skip if already deducted
-    // Clear any stale restore ref so re-verify after unverify always works
+    // ── Deduct inventory on Verify ─────────────────────────────────
+    // PRIMARY guard: inventoryDeducted flag. SECONDARY: stable session key against SAR race.
     if(window._restoredRefs) { [...(window._restoredRefs||[])].forEach(k=>{ if(k.startsWith(o._id||String(orderIdx))) window._restoredRefs.delete(k); }); }
+    const _lbcStableKey = (o._id||String(orderIdx)) + '_verified';
     if(!o.inventoryDeducted) {
-      const _lbcVerifyRef = (o._id||String(orderIdx)) + '_verify_' + Date.now();
-      const didDeduct = _deductOrderItems(o.items||[], today(),
-        `LBC/INTL Checker verified – ${o.name} (${onum(orderIdx)})`, _lbcVerifyRef);
-      if(didDeduct) S.orders[orderIdx].inventoryDeducted = true;
+      if(window._deductedRefs && window._deductedRefs.has(_lbcStableKey)) {
+        S.orders[orderIdx].inventoryDeducted = true; // SAR race reset it; restore flag
+      } else {
+        const _lbcVerifyRef = _lbcStableKey + '_' + Date.now();
+        const didDeduct = _deductOrderItems(o.items||[], today(),
+          `LBC/INTL Checker verified – ${o.name} (${onum(orderIdx)})`, _lbcVerifyRef);
+        if(didDeduct) {
+          S.orders[orderIdx].inventoryDeducted = true;
+          if(!window._deductedRefs) window._deductedRefs = new Set();
+          window._deductedRefs.add(_lbcStableKey);
+        }
+      }
     }
     o.verificationStatus = 'Verified';
     o.checkerStatus = 'Verified';
@@ -4159,14 +4194,25 @@ function verifyOrder(i){
     }
   }
   // ── Deduct inventory on Checker Verify ────────────────────────
-  // Guard: ONLY deduct if not already deducted — prevents double entries
-  // Clear any stale restore ref first (checker may have: verify → unverify → verify)
-  const _verifyRef = (o._id||String(i)) + '_verify_' + Date.now();
+  // PRIMARY guard: inventoryDeducted flag on the order (persisted to Firebase)
+  // SECONDARY guard: stable session key — prevents re-deduction if SAR races and
+  //   resets inventoryDeducted=false before Firebase confirms the write
+  const _stableVerifyKey = (o._id||String(i)) + '_verified';
   if(window._restoredRefs) window._restoredRefs.delete(o._id||String(i));
   if(!S.orders[i].inventoryDeducted) {
-    const didDeduct = _deductOrderItems(o.items, today(),
-      'Checker verified – '+o.name+' ('+onum(i)+')', _verifyRef);
-    if(didDeduct) S.orders[i].inventoryDeducted = true;
+    if(window._deductedRefs && window._deductedRefs.has(_stableVerifyKey)) {
+      // Already deducted this session — SAR race reset the flag; just restore it
+      S.orders[i].inventoryDeducted = true;
+    } else {
+      const _verifyRef = _stableVerifyKey + '_' + Date.now();
+      const didDeduct = _deductOrderItems(o.items, today(),
+        'Checker verified – '+o.name+' ('+onum(i)+')', _verifyRef);
+      if(didDeduct) {
+        S.orders[i].inventoryDeducted = true;
+        if(!window._deductedRefs) window._deductedRefs = new Set();
+        window._deductedRefs.add(_stableVerifyKey);
+      }
+    }
   }
   // Save the inventory deduction to Firebase immediately
   // (save() is called below — this comment confirms the sequence)
