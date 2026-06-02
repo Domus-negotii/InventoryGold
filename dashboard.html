@@ -1272,7 +1272,7 @@ function _showRulesHint() {
           <select class="form-control" style="width:130px;font-size:11px;padding:4px 8px;" id="checker-filter" onchange="renderChecker()">
             <option value="">All Status</option><option value="Pending">Pending</option><option value="Verified">Verified</option>
           </select>
-          <input type="date" class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" id="checker-date" oninput="renderChecker()" title="Filter by date">
+          <input type="text" class="form-control" style="width:150px;font-size:11px;padding:4px 8px;" id="checker-date" oninput="renderChecker()" title="Filter by date" placeholder="MM/DD/YYYY" maxlength="10">
           <button class="btn btn-outline btn-sm" onclick="document.getElementById('checker-date').value='';renderChecker()">All Dates</button>
         </div>
       </div>
@@ -1329,7 +1329,7 @@ function _showRulesHint() {
               <option value="FedEx">📦 FedEx</option>
               <option value="COD">🏍️ COD</option>
             </select>
-            <input type="date" class="form-control" style="width:148px;font-size:11px;" id="checker-del-date" oninput="renderCheckerDeleted()" title="Filter by cancel date">
+            <input type="text" class="form-control" style="width:148px;font-size:11px;" id="checker-del-date" oninput="renderCheckerDeleted()" title="Filter by cancel date" placeholder="MM/DD/YYYY" maxlength="10">
             <button class="btn btn-outline btn-sm" onclick="document.getElementById('checker-del-date').value='';renderCheckerDeleted()">All Dates</button>
           </div>
         </div>
@@ -1381,7 +1381,7 @@ function _showRulesHint() {
               <option value="">All Status</option>
               <option>Preparing</option><option>Ready</option><option>Out for Delivery</option><option>Delivered</option><option>Cancelled</option><option>Update</option>
             </select>
-            <input type="date" class="form-control" style="width:150px;font-size:11px;" id="track-date" oninput="renderTracking()" title="Filter by date">
+            <input type="text" class="form-control" style="width:150px;font-size:11px;" id="track-date" oninput="renderTracking()" title="Filter by date" placeholder="MM/DD/YYYY" maxlength="10">
           </div>
         </div>
         <div class="table-wrap"><table><thead><tr>
@@ -1431,7 +1431,7 @@ function _showRulesHint() {
     <div class="action-row no-print">
       <div style="display:flex;align-items:center;gap:9px;">
         <label style="font-size:10.5px;color:var(--muted);">Date:</label>
-        <input type="date" class="form-control" id="daily-date" style="width:148px;" oninput="renderDailyParcels()">
+        <input type="text" class="form-control" id="daily-date" style="width:148px;" oninput="renderDailyParcels()" placeholder="MM/DD/YYYY" maxlength="10">
       </div>
       <span id="daily-summary" style="font-size:12px;color:var(--gold);"></span>
     </div>
@@ -1447,7 +1447,7 @@ function _showRulesHint() {
       <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
         <span style="font-size:12px;color:var(--muted);">🔀 Drag parcels between riders to reassign.</span>
         <input class="form-control" id="sort-search" style="width:200px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / CP#" oninput="renderSorting()">
-        <input type="date" class="form-control" id="sort-date" style="width:148px;font-size:11px;" oninput="renderSorting()" title="Filter by date">
+        <input type="text" class="form-control" id="sort-date" style="width:148px;font-size:11px;" oninput="renderSorting()" title="Filter by date" placeholder="MM/DD/YYYY" maxlength="10">
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('sort-date').value='';renderSorting()">All Dates</button>
         <select class="form-control" id="sort-status-filter" style="width:160px;font-size:11px;" onchange="renderSorting()">
           <option value="">All Statuses</option>
@@ -1487,7 +1487,7 @@ function _showRulesHint() {
         <div class="card-header">
           <span class="card-title">🔄 For Update Orders</span>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <input type="date" class="form-control" id="ret-update-date" style="width:155px;font-size:11px;" oninput="renderUpdateOrders()" title="Filter by date">
+            <input type="text" class="form-control" id="ret-update-date" style="width:155px;font-size:11px;" oninput="renderUpdateOrders()" title="Filter by date" placeholder="MM/DD/YYYY" maxlength="10">
             <button class="btn btn-outline btn-sm" onclick="document.getElementById('ret-update-date').value='';renderUpdateOrders()">All Dates</button>
           </div>
         </div>
@@ -1501,7 +1501,7 @@ function _showRulesHint() {
         <div class="card-header">
           <span class="card-title">📦 Cancelled Items (Per Item)</span>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <input type="date" class="form-control" id="ret-items-date" style="width:155px;font-size:11px;" oninput="renderCancelledItems()" title="Filter by date">
+            <input type="text" class="form-control" id="ret-items-date" style="width:155px;font-size:11px;" oninput="renderCancelledItems()" title="Filter by date" placeholder="MM/DD/YYYY" maxlength="10">
             <button class="btn btn-outline btn-sm" onclick="document.getElementById('ret-items-date').value='';renderCancelledItems()">All Dates</button>
           </div>
         </div>
@@ -1545,7 +1545,7 @@ function _showRulesHint() {
     <div class="action-row no-print">
       <div style="display:flex;align-items:center;gap:9px;">
         <label style="font-size:10.5px;color:var(--muted);">Date:</label>
-        <input type="date" class="form-control" id="ds-date" style="width:148px;" oninput="renderDailySales()">
+        <input type="text" class="form-control" id="ds-date" style="width:148px;" oninput="renderDailySales()" placeholder="MM/DD/YYYY" maxlength="10">
       </div>
       <button class="btn btn-print no-print" onclick="printDailySales()">🖨️ Print Daily Sales</button>
     </div>
@@ -1915,7 +1915,7 @@ function _showRulesHint() {
   <div class="action-row no-print">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <span style="font-size:12px;color:var(--muted);">Record and track all rider remittances.</span>
-      <input type="date" class="form-control" id="remit-page-date" style="width:155px;font-size:11px;" oninput="renderRemitPage()" title="Filter by date">
+      <input type="text" class="form-control" id="remit-page-date" style="width:155px;font-size:11px;" oninput="renderRemitPage()" title="Filter by date" placeholder="MM/DD/YYYY" maxlength="10">
       <button class="btn btn-outline btn-sm" onclick="document.getElementById('remit-page-date').value='';renderRemitPage()">All Dates</button>
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -1952,7 +1952,7 @@ function _showRulesHint() {
   <div class="action-row no-print">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <span style="font-size:12px;color:var(--muted);">Track cashbond contributions.</span>
-      <input type="date" class="form-control" id="cashbond-page-date" style="width:155px;font-size:11px;" oninput="renderCashbondPage()" title="Filter by date">
+      <input type="text" class="form-control" id="cashbond-page-date" style="width:155px;font-size:11px;" oninput="renderCashbondPage()" title="Filter by date" placeholder="MM/DD/YYYY" maxlength="10">
       <button class="btn btn-outline btn-sm" onclick="document.getElementById('cashbond-page-date').value='';renderCashbondPage()">All Dates</button>
     </div>
     <button class="btn btn-gold" onclick="openCashbondModal()">+ Add Cashbond Entry</button>
@@ -2030,7 +2030,7 @@ function _showRulesHint() {
       </div>
       <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
         <input class="form-control" style="width:180px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / order# / tracking" id="om-search" oninput="renderOrderMgmt()">
-        <input type="date" class="form-control" style="width:148px;font-size:11px;" id="om-date" oninput="renderOrderMgmt()" title="Filter by date">
+        <input type="text" class="form-control" style="width:148px;font-size:11px;" id="om-date" oninput="renderOrderMgmt()" title="Filter by date" placeholder="MM/DD/YYYY" maxlength="10">
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('om-date').value='';renderOrderMgmt()">All Dates</button>
       </div>
     </div>
@@ -2051,7 +2051,7 @@ function _showRulesHint() {
       </div>
       <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
         <input class="form-control" style="width:200px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / order# / tracking" id="lbcd-search" oninput="renderLbcDelivery()">
-        <input type="date" class="form-control" style="width:148px;font-size:11px;" id="lbcd-date" oninput="renderLbcDelivery()" title="Filter by date">
+        <input type="text" class="form-control" style="width:148px;font-size:11px;" id="lbcd-date" oninput="renderLbcDelivery()" title="Filter by date" placeholder="MM/DD/YYYY" maxlength="10">
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('lbcd-date').value='';renderLbcDelivery()">All Dates</button>
       </div>
     </div>
@@ -2073,8 +2073,8 @@ function _showRulesHint() {
         <input class="form-control" style="width:200px;font-size:8px;padding:4px 8px;"
           placeholder="🔍 Search name / order# / contact"
           id="codd-search" oninput="renderCodDelivPage()">
-        <input type="date" class="form-control" style="width:148px;font-size:11px;"
-          id="codd-date" oninput="renderCodDelivPage()">
+        <input type="text" class="form-control" style="width:148px;font-size:11px;"
+          id="codd-date" oninput="renderCodDelivPage()" placeholder="MM/DD/YYYY" maxlength="10">
         <button class="btn btn-outline btn-sm"
           onclick="document.getElementById('codd-date').value='';renderCodDelivPage()">All Dates</button>
       </div>
@@ -2095,7 +2095,7 @@ function _showRulesHint() {
           <option value="FedEx">📦 FedEx</option>
           <option value="COD">🏍️ COD</option>
         </select>
-        <input type="date" class="form-control" style="width:148px;font-size:11px;" id="del-date" oninput="renderDeletedOrders()" title="Filter by cancel date">
+        <input type="text" class="form-control" style="width:148px;font-size:11px;" id="del-date" oninput="renderDeletedOrders()" title="Filter by cancel date" placeholder="MM/DD/YYYY" maxlength="10">
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('del-date').value='';renderDeletedOrders()">All Dates</button>
       </div>
       <span id="del-summary" style="font-size:12px;color:var(--red);font-weight:600;"></span>
@@ -2115,7 +2115,7 @@ function _showRulesHint() {
       </div>
       <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
         <input class="form-control" style="width:200px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / order# / tracking" id="emsd-search" oninput="renderEmsDelivery()">
-        <input type="date" class="form-control" style="width:148px;font-size:11px;" id="emsd-date" oninput="renderEmsDelivery()" title="Filter by date">
+        <input type="text" class="form-control" style="width:148px;font-size:11px;" id="emsd-date" oninput="renderEmsDelivery()" title="Filter by date" placeholder="MM/DD/YYYY" maxlength="10">
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('emsd-date').value='';renderEmsDelivery()">All Dates</button>
       </div>
     </div>
@@ -2135,7 +2135,7 @@ function _showRulesHint() {
       </div>
       <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
         <input class="form-control" style="width:200px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / order# / tracking" id="fedexd-search" oninput="renderFedexDelivery()">
-        <input type="date" class="form-control" style="width:148px;font-size:11px;" id="fedexd-date" oninput="renderFedexDelivery()" title="Filter by date">
+        <input type="text" class="form-control" style="width:148px;font-size:11px;" id="fedexd-date" oninput="renderFedexDelivery()" title="Filter by date" placeholder="MM/DD/YYYY" maxlength="10">
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('fedexd-date').value='';renderFedexDelivery()">All Dates</button>
       </div>
     </div>
@@ -3396,7 +3396,7 @@ function _renderAdminPersonalSheet() {
       <select class="form-control" style="width:130px;font-size:11px;padding:4px 8px;" id="my-order-method" onchange="renderMyOrders()">
         <option value="">All Methods</option><option>COD</option><option>LBC</option><option>EMS</option><option>FedEx</option>
       </select>
-      <input type="date" class="form-control" style="width:140px;font-size:11px;padding:4px 8px;" id="my-order-date" oninput="renderMyOrders()" title="Filter by date">
+      <input type="text" class="form-control" style="width:140px;font-size:11px;padding:4px 8px;" id="my-order-date" oninput="renderMyOrders()" title="Filter by date" placeholder="MM/DD/YYYY" maxlength="10">
       <button class="btn btn-gold" onclick="openEncodeModal()">+ New Order</button>
     </div>`;
   // Stats
@@ -3442,7 +3442,7 @@ function renderMyOrders() {
   const loggedAdmin = currentUser?.name || '';
   const q = (document.getElementById('my-order-search')?.value||'').toLowerCase();
   const mf = document.getElementById('my-order-method')?.value||'';
-  const df = document.getElementById('my-order-date')?.value||'';
+  const df = mdy2ymd((document.getElementById('my-order-date')?.value||'').trim());
   const tbody = document.getElementById('my-orders-tbody'); if(!tbody) return;
   const pm2cls = m => m==='EMS'||m==='FedEx'?'green':m==='LBC'?'blue':'delivering';
 
@@ -3535,7 +3535,7 @@ function _renderOwnerOrdersView() {
       <span style="font-size:12px;color:var(--muted);">All encoded orders. Filter by admin tab or search.</span>
     </div>
     <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
-      <input type="date" class="form-control" style="width:140px;font-size:11px;padding:4px 8px;" id="order-date-filter" oninput="renderOrders()" title="Filter by date">
+      <input type="text" class="form-control" style="width:140px;font-size:11px;padding:4px 8px;" id="order-date-filter" oninput="renderOrders()" title="Filter by date" placeholder="MM/DD/YYYY" maxlength="10">
       <button class="btn btn-outline btn-sm" onclick="document.getElementById('order-date-filter').value='';renderOrders()" title="Show all dates">All Dates</button>
       <input class="form-control" style="width:180px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / order# / CP#" id="order-search" oninput="renderOrders()">
       <select class="form-control" style="width:130px;font-size:11px;padding:4px 8px;" id="order-method-filter" onchange="renderOrders()">
@@ -3578,7 +3578,7 @@ function _renderOwnerOrdersView() {
 function renderOrders() {
   const q  = (document.getElementById('order-search')?.value||'').toLowerCase();
   const mf = document.getElementById('order-method-filter')?.value||'';
-  const df = document.getElementById('order-date-filter')?.value||'';
+  const df = mdy2ymd((document.getElementById('order-date-filter')?.value||'').trim());
   const tbody = document.getElementById('orders-tbody'); if(!tbody) return;
   const pm2cls = m => m==='EMS'||m==='FedEx'?'green':m==='LBC'?'blue':'delivering';
 
@@ -3648,7 +3648,7 @@ function renderOrders() {
 function printOwnerAdminSheet() {
   const q  = (document.getElementById('order-search')?.value||'').toLowerCase();
   const mf = document.getElementById('order-method-filter')?.value||'';
-  const df = document.getElementById('order-date-filter')?.value||'';
+  const df = mdy2ymd((document.getElementById('order-date-filter')?.value||'').trim());
   const list = S.orders.map((o,i)=>({...o,idx:i})).filter(o => {
     if(_ownerAdminTab!=='ALL' && (o.admin||'').toUpperCase()!==_ownerAdminTab.toUpperCase()) return false;
     if(mf && (o.paymentMethod||'COD')!==mf) return false;
@@ -3765,7 +3765,7 @@ function renderChecker(){
   try {
   const filt = document.getElementById('checker-filter')?.value||'';
   const q = (document.getElementById('checker-search')?.value||'').toLowerCase();
-  const df = document.getElementById('checker-date')?.value||'';
+  const df = mdy2ymd((document.getElementById('checker-date')?.value||'').trim());
   const pending = S.orders.filter(o=>o&&o.checkerStatus==='Pending').length;
   document.getElementById('checker-pending-count').textContent = pending ? `⚠️ ${pending} pending` : '✅ All verified';
   // Update For Update tab badge
@@ -4582,11 +4582,17 @@ function resolveUpdate(orderIdx, newStatus) {
       status: o.status, lbcStatus: o.lbcStatus||'',
       checkerStatus: o.checkerStatus||'', riderRemarks: o.riderRemarks||''
     });
-    // Auto-restore inventory (checker-initiated cancel = confirmed return)
+    // Auto-restore inventory — exclude items already restored individually
     let restored = false;
     if(_invDeducted(o)) {
-      restored = _restoreOrderItems(o.items||[], today(),
-        `Checker For Update Cancel – ${o.name} (${onum(orderIdx)})`, o._id||'order');
+      const itemsToRestore = (o.items||[]).filter((_,ii) =>
+        (o.itemStatuses||{})[ii] !== 'Cancelled' &&
+        !(o.itemInventoryRestored||{})[ii]
+      );
+      if(itemsToRestore.length > 0) {
+        restored = _restoreOrderItems(itemsToRestore, today(),
+          `Checker For Update Cancel – ${o.name} (${onum(orderIdx)})`, o._id||'order');
+      }
       S.orders[orderIdx].inventoryDeducted = false;
       S.orders[orderIdx].checkerStatus = 'Pending';
     }
@@ -4695,7 +4701,7 @@ function delRider(i){
 
 // ============ DAILY PARCELS ============
 function renderDailyParcels(){
-  const d=document.getElementById('daily-date').value||today();
+  const d=mdy2ymd((document.getElementById('daily-date')?.value||'').trim())||today();
   const filtered=S.orders.filter(o=>o&&o.date===d);
   const _activeFiltered=filtered.filter(o=>o.status!=='Cancelled'&&o.status!=='RTO');
   const _cancelledFiltered=filtered.filter(o=>['Cancelled','RTO'].includes(o.status));
@@ -4786,7 +4792,7 @@ function renderReturns() {
 
 // ── FOR UPDATE ORDERS ────────────────────────────────────────────────
 function renderUpdateOrders() {
-  const df = document.getElementById('ret-update-date')?.value||'';
+  const df = mdy2ymd((document.getElementById('ret-update-date')?.value||'').trim());
   const el = document.getElementById('ret-update-orders-content'); if(!el) return;
   const rows = S.orders.map((o,i)=>({...o,idx:i}))
     .filter(o=>o.status==='Update' && (!df||o.date===df));
@@ -5099,7 +5105,7 @@ function renderReturnLog() {
 
   if(!log.length) {
     el.innerHTML = `<div class="action-row no-print" style="margin-bottom:10px;">
-      <input type="date" class="form-control" id="ret-log-date" style="width:160px;" value="${dateFilter}" oninput="renderReturnLog()" placeholder="Filter by date">
+      <input type="text" class="form-control" id="ret-log-date" style="width:160px;" value="${dateFilter}" oninput="renderReturnLog()" placeholder="MM/DD/YYYY" maxlength="10">
       <button class="btn btn-outline btn-sm" onclick="document.getElementById('ret-log-date').value='';renderReturnLog()">Clear</button>
     </div>
     <div class="card"><p style="color:var(--muted);padding:20px;text-align:center;">Walang return log entries${dateFilter?' para sa petsang ito':''}.</p></div>`;
@@ -5108,7 +5114,7 @@ function renderReturnLog() {
   const isCEO = currentRole === 'owner';
   el.innerHTML = `
     <div class="action-row no-print" style="margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-      <input type="date" class="form-control" id="ret-log-date" style="width:160px;" value="${dateFilter}" oninput="renderReturnLog()" title="Filter by date">
+      <input type="text" class="form-control" id="ret-log-date" style="width:160px;" value="${dateFilter}" oninput="renderReturnLog()" title="Filter by date" placeholder="MM/DD/YYYY" maxlength="10">
       <button class="btn btn-outline btn-sm" onclick="document.getElementById('ret-log-date').value='';renderReturnLog()">Show All</button>
       ${isCEO?'<span style="font-size:11px;color:var(--muted);">👑 CEO mode: delete enabled</span>':'<span style="font-size:11px;color:var(--orange);">🔒 Admin: hindi pwedeng mag-delete ng return log</span>'}
     </div>
@@ -5411,8 +5417,8 @@ function addUnassignedRiderSlot() {
 
 // ============ DAILY SALES RECORD ============
 function renderDailySales(){
-  if(!document.getElementById('ds-date').value)document.getElementById('ds-date').value=today();
-  const d=document.getElementById('ds-date').value;
+  if(!mdy2ymd((document.getElementById('ds-date')?.value||'').trim()))document.getElementById('ds-date').value=today();
+  const d=mdy2ymd((document.getElementById('ds-date')?.value||'').trim());
   const allO=S.orders;
   // COD: counted on dateDelivered (actual delivery date), falling back to encode date o.date
   // This ensures orders encoded on one day but delivered on another are counted correctly
@@ -5476,7 +5482,7 @@ function renderDailySales(){
     </div>`;
 }
 function printDailySales(){
-  const d=document.getElementById('ds-date').value||today();
+  const d=mdy2ymd((document.getElementById('ds-date')?.value||'').trim())||today();
   const dayO=S.orders.filter(o=>o&&o.date===d),del=dayO.filter(o=>o.status==='Delivered');
   const remit=del.reduce((s,o)=>s+(o.grandTotal||0),0);
   const adminDel={};
@@ -6043,9 +6049,11 @@ function renderInv(tab){
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${logs.length} of ${allLogs.length} record${allLogs.length!==1?'s':''}</div>
     <div class="table-wrap"><table><thead><tr><th>Date</th><th>Product</th><th>Code</th><th>Type</th><th>Qty</th><th>Before</th><th>After</th><th>Notes</th><th>Del</th></tr></thead>
     <tbody>${logs.length?logs.map(l=>{
-      const gi=S.stockLog.indexOf(l);
+      // Use _id-based lookup (safe against spread copies) — fall back to indexOf
+      const gi = l._id ? S.stockLog.findIndex(s=>s._id===l._id) : S.stockLog.indexOf(l);
       const prod=S.inventory.find(it=>it.code===l.productCode);
-      const unit = prod?.itemType==='fixprice' ? ' pcs' : 'g';
+      // Use stored unit from log entry — most accurate. Fall back to product type.
+      const unit = l.unit ? (' '+l.unit) : (prod?.itemType==='fixprice' ? ' pcs' : 'g');
       const typeMap={'in':'↑ IN','out':'↓ OUT','adj':'⚙ Adj','return':'↩ Return'};
       const clsMap={'in':'stock-in','out':'stock-out','adj':'stock-adj','return':'stock-in'};
       return `<tr><td>${l.date}</td><td style="font-weight:500;">${prod?prod.desc:l.productCode}</td>
@@ -7752,7 +7760,7 @@ async function save(){
   // Stamp all records with _id (safe no-op if already stamped)
   if(typeof _stamp !== 'undefined'){
     ['orders','payroll','expenses','remitLog','cashbondLog','benefitsLog',
-     'returnLog','stockLog','deletedOrders','mergeLog'].forEach(k=>{
+     'returnLog','stockLog','deletedOrders','mergeLog','inventory'].forEach(k=>{
       if(Array.isArray(S[k])) S[k].forEach(_stamp);
     });
   }
@@ -8359,15 +8367,34 @@ function riderItemStatus(orderIdx, itemIdx, newStatus) {
   if(item) {
     const itemVal = item.total || 0;
     if(normalizedStatus === 'Cancelled' && prevStatus !== 'Cancelled') {
-      // Deduct from order total BUT do NOT restore inventory yet
-      // Inventory is only restored when Remitter records it in Return Log
+      // Deduct from order total
       order.itemsTotal = Math.max(0, (order.itemsTotal||0) - itemVal);
       order.grandTotal = Math.max(0, (order.grandTotal||0) - itemVal);
-      toast(`❌ Item fully cancelled — ${p(itemVal)} deducted. Stock will be restored only upon Return Log.`);
+      // Restore this item's inventory immediately — it's physically being returned
+      // Only restore if order was verified (inventory was deducted at that time)
+      if(_invDeducted(order)) {
+        const ref = (order._id||String(orderIdx)) + '_itemcancel_' + itemIdx + '_' + Date.now();
+        _restoreOrderItems([item], today(),
+          `Rider item cancel – ${order.name} #${itemIdx+1}`, ref);
+        // Mark this specific item as already restored — prevents double-restore
+        // when the whole order is later cancelled by checker/COD delivery cancel
+        if(!order.itemInventoryRestored) order.itemInventoryRestored = {};
+        order.itemInventoryRestored[itemIdx] = true;
+        _refreshInvAllTabs();
+      }
+      toast(`❌ Item cancelled — ${p(itemVal)} deducted. Inventory restored.`);
     } else if(prevStatus === 'Cancelled' && normalizedStatus !== 'Cancelled') {
-      // Un-cancel — add back to order total but do NOT touch inventory
+      // Un-cancel — add back to order total AND re-deduct inventory
       order.itemsTotal = (order.itemsTotal||0) + itemVal;
       order.grandTotal = (order.grandTotal||0) + itemVal;
+      if(_invDeducted(order)) {
+        const ref = (order._id||String(orderIdx)) + '_itemuncancel_' + itemIdx + '_' + Date.now();
+        _deductOrderItems([item], today(),
+          `Rider item un-cancel – ${order.name} #${itemIdx+1}`, ref);
+        // Clear the per-item restored flag — item is back in the order
+        if(order.itemInventoryRestored) delete order.itemInventoryRestored[itemIdx];
+        _refreshInvAllTabs();
+      }
       toast(`✅ Item restored — ${p(itemVal)} added back`);
     } else {
       toast('Item status → ' + normalizedStatus);
@@ -8409,10 +8436,48 @@ function riderItemPartialCancel(orderIdx, itemIdx, cancelQtyStr, totalQty, isGra
   if(clampedQty === totalQty) {
     if(!order.itemStatuses) order.itemStatuses = {};
     order.itemStatuses[itemIdx] = 'Cancelled';
-    toast(`❌ All ${totalQty} cancelled — ${p(newDeducted)} deducted. Stock via Return Log lang.`);
+    // Full cancel via partial → restore this item's inventory (same as riderItemStatus cancel)
+    if(_invDeducted(order)) {
+      const ref = (order._id||String(orderIdx)) + '_partialFull_' + itemIdx + '_' + Date.now();
+      _restoreOrderItems([item], today(),
+        `Rider full-cancel (partial) – ${order.name} #${itemIdx+1}`, ref);
+      // Mark item as individually restored — prevents double-restore on order cancel
+      if(!order.itemInventoryRestored) order.itemInventoryRestored = {};
+      order.itemInventoryRestored[itemIdx] = true;
+      _refreshInvAllTabs();
+    }
+    toast(`❌ All ${totalQty} cancelled — ${p(newDeducted)} deducted. Inventory restored.`);
   } else if(clampedQty > 0) {
-    toast(`⚠️ ${clampedQty}${isGrams?'g':' pc'} cancelled — ${p(newDeducted)} deducted`);
+    // Partial cancel — also restore proportional inventory
+    if(_invDeducted(order)) {
+      // Build a synthetic item with the cancelled portion only
+      const cancelledItem = {...item};
+      if(isGrams) {
+        cancelledItem.grams = clampedQty - prevCancelQty; // only the NEW cancelled portion
+      } else {
+        cancelledItem.qty = clampedQty - prevCancelQty;
+      }
+      if((isGrams ? cancelledItem.grams : cancelledItem.qty) > 0) {
+        const ref = (order._id||String(orderIdx)) + '_partialCancel_' + itemIdx + '_' + Date.now();
+        _restoreOrderItems([cancelledItem], today(),
+          `Rider partial-cancel – ${order.name} #${itemIdx+1} (${clampedQty}${isGrams?'g':'pcs'})`, ref);
+        _refreshInvAllTabs();
+      }
+    }
+    toast(`⚠️ ${clampedQty}${isGrams?'g':' pc'} cancelled — ${p(newDeducted)} deducted. Inventory adjusted.`);
   } else {
+    // Cancel reversed (qty back to 0) → re-deduct the previously cancelled portion
+    if(_invDeducted(order) && prevCancelQty > 0) {
+      const redeductItem = {...item};
+      if(isGrams) { redeductItem.grams = prevCancelQty; }
+      else { redeductItem.qty = prevCancelQty; }
+      const ref = (order._id||String(orderIdx)) + '_partialUncancel_' + itemIdx + '_' + Date.now();
+      _deductOrderItems([redeductItem], today(),
+        `Rider partial-cancel reversed – ${order.name} #${itemIdx+1}`, ref);
+      // Clear per-item restore flag since item is back
+      if(order.itemInventoryRestored) delete order.itemInventoryRestored[itemIdx];
+      _refreshInvAllTabs();
+    }
     toast(`✅ Cancel reversed — full amount restored`);
   }
   save();
@@ -8444,9 +8509,13 @@ function _deductOrderItems(items, orderDate, label, orderRef) {
     if(!item.code) return;
     const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
     if(!inv) return;
-    if(inv.itemType === 'fixprice') {
-      // qty: prefer integer, but support decimal input (round to nearest whole)
-      const qty = Math.max(1, Math.round(parseFloat(item.qty)||1));
+    // Determine type from INVENTORY item type (source of truth for the product)
+    // Fall back to checking item.grams if itemType is ambiguous
+    const isGramsItem = inv.itemType !== 'fixprice';
+    if(!isGramsItem) {
+      // Fixed-price / piece item — use item.qty
+      const qty = Math.round(parseFloat(item.qty)||0);
+      if(qty <= 0) return; // skip items with zero qty
       const before = parseFloat(inv.qty)||0;
       inv.qty = parseFloat((before - qty).toFixed(4));
       S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), productCode:inv.code, productName:inv.desc||inv.name||inv.code,
@@ -8493,8 +8562,12 @@ function _restoreOrderItems(items, orderDate, label, orderRef) {
     if(!item.code) return;
     const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
     if(!inv) return;
-    if(inv.itemType === 'fixprice') {
-      const qty = Math.max(1, Math.round(parseFloat(item.qty)||1));
+    // Determine type from INVENTORY item type (source of truth for the product)
+    const isGramsItem = inv.itemType !== 'fixprice';
+    if(!isGramsItem) {
+      // Fixed-price / piece item — use item.qty
+      const qty = Math.round(parseFloat(item.qty)||0);
+      if(qty <= 0) return; // skip items with zero qty
       const before = parseFloat(inv.qty)||0;
       inv.qty = parseFloat((before + qty).toFixed(4));
       S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), productCode:inv.code, productName:inv.desc||inv.name||inv.code,
@@ -8742,9 +8815,16 @@ async function saveOrder() {
     // ── Inventory adjustment on EDIT ─────────────────────────────
     // Only touch inventory if checker already verified this order.
     // Unverified edits never affected stock — nothing to restore or deduct.
+    // Filter rider-cancelled items on restore (already restored by riderItemStatus).
     const hadDeducted = _invDeducted(orig);
     if(hadDeducted) {
-      _restoreOrderItems(orig.items||[], today(), 'Edit restore – '+name, orig._id||'orig');
+      const editItemsToRestore = (orig.items||[]).filter((_,ii) =>
+        (orig.itemStatuses||{})[ii] !== 'Cancelled' &&
+        !(orig.itemInventoryRestored||{})[ii]
+      );
+      if(editItemsToRestore.length > 0) {
+        _restoreOrderItems(editItemsToRestore, today(), 'Edit restore – '+name, orig._id||'orig');
+      }
       o.inventoryDeducted = _deductOrderItems(items, today(), 'Edit deduct – '+name+' ('+admin+')', (o._id||String(editOrderIdx))+'_edit');
     } else {
       o.inventoryDeducted = false;
@@ -8787,11 +8867,17 @@ async function saveOrder() {
 function delOrder(i){
   _confirmDel(`Delete order ${onum(i)} for "${S.orders[i]?.name}"?`, ()=>{
     const o = S.orders[i];
-    // ── Always restore inventory if it was deducted (new: on save / old: on verify) ──
+    // ── Restore inventory — filter items already restored individually ──
     let restored = false;
     if(o && _invDeducted(o)) {
-      restored = _restoreOrderItems(o.items||[], today(),
-        'Order deleted – '+o.name+' ('+onum(i)+')', o._id||String(i));
+      const itemsToRestore = (o.items||[]).filter((_,ii) =>
+        (o.itemStatuses||{})[ii] !== 'Cancelled' &&
+        !(o.itemInventoryRestored||{})[ii]
+      );
+      if(itemsToRestore.length > 0) {
+        restored = _restoreOrderItems(itemsToRestore, today(),
+          'Order deleted – '+o.name+' ('+onum(i)+')', o._id||String(i));
+      }
     }
     S.orders.splice(i,1); save();
     toast(restored ? '🗑️ Order deleted. Inventory restored.' : '🗑️ Order deleted.');
@@ -8997,7 +9083,7 @@ function renderTracking() {
   const colors = {'Preparing':'orange','Ready':'blue','Out for Delivery':'gold','Delivered':'green','Cancelled':'red','Update':'purple'};
   const q = (document.getElementById('track-search')?.value||'').toLowerCase();
   const filt = document.getElementById('track-filter')?.value||'';
-  const df = document.getElementById('track-date')?.value||'';
+  const df = mdy2ymd((document.getElementById('track-date')?.value||'').trim());
 
   // Terminal statuses that disappear from sorter view once remitted
   const TERMINAL = new Set(['Delivered','Cancelled','Update','RTO']);
@@ -9653,7 +9739,7 @@ function openCashbondFromRemit() {
 function renderRemitPage() {
   try {
   const el = document.getElementById('remit-page-content'); if(!el) return;
-  const df = document.getElementById('remit-page-date')?.value||'';
+  const df = mdy2ymd((document.getElementById('remit-page-date')?.value||'').trim());
   // Build filteredLog WITH real S.remitLog indices (don't use indexOf - fails after Firebase round-trip)
   const _remitAll = S.remitLog||[];
   let filteredLog = _remitAll.map((e,ri)=>({...e, _realIdx:ri}));
@@ -9987,7 +10073,7 @@ function saveCashbond() {
 
 function renderCashbondPage() {
   const el = document.getElementById('cashbond-page-content'); if(!el) return;
-  const df = document.getElementById('cashbond-page-date')?.value||'';
+  const df = mdy2ymd((document.getElementById('cashbond-page-date')?.value||'').trim());
   let log = S.cashbondLog||[];
   if(df) log = log.filter(e=>e.date===df);
   if(!log.length) {
@@ -10395,18 +10481,18 @@ async function initApp(){
 
   // Initialize UI dates
   const setVal = (id,v) => { const el=document.getElementById(id); if(el) el.value=v; };
-  setVal('ds-date', today());
+  setVal('ds-date', todayMDY());
   setVal('pnl-from', today());
   setVal('pnl-to',   today());
-  setVal('daily-date', today());
+  setVal('daily-date', todayMDY());
   setVal('checker-date', '');
-  setVal('track-date', today());
-  setVal('sort-date', today());
-  setVal('ret-items-date', today());
-  setVal('ret-update-date', today());
-  setVal('remit-page-date', today());
+  setVal('track-date', todayMDY());
+  setVal('sort-date', todayMDY());
+  setVal('ret-items-date', todayMDY());
+  setVal('ret-update-date', todayMDY());
+  setVal('remit-page-date', todayMDY());
   setVal('my-order-date', '');
-  setVal('order-date-filter', today());
+  setVal('order-date-filter', todayMDY());
   setVal('rider-date-filter', todayMDY());
   setVal('enc-date', '');
   setVal('pay-date', today());
@@ -10623,31 +10709,27 @@ function startAutoRefresh(){
         );
 
         // Merge: for each item, keep the LOWER qty/grams between local and Firebase
-        // (lower = more recently deducted; higher = stale Firebase before write confirmed)
-        // Exception: if local item was just added (not in Firebase yet), keep it
         const merged = [];
-        const localByCode = new Map((S.inventory||[]).map(it=>[( it.code||'').toUpperCase(), it]));
+        const localByCode = new Map((S.inventory||[]).map(it=>[(it.code||'').toUpperCase(), it]));
 
         remoteByCode.forEach((fbItem, code) => {
           const localItem = localByCode.get(code);
           if(!localItem) {
-            // Only in Firebase — take as-is
             merged.push({...fbItem});
             return;
           }
-          // Both local and Firebase have it — merge qty/grams carefully
-          const merged_item = {...fbItem}; // start with Firebase version (has latest metadata)
+          const merged_item = {...fbItem};
           if(fbItem.itemType === 'fixprice') {
-            const fbQty = parseFloat(fbItem.qty)||0;
+            const fbQty    = parseFloat(fbItem.qty)||0;
             const localQty = parseFloat(localItem.qty)||0;
-            // Keep lower value — protects against SAR restoring stale higher value
-            // Only take Firebase value if it's genuinely lower (another device also deducted)
             merged_item.qty = Math.min(fbQty, localQty);
           } else {
-            const fbGrams = parseFloat(fbItem.grams)||0;
+            const fbGrams    = parseFloat(fbItem.grams)||0;
             const localGrams = parseFloat(localItem.grams)||0;
             merged_item.grams = Math.min(fbGrams, localGrams);
           }
+          // Always keep local _id if present (it was stamped by _stamp)
+          if(localItem._id && !merged_item._id) merged_item._id = localItem._id;
           merged.push(merged_item);
         });
 
@@ -10728,7 +10810,7 @@ function setOmTab(tab) {
 
 function renderOrderMgmt() {
   const q      = (document.getElementById('om-search')?.value||'').toLowerCase();
-  const df     = document.getElementById('om-date')?.value||'';
+  const df     = mdy2ymd((document.getElementById('om-date')?.value||'').trim());
   const method = omTab==='lbc'?'LBC':omTab==='ems'?'EMS':'FedEx';
   const icon   = method==='LBC'?'📦':'✈️';
 
@@ -11110,7 +11192,7 @@ function renderLbcDelivery() {
   const activeColor  = TAB_COLOR[lbcDeliveryTab]  || 'var(--muted)';
 
   const q  = (document.getElementById('lbcd-search')?.value||'').toLowerCase();
-  const df = document.getElementById('lbcd-date')?.value||'';
+  const df = mdy2ymd((document.getElementById('lbcd-date')?.value||'').trim());
 
   // LBC Delivery shows LBC parcels only — EMS/FedEx have their own pages
   const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
@@ -11267,11 +11349,31 @@ function _confirmRTO(orderIdx, renderFn) {
   const reason = inp?.value?.trim();
   if(!reason) { toast('⚠️ RTO reason is required.'); inp?.focus(); return; }
   document.getElementById('_rto-overlay')?.remove();
+  const o = S.orders[orderIdx];
+  if(!o) return;
   S.orders[orderIdx].rtoReason = reason;
   S.orders[orderIdx].lbcStatus = 'RTO';
-  S.orders[orderIdx].status = 'RTO'; // RTO is separate from Cancelled — stays visible in delivery tabs
+  S.orders[orderIdx].status = 'RTO';
+
+  // ── Restore inventory — item physically returning to sender ──
+  // Verified orders had inventory deducted; RTO means the item is back in stock.
+  let rtoMsg = '↩️ Status → RTO';
+  if(_invDeducted(o) && !o.inventoryRestored) {
+    const rtoRef = (o._id||String(orderIdx)) + '_rto_' + Date.now();
+    const restored = _restoreOrderItems(
+      o.items||[], today(),
+      `RTO – ${o.name} (${onum(orderIdx)}) — ${reason}`, rtoRef
+    );
+    if(restored) {
+      S.orders[orderIdx].inventoryDeducted = false;
+      S.orders[orderIdx].inventoryRestored = true;
+      rtoMsg = '↩️ Status → RTO. ✅ Inventory restored.';
+    }
+  }
+
   save();
-  toast('↩️ Status → RTO');
+  toast(rtoMsg);
+  _refreshInvAllTabs();
   if(renderFn==='lbc') renderLbcDelivery();
   else if(renderFn==='ems') renderEmsDelivery();
   else if(renderFn==='ordermgmt') renderOrderMgmt();
@@ -11401,7 +11503,7 @@ function renderCodDelivPage() {
 
   const tab = _codDelivTab;
   const q   = (document.getElementById('codd-search')?.value||'').toLowerCase();
-  const df  = document.getElementById('codd-date')?.value||'';
+  const df  = mdy2ymd((document.getElementById('codd-date')?.value||'').trim());
 
   // Only COD orders
   const allCOD = (S.orders||[]).filter(o=>(o.paymentMethod||'COD')==='COD');
@@ -11589,10 +11691,13 @@ function codDelivCancelOrder(orderIdx) {
     }
 
     // ── Auto-restore inventory ───────────────────────────────────────────────
+    // Exclude: (a) rider-cancelled items (already restored by riderItemStatus)
+    //          (b) items with itemInventoryRestored[ii]=true (individually restored)
     var restored = false;
     var itemsToRestore = (freshOrder.items||[]).filter(function(it, ii) {
-      var itemSt = (freshOrder.itemStatuses||{})[ii];
-      return itemSt !== 'Cancelled';
+      if((freshOrder.itemStatuses||{})[ii] === 'Cancelled') return false;
+      if((freshOrder.itemInventoryRestored||{})[ii]) return false;
+      return true;
     });
     if(itemsToRestore.length > 0) {
       restored = _restoreOrderItems(
@@ -11688,7 +11793,7 @@ function renderEmsDelivery() {
   const activeColor  = TAB_COLOR[emsDeliveryTab]  || 'var(--muted)';
 
   const q  = (document.getElementById('emsd-search')?.value||'').toLowerCase();
-  const df = document.getElementById('emsd-date')?.value||'';
+  const df = mdy2ymd((document.getElementById('emsd-date')?.value||'').trim());
 
   // EMS orders only with matching lbcStatus
   const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
@@ -11892,14 +11997,21 @@ function confirmCheckerCancel() {
     checkerStatus: o.checkerStatus||'',
     riderRemarks: o.riderRemarks||''
   });
-  // ── Auto-restore inventory — skip items already individually cancelled by rider ──
+  // ── Auto-restore inventory ──────────────────────────────────────
+  // Filter out: (a) rider-cancelled items (itemStatuses=Cancelled, already restored by riderItemStatus)
+  //             (b) items with itemInventoryRestored=true (individually restored already)
   let restored = false;
-  const itemsToRestore = (o.items||[]).filter(function(it, ii) {
-    return (o.itemStatuses||{})[ii] !== 'Cancelled';
-  });
-  if(itemsToRestore.length > 0) {
-    restored = _restoreOrderItems(itemsToRestore, today(),
-      `Checker cancelled ${onum(orderIdx)} – ${o.name}`, o._id||String(orderIdx));
+  if(_invDeducted(o)) {
+    const itemsToRestore = (o.items||[]).filter((_,ii) =>
+      (o.itemStatuses||{})[ii] !== 'Cancelled' &&
+      !(o.itemInventoryRestored||{})[ii]
+    );
+    if(itemsToRestore.length > 0) {
+      restored = _restoreOrderItems(
+        itemsToRestore, today(),
+        `Checker cancelled ${onum(orderIdx)} – ${o.name}`, o._id||String(orderIdx)
+      );
+    }
   }
 
   // Save cancel reason ON the order snapshot in remitLog (for remitter view)
@@ -11928,7 +12040,7 @@ function confirmCheckerCancel() {
 function renderDeletedOrders() {
   const q  = (document.getElementById('del-search')?.value||'').toLowerCase();
   const mf = document.getElementById('del-method')?.value||'';
-  const df = document.getElementById('del-date')?.value||'';
+  const df = mdy2ymd((document.getElementById('del-date')?.value||'').trim());
   if(!S.deletedOrders) S.deletedOrders = [];
 
   const list = S.deletedOrders.map((d,i)=>({d,i})).filter(({d}) => {
@@ -12011,7 +12123,7 @@ function renderFedexDelivery() {
   const activeColor  = TAB_COLOR[fedexDeliveryTab]  || 'var(--muted)';
 
   const q  = (document.getElementById('fedexd-search')?.value||'').toLowerCase();
-  const df = document.getElementById('fedexd-date')?.value||'';
+  const df = mdy2ymd((document.getElementById('fedexd-date')?.value||'').trim());
 
   const list = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
     if(o.paymentMethod !== 'FedEx') return false;
@@ -12135,7 +12247,7 @@ function renderCheckerDeleted() {
   if(!S.deletedOrders) S.deletedOrders = [];
   const q  = (document.getElementById('checker-del-search')?.value||'').toLowerCase();
   const mf = document.getElementById('checker-del-method')?.value||'';
-  const df = document.getElementById('checker-del-date')?.value||'';
+  const df = mdy2ymd((document.getElementById('checker-del-date')?.value||'').trim());
 
   // Merge S.deletedOrders (saved snapshots) + Cancelled orders from S.orders (live)
   // DEDUP: an order cancelled via confirmCheckerCancel appears in BOTH lists.
@@ -12714,6 +12826,7 @@ document.addEventListener('visibilitychange', async ()=>{
         const mi = {...fbIt};
         if(fbIt.itemType==='fixprice') mi.qty = Math.min(parseFloat(fbIt.qty)||0, parseFloat(lcIt.qty)||0);
         else mi.grams = Math.min(parseFloat(fbIt.grams)||0, parseFloat(lcIt.grams)||0);
+        if(lcIt._id && !mi._id) mi._id = lcIt._id;
         _mergedInv.push(mi);
       });
       (S.inventory||[]).forEach(it => {
