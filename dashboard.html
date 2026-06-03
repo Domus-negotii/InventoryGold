@@ -7811,13 +7811,22 @@ async function save(){
   if(window._fbReady) {
     window._writeActive = true;          // block SAR during in-flight write
     _lastKnownWriteTs = Date.now() - 1; // prevent SAR from skipping own update
-    try     { await _directWriteFirebase(); }
+    try     {
+      const writeOk = await _directWriteFirebase();
+      // If write succeeded AND inventory was changed, schedule a verification render
+      // after Firebase propagation delay (~3s) to ensure Products page is in sync
+      if(writeOk && window._invChangedThisSave) {
+        setTimeout(() => { try { _refreshInvAllTabs(); } catch(e) {} }, 3000);
+      }
+    }
     finally {
       window._writeActive = false;
       // After write completes, refresh inventory display if it was involved
-      // (deduct/restore mutate S.inventory — ensure UI shows final persisted state)
       if(window._invChangedThisSave) {
         window._invChangedThisSave = false;
+        // Extend the grace window — Firebase write just completed successfully,
+        // but SAR may still have a stale snapshot in-flight. Keep protecting local state.
+        window._lastInvWrite = Date.now();
         try { _refreshInvAllTabs(); } catch(e) {}
       }
     }
@@ -10678,7 +10687,7 @@ function startAutoRefresh(){
       // The write-timestamp guard is simpler and correct: if we just wrote inventory,
       // trust local state — Firebase will catch up on the next SAR cycle after write confirms.
       const _invAge = Date.now() - (window._lastInvWrite || 0);
-      const _invGraceSecs = 30000; // 30 seconds
+      const _invGraceSecs = 300000; // 5 minutes — generous window to ensure Firebase write is confirmed
       if(Array.isArray(fbData.inventory) && fbData.inventory.length > 0 && !window._writeActive && _invAge > _invGraceSecs){
         const fbDeleted = Array.isArray(fbData._deletedInventoryCodes) ? fbData._deletedInventoryCodes : [];
         const localDeleted = Array.isArray(S._deletedInventoryCodes) ? S._deletedInventoryCodes : [];
@@ -12777,7 +12786,7 @@ document.addEventListener('visibilitychange', async ()=>{
     }
     // Inventory: skip replace during 30s grace after any local inventory change
     const _visInvAge = Date.now() - (window._lastInvWrite || 0);
-    if(Array.isArray(fbData.inventory) && fbData.inventory.length > 0 && _visInvAge > 30000) {
+    if(Array.isArray(fbData.inventory) && fbData.inventory.length > 0 && _visInvAge > 300000) {
       const _fbDel = Array.isArray(fbData._deletedInventoryCodes) ? fbData._deletedInventoryCodes : [];
       const _lcDel = Array.isArray(S._deletedInventoryCodes) ? S._deletedInventoryCodes : [];
       const _delCodes = new Set([..._fbDel,..._lcDel].map(c=>(c||'').toUpperCase()));
