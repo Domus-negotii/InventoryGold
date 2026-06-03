@@ -5917,6 +5917,62 @@ function _refreshInvAllTabs() {
   try { renderInv(invTab); } catch(e) {}
 }
 
+// ── Inventory Reconciliation ─────────────────────────────────────────────────
+// After SAR loads data from Firebase, the inventory qty/grams in S.inventory
+// may be stale. The stockLog stores the exact `after` value at each transaction.
+// This function corrects S.inventory using the LATEST stockLog entry per product.
+// This ensures Products page always matches Stock Ledger.
+function _reconcileInventory() {
+  if(!Array.isArray(S.stockLog) || !S.stockLog.length) return;
+  if(!Array.isArray(S.inventory) || !S.inventory.length) return;
+
+  // Build a map of the LATEST stockLog entry per product code
+  // Sort by createdAt descending so first entry per code is the most recent
+  const sorted = [...S.stockLog]
+    .filter(l => l && l.productCode && l.after !== undefined && l.after !== null)
+    .sort((a,b) => {
+      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return tb - ta; // newest first
+    });
+
+  const latestByCode = new Map();
+  sorted.forEach(l => {
+    const code = (l.productCode||'').toUpperCase();
+    if(!latestByCode.has(code)) latestByCode.set(code, l);
+  });
+
+  // Update S.inventory using the latest stockLog after value
+  let changed = false;
+  S.inventory.forEach(it => {
+    if(!it || !it.code) return;
+    const code = (it.code||'').toUpperCase();
+    const latest = latestByCode.get(code);
+    if(!latest) return;
+
+    const afterVal = parseFloat(latest.after)||0;
+    if(it.itemType === 'fixprice') {
+      const current = parseFloat(it.qty)||0;
+      if(Math.abs(current - afterVal) > 0.001) {
+        it.qty = parseFloat(afterVal.toFixed(4));
+        changed = true;
+      }
+    } else {
+      const current = parseFloat(it.grams)||0;
+      if(Math.abs(current - afterVal) > 0.001) {
+        it.grams = parseFloat(afterVal.toFixed(4));
+        changed = true;
+      }
+    }
+  });
+
+  // If values were corrected, refresh the inventory UI
+  if(changed) {
+    window._lastInvWrite = Date.now(); // extend grace to prevent SAR from overwriting correction
+    try { _refreshInvAllTabs(); } catch(e) {}
+  }
+}
+
 function renderInv(tab){
   const el=document.getElementById('inventory-content');
   if(tab==='list'){
@@ -10450,6 +10506,8 @@ async function initApp(){
 
         if(syncEl){ syncEl.style.color='var(--green)'; syncEl.textContent='☁ Online'; }
         toast('☁ Loaded from Firebase!');
+        // Reconcile inventory against stockLog so Products page matches Stock Ledger
+        try { _reconcileInventory(); } catch(e) {}
       } else {
         if(syncEl){ syncEl.style.color='var(--green)'; syncEl.textContent='☁ Online (No Data)'; }
       }
@@ -10739,6 +10797,9 @@ function startAutoRefresh(){
       if(window._sarRenderPending) return;
       window._sarRenderPending = true;
       setTimeout(()=>{ window._sarRenderPending = false; }, 200);
+
+      // Reconcile inventory against stockLog to ensure Products page matches Stock Ledger
+      try { _reconcileInventory(); } catch(e) {}
 
       // Re-render active page
       const renderMap = {
