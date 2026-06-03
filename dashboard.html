@@ -5035,6 +5035,7 @@ function saveReturnLog() {
   const unit = document.getElementById('ret-unit').value;
 
   if(restoreInv) {
+    window._lastInvWrite = Date.now(); // start grace period
     // Try to find the item from the order + item index
     let invFound = false;
     if(orderNum && parsedItemIdx !== null) {
@@ -6451,6 +6452,7 @@ function saveStock(){
   if(btn && btn.dataset.saving === '1') return;
   if(btn) btn.dataset.saving = '1';
   setTimeout(() => { if(btn) btn.dataset.saving = ''; }, 1500);
+  window._lastInvWrite = Date.now(); // start 30s grace period
 
   const idx=document.getElementById('stock-product').value;
   const searchVal=document.getElementById('stock-product-search').value.trim();
@@ -8488,6 +8490,7 @@ function _deductOrderItems(items, orderDate, label, orderRef) {
     setTimeout(()=>{ if(window._deductedRefs) window._deductedRefs.delete(String(orderRef)); }, 30000);
   }
   window._invChangedThisSave = true; // signal save() to re-render inventory after write
+  window._lastInvWrite = Date.now(); // start 30s grace period against SAR replacing local state
   // Deducts qty/grams from Products table with decimal-safe math
   let deducted = false;
   const logDate = today();
@@ -8541,6 +8544,7 @@ function _restoreOrderItems(items, orderDate, label, orderRef) {
     setTimeout(()=>{ if(window._restoredRefs) window._restoredRefs.delete(String(orderRef)); }, 30000);
   }
   window._invChangedThisSave = true; // signal save() to re-render inventory after write
+  window._lastInvWrite = Date.now(); // start 30s grace period against SAR replacing local state
   // Restores qty/grams to Products table with decimal-safe math
   let restored = false;
   const logDate = today();
@@ -10669,12 +10673,13 @@ function startAutoRefresh(){
         const localOnly = localArr.filter(e => e && e._id && !fbById.has(e._id));
         S[key] = [...fbArr, ...localOnly];
       });
-      // Inventory: code-based merge that preserves recent LOCAL deductions/additions
-      // Problem: _deductOrderItems mutates S.inventory → save() starts → SAR fires →
-      //          Firebase still has old qty → blind replace restores old value → deduction lost.
-      // Fix: never replace local qty/grams with a HIGHER Firebase value when a write is in-flight.
-      //      Also: skip inventory update entirely if _writeActive (save in progress).
-      if(Array.isArray(fbData.inventory) && fbData.inventory.length > 0 && !window._writeActive){
+      // Inventory: skip Firebase replace for 30 seconds after any local inventory change.
+      // Min-qty merge was causing restores to be undone (Math.min chose lower Firebase value).
+      // The write-timestamp guard is simpler and correct: if we just wrote inventory,
+      // trust local state — Firebase will catch up on the next SAR cycle after write confirms.
+      const _invAge = Date.now() - (window._lastInvWrite || 0);
+      const _invGraceSecs = 30000; // 30 seconds
+      if(Array.isArray(fbData.inventory) && fbData.inventory.length > 0 && !window._writeActive && _invAge > _invGraceSecs){
         const fbDeleted = Array.isArray(fbData._deletedInventoryCodes) ? fbData._deletedInventoryCodes : [];
         const localDeleted = Array.isArray(S._deletedInventoryCodes) ? S._deletedInventoryCodes : [];
         const deletedCodes = new Set([...fbDeleted,...localDeleted].map(c=>(c||'').toUpperCase()));
@@ -10685,29 +10690,17 @@ function startAutoRefresh(){
             .map(it=>[it.code.toUpperCase(), it])
         );
 
-        // Merge: for each item, keep the LOWER qty/grams between local and Firebase
+        // Simple merge: Firebase is source of truth once grace period has passed.
+        // Keep locally-added items not yet in Firebase.
         const merged = [];
         const localByCode = new Map((S.inventory||[]).map(it=>[(it.code||'').toUpperCase(), it]));
 
         remoteByCode.forEach((fbItem, code) => {
           const localItem = localByCode.get(code);
-          if(!localItem) {
-            merged.push({...fbItem});
-            return;
-          }
-          const merged_item = {...fbItem};
-          if(fbItem.itemType === 'fixprice') {
-            const fbQty    = parseFloat(fbItem.qty)||0;
-            const localQty = parseFloat(localItem.qty)||0;
-            merged_item.qty = Math.min(fbQty, localQty);
-          } else {
-            const fbGrams    = parseFloat(fbItem.grams)||0;
-            const localGrams = parseFloat(localItem.grams)||0;
-            merged_item.grams = Math.min(fbGrams, localGrams);
-          }
-          // Always keep local _id if present (it was stamped by _stamp)
-          if(localItem._id && !merged_item._id) merged_item._id = localItem._id;
-          merged.push(merged_item);
+          const mergedItem = {...fbItem};
+          // Preserve local _id if Firebase doesn't have one yet
+          if(localItem && localItem._id && !mergedItem._id) mergedItem._id = localItem._id;
+          merged.push(mergedItem);
         });
 
         // Keep locally-added items not yet in Firebase
@@ -12782,8 +12775,9 @@ document.addEventListener('visibilitychange', async ()=>{
     if(Array.isArray(fbData.orders)) {
       S.orders = _mergeOrders(fbData.orders, _localOrdersBackup);
     }
-    // Inventory: same min-qty merge as SAR — never restore a higher stale value
-    if(Array.isArray(fbData.inventory) && fbData.inventory.length > 0) {
+    // Inventory: skip replace during 30s grace after any local inventory change
+    const _visInvAge = Date.now() - (window._lastInvWrite || 0);
+    if(Array.isArray(fbData.inventory) && fbData.inventory.length > 0 && _visInvAge > 30000) {
       const _fbDel = Array.isArray(fbData._deletedInventoryCodes) ? fbData._deletedInventoryCodes : [];
       const _lcDel = Array.isArray(S._deletedInventoryCodes) ? S._deletedInventoryCodes : [];
       const _delCodes = new Set([..._fbDel,..._lcDel].map(c=>(c||'').toUpperCase()));
@@ -12792,11 +12786,8 @@ document.addEventListener('visibilitychange', async ()=>{
       const _mergedInv = [];
       _remoteMap.forEach((fbIt,code) => {
         const lcIt = _localMap.get(code);
-        if(!lcIt){ _mergedInv.push({...fbIt}); return; }
         const mi = {...fbIt};
-        if(fbIt.itemType==='fixprice') mi.qty = Math.min(parseFloat(fbIt.qty)||0, parseFloat(lcIt.qty)||0);
-        else mi.grams = Math.min(parseFloat(fbIt.grams)||0, parseFloat(lcIt.grams)||0);
-        if(lcIt._id && !mi._id) mi._id = lcIt._id;
+        if(lcIt && lcIt._id && !mi._id) mi._id = lcIt._id;
         _mergedInv.push(mi);
       });
       (S.inventory||[]).forEach(it => {
