@@ -3938,7 +3938,7 @@ function renderChecker(){
                 : `<button class="btn btn-outline btn-sm" onclick="togglePrinted(${i})" style="font-size:10px;padding:2px 7px;">🖨️ Print</button>`}
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
-             
+            
               ${currentRole==='owner'?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" title="CEO Edit">✏️ Edit</button>`:''}
               ${o.status==='Cancelled'
                 ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
@@ -4903,7 +4903,8 @@ function renderUpdateOrders() {
 function renderCancelledItems() {
   const tbody = document.getElementById('cancelled-items-tbody');
   if(!tbody) return;
-  const df = document.getElementById('ret-items-date')?.value || '';
+  const dfRaw = document.getElementById('ret-items-date')?.value || '';
+  const df = mdy2ymd(dfRaw); // convert MM/DD/YYYY → YYYY-MM-DD to match o.date format
   const rows = [];
   S.orders.forEach((o,oi)=>{
     if(df && o.date !== df) return;
