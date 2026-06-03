@@ -956,7 +956,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-admin" onclick="selectRole('admin')">
           <div class="role-icon">👤</div>
-          <div class="role-name">CSR</div>
+          <div class="role-name">Admin / Staff</div>
           <div class="role-desc">Orders &amp; Operations</div>
         </div>
       </div>
@@ -974,7 +974,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-sorter" onclick="selectRole('sorter')" style="padding:10px 8px;text-align:center;">
           <div style="font-size:20px;">📦</div>
-          <div class="role-name" style="font-size:11px;">Dispatcher</div>
+          <div class="role-name" style="font-size:11px;">Parcel Sorter</div>
           <div class="role-desc" style="font-size:9px;">Sort &amp; Track</div>
         </div>
         <div class="role-btn" id="role-checker" onclick="selectRole('checker')" style="padding:10px 8px;text-align:center;">
@@ -5051,7 +5051,8 @@ function saveReturnLog() {
             if(retQty <= 0) { toast('⚠️ Qty/Grams must be > 0'); return; }
             if(inv.itemType === 'fixprice') {
               // QTY-based: restore whole number quantity
-              const restoreQty = Math.max(1, Math.round(retQty));
+              const restoreQty = Math.round(retQty);
+              if(restoreQty <= 0) { toast('⚠️ Qty must be > 0'); return; }
               const before = parseFloat(inv.qty)||0;
               inv.qty = parseFloat((before + restoreQty).toFixed(4));
               S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), 
@@ -5915,62 +5916,6 @@ const _invSearch = { q:'', type:'', lowStock:false, siQ:'', soQ:'', ledQ:'' };
 // When user clicks the Ledger tab, switchInvTab('ledger') reads fresh S.stockLog.
 function _refreshInvAllTabs() {
   try { renderInv(invTab); } catch(e) {}
-}
-
-// ── Inventory Reconciliation ─────────────────────────────────────────────────
-// After SAR loads data from Firebase, the inventory qty/grams in S.inventory
-// may be stale. The stockLog stores the exact `after` value at each transaction.
-// This function corrects S.inventory using the LATEST stockLog entry per product.
-// This ensures Products page always matches Stock Ledger.
-function _reconcileInventory() {
-  if(!Array.isArray(S.stockLog) || !S.stockLog.length) return;
-  if(!Array.isArray(S.inventory) || !S.inventory.length) return;
-
-  // Build a map of the LATEST stockLog entry per product code
-  // Sort by createdAt descending so first entry per code is the most recent
-  const sorted = [...S.stockLog]
-    .filter(l => l && l.productCode && l.after !== undefined && l.after !== null)
-    .sort((a,b) => {
-      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return tb - ta; // newest first
-    });
-
-  const latestByCode = new Map();
-  sorted.forEach(l => {
-    const code = (l.productCode||'').toUpperCase();
-    if(!latestByCode.has(code)) latestByCode.set(code, l);
-  });
-
-  // Update S.inventory using the latest stockLog after value
-  let changed = false;
-  S.inventory.forEach(it => {
-    if(!it || !it.code) return;
-    const code = (it.code||'').toUpperCase();
-    const latest = latestByCode.get(code);
-    if(!latest) return;
-
-    const afterVal = parseFloat(latest.after)||0;
-    if(it.itemType === 'fixprice') {
-      const current = parseFloat(it.qty)||0;
-      if(Math.abs(current - afterVal) > 0.001) {
-        it.qty = parseFloat(afterVal.toFixed(4));
-        changed = true;
-      }
-    } else {
-      const current = parseFloat(it.grams)||0;
-      if(Math.abs(current - afterVal) > 0.001) {
-        it.grams = parseFloat(afterVal.toFixed(4));
-        changed = true;
-      }
-    }
-  });
-
-  // If values were corrected, refresh the inventory UI
-  if(changed) {
-    window._lastInvWrite = Date.now(); // extend grace to prevent SAR from overwriting correction
-    try { _refreshInvAllTabs(); } catch(e) {}
-  }
 }
 
 function renderInv(tab){
@@ -8577,8 +8522,9 @@ function _deductOrderItems(items, orderDate, label, orderRef) {
         date:logDate, notes:'Stock Out: '+(inv.desc||inv.code)+' x'+qty+' – '+label, before, after:inv.qty });
       deducted = true;
     } else {
-      // Grams-type item: prefer item.grams, fall back to item.qty (manual entry)
-      const grams = parseFloat(item.grams)||parseFloat(item.qty)||0;
+      // Grams-type item — use item.grams ONLY. Never fall back to item.qty
+      // (item.qty = number of pieces ordered, NOT the grams amount)
+      const grams = parseFloat(item.grams)||0;
       if(grams <= 0) {
         console.warn('[INV] Grams=0 for', item.code, '— skipping deduction');
         return;
@@ -8630,8 +8576,9 @@ function _restoreOrderItems(items, orderDate, label, orderRef) {
         date:logDate, notes:'Stock Return: '+(inv.desc||inv.name||inv.code)+' x'+qty+' – '+label, before, after:inv.qty });
       restored = true;
     } else {
-      // Grams-type item: prefer item.grams, fall back to item.qty (manual entry)
-      const grams = parseFloat(item.grams)||parseFloat(item.qty)||0;
+      // Grams-type item — use item.grams ONLY. Never fall back to item.qty
+      // (item.qty = number of pieces ordered, NOT the grams amount)
+      const grams = parseFloat(item.grams)||0;
       if(grams <= 0) {
         console.warn('[INV] Grams=0 for', item.code, '— skipping restore');
         return;
@@ -10507,7 +10454,7 @@ async function initApp(){
         if(syncEl){ syncEl.style.color='var(--green)'; syncEl.textContent='☁ Online'; }
         toast('☁ Loaded from Firebase!');
         // Reconcile inventory against stockLog so Products page matches Stock Ledger
-        try { _reconcileInventory(); } catch(e) {}
+  
       } else {
         if(syncEl){ syncEl.style.color='var(--green)'; syncEl.textContent='☁ Online (No Data)'; }
       }
@@ -10799,7 +10746,7 @@ function startAutoRefresh(){
       setTimeout(()=>{ window._sarRenderPending = false; }, 200);
 
       // Reconcile inventory against stockLog to ensure Products page matches Stock Ledger
-      try { _reconcileInventory(); } catch(e) {}
+
 
       // Re-render active page
       const renderMap = {
