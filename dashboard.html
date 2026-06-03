@@ -3938,7 +3938,7 @@ function renderChecker(){
                 : `<button class="btn btn-outline btn-sm" onclick="togglePrinted(${i})" style="font-size:10px;padding:2px 7px;">🖨️ Print</button>`}
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
-          
+             
               ${currentRole==='owner'?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" title="CEO Edit">✏️ Edit</button>`:''}
               ${o.status==='Cancelled'
                 ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
@@ -4628,17 +4628,11 @@ function resolveUpdate(orderIdx, newStatus) {
       status: o.status, lbcStatus: o.lbcStatus||'',
       checkerStatus: o.checkerStatus||'', riderRemarks: o.riderRemarks||''
     });
-    // Auto-restore inventory — exclude items already restored individually
+    // Auto-restore ALL inventory (rider cancels no longer auto-restore)
     let restored = false;
-    if(_invDeducted(o)) {
-      const itemsToRestore = (o.items||[]).filter((_,ii) =>
-        (o.itemStatuses||{})[ii] !== 'Cancelled' &&
-        !(o.itemInventoryRestored||{})[ii]
-      );
-      if(itemsToRestore.length > 0) {
-        restored = _restoreOrderItems(itemsToRestore, today(),
-          `Checker For Update Cancel – ${o.name} (${onum(orderIdx)})`, o._id||'order');
-      }
+    if(_invDeducted(o) && (o.items||[]).length > 0) {
+      restored = _restoreOrderItems(o.items, today(),
+        `Checker For Update Cancel – ${o.name} (${onum(orderIdx)})`, o._id||'order');
       S.orders[orderIdx].inventoryDeducted = false;
       S.orders[orderIdx].checkerStatus = 'Pending';
     }
@@ -8413,35 +8407,15 @@ function riderItemStatus(orderIdx, itemIdx, newStatus) {
   if(item) {
     const itemVal = item.total || 0;
     if(normalizedStatus === 'Cancelled' && prevStatus !== 'Cancelled') {
-      // Deduct from order total
+      // Adjust order total only — inventory stays deducted until Return Log is pressed
       order.itemsTotal = Math.max(0, (order.itemsTotal||0) - itemVal);
       order.grandTotal = Math.max(0, (order.grandTotal||0) - itemVal);
-      // Restore this item's inventory immediately — it's physically being returned
-      // Only restore if order was verified (inventory was deducted at that time)
-      if(_invDeducted(order)) {
-        const ref = (order._id||String(orderIdx)) + '_itemcancel_' + itemIdx + '_' + Date.now();
-        _restoreOrderItems([item], today(),
-          `Rider item cancel – ${order.name} #${itemIdx+1}`, ref);
-        // Mark this specific item as already restored — prevents double-restore
-        // when the whole order is later cancelled by checker/COD delivery cancel
-        if(!order.itemInventoryRestored) order.itemInventoryRestored = {};
-        order.itemInventoryRestored[itemIdx] = true;
-        _refreshInvAllTabs();
-      }
-      toast(`❌ Item cancelled — ${p(itemVal)} deducted. Inventory restored.`);
+      toast(`❌ Item cancelled — ${p(itemVal)} deducted from order total.`);
     } else if(prevStatus === 'Cancelled' && normalizedStatus !== 'Cancelled') {
-      // Un-cancel — add back to order total AND re-deduct inventory
+      // Un-cancel — add back to order total only
       order.itemsTotal = (order.itemsTotal||0) + itemVal;
       order.grandTotal = (order.grandTotal||0) + itemVal;
-      if(_invDeducted(order)) {
-        const ref = (order._id||String(orderIdx)) + '_itemuncancel_' + itemIdx + '_' + Date.now();
-        _deductOrderItems([item], today(),
-          `Rider item un-cancel – ${order.name} #${itemIdx+1}`, ref);
-        // Clear the per-item restored flag — item is back in the order
-        if(order.itemInventoryRestored) delete order.itemInventoryRestored[itemIdx];
-        _refreshInvAllTabs();
-      }
-      toast(`✅ Item restored — ${p(itemVal)} added back`);
+      toast(`✅ Item restored — ${p(itemVal)} added back to order total.`);
     } else {
       toast('Item status → ' + normalizedStatus);
     }
@@ -8482,49 +8456,14 @@ function riderItemPartialCancel(orderIdx, itemIdx, cancelQtyStr, totalQty, isGra
   if(clampedQty === totalQty) {
     if(!order.itemStatuses) order.itemStatuses = {};
     order.itemStatuses[itemIdx] = 'Cancelled';
-    // Full cancel via partial → restore this item's inventory (same as riderItemStatus cancel)
-    if(_invDeducted(order)) {
-      const ref = (order._id||String(orderIdx)) + '_partialFull_' + itemIdx + '_' + Date.now();
-      _restoreOrderItems([item], today(),
-        `Rider full-cancel (partial) – ${order.name} #${itemIdx+1}`, ref);
-      // Mark item as individually restored — prevents double-restore on order cancel
-      if(!order.itemInventoryRestored) order.itemInventoryRestored = {};
-      order.itemInventoryRestored[itemIdx] = true;
-      _refreshInvAllTabs();
-    }
-    toast(`❌ All ${totalQty} cancelled — ${p(newDeducted)} deducted. Inventory restored.`);
+    // Full cancel — adjust order total only. Inventory restored via Return Log.
+    toast(`❌ All ${totalQty} cancelled — ${p(newDeducted)} deducted from order total.`);
   } else if(clampedQty > 0) {
-    // Partial cancel — also restore proportional inventory
-    if(_invDeducted(order)) {
-      // Build a synthetic item with the cancelled portion only
-      const cancelledItem = {...item};
-      if(isGrams) {
-        cancelledItem.grams = clampedQty - prevCancelQty; // only the NEW cancelled portion
-      } else {
-        cancelledItem.qty = clampedQty - prevCancelQty;
-      }
-      if((isGrams ? cancelledItem.grams : cancelledItem.qty) > 0) {
-        const ref = (order._id||String(orderIdx)) + '_partialCancel_' + itemIdx + '_' + Date.now();
-        _restoreOrderItems([cancelledItem], today(),
-          `Rider partial-cancel – ${order.name} #${itemIdx+1} (${clampedQty}${isGrams?'g':'pcs'})`, ref);
-        _refreshInvAllTabs();
-      }
-    }
-    toast(`⚠️ ${clampedQty}${isGrams?'g':' pc'} cancelled — ${p(newDeducted)} deducted. Inventory adjusted.`);
+    // Partial cancel — adjust order total only. Inventory restored via Return Log.
+    toast(`⚠️ ${clampedQty}${isGrams?'g':' pc'} cancelled — ${p(newDeducted)} deducted from order total.`);
   } else {
-    // Cancel reversed (qty back to 0) → re-deduct the previously cancelled portion
-    if(_invDeducted(order) && prevCancelQty > 0) {
-      const redeductItem = {...item};
-      if(isGrams) { redeductItem.grams = prevCancelQty; }
-      else { redeductItem.qty = prevCancelQty; }
-      const ref = (order._id||String(orderIdx)) + '_partialUncancel_' + itemIdx + '_' + Date.now();
-      _deductOrderItems([redeductItem], today(),
-        `Rider partial-cancel reversed – ${order.name} #${itemIdx+1}`, ref);
-      // Clear per-item restore flag since item is back
-      if(order.itemInventoryRestored) delete order.itemInventoryRestored[itemIdx];
-      _refreshInvAllTabs();
-    }
-    toast(`✅ Cancel reversed — full amount restored`);
+    // Cancel reversed (qty back to 0)
+    toast(`✅ Cancel reversed — full amount restored to order total.`);
   }
   save();
   renderRiderParcels();
@@ -8864,12 +8803,9 @@ async function saveOrder() {
     // Filter rider-cancelled items on restore (already restored by riderItemStatus).
     const hadDeducted = _invDeducted(orig);
     if(hadDeducted) {
-      const editItemsToRestore = (orig.items||[]).filter((_,ii) =>
-        (orig.itemStatuses||{})[ii] !== 'Cancelled' &&
-        !(orig.itemInventoryRestored||{})[ii]
-      );
-      if(editItemsToRestore.length > 0) {
-        _restoreOrderItems(editItemsToRestore, today(), 'Edit restore – '+name, orig._id||'orig');
+      // Restore ALL items from original order (rider cancels no longer auto-restore)
+      if((orig.items||[]).length > 0) {
+        _restoreOrderItems(orig.items, today(), 'Edit restore – '+name, orig._id||'orig');
       }
       o.inventoryDeducted = _deductOrderItems(items, today(), 'Edit deduct – '+name+' ('+admin+')', (o._id||String(editOrderIdx))+'_edit');
     } else {
@@ -8913,17 +8849,11 @@ async function saveOrder() {
 function delOrder(i){
   _confirmDel(`Delete order ${onum(i)} for "${S.orders[i]?.name}"?`, ()=>{
     const o = S.orders[i];
-    // ── Restore inventory — filter items already restored individually ──
+    // ── Restore ALL inventory (rider item cancels no longer auto-restore) ──
     let restored = false;
-    if(o && _invDeducted(o)) {
-      const itemsToRestore = (o.items||[]).filter((_,ii) =>
-        (o.itemStatuses||{})[ii] !== 'Cancelled' &&
-        !(o.itemInventoryRestored||{})[ii]
-      );
-      if(itemsToRestore.length > 0) {
-        restored = _restoreOrderItems(itemsToRestore, today(),
-          'Order deleted – '+o.name+' ('+onum(i)+')', o._id||String(i));
-      }
+    if(o && _invDeducted(o) && (o.items||[]).length > 0) {
+      restored = _restoreOrderItems(o.items, today(),
+        'Order deleted – '+o.name+' ('+onum(i)+')', o._id||String(i));
     }
     S.orders.splice(i,1); save();
     toast(restored ? '🗑️ Order deleted. Inventory restored.' : '🗑️ Order deleted.');
@@ -11736,15 +11666,12 @@ function codDelivCancelOrder(orderIdx) {
       return;
     }
 
-    // ── Auto-restore inventory ───────────────────────────────────────────────
-    // Exclude: (a) rider-cancelled items (already restored by riderItemStatus)
-    //          (b) items with itemInventoryRestored[ii]=true (individually restored)
+    // ── Auto-restore ALL inventory ───────────────────────────────────────────────
+    // Rider item cancels no longer auto-restore inventory — Return Log handles that.
+    // So all items remain deducted until this order cancel — restore all.
     var restored = false;
-    var itemsToRestore = (freshOrder.items||[]).filter(function(it, ii) {
-      if((freshOrder.itemStatuses||{})[ii] === 'Cancelled') return false;
-      if((freshOrder.itemInventoryRestored||{})[ii]) return false;
-      return true;
-    });
+    if(itemsToRestore && itemsToRestore.length > 0) { /* keep below */ }
+    var itemsToRestore = (freshOrder.items||[]);
     if(itemsToRestore.length > 0) {
       restored = _restoreOrderItems(
         itemsToRestore, today(),
@@ -12043,18 +11970,14 @@ function confirmCheckerCancel() {
     checkerStatus: o.checkerStatus||'',
     riderRemarks: o.riderRemarks||''
   });
-  // ── Auto-restore inventory ──────────────────────────────────────
-  // Filter out: (a) rider-cancelled items (itemStatuses=Cancelled, already restored by riderItemStatus)
-  //             (b) items with itemInventoryRestored=true (individually restored already)
+  // ── Auto-restore ALL inventory for this order ──────────────────
+  // Rider item cancels no longer auto-restore inventory (that's Return Log's job).
+  // So ALL items are still deducted from inventory — restore all of them on order cancel.
   let restored = false;
   if(_invDeducted(o)) {
-    const itemsToRestore = (o.items||[]).filter((_,ii) =>
-      (o.itemStatuses||{})[ii] !== 'Cancelled' &&
-      !(o.itemInventoryRestored||{})[ii]
-    );
-    if(itemsToRestore.length > 0) {
+    if((o.items||[]).length > 0) {
       restored = _restoreOrderItems(
-        itemsToRestore, today(),
+        o.items, today(),
         `Checker cancelled ${onum(orderIdx)} – ${o.name}`, o._id||String(orderIdx)
       );
     }
