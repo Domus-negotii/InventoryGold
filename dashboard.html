@@ -5224,9 +5224,10 @@ function renderSorting() {
 
   // Auto-set today's date if filter is empty and this is the first render
   const dateEl = document.getElementById('sort-date');
-  if(dateEl && !dateEl.value) { dateEl.value = today(); }
+  if(dateEl && !dateEl.value) { dateEl.value = todayMDY(); }
 
-  const df = dateEl?.value || '';
+  const dfRaw = dateEl?.value || '';
+  const df = mdy2ymd(dfRaw); // convert MM/DD/YYYY → YYYY-MM-DD to match o.date format
   const sf = document.getElementById('sort-status-filter')?.value || '';
   const sq = (document.getElementById('sort-search')?.value||'').toLowerCase().trim();
 
@@ -5271,7 +5272,7 @@ function renderSorting() {
       <span>✅ <strong style="color:var(--green);">${assignedParcels}</strong> assigned</span>
       ${unassignedParcels>0?`<span>⚠️ <strong style="color:var(--red);">${unassignedParcels}</strong> unassigned</span>`:''}
       <span style="color:var(--muted);">🏍️ ${Object.keys(byRider).filter(k=>k!=='__unassigned__').length} rider slots</span>
-      ${df?`<span style="color:var(--blue);">📅 ${df}</span>`:'<span style="color:var(--muted);font-size:10.5px;">All dates</span>'}
+      ${dfRaw?`<span style="color:var(--blue);">📅 ${dfRaw}</span>`:'<span style="color:var(--muted);font-size:10.5px;">All dates</span>'}
     </div>`;
 
   const riderOrder = Object.keys(byRider).sort((a,b)=>{
