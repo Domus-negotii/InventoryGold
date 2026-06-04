@@ -813,25 +813,33 @@ function _mergeOrders(fbOrders, localOrders) {
 
   // For orders that ARE in Firebase, preserve critical local flags that
   // Firebase might not have persisted yet (write still in-flight).
-  // RULE: if local has inventoryDeducted=true, NEVER let Firebase overwrite it to false.
-  // Same for inventoryRestored and itemInventoryRestored.
+  // RULE: always trust LOCAL inventoryDeducted/inventoryRestored over Firebase
+  //   because local reflects the most recent user action (verify OR unverify).
+  //   Firebase may still have the OLD value if write hasn't confirmed yet.
   const mergedFbOrders = fbOrders.map(fbO => {
     if (!fbO || !fbO._id) return fbO;
     const localO = localById.get(fbO._id);
     if (!localO) return fbO;
-    // Preserve inventory flags from local if they are "more progressed" than Firebase
     const merged = {...fbO};
-    if (localO.inventoryDeducted === true && !fbO.inventoryDeducted) {
-      merged.inventoryDeducted = true;
+
+    // inventoryDeducted: trust local if it differs from Firebase
+    // This covers BOTH directions:
+    //   verify:   local=true,  Firebase=false (write pending) → keep true
+    //   unverify: local=false, Firebase=true  (write pending) → keep false ← WAS MISSING
+    if (localO.hasOwnProperty('inventoryDeducted') && localO.inventoryDeducted !== fbO.inventoryDeducted) {
+      merged.inventoryDeducted = localO.inventoryDeducted;
     }
-    if (localO.inventoryRestored === true && !fbO.inventoryRestored) {
-      merged.inventoryRestored = true;
+    if (localO.hasOwnProperty('inventoryRestored') && localO.inventoryRestored !== fbO.inventoryRestored) {
+      merged.inventoryRestored = localO.inventoryRestored;
     }
     if (localO.itemInventoryRestored && Object.keys(localO.itemInventoryRestored).length > 0) {
       merged.itemInventoryRestored = {...(fbO.itemInventoryRestored||{}), ...localO.itemInventoryRestored};
     }
     if (localO.itemStatuses && Object.keys(localO.itemStatuses).length > 0) {
       merged.itemStatuses = {...(fbO.itemStatuses||{}), ...localO.itemStatuses};
+    }
+    if (localO.hasOwnProperty('checkerStatus') && localO.checkerStatus !== fbO.checkerStatus) {
+      merged.checkerStatus = localO.checkerStatus;
     }
     return merged;
   });
@@ -4178,6 +4186,10 @@ function assignRiderFromChecker(orderIdx, riderName) {
   renderChecker();
 }
 function verifyOrder(i){
+  // Guard: prevent double-click during in-progress verify/unverify
+  if(window._verifyBusy) { toast('⏳ Please wait...'); return; }
+  window._verifyBusy = true;
+  setTimeout(()=>{ window._verifyBusy = false; }, 3000);
   const o = S.orders[i];
   const isCourier = o.paymentMethod==='LBC' || o.paymentMethod==='EMS' || o.paymentMethod==='FedEx';
   // Guard: LBC/EMS/FedEx orders must be Fully Paid before verification
@@ -4243,6 +4255,10 @@ function verifyOrder(i){
   _refreshInvAllTabs();
 }
 function unverifyOrder(i){
+  // Guard: prevent double-click during in-progress save
+  if(window._verifyBusy) { toast('⏳ Please wait...'); return; }
+  window._verifyBusy = true;
+  setTimeout(()=>{ window._verifyBusy = false; }, 3000);
   const o = S.orders[i];
   // Block unverify if parcel is already picked up (Ready or beyond)
   const lockedStatuses = ['Ready','Out for Delivery','Delivered','Cancelled'];
