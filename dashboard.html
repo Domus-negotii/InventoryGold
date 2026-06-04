@@ -956,7 +956,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-admin" onclick="selectRole('admin')">
           <div class="role-icon">👤</div>
-          <div class="role-name">Admin / Staff</div>
+          <div class="role-name">CSR</div>
           <div class="role-desc">Orders &amp; Operations</div>
         </div>
       </div>
@@ -974,7 +974,7 @@ function _showRulesHint() {
         </div>
         <div class="role-btn" id="role-sorter" onclick="selectRole('sorter')" style="padding:10px 8px;text-align:center;">
           <div style="font-size:20px;">📦</div>
-          <div class="role-name" style="font-size:11px;">Parcel Sorter</div>
+          <div class="role-name" style="font-size:11px;">Dispatcher</div>
           <div class="role-desc" style="font-size:9px;">Sort &amp; Track</div>
         </div>
         <div class="role-btn" id="role-checker" onclick="selectRole('checker')" style="padding:10px 8px;text-align:center;">
@@ -3844,6 +3844,11 @@ function renderChecker(){
     if(o.status === 'Cancelled' || o.status === 'RTO') return false;
     // Exclude delivered orders — they appear in their respective Delivery monitoring pages
     if(o.status === 'Delivered') return false;
+    // UPDATE 1: COD — hide orders where rider has already moved the parcel beyond Ready
+    // (Out for Delivery, Delivered, Update, Cancelled) → they belong in COD Delivery page
+    if(checkerTab === 'COD') {
+      if(o.status === 'Out for Delivery' || o.status === 'Update') return false;
+    }
     // COD: hide orders whose rider+date is officially Remitted — checker's job is done
     if(checkerTab === 'COD' && o.assignedRider && o.date) {
       if(_checkerRemittedKeys.has(`${o.assignedRider}|${o.date}`)) return false;
@@ -4908,8 +4913,10 @@ function renderCancelledItems() {
   const rows = [];
   S.orders.forEach((o,oi)=>{
     if(df && o.date !== df) return;
-    // Skip orders cancelled directly by checker (inventory already restored, no need to log return)
-    if(o.checkerCancelledDirect) return;
+    // UPDATE 2: Skip orders cancelled by checker — inventory already restored automatically.
+    // These should NOT appear in Remitter's Cancelled Items to avoid duplicate records.
+    // Detection: cancelledBy is set (confirmCheckerCancel) OR checkerCancelledDirect is set
+    if(o.cancelledBy || o.checkerCancelledDirect) return;
     const iS=o.itemStatuses||{}, iCQ=o.itemCancelQty||{}, iR=o.itemRemarks||{};
     const wholeOrderCancelled = o.status === 'Cancelled';
 
