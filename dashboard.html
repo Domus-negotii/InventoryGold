@@ -4808,7 +4808,12 @@ function renderReturns() {
   let cancelledItemCount = 0;
 
   S.orders.forEach((o,oi)=>{
-    if(o.checkerCancelledDirect) return; // auto-restored, skip
+    // Apply SAME filter as renderCancelledItems table so count always matches display
+    // Layer 1: checker-cancelled flags
+    if(o.cancelledBy || o.checkerCancelledDirect) return;
+    // Layer 2: in deletedOrders log (covers old records without flags)
+    if(o.status==='Cancelled' && (S.deletedOrders||[]).some(d=>d.orderNum===onum(oi))) return;
+
     const iS = o.itemStatuses||{}, iCQ = o.itemCancelQty||{};
     let orderHasPending = false;
 
