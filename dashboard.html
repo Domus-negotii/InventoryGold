@@ -4931,8 +4931,12 @@ function renderCancelledItems() {
     if(df && o.date !== df) return;
     // UPDATE 2: Skip orders cancelled by checker — inventory already restored automatically.
     // These should NOT appear in Remitter's Cancelled Items to avoid duplicate records.
-    // Detection: cancelledBy is set (confirmCheckerCancel) OR checkerCancelledDirect is set
+    // Detection: cancelledBy (confirmCheckerCancel/codDelivCancelOrder)
+    //            OR checkerCancelledDirect (resolveUpdate from Checker For Update tab)
+    //            OR order is in S.deletedOrders (covers old records without cancelledBy flag)
     if(o.cancelledBy || o.checkerCancelledDirect) return;
+    // Also skip whole-order cancellations that are in deletedOrders log (checker-handled)
+    if(o.status === 'Cancelled' && (S.deletedOrders||[]).some(d => d.orderNum === onum(oi))) return;
     const iS=o.itemStatuses||{}, iCQ=o.itemCancelQty||{}, iR=o.itemRemarks||{};
     const wholeOrderCancelled = o.status === 'Cancelled';
 
