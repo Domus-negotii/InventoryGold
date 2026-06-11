@@ -838,7 +838,13 @@ function _mergeOrders(fbOrders, localOrders) {
     if (localO.itemStatuses && Object.keys(localO.itemStatuses).length > 0) {
       merged.itemStatuses = {...(fbO.itemStatuses||{}), ...localO.itemStatuses};
     }
-    if (localO.hasOwnProperty('checkerStatus') && localO.checkerStatus !== fbO.checkerStatus) {
+    // checkerStatus: trust local ONLY within a 15-second write-grace window after
+    // this device performed a verify/unverify action (write may still be in-flight).
+    // After that window — or on any OTHER device that never acted — Firebase wins,
+    // so the verified status propagates correctly to all devices.
+    const _checkerGrace = 15000; // 15s — covers one full SAR cycle
+    const _inCheckerGrace = window._checkerWriteTs && (Date.now() - window._checkerWriteTs) < _checkerGrace;
+    if (_inCheckerGrace && localO.hasOwnProperty('checkerStatus') && localO.checkerStatus !== fbO.checkerStatus) {
       merged.checkerStatus = localO.checkerStatus;
     }
     return merged;
@@ -4149,6 +4155,7 @@ function updateVerifStatus(orderIdx, status) {
     }
     o.verificationStatus = 'Verified';
     o.checkerStatus = 'Verified';
+    window._checkerWriteTs = Date.now(); // grace-window stamp: this device just wrote checkerStatus
     // ── Set lbcStatus so Sorter sees Ready to Pick-up immediately ────────
     const _advStUV=['Drop off at LBC','Drop off at EMS','Drop off at FedEx',
       'Out for Delivery','Delivered','RTO','ODZ/Incomplete Details'];
@@ -4168,6 +4175,7 @@ function updateVerifStatus(orderIdx, status) {
     }
     o.verificationStatus = 'Not Verified';
     o.checkerStatus = 'Pending';
+    window._checkerWriteTs = Date.now(); // grace-window stamp: this device just wrote checkerStatus
     // Reset lbcStatus back to Preparing when un-verified
     if(o.lbcStatus === 'Ready to Pick-up'){
       S.orders[orderIdx].lbcStatus = 'Preparing';
@@ -4235,6 +4243,7 @@ function verifyOrder(i){
   // (save() is called below — this comment confirms the sequence)
   S.orders[i].checkerStatus='Verified';
   S.orders[i].verificationStatus='Verified';
+  window._checkerWriteTs = Date.now(); // grace-window stamp: this device just wrote checkerStatus
   // ── Set lbcStatus so Sorter sees "Ready to Pick-up" (LBC/EMS/FedEx only) ─
   const _isCourierOrder = o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx';
   if(_isCourierOrder) {
@@ -4299,6 +4308,7 @@ function unverifyOrder(i){
   }
   S.orders[i].checkerStatus='Pending';
   S.orders[i].verificationStatus='Not Verified';
+  window._checkerWriteTs = Date.now(); // grace-window stamp: this device just wrote checkerStatus
   // ── Reset lbcStatus for courier orders back to Preparing ─────────────────
   const _isCourierUnv = o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx';
   if(_isCourierUnv){
@@ -4656,6 +4666,7 @@ function resolveUpdate(orderIdx, newStatus) {
         `Checker For Update Cancel – ${o.name} (${onum(orderIdx)})`, o._id||'order');
       S.orders[orderIdx].inventoryDeducted = false;
       S.orders[orderIdx].checkerStatus = 'Pending';
+      S.orders[orderIdx].verificationStatus = 'Not Verified'; // keep in sync with checkerStatus
     }
     S.orders[orderIdx].status = newStatus;
     S.orders[orderIdx].checkerCancelledDirect = true;
@@ -12038,6 +12049,8 @@ function confirmCheckerCancel() {
   });
   // Mark as Cancelled (keep in S.orders so Remitter can see it) + save cancel reason
   S.orders[orderIdx].status = 'Cancelled';
+  S.orders[orderIdx].checkerStatus = 'Pending';           // cancelled order should not remain Verified
+  S.orders[orderIdx].verificationStatus = 'Not Verified'; // keep both fields in sync
   S.orders[orderIdx].cancelReason = reason;
   S.orders[orderIdx].cancelledBy = currentUser?.name || 'Checker';
   S.orders[orderIdx].cancelledAt = new Date().toISOString();
