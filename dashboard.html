@@ -1055,7 +1055,7 @@ function _showRulesHint() {
 
     <!-- Parcel Sorter login -->
     <div id="login-step-sorter" style="display:none;">
-      <div style="font-size:13px;color:var(--blue);font-weight:600;margin-bottom:14px;">📦 Parcel Sorter Login</div>
+      <div style="font-size:13px;color:var(--blue);font-weight:600;margin-bottom:14px;">📦 Dispatcher Login</div>
       <div class="form-group" style="margin-bottom:10px;"><label>Password</label>
         <input type="password" class="form-control" id="login-sorter-pw" placeholder="Parcel sorter password"
           style="text-align:center;letter-spacing:3px;font-size:16px;" onkeydown="if(event.key==='Enter')doLogin()">
@@ -4953,6 +4953,14 @@ function renderCancelledItems() {
     if(o.cancelledBy || o.checkerCancelledDirect) return;
     // Also skip whole-order cancellations that are in deletedOrders log (checker-handled)
     if(o.status === 'Cancelled' && (S.deletedOrders||[]).some(d => d.orderNum === onum(oi))) return;
+    // Req#3: Remitter view — only show parcels whose assigned rider is currently "Remitting".
+    // Riders with status "For Remittance" (or anything else) are excluded until they start remitting.
+    if(currentRole === 'remitter') {
+      const _riderIsRemitting = o.assignedRider && (S.remitLog||[]).some(r =>
+        r.riderName === o.assignedRider && r.date === o.date && r.remitStatus === 'Remitting'
+      );
+      if(!_riderIsRemitting) return;
+    }
     const iS=o.itemStatuses||{}, iCQ=o.itemCancelQty||{}, iR=o.itemRemarks||{};
     const wholeOrderCancelled = o.status === 'Cancelled';
 
@@ -5334,7 +5342,7 @@ function renderSorting() {
       const sortLocked = isOFD;
       return `
       <div class="sort-card${isUnassigned?' sort-unassigned':''}${sortLocked?' sort-card-locked':''}"
-        draggable="${sortLocked?'false':'true'}"
+        draggable="${sortLocked || currentRole==='remitter' ?'false':'true'}"
         data-order-idx="${o.idx}"
         ${sortLocked?'':'ondragstart="sortDragStart(event,'+o.idx+')" ondragend="sortDragEnd(event)"'}>
         <div style="display:flex;justify-content:space-between;align-items:flex-start;">
@@ -5358,12 +5366,17 @@ function renderSorting() {
                 border:1px solid rgba(224,138,48,0.3);border-radius:5px;padding:4px 8px;text-align:center;">
                 🔒 On the way — hindi na maaari i-edit
                </div>`
-            : `<select style="width:100%;font-size:10px;padding:2px 5px;border-radius:5px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);"
-                onchange="sortReassign(${o.idx},this.value)" onclick="event.stopPropagation()">
-                <option value="">🔀 Move to rider...</option>
-                ${S.riders.map(r=>`<option value="${encodeURIComponent(r.name)}"${r.name===o.assignedRider?' selected':''}>${r.name} (📍${(r.locations&&r.locations.length?r.locations:(r.location?[r.location]:[])).join(', ')||'?'})</option>`).join('')}
-                <option value="__unassigned__"${!o.assignedRider?' selected':''}>— Unassigned —</option>
-              </select>`
+            : currentRole === 'remitter'
+              // Req#2: Remitter sees rider name as view-only — cannot reassign parcels
+              ? `<div style="font-size:10px;color:var(--muted);padding:3px 6px;border:1px solid var(--navy-border);border-radius:5px;background:rgba(255,255,255,0.03);">
+                  🏍️ ${o.assignedRider || '— Unassigned —'}
+                 </div>`
+              : `<select style="width:100%;font-size:10px;padding:2px 5px;border-radius:5px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);"
+                  onchange="sortReassign(${o.idx},this.value)" onclick="event.stopPropagation()">
+                  <option value="">🔀 Move to rider...</option>
+                  ${S.riders.map(r=>`<option value="${encodeURIComponent(r.name)}"${r.name===o.assignedRider?' selected':''}>${r.name} (📍${(r.locations&&r.locations.length?r.locations:(r.location?[r.location]:[])).join(', ')||'?'})</option>`).join('')}
+                  <option value="__unassigned__"${!o.assignedRider?' selected':''}>— Unassigned —</option>
+                </select>`
           }
         </div>
       </div>`; }).join('')
@@ -5419,6 +5432,8 @@ function sortDragLeave(e, col) {
 function sortDrop(e, colEl) {
   e.preventDefault();
   document.querySelectorAll('.sort-col-body').forEach(col=>col.classList.remove('drag-over'));
+  // Req#2: Remitter is view-only in Parcel Sorting — block all drop assignments
+  if(currentRole === 'remitter') return;
   // Read riderName safely from data attribute (avoids apostrophe bug in onclick)
   const encodedRider = colEl.dataset.rider || '';
   const riderName = decodeURIComponent(encodedRider);
@@ -11590,6 +11605,10 @@ function renderCodDelivPage() {
       ? (o.updateReason||o.riderNote||o.paymentNotes||'Needs rider update')
       : (o.cancelReason||o.rtoReason||'—');
     const itemsList = (o.items||[]).map(it=>`${it.desc||it.code} ×${it.qty||it.grams||1}${it.grams?'g':''}`).join(', ');
+    // Req#1: For Update tab — check if this order's rider+date is officially Remitted
+    const _isRemitted = tab==='ForUpdate' && (S.remitLog||[]).some(r=>
+      r.riderName === o.assignedRider && r.date === o.date && r.remitStatus === 'Remitted'
+    );
     return `
       <div class="card" style="margin-bottom:6px;">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer;user-select:none;" onclick="toggleCodRow('${safeId}')">
@@ -11613,26 +11632,29 @@ function renderCodDelivPage() {
             ${reason!=='—'?'<div style="grid-column:1/-1;"><span style="color:var(--red);font-size:10px;">REASON</span><br>'+reason+'</div>':''}
           </div>
           <div style="display:flex;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid var(--navy-border);flex-wrap:wrap;">
-            ${tab==='ForUpdate'?`<button onclick="event.stopPropagation();(function(){var _ep=document.getElementById('${safeId}-editpane');_ep.style.display=_ep.style.display==='none'?'block':'none';})()"
-              style="background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.3);color:var(--gold);
-                     padding:5px 14px;border-radius:6px;cursor:pointer;font-size:11.5px;font-weight:600;">
-              📅 Schedule Delivery
-            </button>`:''}
-            <button onclick="event.stopPropagation();_editSource='cod-delivery';openEditOrder(${i})"
-              style="background:rgba(255,255,255,0.05);border:1px solid var(--navy-border);color:var(--muted);
-                     padding:5px 14px;border-radius:6px;cursor:pointer;font-size:11.5px;">
-              ✏️ Edit Order
-            </button>
-            <button onclick="event.stopPropagation();openInvoice(${i})"
-              style="background:rgba(255,255,255,0.05);border:1px solid var(--navy-border);color:var(--muted);
-                     padding:5px 14px;border-radius:6px;cursor:pointer;font-size:11.5px;">
-              🖨️ Print
-            </button>
-            ${tab==='ForUpdate'?`<button onclick="event.stopPropagation();codDelivCancelOrder(${i})"
-              style="background:#dc2626;border:none;color:#fff;
-                     padding:5px 14px;border-radius:6px;cursor:pointer;font-size:11.5px;font-weight:700;margin-left:auto;">
-              ❌ Cancel Order
-            </button>`:''}
+            ${tab==='ForUpdate'
+              // Req#1: only show Schedule / Edit / Cancel once rider is Remitted
+              ?(_isRemitted
+                ?`<button onclick="event.stopPropagation();(function(){var _ep=document.getElementById('${safeId}-editpane');_ep.style.display=_ep.style.display==='none'?'block':'none';})()"
+                    style="background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.3);color:var(--gold);
+                           padding:5px 14px;border-radius:6px;cursor:pointer;font-size:11.5px;font-weight:600;">
+                    📅 Schedule Delivery
+                  </button>
+                  <button onclick="event.stopPropagation();_editSource='cod-delivery';openEditOrder(${i})"
+                    style="background:rgba(255,255,255,0.05);border:1px solid var(--navy-border);color:var(--muted);
+                           padding:5px 14px;border-radius:6px;cursor:pointer;font-size:11.5px;">
+                    ✏️ Edit Order
+                  </button>
+                  <button onclick="event.stopPropagation();codDelivCancelOrder(${i})"
+                    style="background:#dc2626;border:none;color:#fff;
+                           padding:5px 14px;border-radius:6px;cursor:pointer;font-size:11.5px;font-weight:700;margin-left:auto;">
+                    ❌ Cancel Order
+                  </button>`
+                :`<span style="font-size:11px;color:var(--muted);font-style:italic;padding:5px 2px;">
+                    🔒 Actions locked — rider must be marked <strong style="color:var(--orange);">Remitted</strong> first.
+                  </span>`)
+              // Req#2 & Req#3: Cancelled and Delivered tabs — no buttons at all
+              :''}
           </div>
           ${tab==='ForUpdate'?`
           <div id="${safeId}-editpane" style="display:none;margin-top:10px;padding:12px;background:rgba(201,168,76,0.05);border:1px solid rgba(201,168,76,0.2);border-radius:8px;" onclick="event.stopPropagation()">
