@@ -8229,9 +8229,9 @@ function renderRiderParcels() {
       .map(r => r.date)
   );
   const myOrders = allMyOrders.filter(o => {
-    // Once officially Remitted, hide terminal orders for that date (job is done).
-    // Delivered MUST stay visible until remitted — rider needs it for collection verification.
-    if(remittedDates.has(o.date) && ['Delivered','Cancelled','Update'].includes(o.status)) return false;
+    // Once officially Remitted, hide ALL orders for that date — job is done.
+    // Orders stay visible for ALL statuses until the remit entry is marked Remitted.
+    if(remittedDates.has(o.date)) return false;
     return true;
   });
   // Date filter: exact string match — df is whatever user typed
@@ -10103,6 +10103,12 @@ function toggleRemitRider(safeId) {
 
 function delRemit(i) {
   _confirmDel(`Delete remit entry for "${S.remitLog[i]?.riderName}"?`, ()=>{
+    // Track the deleted _id so SAR merge doesn't resurrect it before Firebase confirms
+    const _deletedEntry = S.remitLog[i];
+    if(_deletedEntry?._id) {
+      if(!window._deletedRemitIds) window._deletedRemitIds = new Set();
+      window._deletedRemitIds.add(_deletedEntry._id);
+    }
     S.remitLog.splice(i,1); save(); renderRemitPage(); toast('🗑️ Remit entry deleted');
   });
 }
@@ -10799,14 +10805,31 @@ function startAutoRefresh(){
       }
       // remitLog / cashbondLog / benefitsLog / stockLog: _id-based merge
       // Prevents: save entry → SAR fires before Firebase confirms → entry wiped
+      // _deletedRemitIds: entries deleted locally but not yet confirmed deleted in Firebase.
+      // Without this, a SAR cycle that runs before Firebase confirms the delete would
+      // bring the deleted entry back from fbArr into S[key].
+      const _deadRemitIds = window._deletedRemitIds || new Set();
       ['remitLog','cashbondLog','benefitsLog','stockLog'].forEach(key=>{
         if(!Array.isArray(fbData[key])) return;
         const fbArr = fbData[key];
         const localArr = S[key]||[];
         const fbById = new Map(fbArr.filter(e=>e&&e._id).map(e=>[e._id, e]));
         const localOnly = localArr.filter(e => e && e._id && !fbById.has(e._id));
-        S[key] = [...fbArr, ...localOnly];
+        // Filter out entries that were deleted locally (even if Firebase still has them)
+        const fbFiltered = fbArr.filter(e => !e?._id || !_deadRemitIds.has(e._id));
+        S[key] = [...fbFiltered, ...localOnly];
       });
+      // Once Firebase confirms the deletes (next SAR after write), clear the deleted set
+      // We know Firebase is up-to-date when _lastKnownWriteTs matches remote ts
+      if(_deadRemitIds.size > 0) {
+        // Remove IDs that are no longer in Firebase (deletion confirmed)
+        _deadRemitIds.forEach(id => {
+          const stillInFb = ['remitLog','cashbondLog','benefitsLog'].some(key =>
+            Array.isArray(fbData[key]) && fbData[key].some(e => e?._id === id)
+          );
+          if(!stillInFb) _deadRemitIds.delete(id);
+        });
+      }
       // Inventory: skip Firebase replace for 30 seconds after any local inventory change.
       // Min-qty merge was causing restores to be undone (Math.min chose lower Firebase value).
       // The write-timestamp guard is simpler and correct: if we just wrote inventory,
