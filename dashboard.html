@@ -3840,7 +3840,21 @@ function renderChecker(){
   const filt = document.getElementById('checker-filter')?.value||'';
   const q = (document.getElementById('checker-search')?.value||'').toLowerCase();
   const df = mdy2ymd((document.getElementById('checker-date')?.value||'').trim());
-  const pending = S.orders.filter(o=>o&&o.checkerStatus==='Pending').length;
+  // Pending badge: count orders that are ACTIONABLE in the current checker tab.
+  // COD tab: Pending + Preparing/Ready status + not Remitted = checker needs to act.
+  // Courier tabs: handled separately by tab badges. Global count was misleading.
+  const _pendingCOD = S.orders.filter(o => o &&
+    (o.paymentMethod||'COD') === 'COD' &&
+    o.checkerStatus === 'Pending' &&
+    !['Cancelled','RTO','Delivered','Out for Delivery','Update'].includes(o.status)
+  ).length;
+  const _pendingCourier = S.orders.filter(o => o &&
+    (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx') &&
+    (o.paymentStatus||'No Payment') === 'Fully Paid' &&
+    o.checkerStatus === 'Pending' &&
+    !['Cancelled','RTO','Delivered'].includes(o.status)
+  ).length;
+  const pending = _pendingCOD + _pendingCourier;
   document.getElementById('checker-pending-count').textContent = pending ? `⚠️ ${pending} pending` : '✅ All verified';
   // Update For Update tab badge
   const updateCount = S.orders.filter(o=>o&&o.status==='Update').length;
@@ -3909,7 +3923,7 @@ function renderChecker(){
     if(_isCourierTab && (o.paymentStatus||'No Payment') !== 'Fully Paid') return false;
     if(filt && o.checkerStatus !== filt) return false;
     if(df && o.date !== df) return false;
-    if(q && !o.name.toLowerCase().includes(q) && !(o.contact||'').toLowerCase().includes(q) && !onum(S.orders.indexOf(o)).toLowerCase().includes(q)) return false;
+    if(q && !(o.name||'').toLowerCase().includes(q) && !(o.contact||'').toLowerCase().includes(q) && !onum(S.orders.indexOf(o)).toLowerCase().includes(q)) return false;
     return true;
   });
 
@@ -11001,7 +11015,9 @@ function startAutoRefresh(){
       try { renderMap[_activePage]?.(); } catch(e){}
       if(currentRole==='rider') try{renderRiderParcels();}catch(e){}
     } catch(e){ if(!e.message?.includes('fetch') && !e.message?.includes('Network')) console.warn('[GCE] Auto-refresh error:',e.message); }
-  }, 15000); // every 15 seconds — optimised for 30-device concurrent use within Firebase free tier balanced for 30-50 concurrent users
+  }, _activePage === 'checker' && pending > 0 ? 5000 : 15000);
+  // Checker page with pending orders: poll every 5s so new orders appear faster.
+  // All other pages: 15s to balance Firebase free-tier quota for 30-50 concurrent users.
 }
 
 // ============================================================
