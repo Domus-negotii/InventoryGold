@@ -8264,23 +8264,10 @@ function renderRiderParcels() {
       if(!RIDER_VISIBLE_STATUSES.has(o.status)) return false;
       return true;
     });
-  // Hide orders ONLY when their specific date is officially Remitted.
-  // - Ready / OFD: rider still has active work → ALWAYS visible, never hidden
-  // - Delivered / Cancelled / Update / RTO: hide ONLY after Remitted (batch settled)
-  // This means: updating status (Ready→Delivered) will NOT cause a hide
-  // unless that date is already Remitted. New orders on a previously-Remitted
-  // date are independent batches and are always visible until THEIR date is Remitted.
-  const _remittedDates = new Set(
-    (S.remitLog||[])
-      .filter(r => r.riderName === currentRider.name && r.remitStatus === 'Remitted')
-      .map(r => r.date)
-  );
-  const myOrders = allMyOrders.filter(o => {
-    // Active orders (Ready/OFD) — NEVER hide regardless of remit status
-    if(o.status === 'Ready' || o.status === 'Out for Delivery') return true;
-    // Terminal orders — hide only after the date is Remitted
-    return !_remittedDates.has(o.date);
-  });
+  // Rider dashboard shows ALL orders assigned to this rider in RIDER_VISIBLE_STATUSES.
+  // No remit-based hiding here — the Remitter page handles what's shown there.
+  // Rider must always see their cancelled/delivered orders for reference and remittance.
+  const myOrders = allMyOrders;
   // Date filter: exact string match — df is whatever user typed
   // type="text" input means no browser date validation interference
   let filtered;
