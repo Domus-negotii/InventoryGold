@@ -10892,8 +10892,16 @@ function startAutoRefresh(){
         if(Array.isArray(fbData[k])) S[k] = fbData[k];
       });
       // Orders: merge instead of blind replace — preserves locally-added orders not yet synced
+      // Track whether merge changed S.orders so we always render after real data changes.
       if(!_encModalOpen && Array.isArray(fbData.orders)) {
+        const _prevLen = S.orders.length;
+        const _prevIds = new Set(S.orders.filter(o=>o&&o._id).map(o=>o._id));
         S.orders = _mergeOrders(fbData.orders, S.orders);
+        // Flag if any new orders appeared (new _id in merged result)
+        window._sarOrdersChanged = S.orders.some(o => o && o._id && !_prevIds.has(o._id))
+          || S.orders.length !== _prevLen;
+      } else {
+        window._sarOrdersChanged = false;
       }
       // remitLog / cashbondLog / benefitsLog / stockLog: _id-based merge
       // Prevents: save entry → SAR fires before Firebase confirms → entry wiped
@@ -10975,15 +10983,8 @@ function startAutoRefresh(){
       if(!S.specialPasswords) S.specialPasswords={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
       if(!S.govSettings) S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
 
-      // Debounce: skip render if one is already scheduled (prevents storms with 50 users)
-      if(window._sarRenderPending) return;
-      window._sarRenderPending = true;
-      setTimeout(()=>{ window._sarRenderPending = false; }, 200);
-
-      // Reconcile inventory against stockLog to ensure Products page matches Stock Ledger
-
-
       // Re-render active page
+      // Always re-render if new orders were detected — ensures checker never misses an order
       const renderMap = {
         dashboard:()=>renderDash?.(),
         orders:()=>{ try{initOrdersPage();}catch(e){} setTimeout(()=>{try{renderCourierDashboard();}catch(e){}},100); },
@@ -11014,10 +11015,26 @@ function startAutoRefresh(){
       };
       try { renderMap[_activePage]?.(); } catch(e){}
       if(currentRole==='rider') try{renderRiderParcels();}catch(e){}
+      // Safety net: if checker page is active and new orders arrived, always re-render
+      // even if renderMap already called it (idempotent, fast, prevents stuck UI)
+      if(window._sarOrdersChanged && _activePage !== 'checker') {
+        // Re-render checker badge counts in background if orders changed
+        try {
+          const _pendingBadge = document.getElementById('checker-pending-count');
+          if(_pendingBadge) {
+            const _p = (S.orders||[]).filter(o=>o&&(o.paymentMethod||'COD')==='COD'&&
+              o.checkerStatus==='Pending'&&
+              !['Cancelled','RTO','Delivered','Out for Delivery','Update'].includes(o.status)).length;
+            _pendingBadge.textContent = _p ? `⚠️ ${_p} pending` : '✅ All verified';
+          }
+        } catch(_e) {}
+      }
+      window._sarOrdersChanged = false;
     } catch(e){ if(!e.message?.includes('fetch') && !e.message?.includes('Network')) console.warn('[GCE] Auto-refresh error:',e.message); }
-  }, _activePage === 'checker' && pending > 0 ? 5000 : 15000);
-  // Checker page with pending orders: poll every 5s so new orders appear faster.
-  // All other pages: 15s to balance Firebase free-tier quota for 30-50 concurrent users.
+  }, 8000);
+  // Fixed 8s interval — fast enough for new orders to appear quickly on checker (was 15s).
+  // Previously tried dynamic 5s/15s but `pending` was undefined in this scope → always 15s.
+  // 8s gives good responsiveness for all 30-50 concurrent users within Firebase free-tier.
 }
 
 // ============================================================
