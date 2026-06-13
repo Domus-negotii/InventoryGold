@@ -8264,20 +8264,12 @@ function renderRiderParcels() {
       if(!RIDER_VISIBLE_STATUSES.has(o.status)) return false;
       return true;
     });
-  // Hide orders only when date is FULLY remitted (all entries for that date = Remitted)
-  // AND no active entry exists. New batches on same date stay visible until THEIR entry is Remitted.
-  const _rbd = {};
-  (S.remitLog||[]).forEach(r => {
-    if(r.riderName !== currentRider.name) return;
-    if(!_rbd[r.date]) _rbd[r.date] = {active:0, done:0};
-    if((r.remitStatus||'For Remittance') === 'Remitted') _rbd[r.date].done++;
-    else _rbd[r.date].active++;
-  });
-  const _fullyDone = new Set(Object.entries(_rbd).filter(([,v])=>v.active===0&&v.done>0).map(([d])=>d));
-  const myOrders = allMyOrders.filter(o => {
-    if(o.status==='Ready'||o.status==='Out for Delivery') return true; // always visible
-    return !_fullyDone.has(o.date); // terminal: hide only when date fully remitted
-  });
+  // Show ALL orders in RIDER_VISIBLE_STATUSES — no remit-based filtering.
+  // We cannot reliably determine which orders belong to which remit batch
+  // (orders have no remitEntryId or createdAt). Date-based filtering causes
+  // false positives when a rider has multiple batches on the same date.
+  // The Remitter's page handles financial grouping — rider dashboard is for active work.
+  const myOrders = allMyOrders;
   // Date filter: exact string match — df is whatever user typed
   // type="text" input means no browser date validation interference
   let filtered;
@@ -10008,14 +10000,11 @@ function renderRemitPage() {
     // Actual orders for this rider — only for NON-Remitted entry dates.
     // Once a remit entry is marked Remitted, its orders leave the breakdown.
     // Orders stay visible for all entries that are still For Remittance or Remitting.
-    const _remittedDates = new Set(
-      entries.filter(e=>(e.remitStatus||'For Remittance')==='Remitted').map(e=>e.date)
-    );
+    // Show ALL orders for this rider (filtered by date if set).
+    // Each entry's breakdown uses its own e.date to group correctly.
+    // History entries (Remitted) also show their orders — that's the point of history.
     const riderOrders = (S.orders||[]).map((o,oi)=>({...o,oi}))
-      .filter(o=>o.assignedRider===riderName
-        && (!df||o.date===df)
-        && !_remittedDates.has(o.date)  // hide orders whose remit entry is Remitted
-      );
+      .filter(o=>o.assignedRider===riderName && (!df||o.date===df));
 
     const delivered  = riderOrders.filter(o=>o.status==='Delivered');
     const cancelled  = riderOrders.filter(o=>o.status==='Cancelled'||o.status==='RTO');
