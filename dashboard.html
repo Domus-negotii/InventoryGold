@@ -3923,11 +3923,15 @@ function renderChecker(){
     if(checkerTab === 'COD') {
       if(o.status === 'Out for Delivery' || o.status === 'Update') return false;
     }
-    // COD: hide orders ONLY when the rider+date is officially Remitted.
-    // Both Pending and Verified orders stay visible until remittance is complete —
-    // the checker may still need to verify or unverify even after verification.
-    // Orders disappear from checker ONLY after the rider's remit entry is marked Remitted.
-    if(checkerTab === 'COD' && o.assignedRider && o.date) {
+    // COD: hide an order ONLY when BOTH conditions are true:
+    //   1. The order is already Verified (checker's job is done)
+    //   2. The rider+date is officially Remitted (remittance complete)
+    // This ensures:
+    //   • NEW orders (Pending) always appear even if rider has a Remitted entry — needs verification
+    //   • Verified orders stay visible until Remitted — checker can still unverify
+    //   • Only Verified+Remitted orders disappear — job truly done
+    if(checkerTab === 'COD' && o.assignedRider && o.date &&
+       (o.checkerStatus||'Pending') === 'Verified') {
       if(_checkerRemittedKeys.has(`${o.assignedRider}|${o.date}`)) return false;
     }
     // LBC/EMS/FedEx: hide orders already dispatched / in terminal courier status
