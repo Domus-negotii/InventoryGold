@@ -608,8 +608,10 @@ async function _directWriteFirebase(data, opts){
     // Without this, 50 simultaneous encodes would race — last writer wins and
     // all other new orders are silently lost from Firebase (though protected by
     // the 5-minute grace window on the encoding device only).
+    // BYPASS: skip pre-read during Global Clear — we intentionally want to
+    // overwrite Firebase with empty arrays, not merge in stale old orders.
     let _fbCurrentOrders = [];
-    try {
+    if(!window._globalClearActive) try {
       const _preReadUrl = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}&mask.fieldPaths=orders`;
       const _preReadR = await fetch(_preReadUrl, {cache:'no-cache'});
       if(_preReadR.ok) {
@@ -7856,9 +7858,17 @@ function clearAllTransactions() {
     .then(()=>toast('✅ All transactions cleared & synced. All devices will refresh shortly.'))
     .catch(()=>toast('✅ Cleared locally. Firebase sync may be slow — retry if other devices still show data.'));
 
-  // ── 5. Re-render current page ────────────────────────────────────────────
-  // Also write via save() to ensure full state is synced
-  save().catch(()=>{});
+  // ── 5. Clear session-level flags so stale data doesn't persist ─────────
+  window._deletedRemitIds  = new Set();  // stale ghost deletions no longer relevant
+  window._deductedRefs     = new Set();  // inventory deduction guards — fresh start
+  window._restoredRefs     = new Set();  // inventory restore guards — fresh start
+  window._dwfRetryCount    = 0;          // reset retry counter
+
+  // ── 6. Write cleared state to Firebase via save() ─────────────────────
+  // Set bypass flag so _directWriteFirebase skips the pre-write Firebase
+  // fetch — otherwise a stale pre-read could resurrect just-cleared data.
+  window._globalClearActive = true;
+  save().catch(()=>{}).finally(() => { window._globalClearActive = false; });
   toast('✅ All transactions cleared! All devices will update within 3 seconds.');
   try { renderDash(); } catch(e) {}
   try { if(typeof renderOrders==='function') renderOrders(); } catch(e) {}
