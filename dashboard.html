@@ -8642,7 +8642,7 @@ function _deductOrderItems(items, orderDate, label, orderRef) {
       console.warn('[INV] Duplicate deduction blocked:', orderRef); return false;
     }
     window._deductedRefs.add(String(orderRef));
-    setTimeout(()=>{ if(window._deductedRefs) window._deductedRefs.delete(String(orderRef)); }, 30000);
+    setTimeout(()=>{ if(window._deductedRefs) window._deductedRefs.delete(String(orderRef)); }, 600000); // 10 min — covers Firebase write + SAR confirmation
   }
   window._invChangedThisSave = true; // signal save() to re-render inventory after write
   window._lastInvWrite = Date.now(); // start 30s grace period against SAR replacing local state
@@ -8697,7 +8697,7 @@ function _restoreOrderItems(items, orderDate, label, orderRef) {
       console.warn('[INV] Duplicate restore blocked:', orderRef); return false;
     }
     window._restoredRefs.add(String(orderRef));
-    setTimeout(()=>{ if(window._restoredRefs) window._restoredRefs.delete(String(orderRef)); }, 30000);
+    setTimeout(()=>{ if(window._restoredRefs) window._restoredRefs.delete(String(orderRef)); }, 600000); // 10 min — covers Firebase write + SAR confirmation
   }
   window._invChangedThisSave = true; // signal save() to re-render inventory after write
   window._lastInvWrite = Date.now(); // start 30s grace period against SAR replacing local state
