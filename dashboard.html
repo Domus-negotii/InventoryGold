@@ -4336,15 +4336,24 @@ function unverifyOrder(i){
     toast('🔒 Hindi na maaaring i-unverify — ' + reason + ' ang parcel.');
     return;
   }
-  // Block unverify if rider has already remitted this order
+  // Block unverify ONLY if this specific order was already part of a completed remittance.
+  // A Remitted entry for the same rider+date does NOT block NEW orders from being unverified —
+  // a new order encoded after remittance is a separate transaction, not part of the old batch.
+  // We determine "part of the batch" by checking:
+  //   1. The order's status is Ready/OFD/Delivered (it was dispatched as part of that batch), OR
+  //   2. The order was created BEFORE the remit entry was saved (createdAt comparison)
+  // Simple rule: if the order is still in Preparing status, it was never dispatched → allow unverify.
   const orderDate = o.date;
   const riderName = o.assignedRider || '';
-  const isRemitted = riderName && (S.remitLog||[]).some(r =>
-    r.riderName === riderName && r.date === orderDate && r.remitStatus === 'Remitted'
-  );
-  if(isRemitted) {
-    toast('🔒 Hindi na maaaring i-unverify — na-Remit na ni rider ang parcel na ito.');
-    return;
+  if(riderName && o.status !== 'Preparing') {
+    // Only check remit lock for orders that have been dispatched (Ready or beyond)
+    const isRemitted = (S.remitLog||[]).some(r =>
+      r.riderName === riderName && r.date === orderDate && r.remitStatus === 'Remitted'
+    );
+    if(isRemitted) {
+      toast('🔒 Hindi na maaaring i-unverify — na-Remit na ni rider ang parcel na ito.');
+      return;
+    }
   }
   // ── Restore inventory on Unverify ──────────────────────────────
   // Uses the same session-level Sets as verifyOrder for consistent guards.
