@@ -8273,9 +8273,11 @@ function renderRiderParcels() {
       .map(r => r.date)
   );
   const myOrders = allMyOrders.filter(o => {
-    // Once officially Remitted, hide ALL orders for that date — job is done.
-    // Orders stay visible for ALL statuses until the remit entry is marked Remitted.
-    if(remittedDates.has(o.date)) return false;
+    // Hide ONLY terminal orders (Delivered/Cancelled/Update) for Remitted dates.
+    // Ready and Out for Delivery orders always stay visible — rider still needs to act on them.
+    // A new Ready order on a date that was previously Remitted is a NEW batch — never hide it.
+    const _isTerminal = ['Delivered','Cancelled','RTO','Update'].includes(o.status);
+    if(remittedDates.has(o.date) && _isTerminal) return false;
     return true;
   });
   // Date filter: exact string match — df is whatever user typed
@@ -8288,7 +8290,7 @@ function renderRiderParcels() {
   }
   if(filt) filtered = filtered.filter(o => o.status === filt);
   if(q) filtered = filtered.filter(o =>
-    o.name.toLowerCase().includes(q) || (o.contact||'').toLowerCase().includes(q) || onum(o.idx).includes(q));
+    (o.name||'').toLowerCase().includes(q) || (o.contact||'').toLowerCase().includes(q) || onum(o.idx).includes(q));
 
   // ── Earnings Summary — mirrors Riders Remit formula exactly ──
   const del = myOrders.filter(o => o.status === 'Delivered');
@@ -13089,14 +13091,14 @@ document.addEventListener('visibilitychange', async ()=>{
       S.inventory = _mergedInv;
       S._deletedInventoryCodes = [..._delCodes];
     }
-    // remitLog / cashbondLog / benefitsLog / stockLog: _id-based merge — prevent race condition wipe
+    // visibilitychange = forced full reload — Firebase is authoritative.
+    // Use Firebase directly (no local-only union) so deleted entries on other devices
+    // don't re-appear on mobile. Respect _deletedRemitIds to guard pending deletes.
+    const _visDeadIds = window._deletedRemitIds || new Set();
     ['remitLog','cashbondLog','benefitsLog','stockLog'].forEach(key=>{
       if(!Array.isArray(fbData[key])) return;
-      const fbArr = fbData[key];
-      const localArr = S[key]||[];
-      const fbById = new Map(fbArr.filter(e=>e&&e._id).map(e=>[e._id, e]));
-      const localOnly = localArr.filter(e => e && e._id && !fbById.has(e._id));
-      S[key] = [...fbArr, ...localOnly];
+      // Firebase wins — strip any locally-deleted entries
+      S[key] = fbData[key].filter(e => !e?._id || !_visDeadIds.has(e._id));
     });
     ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
       if(fbData[k] && typeof fbData[k]==='object') S[k] = fbData[k];
