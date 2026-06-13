@@ -3899,14 +3899,9 @@ function renderChecker(){
 
   const _isCourierTab = checkerTab==='LBC'||checkerTab==='EMS'||checkerTab==='FedEx';
 
-  // COD: build remitted rider+date keys — these orders are done, no need in checker
-  const _checkerRemittedKeys = new Set(
-    checkerTab === 'COD'
-      ? (S.remitLog||[])
-          .filter(r => r.remitStatus === 'Remitted')
-          .map(r => `${r.riderName}|${r.date}`)
-      : []
-  );
+  // NOTE: Remit status is NOT used to filter the checker queue.
+  // Checker's job is verify/unverify — they see all active orders
+  // regardless of whether the rider has remitted or not.
   // Courier statuses that should no longer appear in checker (already dispatched / done)
   const _COURIER_DONE = new Set(['ODZ/Incomplete Details','Out for Delivery','RTO','Delivered']);
 
@@ -3923,17 +3918,7 @@ function renderChecker(){
     if(checkerTab === 'COD') {
       if(o.status === 'Out for Delivery' || o.status === 'Update') return false;
     }
-    // COD: hide an order ONLY when BOTH conditions are true:
-    //   1. The order is already Verified (checker's job is done)
-    //   2. The rider+date is officially Remitted (remittance complete)
-    // This ensures:
-    //   • NEW orders (Pending) always appear even if rider has a Remitted entry — needs verification
-    //   • Verified orders stay visible until Remitted — checker can still unverify
-    //   • Only Verified+Remitted orders disappear — job truly done
-    if(checkerTab === 'COD' && o.assignedRider && o.date &&
-       (o.checkerStatus||'Pending') === 'Verified') {
-      if(_checkerRemittedKeys.has(`${o.assignedRider}|${o.date}`)) return false;
-    }
+    // No remit-based filter here — checker sees all active COD orders.
     // LBC/EMS/FedEx: hide orders already dispatched / in terminal courier status
     if(_isCourierTab && _COURIER_DONE.has(o.lbcStatus||'')) return false;
     // LBC/EMS/FedEx: only show Fully Paid orders — admin sets payment status, not checker
