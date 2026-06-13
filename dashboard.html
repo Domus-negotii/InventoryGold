@@ -8975,6 +8975,30 @@ async function saveOrder() {
   setTimeout(()=>{ try { renderCourierDashboard(); } catch(e){} }, 80);
   // If checker page is open on another view, refresh that too
   if(_activePage === 'checker') try { renderChecker(); } catch(e) {}
+  // ── POST-SAVE VERIFICATION: confirm new order reached Firebase ──────
+  // Concurrent PATCH writes from 50 devices can race — last writer wins and
+  // may overwrite others' orders. After 3 seconds, verify this order's _id
+  // is in Firebase. If missing (race loss), re-save once to recover it.
+  // Only applies to NEW orders (editIdx === ''), not edits.
+  if(editIdx === '' && o._id && window._fbReady) {
+    const _savedOrderId = o._id;
+    setTimeout(async () => {
+      try {
+        const _verifyUrl = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}&mask.fieldPaths=orders`;
+        const _verifyR = await fetch(_verifyUrl, {cache:'no-cache'});
+        if(!_verifyR.ok) return;
+        const _verifyDoc = await _verifyR.json();
+        const _fbOrders = _verifyDoc.fields?.orders ? _fromFS(_verifyDoc.fields.orders) : [];
+        const _found = Array.isArray(_fbOrders) && _fbOrders.some(o2 => o2?._id === _savedOrderId);
+        if(!_found) {
+          // Order lost in race — re-save to recover it
+          console.warn('[GOE] Order race loss detected — re-saving:', _savedOrderId);
+          await save();
+          toast('📡 Order re-synced to server.');
+        }
+      } catch(_e) { /* network error — SAR will recover on next cycle */ }
+    }, 3000);
+  }
   } finally {
     // ── Always release the encoding lock ─────────────────────────
     window._encodingInProgress = false;
@@ -9799,6 +9823,41 @@ function saveRemit() {
     S.remitLog[+editIdx] = entry;
   } else {
     S.remitLog.push(entry);
+  }
+
+  // ── RETURN LOG GATE: block Remitted if cancelled items not yet logged ──
+  // All cancelled items must have a return log entry before remittance can be completed.
+  // This ensures physical items are accounted for before cash is finalized.
+  if(remitStatus === 'Remitted') {
+    const _unloggedItems = [];
+    myOrders.forEach((o, oi) => {
+      const _orderIdx = o.idx;
+      const _onum = onum(_orderIdx);
+      const iS = o.itemStatuses || {};
+      // Whole-order cancelled
+      if(o.status === 'Cancelled' || o.status === 'RTO') {
+        (o.items||[]).forEach((it, ii) => {
+          const _logged = (S.returnLog||[]).some(r => r.orderNum === _onum && r.itemIdx === ii);
+          if(!_logged) _unloggedItems.push(`${_onum} – ${it.code||it.desc||'Item '+(ii+1)}`);
+        });
+      } else {
+        // Per-item cancellations within a delivered order
+        (o.items||[]).forEach((it, ii) => {
+          const isItemCancelled = iS[ii] === 'Cancelled';
+          const partialCancel  = (o.itemCancelQty||{})[ii] > 0;
+          if(isItemCancelled || partialCancel) {
+            const _logged = (S.returnLog||[]).some(r => r.orderNum === _onum && r.itemIdx === ii);
+            if(!_logged) _unloggedItems.push(`${_onum} – ${it.code||it.desc||'Item '+(ii+1)}`);
+          }
+        });
+      }
+    });
+    if(_unloggedItems.length > 0) {
+      const _preview = _unloggedItems.slice(0,5).join(', ') + (_unloggedItems.length > 5 ? ` +${_unloggedItems.length-5} more` : '');
+      toast(`⚠️ Hindi maaaring i-Remit — may ${_unloggedItems.length} cancelled item${_unloggedItems.length>1?'s':''} na hindi pa naka-Return Log:\n${_preview}\n\nI-log muna sa Return/Cancel tab bago mag-Remit.`);
+      _releaseLock();
+      return; // block save
+    }
   }
 
   // If Remitted → auto-record cashbond + benefits into logs
