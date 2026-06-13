@@ -1303,6 +1303,7 @@ function _showRulesHint() {
       <button class="tab-btn" data-tab="LBC" onclick="setCheckerTab('LBC')">📦 LBC</button>
       <button class="tab-btn" data-tab="EMS" onclick="setCheckerTab('EMS')">✈️ EMS</button>
       <button class="tab-btn" data-tab="FedEx" onclick="setCheckerTab('FedEx')">📦 FedEx</button>
+      <button class="tab-btn" data-tab="UPDATE" onclick="setCheckerTab('UPDATE')" id="checker-tab-update-btn">🔔 For Update</button>
       <button class="tab-btn" data-tab="DELETED" onclick="setCheckerTab('DELETED')" id="checker-tab-deleted-btn">🗑️ Recently Deleted</button>
     </div>
     <div class="card no-print">
@@ -4953,13 +4954,14 @@ function renderCancelledItems() {
     if(o.cancelledBy || o.checkerCancelledDirect) return;
     // Also skip whole-order cancellations that are in deletedOrders log (checker-handled)
     if(o.status === 'Cancelled' && (S.deletedOrders||[]).some(d => d.orderNum === onum(oi))) return;
-    // Req#3: Remitter view — only show parcels whose assigned rider is currently "Remitting".
-    // Riders with status "For Remittance" (or anything else) are excluded until they start remitting.
+    // Req#3: Remitter view — only show cancelled items whose rider is "Remitting" OR "Remitted".
+    // "For Remittance" riders are excluded — their items aren't ready for processing yet.
     if(currentRole === 'remitter') {
-      const _riderIsRemitting = o.assignedRider && (S.remitLog||[]).some(r =>
-        r.riderName === o.assignedRider && r.date === o.date && r.remitStatus === 'Remitting'
+      const _riderActive = o.assignedRider && (S.remitLog||[]).some(r =>
+        r.riderName === o.assignedRider && r.date === o.date &&
+        (r.remitStatus === 'Remitting' || r.remitStatus === 'Remitted')
       );
-      if(!_riderIsRemitting) return;
+      if(!_riderActive) return;
     }
     const iS=o.itemStatuses||{}, iCQ=o.itemCancelQty||{}, iR=o.itemRemarks||{};
     const wholeOrderCancelled = o.status === 'Cancelled';
