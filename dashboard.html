@@ -8264,22 +8264,11 @@ function renderRiderParcels() {
       if(!RIDER_VISIBLE_STATUSES.has(o.status)) return false;
       return true;
     });
-  // Hide orders only when the remittance for that date is officially marked Remitted.
-  // Delivered orders MUST remain visible until the rider's remittance is approved —
-  // riders need to see Delivered orders to verify their collection before handing over.
-  const remittedDates = new Set(
-    (S.remitLog||[])
-      .filter(r => r.riderName === currentRider.name && r.remitStatus === 'Remitted')
-      .map(r => r.date)
-  );
-  const myOrders = allMyOrders.filter(o => {
-    // Hide ONLY terminal orders (Delivered/Cancelled/Update) for Remitted dates.
-    // Ready and Out for Delivery orders always stay visible — rider still needs to act on them.
-    // A new Ready order on a date that was previously Remitted is a NEW batch — never hide it.
-    const _isTerminal = ['Delivered','Cancelled','RTO','Update'].includes(o.status);
-    if(remittedDates.has(o.date) && _isTerminal) return false;
-    return true;
-  });
+  // Show ALL orders for this rider that are in RIDER_VISIBLE_STATUSES.
+  // Never hide based on remit status — the rider must see all their parcels
+  // (Ready, OFD, Delivered, Cancelled, Update) at all times regardless of
+  // whether a remit entry exists. Remittance is the Remitter's concern, not the rider's.
+  const myOrders = allMyOrders;
   // Date filter: exact string match — df is whatever user typed
   // type="text" input means no browser date validation interference
   let filtered;
