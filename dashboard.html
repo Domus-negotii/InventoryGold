@@ -617,7 +617,7 @@ async function _directWriteFirebase(data, opts){
       if(_preReadR.ok) {
         const _preReadDoc = await _preReadR.json();
         const _rawFbOrders = _preReadDoc.fields?.orders ? _fromFS(_preReadDoc.fields.orders) : [];
-        _fbCurrentOrders = Array.isArray(_rawFbOrders) ? _rawFbOrders : [];
+        _fbCurrentOrders = Array.isArray(_rawFbOrders) ? _rawFbOrders.filter(Boolean) : [];
       }
     } catch(_e) { /* network error — proceed with local only (safe fallback) */ }
 
@@ -882,7 +882,10 @@ function _mergeOrders(fbOrders, localOrders) {
     return merged;
   });
 
-  return localOnly.length ? [...mergedFbOrders, ...localOnly] : mergedFbOrders;
+  // Filter out any null/undefined entries — Firebase can return sparse arrays
+  // with null slots that crash every downstream filter that lacks a null guard.
+  const merged = [...mergedFbOrders, ...localOnly].filter(Boolean);
+  return merged;
 }
 
 // ── UUID generator for record identity ───────────────────────────────────────
@@ -3899,6 +3902,7 @@ function renderChecker(){
   const _COURIER_DONE = new Set(['ODZ/Incomplete Details','Out for Delivery','RTO','Delivered']);
 
   const list = S.orders.map((o,i)=>({o,i})).filter(({o}) => {
+    if(!o) return false; // null guard — prevents crash if Firebase sends sparse array
     const method = o.paymentMethod || 'COD';
     if(method !== checkerTab) return false;
     // Exclude cancelled orders from checker view (they go to Remitter)
@@ -10896,7 +10900,9 @@ function startAutoRefresh(){
       if(!_encModalOpen && Array.isArray(fbData.orders)) {
         const _prevLen = S.orders.length;
         const _prevIds = new Set(S.orders.filter(o=>o&&o._id).map(o=>o._id));
-        S.orders = _mergeOrders(fbData.orders, S.orders);
+        // Strip null/undefined entries from Firebase before merging — prevents downstream crashes
+        const _fbOrdersClean = fbData.orders.filter(Boolean);
+        S.orders = _mergeOrders(_fbOrdersClean, S.orders);
         // Flag if any new orders appeared (new _id in merged result)
         window._sarOrdersChanged = S.orders.some(o => o && o._id && !_prevIds.has(o._id))
           || S.orders.length !== _prevLen;
