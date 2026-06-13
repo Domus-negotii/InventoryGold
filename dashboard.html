@@ -3894,8 +3894,10 @@ function renderChecker(){
     if(checkerTab === 'COD') {
       if(o.status === 'Out for Delivery' || o.status === 'Update') return false;
     }
-    // COD: hide orders whose rider+date is officially Remitted — checker's job is done
-    if(checkerTab === 'COD' && o.assignedRider && o.date) {
+    // COD: hide orders whose rider+date is officially Remitted AND already verified.
+    // New orders (checkerStatus='Pending') must ALWAYS show regardless of remit status —
+    // the checker still needs to verify them even if the rider remitted a previous batch.
+    if(checkerTab === 'COD' && o.assignedRider && o.date && (o.checkerStatus||'Pending') === 'Verified') {
       if(_checkerRemittedKeys.has(`${o.assignedRider}|${o.date}`)) return false;
     }
     // LBC/EMS/FedEx: hide orders already dispatched / in terminal courier status
