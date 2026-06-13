@@ -4255,24 +4255,29 @@ function verifyOrder(i){
     }
   }
   // ── Deduct inventory on Checker Verify ────────────────────────
-  // PRIMARY guard: inventoryDeducted flag on the order (persisted to Firebase)
-  // SECONDARY guard: stable session key — prevents re-deduction if SAR races and
-  //   resets inventoryDeducted=false before Firebase confirms the write
-  const _stableVerifyKey = (o._id||String(i)) + '_verified';
-  if(window._restoredRefs) window._restoredRefs.delete(o._id||String(i));
-  if(!S.orders[i].inventoryDeducted) {
-    if(window._deductedRefs && window._deductedRefs.has(_stableVerifyKey)) {
-      // Already deducted this session — SAR race reset the flag; just restore it
+  // GUARD HIERARCHY (strongest to weakest):
+  //   1. _sessionVerified: permanent in-session Set by order _id — survives SAR resets.
+  //      If this device already deducted this order this session, NEVER deduct again
+  //      regardless of what SAR does to inventoryDeducted flag.
+  //   2. inventoryDeducted flag on order: Firebase-persisted truth.
+  //      If true (confirmed from Firebase), skip deduction.
+  //   3. Neither guard fires → safe to deduct.
+  if(!window._sessionVerified) window._sessionVerified = new Set();
+  if(!window._sessionRestored) window._sessionRestored = new Set();
+  const _orderKey = o._id || String(i);
+  // Remove from restored set (checker is re-verifying after an unverify)
+  window._sessionRestored.delete(_orderKey);
+  if(window._sessionVerified.has(_orderKey)) {
+    // Already deducted this session — SAR may have reset the flag; just correct it
+    S.orders[i].inventoryDeducted = true;
+  } else if(!S.orders[i].inventoryDeducted) {
+    // Not yet deducted — do it now
+    const _verifyRef = _orderKey + '_verify_' + Date.now();
+    const didDeduct = _deductOrderItems(o.items, today(),
+      'Checker verified – '+o.name+' ('+onum(i)+')', _verifyRef);
+    if(didDeduct) {
       S.orders[i].inventoryDeducted = true;
-    } else {
-      const _verifyRef = _stableVerifyKey + '_' + Date.now();
-      const didDeduct = _deductOrderItems(o.items, today(),
-        'Checker verified – '+o.name+' ('+onum(i)+')', _verifyRef);
-      if(didDeduct) {
-        S.orders[i].inventoryDeducted = true;
-        if(!window._deductedRefs) window._deductedRefs = new Set();
-        window._deductedRefs.add(_stableVerifyKey);
-      }
+      window._sessionVerified.add(_orderKey);
     }
   }
   // Save the inventory deduction to Firebase immediately
@@ -4326,21 +4331,25 @@ function unverifyOrder(i){
     return;
   }
   // ── Restore inventory on Unverify ──────────────────────────────
-  // Deduction happened at Verify — so restore it here.
-  // Clear the deduct ref so a subsequent re-verify can deduct again cleanly.
-  if(window._deductedRefs) {
-    // Clear all refs containing this order's id prefix
-    [...(window._deductedRefs||[])].forEach(k=>{ if(k.startsWith(o._id||String(i))) window._deductedRefs.delete(k); });
-  }
-  if(_invDeducted(o)) {
-    const _restoreRef = (o._id||String(i)) + '_restore_' + Date.now();
-    // Also clear any stale restore refs for this order so restore is never blocked
-    if(window._restoredRefs) {
-      [...(window._restoredRefs||[])].forEach(k=>{ if(k.startsWith(o._id||String(i))) window._restoredRefs.delete(k); });
+  // Uses the same session-level Sets as verifyOrder for consistent guards.
+  // Clear from session verified set so a re-verify can deduct cleanly.
+  if(!window._sessionVerified) window._sessionVerified = new Set();
+  if(!window._sessionRestored) window._sessionRestored = new Set();
+  const _orderKey = o._id || String(i);
+  window._sessionVerified.delete(_orderKey); // allow re-deduction on next verify
+  if(_invDeducted(o) || (!window._sessionRestored.has(_orderKey))) {
+    // Only restore if: inventory was deducted (flag says so) OR
+    // this session hasn't already restored it (prevents double-restore on SAR race)
+    if(!window._sessionRestored.has(_orderKey) && _invDeducted(o)) {
+      const _restoreRef = _orderKey + '_restore_' + Date.now();
+      _restoreOrderItems(o.items, today(),
+        'Checker unverified – '+o.name+' ('+onum(i)+')', _restoreRef);
+      S.orders[i].inventoryDeducted = false;
+      window._sessionRestored.add(_orderKey);
+    } else if(!_invDeducted(o)) {
+      // Already not deducted — just clear the flag to be safe
+      S.orders[i].inventoryDeducted = false;
     }
-    _restoreOrderItems(o.items, today(),
-      'Checker unverified – '+o.name+' ('+onum(i)+')', _restoreRef);
-    S.orders[i].inventoryDeducted = false;
   }
   S.orders[i].checkerStatus='Pending';
   S.orders[i].verificationStatus='Not Verified';
