@@ -8264,10 +8264,20 @@ function renderRiderParcels() {
       if(!RIDER_VISIBLE_STATUSES.has(o.status)) return false;
       return true;
     });
-  // Rider dashboard shows ALL orders assigned to this rider in RIDER_VISIBLE_STATUSES.
-  // No remit-based hiding here — the Remitter page handles what's shown there.
-  // Rider must always see their cancelled/delivered orders for reference and remittance.
-  const myOrders = allMyOrders;
+  // Hide orders only when date is FULLY remitted (all entries for that date = Remitted)
+  // AND no active entry exists. New batches on same date stay visible until THEIR entry is Remitted.
+  const _rbd = {};
+  (S.remitLog||[]).forEach(r => {
+    if(r.riderName !== currentRider.name) return;
+    if(!_rbd[r.date]) _rbd[r.date] = {active:0, done:0};
+    if((r.remitStatus||'For Remittance') === 'Remitted') _rbd[r.date].done++;
+    else _rbd[r.date].active++;
+  });
+  const _fullyDone = new Set(Object.entries(_rbd).filter(([,v])=>v.active===0&&v.done>0).map(([d])=>d));
+  const myOrders = allMyOrders.filter(o => {
+    if(o.status==='Ready'||o.status==='Out for Delivery') return true; // always visible
+    return !_fullyDone.has(o.date); // terminal: hide only when date fully remitted
+  });
   // Date filter: exact string match — df is whatever user typed
   // type="text" input means no browser date validation interference
   let filtered;
@@ -9546,8 +9556,17 @@ function populateRemitParcels() {
   const rider = S.riders[+idx];
   if(!rider) return;
   const df = document.getElementById('remit-date')?.value || '';
+  // Exclude orders from fully-Remitted dates — those are settled history
+  const _ppRbd = {};
+  (S.remitLog||[]).forEach(r => {
+    if(r.riderName!==rider.name) return;
+    if(!_ppRbd[r.date]) _ppRbd[r.date]={active:0,done:0};
+    if((r.remitStatus||'For Remittance')==='Remitted') _ppRbd[r.date].done++;
+    else _ppRbd[r.date].active++;
+  });
+  const _ppDone = new Set(Object.entries(_ppRbd).filter(([,v])=>v.active===0&&v.done>0).map(([d])=>d));
   const myOrders = S.orders.map((o,i)=>({...o,idx:i}))
-    .filter(o=>o.assignedRider===rider.name && (!df || o.date===df));
+    .filter(o=>o.assignedRider===rider.name && (!df||o.date===df) && !_ppDone.has(o.date));
   const delivered = myOrders.filter(o=>o.status==='Delivered');
   const cancelled = myOrders.filter(o=>['Cancelled','RTO','Update'].includes(o.status));
   // Use DELIVERED-only SF for accurate deduction calculation
@@ -9818,6 +9837,11 @@ function saveRemit() {
   const editIdx = document.getElementById('remit-edit-idx').value;
   if(editIdx!=='') {
     const oldEntry = S.remitLog[+editIdx] || {};
+    // Block editing a Remitted entry — it is locked history, cannot be changed
+    if((oldEntry.remitStatus||'For Remittance') === 'Remitted') {
+      toast('🔒 Hindi na maaaring i-edit — Remitted na ang entry na ito. History na ito.');
+      _releaseLock(); return;
+    }
     // CRITICAL: preserve original _id — SAR _id-merge uses it to identify this entry.
     // Generating a new _id on edit makes SAR think old entry was deleted + new one added → duplicate.
     if(oldEntry._id) entry._id = oldEntry._id;
@@ -10150,8 +10174,11 @@ function renderRemitPage() {
                   <td style="padding:7px 10px;font-weight:600;color:${statusColor(st)};white-space:nowrap;text-align:left;">${statusIcon(st)} ${st}</td>
                   <td style="padding:7px 10px;text-align:left;">
                     <div style="display:flex;gap:4px;">
-                      <button class="btn btn-outline btn-sm" onclick="openRemitModal(${e.idx})">✏️</button>
-                      ${st!=='Remitted'?`<button class="btn btn-red btn-sm" onclick="delRemit(${e.idx})">🗑️</button>`:''}
+                      ${st!=='Remitted'
+                        ?`<button class="btn btn-outline btn-sm" onclick="openRemitModal(${e.idx})">✏️</button>
+                           <button class="btn btn-red btn-sm" onclick="delRemit(${e.idx})">🗑️</button>`
+                        :`<span style="font-size:9.5px;color:var(--green);padding:3px 6px;">🔒 Remitted</span>`
+                      }
                     </div>
                   </td>
                 </tr>`;
