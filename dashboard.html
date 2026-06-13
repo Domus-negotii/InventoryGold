@@ -8264,12 +8264,22 @@ function renderRiderParcels() {
       if(!RIDER_VISIBLE_STATUSES.has(o.status)) return false;
       return true;
     });
-  // Show ALL orders in RIDER_VISIBLE_STATUSES — no remit-based filtering.
-  // We cannot reliably determine which orders belong to which remit batch
-  // (orders have no remitEntryId or createdAt). Date-based filtering causes
-  // false positives when a rider has multiple batches on the same date.
-  // The Remitter's page handles financial grouping — rider dashboard is for active work.
-  const myOrders = allMyOrders;
+  // Hide orders that are covered by a completed (Remitted) batch.
+  // An order is "covered" if its createdAt <= entry.remittedAt for a Remitted entry
+  // with matching riderName + date. Orders created AFTER remittedAt are new batch.
+  // Ready/OFD always visible — rider physically has them, regardless of remit history.
+  const _remittedEntries = (S.remitLog||[]).filter(r =>
+    r.riderName === currentRider.name && r.remitStatus === 'Remitted' && r.remittedAt
+  );
+  const myOrders = allMyOrders.filter(o => {
+    if(o.status === 'Ready' || o.status === 'Out for Delivery') return true;
+    // Check if this order is covered by any Remitted batch entry
+    const covered = _remittedEntries.some(r =>
+      r.date === o.date &&
+      (o.createdAt ? o.createdAt <= r.remittedAt : false)
+    );
+    return !covered;
+  });
   // Date filter: exact string match — df is whatever user typed
   // type="text" input means no browser date validation interference
   let filtered;
@@ -9549,16 +9559,21 @@ function populateRemitParcels() {
   if(!rider) return;
   const df = document.getElementById('remit-date')?.value || '';
   // Exclude orders from fully-Remitted dates — those are settled history
-  const _ppRbd = {};
-  (S.remitLog||[]).forEach(r => {
-    if(r.riderName!==rider.name) return;
-    if(!_ppRbd[r.date]) _ppRbd[r.date]={active:0,done:0};
-    if((r.remitStatus||'For Remittance')==='Remitted') _ppRbd[r.date].done++;
-    else _ppRbd[r.date].active++;
-  });
-  const _ppDone = new Set(Object.entries(_ppRbd).filter(([,v])=>v.active===0&&v.done>0).map(([d])=>d));
+  // Exclude orders already covered by a Remitted batch (createdAt <= remittedAt).
+  // Only show orders that belong to the CURRENT/NEW batch being created.
+  const _ppRemitted = (S.remitLog||[]).filter(r =>
+    r.riderName === rider.name && r.remitStatus === 'Remitted' && r.remittedAt
+  );
   const myOrders = S.orders.map((o,i)=>({...o,idx:i}))
-    .filter(o=>o.assignedRider===rider.name && (!df||o.date===df) && !_ppDone.has(o.date));
+    .filter(o => {
+      if(o.assignedRider !== rider.name) return false;
+      if(df && o.date !== df) return false;
+      // Exclude if covered by any Remitted batch
+      const covered = _ppRemitted.some(r =>
+        r.date === o.date && (o.createdAt ? o.createdAt <= r.remittedAt : false)
+      );
+      return !covered;
+    });
   const delivered = myOrders.filter(o=>o.status==='Delivered');
   const cancelled = myOrders.filter(o=>['Cancelled','RTO','Update'].includes(o.status));
   // Use DELIVERED-only SF for accurate deduction calculation
@@ -9807,6 +9822,7 @@ function saveRemit() {
     riderName: rider.name,
     date,
     remitStatus,
+    remittedAt: remitStatus === 'Remitted' ? new Date().toISOString() : null,
     parcelCount   : myOrders.length,
     totalSF       : deliveredSF,
     sf10,
@@ -9850,6 +9866,10 @@ function saveRemit() {
         !(e.person === oldEntry.riderName && e.date === oldEntry.date &&
           (e.notes === remitNote || e.notes === autoNote))
       );
+    }
+    // Preserve remittedAt if already set; stamp now if newly becoming Remitted
+    if(!entry.remittedAt && remitStatus === 'Remitted') {
+      entry.remittedAt = new Date().toISOString();
     }
     S.remitLog[+editIdx] = entry;
   } else {
@@ -10000,11 +10020,20 @@ function renderRemitPage() {
     // Actual orders for this rider — only for NON-Remitted entry dates.
     // Once a remit entry is marked Remitted, its orders leave the breakdown.
     // Orders stay visible for all entries that are still For Remittance or Remitting.
-    // Show ALL orders for this rider (filtered by date if set).
-    // Each entry's breakdown uses its own e.date to group correctly.
-    // History entries (Remitted) also show their orders — that's the point of history.
+    // Each entry shows the orders that BELONG to it:
+    // For Remitted entries: orders with createdAt <= entry.remittedAt (covered by this batch)
+    // For active entries (For Remittance/Remitting): all orders for that date not yet covered
+    const _entryRemittedEntries = entries.filter(e => e.remitStatus==='Remitted' && e.remittedAt);
     const riderOrders = (S.orders||[]).map((o,oi)=>({...o,oi}))
-      .filter(o=>o.assignedRider===riderName && (!df||o.date===df));
+      .filter(o => {
+        if(o.assignedRider !== riderName) return false;
+        if(df && o.date !== df) return false;
+        if(o.date !== entries[0]?.date && !df) {
+          // Multi-date view: include all dates that have entries
+          if(!entries.some(e=>e.date===o.date)) return false;
+        }
+        return true;
+      });
 
     const delivered  = riderOrders.filter(o=>o.status==='Delivered');
     const cancelled  = riderOrders.filter(o=>o.status==='Cancelled'||o.status==='RTO');
