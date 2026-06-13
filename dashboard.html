@@ -782,6 +782,13 @@ window.loadFromFirebase = async function() {
     }
     delete data._pwVersion;
     delete data._lastWrite;
+    // ── SANITIZE: strip null/undefined/corrupt entries from orders array ──────
+    // Firestore REST API can return sparse arrays with null slots.
+    // These crash EVERY downstream consumer (renderChecker, _mergeOrders, filters).
+    // Clean at the single point of entry so all consumers are protected.
+    if(Array.isArray(data.orders)) {
+      data.orders = data.orders.filter(o => o && typeof o === 'object' && o.status);
+    }
     // Status migration for old records
     const SM={'In Transit':'Preparing','Delivering':'Out for Delivery','For Return':'Update','Returned':'Cancelled'};
     if(data.orders) data.orders.forEach(o=>{ if(SM[o.status]) o.status=SM[o.status]; });
@@ -3846,12 +3853,14 @@ function renderChecker(){
   // Pending badge: count orders that are ACTIONABLE in the current checker tab.
   // COD tab: Pending + Preparing/Ready status + not Remitted = checker needs to act.
   // Courier tabs: handled separately by tab badges. Global count was misleading.
-  const _pendingCOD = S.orders.filter(o => o &&
+  // Use _safeOrders() — permanent null guard that survives any future S.orders update
+  const _safeO = _safeOrders();
+  const _pendingCOD = _safeO.filter(o =>
     (o.paymentMethod||'COD') === 'COD' &&
     o.checkerStatus === 'Pending' &&
     !['Cancelled','RTO','Delivered','Out for Delivery','Update'].includes(o.status)
   ).length;
-  const _pendingCourier = S.orders.filter(o => o &&
+  const _pendingCourier = _safeO.filter(o =>
     (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx') &&
     (o.paymentStatus||'No Payment') === 'Fully Paid' &&
     o.checkerStatus === 'Pending' &&
@@ -3860,7 +3869,7 @@ function renderChecker(){
   const pending = _pendingCOD + _pendingCourier;
   document.getElementById('checker-pending-count').textContent = pending ? `⚠️ ${pending} pending` : '✅ All verified';
   // Update For Update tab badge
-  const updateCount = S.orders.filter(o=>o&&o.status==='Update').length;
+  const updateCount = _safeO.filter(o=>o.status==='Update').length;
   const updateBtn = document.getElementById('checker-tab-update-btn');
   if(updateBtn) updateBtn.textContent = updateCount > 0 ? `🔔 For Update (${updateCount})` : '🔔 For Update';
   // Update Recently Deleted tab badge
@@ -3870,7 +3879,7 @@ function renderChecker(){
   // Update LBC/EMS/FedEx tab badges — exclude terminal courier statuses
   const _BADGE_DONE = new Set(['ODZ/Incomplete Details','Out for Delivery','RTO','Delivered']);
   ['LBC','EMS','FedEx'].forEach(method=>{
-    const count = S.orders.filter(o=>o&&
+    const count = _safeO.filter(o=>
       o.paymentMethod===method &&
       (o.paymentStatus||'No Payment')==='Fully Paid' &&
       (o.status!=='Cancelled'&&o.status!=='RTO'&&o.status!=='Delivered') &&
@@ -3901,8 +3910,8 @@ function renderChecker(){
   // Courier statuses that should no longer appear in checker (already dispatched / done)
   const _COURIER_DONE = new Set(['ODZ/Incomplete Details','Out for Delivery','RTO','Delivered']);
 
-  const list = S.orders.map((o,i)=>({o,i})).filter(({o}) => {
-    if(!o) return false; // null guard — prevents crash if Firebase sends sparse array
+  // _safeO is already null-filtered — permanent guard against Firebase sparse arrays
+  const list = _safeO.map((o,i)=>({o,i})).filter(({o}) => {
     const method = o.paymentMethod || 'COD';
     if(method !== checkerTab) return false;
     // Exclude cancelled orders from checker view (they go to Remitter)
@@ -3927,7 +3936,7 @@ function renderChecker(){
     if(_isCourierTab && (o.paymentStatus||'No Payment') !== 'Fully Paid') return false;
     if(filt && o.checkerStatus !== filt) return false;
     if(df && o.date !== df) return false;
-    if(q && !(o.name||'').toLowerCase().includes(q) && !(o.contact||'').toLowerCase().includes(q) && !onum(S.orders.indexOf(o)).toLowerCase().includes(q)) return false;
+    if(q && !(o.name||'').toLowerCase().includes(q) && !(o.contact||'').toLowerCase().includes(q)) return false;
     return true;
   });
 
@@ -10753,7 +10762,7 @@ async function _preloadLoginData(){
     if(Array.isArray(fbData.riders))        S.riders        = fbData.riders;
     if(Array.isArray(fbData.adminAccounts)) S.adminAccounts = fbData.adminAccounts;
     if(Array.isArray(fbData.adminNames))    S.adminNames    = fbData.adminNames;
-    if(Array.isArray(fbData.orders))        S.orders        = fbData.orders;
+    if(Array.isArray(fbData.orders))        S.orders        = fbData.orders.filter(o=>o&&typeof o==='object'&&o.status);
     if(fbData.specialPasswords && typeof fbData.specialPasswords==='object')
       S.specialPasswords = fbData.specialPasswords;
     if(fbData.lastGlobalClear) S.lastGlobalClear = fbData.lastGlobalClear;
@@ -13059,7 +13068,7 @@ document.addEventListener('visibilitychange', async ()=>{
     });
     // Orders: safe merge — don't blindly overwrite locally-pending encodes
     if(Array.isArray(fbData.orders)) {
-      S.orders = _mergeOrders(fbData.orders, _localOrdersBackup);
+      S.orders = _mergeOrders(fbData.orders.filter(o=>o&&typeof o==='object'&&o.status), _localOrdersBackup);
     }
     // Inventory: skip replace during 30s grace after any local inventory change
     const _visInvAge = Date.now() - (window._lastInvWrite || 0);
