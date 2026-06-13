@@ -602,7 +602,37 @@ async function _directWriteFirebase(data, opts){
       return d.toISOString().slice(0,10);
     })();
     const TERMINAL = new Set(['Delivered','Cancelled','RTO']);
-    const ordersToWrite = (S2.orders||[]).filter(o => {
+
+    // ── CONCURRENT-WRITE GUARD: fetch current Firebase orders before writing ──
+    // Prevents one device from clobbering orders that other devices just saved.
+    // Without this, 50 simultaneous encodes would race — last writer wins and
+    // all other new orders are silently lost from Firebase (though protected by
+    // the 5-minute grace window on the encoding device only).
+    let _fbCurrentOrders = [];
+    try {
+      const _preReadUrl = `${_FB_BASE}/gce_state/main?key=${_FB_APIKEY}&mask.fieldPaths=orders`;
+      const _preReadR = await fetch(_preReadUrl, {cache:'no-cache'});
+      if(_preReadR.ok) {
+        const _preReadDoc = await _preReadR.json();
+        const _rawFbOrders = _preReadDoc.fields?.orders ? _fromFS(_preReadDoc.fields.orders) : [];
+        _fbCurrentOrders = Array.isArray(_rawFbOrders) ? _rawFbOrders : [];
+      }
+    } catch(_e) { /* network error — proceed with local only (safe fallback) */ }
+
+    // Union-merge: all Firebase orders (authoritative) + any local orders not yet in Firebase
+    // This is a write-time version of _mergeOrders: ensures no orders are overwritten
+    const _fbOrderIds = new Set(_fbCurrentOrders.filter(o=>o&&o._id).map(o=>o._id));
+    const _localNewOrders = (S2.orders||[]).filter(o => o && o._id && !_fbOrderIds.has(o._id));
+    // For orders in both: local wins (it has the most recent edits from THIS device)
+    const _localById = new Map((S2.orders||[]).filter(o=>o&&o._id).map(o=>[o._id,o]));
+    const _mergedForWrite = [
+      ..._fbCurrentOrders.map(fbO => (fbO&&fbO._id&&_localById.has(fbO._id)) ? _localById.get(fbO._id) : fbO),
+      ..._localNewOrders
+    ].filter(Boolean);
+    // Use merged result as the base for archiving
+    const _baseOrders = _mergedForWrite.length > 0 ? _mergedForWrite : (S2.orders||[]);
+
+    const ordersToWrite = _baseOrders.filter(o => {
       if(!o) return false;
       // Always keep non-terminal (active) orders regardless of age
       if(!TERMINAL.has(o.status)) return true;
@@ -7875,6 +7905,13 @@ async function save(){
     _lastKnownWriteTs = Date.now() - 1; // prevent SAR from skipping own update
     try     {
       const writeOk = await _directWriteFirebase();
+      // If write was blocked by _syncPending (another write in-flight), schedule a retry.
+      // This ensures orders encoded during a concurrent write are not silently lost.
+      if(writeOk === false) {
+        setTimeout(async () => {
+          try { if(window._fbReady) await _directWriteFirebase(); } catch(e) {}
+        }, 2000); // 2s delay — enough for the blocking write to complete
+      }
       // If write succeeded AND inventory was changed, schedule a verification render
       // after Firebase propagation delay (~3s) to ensure Products page is in sync
       if(writeOk && window._invChangedThisSave) {
