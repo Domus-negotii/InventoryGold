@@ -1345,7 +1345,6 @@ function _showRulesHint() {
       <button class="tab-btn" data-tab="LBC" onclick="setCheckerTab('LBC')">📦 LBC</button>
       <button class="tab-btn" data-tab="EMS" onclick="setCheckerTab('EMS')">✈️ EMS</button>
       <button class="tab-btn" data-tab="FedEx" onclick="setCheckerTab('FedEx')">📦 FedEx</button>
-      <button class="tab-btn" data-tab="UPDATE" onclick="setCheckerTab('UPDATE')" id="checker-tab-update-btn">🔔 For Update</button>
       <button class="tab-btn" data-tab="DELETED" onclick="setCheckerTab('DELETED')" id="checker-tab-deleted-btn">🗑️ Recently Deleted</button>
     </div>
     <div class="card no-print">
@@ -2953,6 +2952,9 @@ let S = {
 // ── Global data safety: filter null/undefined entries from all arrays ──────
 // Called at the start of each render pass to prevent crashes on malformed Firebase data
 function _safeOrders() { return (S.orders||[]).filter(o=>o&&o.status); }
+// Permanent null-guard for inventory access — use this instead of S.inventory directly
+// in any render/calculation function to prevent null-slot crashes from Firebase arrays.
+function _safeInventory() { return (S.inventory||[]).filter(i=>i&&i.code); }
 function _safeItems(o)  { return Array.isArray(o&&o.items)?o.items:[]; }
 
 
@@ -4428,7 +4430,7 @@ function openInvoice(i){
 
   // Item rows — compact 4-col: Code+Desc | Qty/g | @Price | Total
   const rows = (o.items||[]).map(it=>{
-    const isGrams  = it.pergram > 0;
+    const isGrams  = it.grams > 0;
     const qtyStr   = isGrams ? `${it.grams}g` : `×${it.qty||1}`;
     const rateStr  = isGrams ? `@₱${Number(it.pergram).toFixed(2)}/g` : '';
     const disc     = it.discount||0;
@@ -4958,7 +4960,7 @@ function renderUpdateOrders() {
       return `<tr>
         <td style="font-family:monospace;font-size:11px;color:var(--gold);font-weight:700;">${it.code||'—'}</td>
         <td style="font-size:11.5px;">${it.desc||'—'}</td>
-        <td style="text-align:center;">${it.pergram>0?`${it.grams}g`:` ×${it.qty||1}`}</td>
+        <td style="text-align:center;">${it.grams>0?`${it.grams}g`:` ×${it.qty||1}`}</td>
         <td style="color:var(--green);font-weight:700;text-align:right;">${p(it.total)}</td>
         <td><span class="status ${st==='Cancelled'?'cancelled':st==='Delivered'?'delivered':'transit'}" style="font-size:9px;">${st}</span></td>
         <td style="font-size:10px;color:var(--orange);">${iR[ii]||'—'}</td>
@@ -7601,7 +7603,7 @@ function doLogin(){
     const correct=(S.specialPasswords?.sorter)||'sort2026';
     if(!pw){ err.textContent='Enter password'; return; }
     if(pw!==correct){ err.textContent='❌ Incorrect password'; document.getElementById('login-sorter-pw').value=''; document.getElementById('login-sorter-pw').focus(); return; }
-    currentRole='sorter'; currentUser={name:'Parcel Sorter',role:'sorter'};
+    currentRole='sorter'; currentUser={name:'Dispatcher',role:'sorter'};
   } else if(selectedRole==='checker'){
     const pw=document.getElementById('login-checker-pw').value;
     const err=document.getElementById('login-checker-err');
@@ -7896,6 +7898,8 @@ function clearAllTransactions() {
   window._deletedRemitIds  = new Set();  // stale ghost deletions no longer relevant
   window._deductedRefs     = new Set();  // inventory deduction guards — fresh start
   window._restoredRefs     = new Set();  // inventory restore guards — fresh start
+  window._sessionVerified  = new Set();  // checker verify session guards — fresh start
+  window._sessionRestored  = new Set();  // checker unverify session guards — fresh start
   window._dwfRetryCount    = 0;          // reset retry counter
 
   // ── 6. Write cleared state to Firebase via save() ─────────────────────
@@ -8635,6 +8639,12 @@ function riderItemPartialCancel(orderIdx, itemIdx, cancelQtyStr, totalQty, isGra
 
 // ── INVENTORY HELPERS ─────────────────────────────────────────────────────────
 // Deduct order items from inventory. Returns true if anything was deducted.
+// ═══════════════════════════════════════════════════════════════════
+// PROTECTED FUNCTION — DO NOT modify guard logic without updating ALL callers.
+// Guard chain: _sessionVerified (permanent session) → inventoryDeducted flag (Firebase)
+// Called ONLY from: verifyOrder(), updateVerifStatus(), saveOrder() (edit path)
+// Any new caller MUST: check _sessionVerified first, then inventoryDeducted flag.
+// ═══════════════════════════════════════════════════════════════════
 function _deductOrderItems(items, orderDate, label, orderRef) {
   // ── IDEMPOTENCY GATE ─────────────────────────────────────────
   // If same orderRef passed twice within 30s, block second deduction.
@@ -8687,6 +8697,12 @@ function _deductOrderItems(items, orderDate, label, orderRef) {
   return deducted;
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// PROTECTED FUNCTION — DO NOT modify guard logic without updating ALL callers.
+// Guard chain: _sessionRestored (permanent session) → _invDeducted() check (Firebase)
+// Called ONLY from: unverifyOrder(), cancelOrder() restore paths
+// Any new caller MUST: check _sessionRestored first, then _invDeducted() flag.
+// ═══════════════════════════════════════════════════════════════════
 // Restore order items back to inventory. Returns true if anything was restored.
 function _restoreOrderItems(items, orderDate, label, orderRef) {
   // ── IDEMPOTENCY GATE ─────────────────────────────────────────
@@ -9619,8 +9635,8 @@ function populateRemitParcels() {
       const cancelledAmt = cancelledQty * pricePerUnit;
       const remainAmt = it.total - cancelledAmt;
       const remainQty = totalQty - cancelledQty;
-      const unit = it.pergram > 0 ? 'g' : 'pcs';
-      const baseStr = it.pergram > 0
+      const unit = it.grams > 0 ? 'g' : 'pcs';
+      const baseStr = it.grams > 0
         ? `${it.code}: ${it.desc} (${it.grams}g × ${p(it.pergram)}/g = ${p(it.total)})`
         : `${it.code}: ${it.desc} ×${it.qty} = ${p(it.total)}`;
       const discRemark = it.discountRemark ? `<span style="color:var(--orange);font-size:9px;"> [Disc: ${it.discountRemark}]</span>` : '';
@@ -9804,7 +9820,8 @@ function saveRemit() {
   const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
 
   // ── Recompute all values fresh from S.orders (don't rely on dataset) ─────
-  const myOrders = S.orders.map((o,i)=>({...o,idx:i}))
+  // null-guard: filter(Boolean) removes any null/undefined entries from S.orders
+  const myOrders = (S.orders||[]).filter(Boolean).map((o,i)=>({...o,idx:i}))
     .filter(o=>o.assignedRider===rider.name && o.date===date);
   const delivered   = myOrders.filter(o=>o.status==='Delivered');
   const cancelled   = myOrders.filter(o=>['Cancelled','RTO','Update'].includes(o.status));
@@ -9842,6 +9859,36 @@ function saveRemit() {
     notes         : ''
   };
 
+  // RETURN LOG GATE: runs BEFORE push — nothing committed if blocked
+  if(remitStatus === 'Remitted') {
+    const _unloggedItems = [];
+    myOrders.forEach((o) => {
+      const _onum = onum(o.idx);
+      const iS = o.itemStatuses || {};
+      if(o.status === 'Cancelled' || o.status === 'RTO') {
+        (o.items||[]).forEach((it, ii) => {
+          if(!(S.returnLog||[]).some(r => r.orderNum === _onum && r.itemIdx === ii))
+            _unloggedItems.push(_onum + ' - ' + (it.code||it.desc||'Item '+(ii+1)));
+        });
+      } else {
+        (o.items||[]).forEach((it, ii) => {
+          if((iS[ii]==='Cancelled')||((o.itemCancelQty||{})[ii]>0)) {
+            if(!(S.returnLog||[]).some(r => r.orderNum === _onum && r.itemIdx === ii))
+              _unloggedItems.push(_onum + ' - ' + (it.code||it.desc||'Item '+(ii+1)));
+          }
+        });
+      }
+    });
+    if(_unloggedItems.length > 0) {
+      const _preview = _unloggedItems.slice(0,5).join(', ') +
+        (_unloggedItems.length > 5 ? ' +' + (_unloggedItems.length-5) + ' more' : '');
+      toast('Hindi maaaring i-Remit. May ' + _unloggedItems.length + ' cancelled item(s) hindi pa naka-Return Log: ' + _preview + '. I-log muna sa Return/Cancel tab.');
+      _releaseLock();
+      return;
+    }
+  }
+
+  // Gate passed — commit to S.remitLog
   const editIdx = document.getElementById('remit-edit-idx').value;
   if(editIdx!=='') {
     const oldEntry = S.remitLog[+editIdx] || {};
@@ -9876,40 +9923,6 @@ function saveRemit() {
     S.remitLog.push(entry);
   }
 
-  // ── RETURN LOG GATE: block Remitted if cancelled items not yet logged ──
-  // All cancelled items must have a return log entry before remittance can be completed.
-  // This ensures physical items are accounted for before cash is finalized.
-  if(remitStatus === 'Remitted') {
-    const _unloggedItems = [];
-    myOrders.forEach((o, oi) => {
-      const _orderIdx = o.idx;
-      const _onum = onum(_orderIdx);
-      const iS = o.itemStatuses || {};
-      // Whole-order cancelled
-      if(o.status === 'Cancelled' || o.status === 'RTO') {
-        (o.items||[]).forEach((it, ii) => {
-          const _logged = (S.returnLog||[]).some(r => r.orderNum === _onum && r.itemIdx === ii);
-          if(!_logged) _unloggedItems.push(`${_onum} – ${it.code||it.desc||'Item '+(ii+1)}`);
-        });
-      } else {
-        // Per-item cancellations within a delivered order
-        (o.items||[]).forEach((it, ii) => {
-          const isItemCancelled = iS[ii] === 'Cancelled';
-          const partialCancel  = (o.itemCancelQty||{})[ii] > 0;
-          if(isItemCancelled || partialCancel) {
-            const _logged = (S.returnLog||[]).some(r => r.orderNum === _onum && r.itemIdx === ii);
-            if(!_logged) _unloggedItems.push(`${_onum} – ${it.code||it.desc||'Item '+(ii+1)}`);
-          }
-        });
-      }
-    });
-    if(_unloggedItems.length > 0) {
-      const _preview = _unloggedItems.slice(0,5).join(', ') + (_unloggedItems.length > 5 ? ` +${_unloggedItems.length-5} more` : '');
-      toast(`⚠️ Hindi maaaring i-Remit — may ${_unloggedItems.length} cancelled item${_unloggedItems.length>1?'s':''} na hindi pa naka-Return Log:\n${_preview}\n\nI-log muna sa Return/Cancel tab bago mag-Remit.`);
-      _releaseLock();
-      return; // block save
-    }
-  }
 
   // If Remitted → auto-record cashbond + benefits into logs
   if(remitStatus === 'Remitted') {
@@ -10050,7 +10063,7 @@ function renderRemitPage() {
         const cxQty  = iCQ[ii]||0;
         const remark = iR[ii]||'';
         const totalQty = it.grams||it.qty||1;
-        const unit     = it.pergram>0?'g':'pcs';
+        const unit     = it.grams>0?'g':'pcs';
         const ppu      = it.total/Math.max(1,totalQty);
         const discTag  = it.discount>0
           ? `<span style="color:var(--red);font-size:9px;font-weight:700;"> 🏷️-₱${it.discount.toFixed(2)}</span>`:'';
@@ -10558,7 +10571,7 @@ function showIncentiveDetail(oi) {
       <td style="font-family:monospace;font-size:10px;color:var(--gold);">${it.code||'—'}</td>
       <td style="font-size:11px;">${it.desc||'—'}</td>
       <td style="text-align:center;font-size:10px;color:${itCatColor};">${itCat}</td>
-      <td style="text-align:center;font-size:11px;">${it.pergram>0?it.grams+'g':'×'+(it.qty||1)}</td>
+      <td style="text-align:center;font-size:11px;">${it.grams>0?it.grams+'g':'×'+(it.qty||1)}</td>
       <td style="color:var(--green);text-align:right;font-size:11px;">${p(it.total)}</td>
     </tr>`;
   }).join('');
@@ -11147,6 +11160,11 @@ function renderOrderMgmt() {
 
   const getOmStatuses = (currentLbcSt, method) => {
     if(currentLbcSt === 'Out for Delivery') return OFD_CHOICES_SORTER;
+    // Once dropped off at courier, restrict choices to: drop-off status + next valid steps only.
+    // Prevents dispatcher from reverting to Ready to Pick-up after a drop-off.
+    if(currentLbcSt === 'Drop off at LBC')   return ['Drop off at LBC','ODZ/Incomplete Details','Out for Delivery'];
+    if(currentLbcSt === 'Drop off at EMS')   return ['Drop off at EMS','Out for Delivery'];
+    if(currentLbcSt === 'Drop off at FedEx') return ['Drop off at FedEx','Out for Delivery'];
     if(method==='EMS') return ALL_STATUSES_EMS;
     if(method==='FedEx') return ALL_STATUSES_FEDEX;
     return ALL_STATUSES_LBC;
@@ -11603,7 +11621,7 @@ function renderLbcDelivery() {
           }
           ${isRTO?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️ Edit / Re-dispatch</button>`:''}
           ${isODZ&&(currentRole==='checker'||currentRole==='owner')?`<button class="btn btn-outline btn-sm" onclick="_editSource='courier-dashboard';openEditOrder(${i})">✏️ Fix Details</button>`:''}
-          <button class="btn btn-print btn-sm" onclick="openInvoice(${i})" style="margin-left:auto;">🖨️ Print</button>
+          ${(lbcDeliveryTab==='odz'||lbcDeliveryTab==='rto')?`<button class="btn btn-print btn-sm" onclick="openInvoice(${i})" style="margin-left:auto;">🖨️ Print</button>`:''}
         </div>
       </div>
     </div>`;
@@ -12185,7 +12203,7 @@ function renderEmsDelivery() {
                </select>`
           }
           ${isRTO?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️ Edit / Re-dispatch</button>`:''}
-          <button class="btn btn-print btn-sm" onclick="openInvoice(${i})" style="margin-left:auto;">🖨️ Print</button>
+          ${emsDeliveryTab==='rto'?`<button class="btn btn-print btn-sm" onclick="openInvoice(${i})" style="margin-left:auto;">🖨️ Print</button>`:''}
         </div>
       </div>
     </div>`;
@@ -12509,7 +12527,7 @@ function renderFedexDelivery() {
                </select>`
           }
           ${isRTO?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️ Edit / Re-dispatch</button>`:''}
-          <button class="btn btn-print btn-sm" onclick="openInvoice(${i})" style="margin-left:auto;">🖨️ Print</button>
+          ${fedexDeliveryTab==='rto'?`<button class="btn btn-print btn-sm" onclick="openInvoice(${i})" style="margin-left:auto;">🖨️ Print</button>`:''}
         </div>
       </div>
     </div>`;
@@ -12540,28 +12558,15 @@ function renderCheckerDeleted() {
   const mf = document.getElementById('checker-del-method')?.value||'';
   const df = mdy2ymd((document.getElementById('checker-del-date')?.value||'').trim());
 
-  // Merge S.deletedOrders (saved snapshots) + Cancelled orders from S.orders (live)
-  // DEDUP: an order cancelled via confirmCheckerCancel appears in BOTH lists.
-  // Rule: S.deletedOrders takes precedence (has full snapshot + reason).
-  const deletedOrderNums = new Set((S.deletedOrders||[]).map(d=>d.orderNum));
-  const cancelledActive = S.orders.map((o,i)=>({
-    ...o, orderIdx:i,
-    cancelledAt: o.cancelledAt||o.date,
-    cancelledBy: o.cancelledBy||'Checker',
-    reason: o.cancelReason||'—',
-    orderNum: onum(i),
-    _fromActive: true
-  })).filter(o=>(o.status==='Cancelled'||o.status==='RTO') && !deletedOrderNums.has(onum(o.orderIdx)));
-
-  const allDeleted = [
-    ...S.deletedOrders.map(d=>({...d,_fromActive:false})),
-    ...cancelledActive
-  ];
+  // Recently Deleted = ONLY orders explicitly deleted by the checker (S.deletedOrders).
+  // Cancelled orders that are still in S.orders are NOT shown here — they belong in
+  // the Return/Cancel tab. This keeps Recently Deleted clean and accurate.
+  const allDeleted = (S.deletedOrders||[]).map(d=>({...d,_fromActive:false}));
 
   const list = allDeleted.map((d,i)=>({d,i})).filter(({d}) => {
     if(mf && (d.paymentMethod||'COD') !== mf) return false;
     if(df && d.cancelledAt && !d.cancelledAt.startsWith(df)) return false;
-    if(q && !d.name.toLowerCase().includes(q)
+    if(q && !(d.name||'').toLowerCase().includes(q)
        && !(d.contact||'').toLowerCase().includes(q)
        && !(d.orderNum||'').toLowerCase().includes(q)
        && !(d.reason||'').toLowerCase().includes(q)
