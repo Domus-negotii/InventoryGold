@@ -9865,16 +9865,25 @@ function saveRemit() {
     myOrders.forEach((o) => {
       const _onum = onum(o.idx);
       const iS = o.itemStatuses || {};
+      // Check if ANY returnLog entry exists for this order (whole-order match)
+      // itemIdx may be null when logged via the Return/Cancel tab (not from item button)
+      const _hasAnyLog = (S.returnLog||[]).some(r => r.orderNum === _onum);
       if(o.status === 'Cancelled' || o.status === 'RTO') {
         (o.items||[]).forEach((it, ii) => {
-          if(!(S.returnLog||[]).some(r => r.orderNum === _onum && r.itemIdx === ii))
-            _unloggedItems.push(_onum + ' - ' + (it.code||it.desc||'Item '+(ii+1)));
+          // Logged if: exact item-index match OR whole-order log exists (itemIdx===null)
+          // OR any log for this order (covers manual logging from Return/Cancel tab)
+          const _logged = (S.returnLog||[]).some(r =>
+            r.orderNum === _onum && (r.itemIdx === ii || r.itemIdx === null || r.itemIdx === undefined)
+          );
+          if(!_logged) _unloggedItems.push(_onum + ' - ' + (it.code||it.desc||'Item '+(ii+1)));
         });
       } else {
         (o.items||[]).forEach((it, ii) => {
           if((iS[ii]==='Cancelled')||((o.itemCancelQty||{})[ii]>0)) {
-            if(!(S.returnLog||[]).some(r => r.orderNum === _onum && r.itemIdx === ii))
-              _unloggedItems.push(_onum + ' - ' + (it.code||it.desc||'Item '+(ii+1)));
+            const _logged = (S.returnLog||[]).some(r =>
+              r.orderNum === _onum && (r.itemIdx === ii || r.itemIdx === null || r.itemIdx === undefined)
+            );
+            if(!_logged) _unloggedItems.push(_onum + ' - ' + (it.code||it.desc||'Item '+(ii+1)));
           }
         });
       }
