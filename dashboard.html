@@ -11865,7 +11865,7 @@ function renderCodDelivPage() {
     const reason = tab==='ForUpdate'
       ? (o.updateReason||o.riderNote||o.paymentNotes||'Needs rider update')
       : (o.cancelReason||o.rtoReason||'—');
-    const itemsList = (o.items||[]).map(it=>`${it.desc||it.code} ×${it.qty||it.grams||1}${it.grams?'g':''}`).join(', ');
+    const itemsList = (o.items||[]).map(it=>it.grams>0?`${it.desc||it.code} ${it.grams}g`:`${it.desc||it.code} ×${it.qty||1}`).join(', ');
     // Req#1: For Update tab — check if this order's rider+date is officially Remitted
     const _isRemitted = tab==='ForUpdate' && (S.remitLog||[]).some(r=>
       r.riderName === o.assignedRider && r.date === o.date && r.remitStatus === 'Remitted'
