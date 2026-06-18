@@ -9580,7 +9580,7 @@ function populateRemitParcels() {
   const _ppRemitted = (S.remitLog||[]).filter(r =>
     r.riderName === rider.name && r.remitStatus === 'Remitted' && r.remittedAt
   );
-  const myOrders = S.orders.map((o,i)=>({...o,idx:i}))
+  const myOrders = (S.orders||[]).map((o,i)=>o?{...o,idx:i}:null).filter(Boolean)
     .filter(o => {
       if(o.assignedRider !== rider.name) return false;
       if(df && o.date !== df) return false;
@@ -9820,8 +9820,10 @@ function saveRemit() {
   const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
 
   // ── Recompute all values fresh from S.orders (don't rely on dataset) ─────
-  // null-guard: filter(Boolean) removes any null/undefined entries from S.orders
-  const myOrders = (S.orders||[]).filter(Boolean).map((o,i)=>({...o,idx:i}))
+  // CRITICAL: map FIRST to preserve original S.orders index, THEN filter nulls.
+  // filter(Boolean) before map reindexes i starting from 0, making onum(idx) return
+  // wrong order numbers when S.orders has null/undefined slots from Firebase.
+  const myOrders = (S.orders||[]).map((o,i)=>o?{...o,idx:i}:null).filter(Boolean)
     .filter(o=>o.assignedRider===rider.name && o.date===date);
   const delivered   = myOrders.filter(o=>o.status==='Delivered');
   const cancelled   = myOrders.filter(o=>['Cancelled','RTO','Update'].includes(o.status));
