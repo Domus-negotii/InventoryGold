@@ -8262,8 +8262,10 @@ function renderRiderParcels() {
   const allMyOrders = S.orders.map((o,i) => ({...o, idx:i}))
     .filter(o => {
       if(o.assignedRider !== currentRider.name) return false;
-      // Checker-cancelled = status Cancelled with cancelledBy set — not rider's concern
-      if(o.status === 'Cancelled' && o.cancelledBy) return false;
+      // Only hide if checker cancelled DIRECTLY (pre-dispatch, rider never saw it).
+      // If checkerCancelledDirect is not set, the order reached the rider — keep visible
+      // so rider can account for it (remittance, return log, etc.).
+      if(o.status === 'Cancelled' && o.cancelledBy && o.checkerCancelledDirect) return false;
       // Only show orders dispatcher marked Ready or beyond — not Preparing
       if(!RIDER_VISIBLE_STATUSES.has(o.status)) return false;
       return true;
