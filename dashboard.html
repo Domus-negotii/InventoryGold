@@ -4267,6 +4267,8 @@ function assignRiderFromChecker(orderIdx, riderName) {
   renderChecker();
 }
 function verifyOrder(i){
+  // GUARD: null-check order exists before any inventory/status mutation
+  if(!S.orders[i]) { console.warn('[GOE] verifyOrder: invalid index', i); return; }
   // Guard: prevent double-click during in-progress verify/unverify
   if(window._verifyBusy) { toast('⏳ Please wait...'); return; }
   window._verifyBusy = true;
@@ -4342,6 +4344,8 @@ function verifyOrder(i){
   _refreshInvAllTabs();
 }
 function unverifyOrder(i){
+  // GUARD: null-check order exists before any inventory/status mutation
+  if(!S.orders[i]) { console.warn('[GOE] unverifyOrder: invalid index', i); return; }
   // Guard: prevent double-click during in-progress save
   if(window._verifyBusy) { toast('⏳ Please wait...'); return; }
   window._verifyBusy = true;
@@ -5530,7 +5534,7 @@ function sortDrop(e, colEl) {
   const encodedRider = colEl.dataset.rider || '';
   const riderName = decodeURIComponent(encodedRider);
   const idx = _sortDragIdx !== null ? _sortDragIdx : parseInt(e.dataTransfer.getData('text/plain'));
-  if(isNaN(idx) || !S.orders[idx]) return;
+  if(isNaN(idx) || idx < 0 || idx >= S.orders.length || !S.orders[idx]) return;
   // Block if already Out for Delivery
   if(S.orders[idx].status === 'Out for Delivery') {
     toast('🔒 Hindi na maaari i-move — naka-Out for Delivery na ang parcel na ito.');
@@ -5540,17 +5544,12 @@ function sortDrop(e, colEl) {
   const prevRider = S.orders[idx].assignedRider || '—';
   if(S.orders[idx].assignedRider === newRider) return; // no change
   S.orders[idx].assignedRider = newRider;
-  // Auto-advance to Ready when a verified Preparing order is assigned to a rider
-  if(newRider && S.orders[idx].status === 'Preparing' && (S.orders[idx].checkerStatus||'Pending') === 'Verified') {
-    S.orders[idx].status = 'Ready';
-  }
-  // Revert Ready→Preparing when unassigning (rider no longer picked up, needs re-sort)
-  if(!newRider && S.orders[idx].status === 'Ready') {
-    S.orders[idx].status = 'Preparing';
-  }
+  // LOCKED: status is NEVER changed by drag-and-drop reassignment.
+  // Status escalations (Preparing→Ready etc.) must go through
+  // COD Tracking / Update Status ONLY — not by sorting or reassigning.
   save();
   renderSorting();
-  toast(`✅ ${onum(idx)} → ${newRider||'Unassigned'} (was: ${prevRider})${newRider && S.orders[idx].status==='Ready' ? ' — Ready na para sa rider!' : ''}`);
+  toast(`✅ ${onum(idx)} → ${newRider||'Unassigned'} (was: ${prevRider})`);
 }
 
 // ── Dropdown reassign ──
@@ -8275,7 +8274,7 @@ function renderRiderParcels() {
   // Rule: rider only sees orders that dispatcher marked READY (or beyond).
   // "Preparing" = verified but dispatcher hasn't set Ready yet → NOT visible to rider yet.
   const RIDER_VISIBLE_STATUSES = new Set(['Ready','Out for Delivery','Delivered','Cancelled','Update','RTO']);
-  const allMyOrders = S.orders.map((o,i) => ({...o, idx:i}))
+  const allMyOrders = (S.orders||[]).map((o,i) => o ? ({...o, idx:i}) : null).filter(Boolean)
     .filter(o => {
       if(o.assignedRider !== currentRider.name) return false;
       // Only hide if checker cancelled DIRECTLY (pre-dispatch, rider never saw it).
@@ -8533,6 +8532,9 @@ function renderRiderParcels() {
   } catch(e) { console.error('[GOE] renderRiderParcels error:', e); }}
 
 function riderUpdateStatus(orderIdx, newStatus) {
+  // GUARD: null-check order and status before any mutation
+  if(!S.orders[orderIdx]) { console.warn('[GOE] riderUpdateStatus: invalid orderIdx', orderIdx); return; }
+  if(!newStatus) { console.warn('[GOE] riderUpdateStatus: empty newStatus'); return; }
   // Direct save — no confirmation needed, status applies immediately
   // Map display label to stored value
   const statusMap = {
