@@ -627,9 +627,13 @@ async function _directWriteFirebase(data, opts){
     const _localNewOrders = (S2.orders||[]).filter(o => o && o._id && !_fbOrderIds.has(o._id));
     // For orders in both: local wins (it has the most recent edits from THIS device)
     const _localById = new Map((S2.orders||[]).filter(o=>o&&o._id).map(o=>[o._id,o]));
+    // Exclude absorbed (merged-away) orders — prevents orphan resurrection in Firebase
+    const _mergeDeadIds = window._mergeDeletedIds || new Set();
     const _mergedForWrite = [
-      ..._fbCurrentOrders.map(fbO => (fbO&&fbO._id&&_localById.has(fbO._id)) ? _localById.get(fbO._id) : fbO),
-      ..._localNewOrders
+      ..._fbCurrentOrders
+        .filter(fbO => !fbO?._id || !_mergeDeadIds.has(fbO._id))
+        .map(fbO => (fbO&&fbO._id&&_localById.has(fbO._id)) ? _localById.get(fbO._id) : fbO),
+      ..._localNewOrders.filter(o => !_mergeDeadIds.has(o._id))
     ].filter(Boolean);
     // Use merged result as the base for archiving
     const _baseOrders = _mergedForWrite.length > 0 ? _mergedForWrite : (S2.orders||[]);
@@ -837,8 +841,19 @@ function _mergeOrders(fbOrders, localOrders) {
   const grace = 300000;
 
   // Keep local orders that are NOT yet in Firebase
+  // Exclude absorbed (merged-away) orders from localOnly — they were spliced locally
+  // but may still be in Firebase until the write confirms.
+  const _moDeadIds = window._mergeDeletedIds || new Set();
   const localOnly = localOrders.filter(lo => {
     if (!lo) return false;
+    if (lo._id && _moDeadIds.has(lo._id)) return false; // absorbed by merge (_id match)
+    // Fallback: check by orderNum for old orders without _id
+    // onum(localOrders.indexOf(lo)) won't work here since we're in merge context
+    // So we use the ORDERNUM: prefix key tracked at merge time
+    if (_moDeadIds.size > 0) {
+      const _loNumKey = 'ORDERNUM:' + lo._mergedAbsorbedNum;
+      if (lo._mergedAbsorbedNum && _moDeadIds.has(_loNumKey)) return false;
+    }
     // If this order has an _id and Firebase already has it → already synced
     if (lo._id && fbIds.has(lo._id)) return false;
     // If this order has an _id but Firebase doesn't → still pending sync
@@ -2094,7 +2109,11 @@ function _showRulesHint() {
     </div>
   </div>
   <div class="action-row no-print">
-    <div style="font-size:12px;color:var(--muted);">Track benefit deductions for riders and staff.</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:12px;color:var(--muted);">Track benefit deductions for riders and staff.</span>
+      <input type="text" class="form-control" id="benefits-page-date" style="width:155px;font-size:11px;" oninput="renderBenefitsPage()" title="Filter by date" placeholder="MM/DD/YYYY" maxlength="10">
+      <button class="btn btn-outline btn-sm" onclick="document.getElementById('benefits-page-date').value='';renderBenefitsPage()">All Dates</button>
+    </div>
     <button class="btn btn-gold" onclick="openBenefitsModal()">+ Add Benefits Entry</button>
   </div>
   <div id="benefits-page-content"></div>
@@ -3610,10 +3629,10 @@ function renderMyOrders() {
 let _ownerAdminTab = 'ALL';
 function _renderOwnerOrdersView() {
   // Build admin tabs from all admin names
-  const allAdmins = [...new Set([
-    ...(S.adminAccounts||[]).map(a=>a.name),
-    ...S.orders.map(o=>o.admin).filter(Boolean)
-  ])].sort();
+  // Only from S.adminAccounts — S.orders.admin can contain merged composites.
+  const allAdmins = [...new Set(
+    (S.adminAccounts||[]).map(a=>a.name).filter(Boolean)
+  )].sort();
 
   // Action row
   document.getElementById('orders-action-row').innerHTML = `
@@ -5545,17 +5564,11 @@ function sortReassign(orderIdx, encodedRider) {
   const prev = S.orders[orderIdx].assignedRider || '—';
   if(S.orders[orderIdx].assignedRider === newRider) return; // no change
   S.orders[orderIdx].assignedRider = newRider;
-  // Auto-advance to Ready when a verified Preparing order is assigned to a rider
-  if(newRider && S.orders[orderIdx].status === 'Preparing' && (S.orders[orderIdx].checkerStatus||'Pending') === 'Verified') {
-    S.orders[orderIdx].status = 'Ready';
-  }
-  // Revert Ready→Preparing when unassigning
-  if(!newRider && S.orders[orderIdx].status === 'Ready') {
-    S.orders[orderIdx].status = 'Preparing';
-  }
+  // Status is NOT changed on reassign — only the rider assignment updates.
+  // Status escalations (Preparing→Ready, etc.) must go through COD Tracking / Update Status only.
   save();
   renderSorting();
-  toast(`✅ ${onum(orderIdx)} reassigned → ${newRider||'Unassigned'} (was: ${prev})${newRider && S.orders[orderIdx].status==='Ready' ? ' — Ready na!' : ''}`);
+  toast(`✅ ${onum(orderIdx)} reassigned → ${newRider||'Unassigned'} (was: ${prev})`);
 }
 
 // ── Add empty rider slot (for a rider with no parcels yet) ──
@@ -7530,7 +7543,9 @@ function selectRole(role){
         sel.innerHTML='<option value="">⏳ Loading admins... please wait</option>';
         setTimeout(()=>{ if(selectedRole==='admin') selectRole('admin'); }, 1500);
       } else {
-        const names=[...new Set([...(S.adminAccounts||[]).map(a=>a.name),...(S.adminNames||[]),...S.orders.map(o=>o.admin).filter(Boolean)])].sort();
+        // STRICT: only S.adminAccounts + S.adminNames — never S.orders.admin
+        // S.orders.admin contains merged composites like 'ZEN / ANGIE' that must never appear in login.
+        const names=[...new Set([...(S.adminAccounts||[]).map(a=>a.name),...(S.adminNames||[])])].sort();
         names.forEach(n=>sel.innerHTML+=`<option value="${n}">${n}</option>`);
         if(sel.options.length===1) sel.innerHTML='<option value="">No admins configured</option>';
       }
@@ -8043,12 +8058,13 @@ function populateAdminDropdown() {
       </div>
       <input type="hidden" id="enc-admin" value="${adminName}">`;
   } else {
-    // OWNER: full dropdown to pick any admin
+    // OWNER: full dropdown — ONLY S.adminAccounts (authoritative registered list).
+    // Never derive from S.orders.admin: merged orders store composite strings like
+    // "ZEN / ANGIE" which would inject invalid entries into the login/encode dropdowns.
     const cur = document.getElementById('enc-admin')?.value || '';
-    const names = [...new Set([
-      ...(S.adminAccounts||[]).map(a=>a.name),
-      ...S.orders.map(o=>o.admin).filter(Boolean)
-    ])].sort();
+    const names = [...new Set(
+      (S.adminAccounts||[]).map(a=>a.name).filter(Boolean)
+    )].sort();
     wrapper.innerHTML = `<select class="form-control enc-tab" id="enc-admin" onkeydown="encNextField(event,this)">
       <option value="">-- Select Admin --</option>
       ${names.map(n=>`<option value="${n}"${n===cur?' selected':''}>${n}</option>`).join('')}
@@ -10458,15 +10474,20 @@ function saveBenefits() {
 
 function renderBenefitsPage() {
   const el = document.getElementById('benefits-page-content'); if(!el) return;
-  if(!S.benefitsLog.length) {
-    el.innerHTML = '<div class="card"><p style="color:var(--muted);padding:20px;text-align:center;">No benefits entries yet.</p></div>';
+  // Date filter — same MM/DD/YYYY pattern as Cashbond
+  const df = mdy2ymd((document.getElementById('benefits-page-date')?.value||'').trim());
+  const filteredLog = df
+    ? (S.benefitsLog||[]).filter(e => e.date === df)
+    : (S.benefitsLog||[]);
+  if(!filteredLog.length) {
+    el.innerHTML = '<div class="card"><p style="color:var(--muted);padding:20px;text-align:center;">No benefits entries' + (df?' for this date.':' yet.') + '</p></div>';
     return;
   }
   // Helper: get total from entry (support legacy sss/ph/pi/other OR new amount field)
   const entryTotal = e => e.amount!=null ? e.amount : (e.sss||0)+(e.philhealth||0)+(e.pagibig||0)+(e.other||0);
   const byPerson = {};
-  S.benefitsLog.forEach((e,i)=>{ if(!byPerson[e.person]) byPerson[e.person]=[]; byPerson[e.person].push({...e,idx:i}); });
-  const grandTotal = S.benefitsLog.reduce((s,e)=>s+entryTotal(e),0);
+  filteredLog.forEach((e,i)=>{ if(!byPerson[e.person]) byPerson[e.person]=[]; byPerson[e.person].push({...e,idx:i}); });
+  const grandTotal = filteredLog.reduce((s,e)=>s+entryTotal(e),0);
   el.innerHTML = `<div class="stats-grid" style="margin-bottom:13px;">
     <div class="stat-card gold"><div class="stat-label">Total Entries</div><div class="stat-value">${S.benefitsLog.length}</div></div>
     <div class="stat-card red"><div class="stat-label">Grand Total Benefits</div><div class="stat-value">${p(grandTotal)}</div></div>
@@ -11625,17 +11646,6 @@ function renderLbcDelivery() {
           ${o.dateDelivered?`<div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Date Delivered</span><br><span style="color:var(--green);">${o.dateDelivered}</span></div>`:''}
           <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Items</span><br>${itemList||'—'}</div>
         </div>
-        <div style="display:flex;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--navy-border);flex-wrap:wrap;align-items:center;">
-          ${isDelivered
-            ? `<span style="font-size:11px;color:var(--green);font-weight:600;padding:5px 12px;background:rgba(46,204,138,0.08);border-radius:6px;border:1px solid rgba(46,204,138,0.2);">✅ Delivered — Locked</span>`
-            : `<select class="form-control" style="width:185px;font-size:10.5px;padding:4px 7px;" onchange="lbcdUpdateStatus(${i},this.value)">
-                ${UPDATE_STATUSES.map(s=>`<option${lst===s?' selected':''}>${s}</option>`).join('')}
-               </select>`
-          }
-          ${isRTO?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️ Edit / Re-dispatch</button>`:''}
-          ${isODZ&&(currentRole==='checker'||currentRole==='owner')?`<button class="btn btn-outline btn-sm" onclick="_editSource='courier-dashboard';openEditOrder(${i})">✏️ Fix Details</button>`:''}
-          ${(lbcDeliveryTab==='odz'||lbcDeliveryTab==='rto')?`<button class="btn btn-print btn-sm" onclick="openInvoice(${i})" style="margin-left:auto;">🖨️ Print</button>`:''}
-        </div>
       </div>
     </div>`;
   }).join('');
@@ -11982,6 +11992,10 @@ function saveCodForUpdateDispatch(orderIdx, safeId) {
   o.status='Preparing';
   o.scheduledDelivery=delivDate;
   o.date=delivDate;  // override order date → rider sees it on the scheduled delivery date
+  // Reset createdAt to NOW so this rescheduled order is treated as a NEW order
+  // for the new date — prevents it from being matched as "covered" by any old
+  // Remitted batch entry that happens to share the same date.
+  o.createdAt=new Date().toISOString();
   if(riderSel&&riderSel!==o.assignedRider)o.assignedRider=riderSel;
   if(notes)o.correctionNotes=notes;
   o.updateReason='';
@@ -12207,16 +12221,6 @@ function renderEmsDelivery() {
           <div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Date Drop-off</span><br><span style="color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">${o.dateOfDropoff||'—'}</span></div>
           ${o.dateDelivered?`<div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Date Delivered</span><br><span style="color:var(--green);">${o.dateDelivered}</span></div>`:''}
           <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Items</span><br>${itemList||'—'}</div>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--navy-border);flex-wrap:wrap;align-items:center;">
-          ${isDelivered
-            ? `<span style="font-size:11px;color:var(--green);font-weight:600;padding:5px 12px;background:rgba(46,204,138,0.08);border-radius:6px;border:1px solid rgba(46,204,138,0.2);">✅ Delivered — Locked</span>`
-            : `<select class="form-control" style="width:185px;font-size:10.5px;padding:4px 7px;" onchange="emsdUpdateStatus(${i},this.value)">
-                ${UPDATE_STATUSES.map(s=>`<option${lst===s?' selected':''}>${s}</option>`).join('')}
-               </select>`
-          }
-          ${isRTO?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️ Edit / Re-dispatch</button>`:''}
-          ${emsDeliveryTab==='rto'?`<button class="btn btn-print btn-sm" onclick="openInvoice(${i})" style="margin-left:auto;">🖨️ Print</button>`:''}
         </div>
       </div>
     </div>`;
@@ -12531,16 +12535,6 @@ function renderFedexDelivery() {
           <div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Date Drop-off</span><br><span style="color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">${o.dateOfDropoff||'—'}</span></div>
           ${o.dateDelivered?`<div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Date Delivered</span><br><span style="color:var(--green);">${o.dateDelivered}</span></div>`:''}
           <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Items</span><br>${itemList||'—'}</div>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--navy-border);flex-wrap:wrap;align-items:center;">
-          ${isDelivered
-            ? `<span style="font-size:11px;color:var(--green);font-weight:600;padding:5px 12px;background:rgba(46,204,138,0.08);border-radius:6px;border:1px solid rgba(46,204,138,0.2);">✅ Delivered — Locked</span>`
-            : `<select class="form-control" style="width:185px;font-size:10.5px;padding:4px 7px;" onchange="fedexdUpdateStatus(${i},this.value)">
-                ${UPDATE_STATUSES.map(s=>`<option${lst===s?' selected':''}>${s}</option>`).join('')}
-               </select>`
-          }
-          ${isRTO?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️ Edit / Re-dispatch</button>`:''}
-          ${fedexDeliveryTab==='rto'?`<button class="btn btn-print btn-sm" onclick="openInvoice(${i})" style="margin-left:auto;">🖨️ Print</button>`:''}
         </div>
       </div>
     </div>`;
@@ -12980,6 +12974,26 @@ function confirmMerge() {
     mergedGrandTotal
   });
 
+  // Restore inventory for BOTH orders before merge so the combined set
+  // can be deducted exactly once when checker re-verifies the merged order.
+  // GUARD: record the absorbed order number so Return Log doesn't double-restore.
+  const _mergeRestoreRef = 'merge_restore_' + Date.now();
+  if(oKeep.inventoryDeducted) {
+    _restoreOrderItems(oKeep.items, oKeep.date||today(),
+      'Pre-merge restore – ' + onum(keepIdx), (oKeep._id||_mergeRestoreRef)+'_keep');
+  }
+  if(oRemove.inventoryDeducted) {
+    _restoreOrderItems(oRemove.items, oRemove.date||today(),
+      'Pre-merge restore – ' + onum(removeIdx), (oRemove._id||_mergeRestoreRef)+'_rem');
+  }
+  // Mark returnLog entries for the absorbed order as merge-restored so
+  // saveReturnLog / renderCancelledItems won't double-restore inventory for them.
+  const _absorbedNum = onum(removeIdx);
+  (S.returnLog||[]).forEach(r => {
+    if(r.orderNum === _absorbedNum && !r.mergeRestored) r.mergeRestored = true;
+  });
+  if(!window._mergeRestoredOrders) window._mergeRestoredOrders = new Set();
+  window._mergeRestoredOrders.add(_absorbedNum);
   // Apply merge to surviving order
   S.orders[keepIdx] = {
     ...oKeep,
@@ -12989,19 +13003,33 @@ function confirmMerge() {
     grandTotal: mergedGrandTotal,
     admin: adminDisplay,
     adminList: adminList,
-    _id: oKeep._id || oA._id || ('o_merge_'+Date.now()),  // ← preserve _id
-    createdAt: oKeep.createdAt || oA.createdAt,             // ← preserve original createdAt
-    encodedBy: oKeep.encodedBy || oA.encodedBy,             // ← preserve original encoder
-    mergedFrom: oRemove._id || onum(removeIdx),             // ← record absorbed order
-    // Reset checker status so checker re-verifies the merged order
+    _id: oKeep._id || oA._id || ('o_merge_'+Date.now()),
+    createdAt: oKeep.createdAt || oA.createdAt,
+    encodedBy: oKeep.encodedBy || oA.encodedBy,
+    mergedFrom: [onum(keepIdx), onum(removeIdx)],
+    mergedAt: new Date().toISOString(),
     checkerStatus: 'Pending',
     verificationStatus: 'Not Verified',
-    mergedFrom: [onum(keepIdx), onum(removeIdx)],
-    mergedAt: new Date().toISOString()
+    inventoryDeducted: false  // CRITICAL: reset so verify deducts merged set exactly once
   };
+
+  // Ensure absorbed order has an _id before removal — required for Firebase filter.
+  // Orders without _id bypass the _mergeDeletedIds filter in DWF, causing orphaned rows.
+  if(!oRemove._id) {
+    oRemove._id = 'merged_absorbed_' + Date.now() + '_' + removeIdx;
+    S.orders[removeIdx]._id = oRemove._id; // write it before splice
+  }
+  const _absorbedId  = oRemove._id;
+  const _absorbedOrderNum = onum(removeIdx); // capture BEFORE splice shifts indices
 
   // Remove the absorbed order (higher index first to preserve indices)
   S.orders.splice(removeIdx, 1);
+
+  // Track absorbed order → pre-write fetch + SAR won't resurrect it.
+  // Track by _id (guaranteed above) AND by orderNum fallback.
+  if(!window._mergeDeletedIds) window._mergeDeletedIds = new Set();
+  window._mergeDeletedIds.add(_absorbedId);
+  window._mergeDeletedIds.add('ORDERNUM:' + _absorbedOrderNum);
 
   save();
   closeModal('modal-merge-orders');
