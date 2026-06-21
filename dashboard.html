@@ -12876,9 +12876,16 @@ function detectDuplicates(orders) {
 }
 
 function openMergeModal() {
-  // Re-detect duplicates using fuzzy matching
-  const codOrders = S.orders.map((o,i)=>({o,i})).filter(({o}) => (o.paymentMethod||'COD')==='COD');
-  _mergeDupSets = detectDuplicates(codOrders);
+  // Only include active COD orders — exclude Cancelled, RTO, Delivered (they are settled).
+  // Cancelled orders must NEVER appear in merge detection.
+  // Also cap each duplicate group at 3 orders maximum.
+  const codOrders = (S.orders||[]).map((o,i)=>o?({o,i}):null).filter(Boolean)
+    .filter(({o}) =>
+      (o.paymentMethod||'COD') === 'COD' &&
+      !['Cancelled','RTO','Delivered'].includes(o.status)
+    );
+  // Cap each group at 3 — merge at most 3 orders at a time
+  _mergeDupSets = detectDuplicates(codOrders).map(g => g.slice(0, 3));
 
   if(!_mergeDupSets.length) { toast('⚠️ Walang duplicate orders na nadetect.'); return; }
 
@@ -13006,6 +13013,13 @@ function confirmMerge() {
   const oA = S.orders[_mergeIdxA];
   const oB = S.orders[_mergeIdxB];
   if(!oA || !oB) return;
+
+  // GUARD: Never merge Cancelled or RTO orders — they are already settled
+  if(['Cancelled','RTO','Delivered'].includes(oA.status) ||
+     ['Cancelled','RTO','Delivered'].includes(oB.status)) {
+    toast('⚠️ Hindi pwedeng i-merge — may cancelled o delivered na order sa selection. I-refresh at subukan ulit.');
+    return;
+  }
 
   // Same-day requirement: only allow merging orders with the same date
   if(oA.date !== oB.date) {
