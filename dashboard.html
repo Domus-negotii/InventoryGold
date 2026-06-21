@@ -12868,30 +12868,52 @@ function _addressFuzzyMatch(a, b) {
   return matchCount / shorter.length >= 0.75;
 }
 function detectDuplicates(orders) {
-  // ADDRESS-BASED MERGE DETECTION:
-  // Two orders are duplicates if their NORMALIZED addresses match after applying
-  // the abbreviation/shortcut map in _normAddress().
-  // Examples that WILL match:
-  //   "1234 San Juan Bano Arayat City"  ↔  "1234 SJB Arayat"
-  //   "McArthur Highway"                ↔  "MacArthur Hwy"
-  //   "St. Joseph St."                  ↔  "Saint Joseph Street"
-  // Name and phone number are intentionally NOT required to match.
+  // MERGE DETECTION — based on House Number + City only.
+  // Two orders match if they share the SAME house/lot number AND the SAME city.
+  // Name, phone, street, and barangay are intentionally ignored.
   // Cancelled/RTO/Delivered orders are excluded before this function is called.
   const n = orders.length;
   const parent = orders.map((_,i)=>i);
   function find(x){ return parent[x]===x?x:(parent[x]=find(parent[x])); }
   function union(x,y){ parent[find(x)]=find(y); }
 
+  function _extractHouseNum(addr) {
+    // Extract house/lot number — first number sequence in address.
+    // Strips | and # prefixes (admin names, symbols) before searching.
+    const s = (addr||'').replace(/[#,|]/g,' ').trim();
+    const anyNum = s.match(/(\d+)/);
+    if(anyNum) return anyNum[1];
+    const lot = s.match(/(?:lot|no\.?)\s*(\d+)/i);
+    if(lot) return lot[1];
+    return '';
+  }
+
+  function _extractCity(addr) {
+    // Extract the city — the single word immediately before "City" or "Municipality".
+    // "1234 San Juan Bano Arayat City"  → "arayat"
+    // "1234 SJB Arayat City"            → "arayat"
+    // "Las Pinas City"                  → "pinas"  (last word of multi-word city)
+    // "Bulacan" (no City suffix)        → "bulacan" (last word of address)
+    const s = (addr||'').toLowerCase();
+    const m = s.match(/\b([a-z]+)\s+(?:city|municipality)\b/);
+    if(m) return m[1];
+    // Fallback: last word of address
+    const words = s.replace(/[^a-z\s]/g,' ').trim().split(/\s+/).filter(w=>w.length>2);
+    return words[words.length-1] || '';
+  }
+
   for(let i=0;i<n;i++){
-    const oi = orders[i].o;
-    const addrI = _normAddress(oi.address);
-    if(!addrI) continue; // skip orders with no address
+    const oi    = orders[i].o;
+    const houseI = _extractHouseNum(oi.address);
+    const cityI  = _extractCity(oi.address);
+    if(!houseI || !cityI) continue; // need both to compare
     for(let j=i+1;j<n;j++){
-      const oj = orders[j].o;
-      const addrJ = _normAddress(oj.address);
-      if(!addrJ) continue;
-      // Normalized addresses must match exactly (after abbrev expansion)
-      if(addrI === addrJ) union(i,j);
+      const oj     = orders[j].o;
+      const houseJ = _extractHouseNum(oj.address);
+      const cityJ  = _extractCity(oj.address);
+      if(!houseJ || !cityJ) continue;
+      // Match: same house number AND same city
+      if(houseI === houseJ && cityI === cityJ) union(i,j);
     }
   }
   // Group by root — no size limit
