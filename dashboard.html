@@ -10946,7 +10946,7 @@ function startAutoRefresh(){
     clearTimeout(_riderIdleTimer);
     _riderIdleTimer = setTimeout(() => {
       if(currentRole !== 'rider') return;
-      // Auto-logout after 30 seconds of inactivity — clears all local state
+      // Auto-logout after 5 seconds of inactivity — clears all local state
       // and forces a full fresh reload from Firebase on next login.
       // This prevents stale orders from persisting after a Global Clear.
       toast('⏰ Auto-logout — please log in again.');
@@ -10972,7 +10972,7 @@ function startAutoRefresh(){
         if(loginPage) loginPage.style.display = '';
         renderLoginPage?.();
       }, 1000);
-    }, 5000); // 5 seconds
+    }, 30000); // 30 seconds
   }
   // Bind activity events for rider idle detection
   ['touchstart','click','keydown','scroll'].forEach(ev =>
@@ -12802,29 +12802,57 @@ function _normContact(c) { return (c||'').replace(/\D/g,''); }
 function _normAddress(a) {
   if(!a) return '';
   let s = a.toLowerCase();
-  // Normalize common variations before tokenizing
-  const subs = [
-    [/\bsubdivision\b/g,'subd'],
-    [/\bsubd\b/g,'subd'],
-    [/\bstreet\b/g,'st'],
-    [/\bst\.?\b/g,'st'],
-    [/\bavenue\b/g,'ave'],
-    [/\bave\.?\b/g,'ave'],
-    [/\bboulevard\b/g,'blvd'],
-    [/\bblvd\.?\b/g,'blvd'],
-    [/\bbarangay\b/g,'brgy'],
-    [/\bbrgy\.?\b/g,'brgy'],
-    [/\bpurok\b/g,'prk'],
-    [/\bcity\b/g,''],
-    [/\bvillage\b/g,'vill'],
-    [/\bvill\.?\b/g,'vill'],
-    [/\bphase\b/g,'ph'],
-    [/\bblock\b/g,'blk'],
-    [/\blot\b/g,'lot'],
+
+  // ── Abbreviation / Shortcut Mapping ─────────────────────────────────
+  // Local place name shortcuts — normalize to canonical form before tokenizing.
+  // Add more entries here as needed; format: [regex, canonical]
+  const abbrevMap = [
+    // ── Place name abbreviations (Philippines) ──
+    [/\bsjb\b/g,                   'sanjuanbano'],
+    [/\bsan juan ba[nñ]o\b/g,      'sanjuanbano'],
+    [/\bsjb\b/g,                   'sanjuanbano'],
+    [/\bmacarthur\b/g,             'mcarthur'],
+    [/\bmcarthur\b/g,              'mcarthur'],
+    // ── Street types ──
+    [/\bstreet\b/g,                'st'],
+    [/\bst\.?\b/g,                'st'],
+    [/\bavenue\b/g,                'ave'],
+    [/\bave\.?\b/g,               'ave'],
+    [/\bboulevard\b/g,             'blvd'],
+    [/\bblvd\.?\b/g,              'blvd'],
+    [/\broad\b/g,                  'rd'],
+    [/\brd\.?\b/g,                'rd'],
+    [/\bdrive\b/g,                 'dr'],
+    [/\bdr\.?\b/g,                'dr'],
+    [/\bhighway\b/g,               'hwy'],
+    // ── Admin divisions ──
+    [/\bbarangay\b/g,              'brgy'],
+    [/\bbrgy\.?\b/g,              'brgy'],
+    [/\bpurok\b/g,                 'prk'],
+    [/\bsubdivision\b/g,           'subd'],
+    [/\bsubd\.?\b/g,              'subd'],
+    [/\bvillage\b/g,               'vill'],
+    [/\bvill\.?\b/g,              'vill'],
+    [/\bcity\b/g,                  ''],    // remove "city" suffix — redundant
+    [/\bmunicipality\b/g,          ''],
+    // ── Unit labels ──
+    [/\bphase\b/g,                 'ph'],
+    [/\bblock\b/g,                 'blk'],
+    [/\blot\b/g,                   'lot'],
+    [/\bunit\b/g,                  'unit'],
+    [/\bfloor\b/g,                 'fl'],
+    [/\bbuilding\b/g,              'bldg'],
+    [/\bbldg\.?\b/g,              'bldg'],
+    // ── Numbers ──
+    [/\bno\.?\s*/g,               ''],  // remove "No." prefix from house numbers
+    [/\bnumber\b/g,                ''],
+    [/[#]/g,                         ''],  // remove # symbol
   ];
-  subs.forEach(([pat,rep]) => { s = s.replace(pat, rep); });
-  // Remove punctuation, collapse whitespace, filter short tokens, sort
-  const tokens = s.replace(/[^a-z0-9\s]/g,'').trim().split(/\s+/).filter(w=>w.length>1);
+  abbrevMap.forEach(([pat,rep]) => { s = s.replace(pat, rep); });
+
+  // Remove remaining punctuation, collapse whitespace, filter noise tokens
+  const tokens = s.replace(/[^a-z0-9\s]/g,'').trim().split(/\s+/)
+    .filter(w => w.length > 0 && !/^(the|at|ng|sa|na|and|&)$/.test(w)); // remove filler words
   return tokens.sort().join(' ');
 }
 function _addressFuzzyMatch(a, b) {
@@ -12840,37 +12868,33 @@ function _addressFuzzyMatch(a, b) {
   return matchCount / shorter.length >= 0.75;
 }
 function detectDuplicates(orders) {
-  // STRICT MERGE DETECTION:
-  // Two orders are duplicates ONLY IF both match:
-  //   1. Exact phone number (normalized digits)
-  //   2. Exact complete address (normalized — same barangay/street/city)
-  // This prevents false positives from name similarity alone.
+  // ADDRESS-BASED MERGE DETECTION:
+  // Two orders are duplicates if their NORMALIZED addresses match after applying
+  // the abbreviation/shortcut map in _normAddress().
+  // Examples that WILL match:
+  //   "1234 San Juan Bano Arayat City"  ↔  "1234 SJB Arayat"
+  //   "McArthur Highway"                ↔  "MacArthur Hwy"
+  //   "St. Joseph St."                  ↔  "Saint Joseph Street"
+  // Name and phone number are intentionally NOT required to match.
   // Cancelled/RTO/Delivered orders are excluded before this function is called.
   const n = orders.length;
   const parent = orders.map((_,i)=>i);
   function find(x){ return parent[x]===x?x:(parent[x]=find(parent[x])); }
   function union(x,y){ parent[find(x)]=find(y); }
 
-  function _normAddr(a) {
-    // Normalize: lowercase, remove punctuation/spaces, keep alphanumeric
-    return (a||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-  }
-
   for(let i=0;i<n;i++){
     const oi = orders[i].o;
-    const contactI = _normContact(oi.contact);
-    const addrI    = _normAddr(oi.address);
+    const addrI = _normAddress(oi.address);
+    if(!addrI) continue; // skip orders with no address
     for(let j=i+1;j<n;j++){
       const oj = orders[j].o;
-      const contactJ = _normContact(oj.contact);
-      const addrJ    = _normAddr(oj.address);
-      // BOTH must match: exact phone AND exact complete address
-      const phoneMatch = contactI && contactJ && contactI === contactJ;
-      const addrMatch  = addrI && addrJ && addrI === addrJ;
-      if(phoneMatch && addrMatch) union(i,j);
+      const addrJ = _normAddress(oj.address);
+      if(!addrJ) continue;
+      // Normalized addresses must match exactly (after abbrev expansion)
+      if(addrI === addrJ) union(i,j);
     }
   }
-  // Group by root — no size limit, show all matches
+  // Group by root — no size limit
   const groups = {};
   orders.forEach((item,i)=>{ const r=find(i); if(!groups[r])groups[r]=[]; groups[r].push(item); });
   return Object.values(groups).filter(g=>g.length>1);
