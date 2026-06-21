@@ -2970,7 +2970,12 @@ let S = {
 };
 // ── Global data safety: filter null/undefined entries from all arrays ──────
 // Called at the start of each render pass to prevent crashes on malformed Firebase data
+// ── NULL-SAFE ACCESSORS — always use these instead of S.orders/S.inventory directly ──
+// _safeOrders(): strips null/undefined entries from S.orders. Use in ALL render fns.
+// _safeInventory(): strips null/undefined from S.inventory. Use in ALL inv display.
 function _safeOrders() { return (S.orders||[]).filter(o=>o&&o.status); }
+// _safeInventory defined alongside _safeOrders for consistent null-safe access
+function _safeInventory() { return (S.inventory||[]).filter(i=>i&&i.code); }
 // Permanent null-guard for inventory access — use this instead of S.inventory directly
 // in any render/calculation function to prevent null-slot crashes from Firebase arrays.
 function _safeInventory() { return (S.inventory||[]).filter(i=>i&&i.code); }
@@ -3052,6 +3057,9 @@ function validateDateInput(input) {
   input.setCustomValidity('');
 }
 
+// onum(i): converts S.orders array INDEX → order number string.
+// CRITICAL: i must be the ORIGINAL S.orders index, not a re-indexed/filtered position.
+// Always use map((o,i)=>({...o,idx:i})) BEFORE .filter() to preserve idx.
 const onum=i=>'GOE-'+String(i+1).padStart(5,'0');
 const sclass=s=>({'In Transit':'transit','Delivering':'delivering','Delivered':'delivered','Cancelled':'cancelled','RTO':'cancelled','For Return':'return','Returned':'returned','Preparing':'delivering','Ready':'blue','Out for Delivery':'gold','Update':'return'}[s]||'transit');
 function toast(msg,t=2500){
@@ -5548,9 +5556,12 @@ function sortDrop(e, colEl) {
   const prevRider = S.orders[idx].assignedRider || '—';
   if(S.orders[idx].assignedRider === newRider) return; // no change
   S.orders[idx].assignedRider = newRider;
-  // LOCKED: status is NEVER changed by drag-and-drop reassignment.
-  // Status escalations (Preparing→Ready etc.) must go through
-  // COD Tracking / Update Status ONLY — not by sorting or reassigning.
+  // ═══════════════════════════════════════════════════════════════════
+  // STATUS LOCK — DO NOT ADD STATUS CHANGES HERE.
+  // Status escalations (Preparing→Ready→OFD→Delivered) happen ONLY in:
+  //   COD Tracking (riderUpdateStatus) / LBC-EMS-FedEx (lbcdUpdateStatus etc.)
+  // Adding status logic to drag-and-drop or dropdown reassign is a BUG.
+  // ═══════════════════════════════════════════════════════════════════
   save();
   renderSorting();
   toast(`✅ ${onum(idx)} → ${newRider||'Unassigned'} (was: ${prevRider})`);
@@ -5571,8 +5582,9 @@ function sortReassign(orderIdx, encodedRider) {
   const prev = S.orders[orderIdx].assignedRider || '—';
   if(S.orders[orderIdx].assignedRider === newRider) return; // no change
   S.orders[orderIdx].assignedRider = newRider;
-  // Status is NOT changed on reassign — only the rider assignment updates.
-  // Status escalations (Preparing→Ready, etc.) must go through COD Tracking / Update Status only.
+  // ═══════════════════════════════════════════════════════════════════
+  // STATUS LOCK — DO NOT ADD STATUS CHANGES HERE. See sortDrop comment.
+  // ═══════════════════════════════════════════════════════════════════
   save();
   renderSorting();
   toast(`✅ ${onum(orderIdx)} reassigned → ${newRider||'Unassigned'} (was: ${prev})`);
@@ -7889,6 +7901,7 @@ function clearAllTransactions() {
   S.lastGlobalClear = clearTs;
 
   // ── 2. Wipe all transaction arrays ──────────────────────────────────────
+  // ═══ TX_KEYS: ONLY transaction data — NEVER add 'inventory','riders','adminAccounts' ═
   const _TX_KEYS = ['orders','returnLog','deletedOrders','stockLog','remitLog',
                     'cashbondLog','benefitsLog','payroll','expenses','mergeLog'];
   _TX_KEYS.forEach(k=>{ S[k] = []; });
@@ -8688,6 +8701,10 @@ function riderItemPartialCancel(orderIdx, itemIdx, cancelQtyStr, totalQty, isGra
 // Called ONLY from: verifyOrder(), updateVerifStatus(), saveOrder() (edit path)
 // Any new caller MUST: check _sessionVerified first, then inventoryDeducted flag.
 // ═══════════════════════════════════════════════════════════════════
+// ═══ PROTECTED ═══════════════════════════════════════════════════
+// Only call from: verifyOrder(), saveOrder() edit-path.
+// MUST check: _sessionVerified + inventoryDeducted BEFORE calling.
+// ═══════════════════════════════════════════════════════════════
 function _deductOrderItems(items, orderDate, label, orderRef) {
   // ── IDEMPOTENCY GATE ─────────────────────────────────────────
   // If same orderRef passed twice within 30s, block second deduction.
@@ -9904,6 +9921,8 @@ function saveRemit() {
     notes         : ''
   };
 
+  // ═══ RETURN LOG GATE — MUST stay BEFORE S.remitLog.push ═══════════
+  // Moving this block AFTER push makes it ineffective (entry already saved).
   // RETURN LOG GATE: runs BEFORE push — nothing committed if blocked
   if(remitStatus === 'Remitted') {
     const _unloggedItems = [];
@@ -10940,43 +10959,63 @@ function startAutoRefresh(){
   // ── Rider auto-logout: 5 minutes of inactivity ──────────────────────────
   // Prevents stale rider session from showing old data if device is left idle.
   // After clear-all-transactions, this ensures rider sees the clean state on next login.
+  // ── Idle auto-logout timers ────────────────────────────────────────────────
+  // Rider: 30 seconds (short — prevents stale data after Global Clear)
+  // All other roles (owner/CSR/remitter/dispatcher/checker): 1 hour
+  // On timeout: toast → 2s delay → full page reload (cleanest reset)
+
+  function _doAutoLogout(roleName) {
+    toast('⏰ Session expired (' + roleName + ') — logging out for security.');
+    setTimeout(() => {
+      currentRole = '';
+      currentRider = null;
+      currentUser = null;
+      window._sessionVerified  = new Set();
+      window._sessionRestored  = new Set();
+      window._deletedRemitIds  = new Set();
+      window._deductedRefs     = new Set();
+      window._restoredRefs     = new Set();
+      window._lastKnownWriteTs = 0;
+      if(window._autoRefreshTimer) {
+        clearInterval(window._autoRefreshTimer);
+        window._autoRefreshTimer = null;
+      }
+      window.location.reload();
+    }, 2000);
+  }
+
+  // ── Rider: 30-second idle logout ─────────────────────────────────────────
   let _riderIdleTimer = null;
   function _resetRiderIdleTimer() {
-    if(currentRole !== 'rider') return; // only for rider sessions
+    if(currentRole !== 'rider') return;
     clearTimeout(_riderIdleTimer);
     _riderIdleTimer = setTimeout(() => {
       if(currentRole !== 'rider') return;
-      // Auto-logout after 5 seconds of inactivity — clears all local state
-      // and forces a full fresh reload from Firebase on next login.
-      // This prevents stale orders from persisting after a Global Clear.
-      toast('⏰ Auto-logout — please log in again.');
-      setTimeout(() => {
-        currentRole = '';
-        currentRider = null;
-        currentUser = null;
-        // Clear ALL local session and sync state
-        window._sessionVerified  = new Set();
-        window._sessionRestored  = new Set();
-        window._deletedRemitIds  = new Set();
-        window._deductedRefs     = new Set();
-        window._restoredRefs     = new Set();
-        window._lastKnownWriteTs = 0; // force full reload on next login
-        // Stop SAR to prevent double-sync on re-login
-        if(window._autoRefreshTimer) {
-          clearInterval(window._autoRefreshTimer);
-          window._autoRefreshTimer = null;
-        }
-        // Reload the page for a completely fresh start — clears all JS state,
-        // stops SAR, and brings user back to the login screen cleanly.
-        window.location.reload();
-      }, 1000);
-    }, 30000); // 30 seconds
+      _doAutoLogout('Rider');
+    }, 30000); // 30 seconds — ← CHANGE HERE if rider timeout changes
   }
-  // Bind activity events for rider idle detection
+
+  // ── Other roles: 1-hour idle logout ──────────────────────────────────────
+  const _STAFF_ROLES = ['owner','admin','remitter','sorter','checker'];
+  let _staffIdleTimer = null;
+  function _resetStaffIdleTimer() {
+    if(!_STAFF_ROLES.includes(currentRole)) return;
+    clearTimeout(_staffIdleTimer);
+    _staffIdleTimer = setTimeout(() => {
+      if(!_STAFF_ROLES.includes(currentRole)) return;
+      _doAutoLogout(currentRole);
+    }, 60 * 60 * 1000); // 1 hour — ← CHANGE HERE if staff timeout changes
+  }
+
+  // Bind activity events — resets BOTH timers on any interaction
   ['touchstart','click','keydown','scroll'].forEach(ev =>
-    document.addEventListener(ev, _resetRiderIdleTimer, { passive: true })
+    document.addEventListener(ev, () => {
+      _resetRiderIdleTimer();
+      _resetStaffIdleTimer();
+    }, { passive: true })
   );
-  _resetRiderIdleTimer(); // start the timer
+  _resetRiderIdleTimer();   // start rider timer
+  _resetStaffIdleTimer();   // start staff timer
 
   _autoRefreshTimer = setInterval(async ()=>{
     if(!window._fbReady || !window.loadFromFirebase) return;
@@ -12866,6 +12905,9 @@ function _addressFuzzyMatch(a, b) {
   return matchCount / shorter.length >= 0.75;
 }
 function detectDuplicates(orders) {
+  // ═══ MERGE DETECTION RULES — change requires test of all 3 cases: ══
+  // Match if: (same house# AND same city) OR (same phone number)
+  // Cancelled/RTO/Delivered excluded in openMergeModal before this runs.
   // MERGE DETECTION — based on House Number + City only.
   // Two orders match if they share the SAME house/lot number AND the SAME city.
   // Name, phone, street, and barangay are intentionally ignored.
