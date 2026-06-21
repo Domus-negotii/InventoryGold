@@ -10966,11 +10966,9 @@ function startAutoRefresh(){
           clearInterval(window._autoRefreshTimer);
           window._autoRefreshTimer = null;
         }
-        // Navigate to login page
-        document.querySelectorAll('.page').forEach(p => p.style.display='none');
-        const loginPage = document.getElementById('page-login');
-        if(loginPage) loginPage.style.display = '';
-        renderLoginPage?.();
+        // Reload the page for a completely fresh start — clears all JS state,
+        // stops SAR, and brings user back to the login screen cleanly.
+        window.location.reload();
       }, 1000);
     }, 30000); // 30 seconds
   }
@@ -12906,14 +12904,16 @@ function detectDuplicates(orders) {
     const oi    = orders[i].o;
     const houseI = _extractHouseNum(oi.address);
     const cityI  = _extractCity(oi.address);
-    if(!houseI || !cityI) continue; // need both to compare
+    const phoneI = _normContact(oi.contact);
     for(let j=i+1;j<n;j++){
       const oj     = orders[j].o;
       const houseJ = _extractHouseNum(oj.address);
       const cityJ  = _extractCity(oj.address);
-      if(!houseJ || !cityJ) continue;
-      // Match: same house number AND same city
-      if(houseI === houseJ && cityI === cityJ) union(i,j);
+      const phoneJ = _normContact(oj.contact);
+      // Match if: (same house number AND same city) OR (same phone number)
+      const addrMatch  = houseI && houseJ && cityI && cityJ && houseI===houseJ && cityI===cityJ;
+      const phoneMatch = phoneI && phoneJ && phoneI===phoneJ;
+      if(addrMatch || phoneMatch) union(i,j);
     }
   }
   // Group by root — no size limit
