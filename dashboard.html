@@ -10946,7 +10946,7 @@ function startAutoRefresh(){
     clearTimeout(_riderIdleTimer);
     _riderIdleTimer = setTimeout(() => {
       if(currentRole !== 'rider') return;
-      // Auto-logout after 5 seconds of inactivity — clears all local state
+      // Auto-logout after 30 seconds of inactivity — clears all local state
       // and forces a full fresh reload from Firebase on next login.
       // This prevents stale orders from persisting after a Global Clear.
       toast('⏰ Auto-logout — please log in again.');
