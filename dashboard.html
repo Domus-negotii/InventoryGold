@@ -5535,9 +5535,13 @@ function sortDrop(e, colEl) {
   const riderName = decodeURIComponent(encodedRider);
   const idx = _sortDragIdx !== null ? _sortDragIdx : parseInt(e.dataTransfer.getData('text/plain'));
   if(isNaN(idx) || idx < 0 || idx >= S.orders.length || !S.orders[idx]) return;
-  // Block if already Out for Delivery
+  // Block if already Out for Delivery or Ready for Pick-up
   if(S.orders[idx].status === 'Out for Delivery') {
     toast('🔒 Hindi na maaari i-move — naka-Out for Delivery na ang parcel na ito.');
+    return;
+  }
+  if(S.orders[idx].status === 'Ready') {
+    toast('🔒 Hindi na maaari i-transfer — naka-Ready for Pick-up na ang parcel. Palitan muna ang status bago mag-reassign.');
     return;
   }
   const newRider = riderName === '__unassigned__' ? '' : riderName;
@@ -5557,6 +5561,10 @@ function sortReassign(orderIdx, encodedRider) {
   if(!S.orders[orderIdx]) return;
   if(S.orders[orderIdx].status === 'Out for Delivery') {
     toast('🔒 Hindi na maaari i-move — naka-Out for Delivery na ang parcel na ito.');
+    return;
+  }
+  if(S.orders[orderIdx].status === 'Ready') {
+    toast('🔒 Hindi na maaari i-transfer — naka-Ready for Pick-up na ang parcel. Palitan muna ang status bago mag-reassign.');
     return;
   }
   const newRider = encodedRider === '__unassigned__' ? '' : decodeURIComponent(encodedRider);
@@ -7920,7 +7928,22 @@ function clearAllTransactions() {
   // Set bypass flag so _directWriteFirebase skips the pre-write Firebase
   // fetch — otherwise a stale pre-read could resurrect just-cleared data.
   window._globalClearActive = true;
-  save().catch(()=>{}).finally(() => { window._globalClearActive = false; });
+  // ── 7. Also clear merge-related session sets ────────────────────────────
+  window._mergeDeletedIds   = new Set();
+  window._mergeRestoredOrders = new Set();
+  window._lastKnownWriteTs  = 0; // force every device to do a full reload
+  // ── 8. Stop SAR briefly then restart to flush any pending Firebase reads ─
+  if(window._autoRefreshTimer) {
+    clearInterval(window._autoRefreshTimer);
+    window._autoRefreshTimer = null;
+  }
+  save().catch(()=>{}).finally(() => {
+    window._globalClearActive = false;
+    // Restart SAR after clear confirms — all devices will see empty data
+    setTimeout(() => {
+      if(typeof startAutoRefresh === 'function') startAutoRefresh();
+    }, 1500);
+  });
   toast('✅ All transactions cleared! All devices will update within 3 seconds.');
   try { renderDash(); } catch(e) {}
   try { if(typeof renderOrders==='function') renderOrders(); } catch(e) {}
@@ -10914,6 +10937,49 @@ function _applyGlobalClear(fbData) {
 
 function startAutoRefresh(){
   if(_autoRefreshTimer) clearInterval(_autoRefreshTimer);
+  // ── Rider auto-logout: 5 minutes of inactivity ──────────────────────────
+  // Prevents stale rider session from showing old data if device is left idle.
+  // After clear-all-transactions, this ensures rider sees the clean state on next login.
+  let _riderIdleTimer = null;
+  function _resetRiderIdleTimer() {
+    if(currentRole !== 'rider') return; // only for rider sessions
+    clearTimeout(_riderIdleTimer);
+    _riderIdleTimer = setTimeout(() => {
+      if(currentRole !== 'rider') return;
+      // Auto-logout after 5 seconds of inactivity — clears all local state
+      // and forces a full fresh reload from Firebase on next login.
+      // This prevents stale orders from persisting after a Global Clear.
+      toast('⏰ Auto-logout — please log in again.');
+      setTimeout(() => {
+        currentRole = '';
+        currentRider = null;
+        currentUser = null;
+        // Clear ALL local session and sync state
+        window._sessionVerified  = new Set();
+        window._sessionRestored  = new Set();
+        window._deletedRemitIds  = new Set();
+        window._deductedRefs     = new Set();
+        window._restoredRefs     = new Set();
+        window._lastKnownWriteTs = 0; // force full reload on next login
+        // Stop SAR to prevent double-sync on re-login
+        if(window._autoRefreshTimer) {
+          clearInterval(window._autoRefreshTimer);
+          window._autoRefreshTimer = null;
+        }
+        // Navigate to login page
+        document.querySelectorAll('.page').forEach(p => p.style.display='none');
+        const loginPage = document.getElementById('page-login');
+        if(loginPage) loginPage.style.display = '';
+        renderLoginPage?.();
+      }, 1000);
+    }, 5000); // 5 seconds
+  }
+  // Bind activity events for rider idle detection
+  ['touchstart','click','keydown','scroll'].forEach(ev =>
+    document.addEventListener(ev, _resetRiderIdleTimer, { passive: true })
+  );
+  _resetRiderIdleTimer(); // start the timer
+
   _autoRefreshTimer = setInterval(async ()=>{
     if(!window._fbReady || !window.loadFromFirebase) return;
     if(_syncPending)           return;  // DWF in progress
@@ -12774,25 +12840,33 @@ function _addressFuzzyMatch(a, b) {
   return matchCount / shorter.length >= 0.75;
 }
 function detectDuplicates(orders) {
-  // Build duplicate groups using Union-Find approach:
-  // Two orders are "linked" if they share (fuzzy name + date) OR (contact + date) OR (address + date)
+  // STRICT MERGE DETECTION:
+  // Two orders are duplicates ONLY IF both conditions are met simultaneously:
+  //   1. Exact phone number match (normalized digits)
+  //   2. Full address match (normalized, not just city)
+  // Fuzzy name or address-only matches are intentionally EXCLUDED to prevent
+  // false-positive groupings that would incorrectly suggest merging distinct orders.
   const n = orders.length;
   const parent = orders.map((_,i)=>i);
   function find(x){ return parent[x]===x?x:(parent[x]=find(parent[x])); }
   function union(x,y){ parent[find(x)]=find(y); }
 
+  function _normAddr(a) {
+    return (a||'').toLowerCase().replace(/[^a-z0-9]/g,'').trim();
+  }
+
   for(let i=0;i<n;i++){
     const oi = orders[i].o;
-    const dateI = oi.date||'';
     const contactI = _normContact(oi.contact);
+    const addrI    = _normAddr(oi.address);
     for(let j=i+1;j<n;j++){
       const oj = orders[j].o;
-      const dateMatch = (oj.date||'') === dateI;
-      const nameMatch  = dateMatch && _nameFuzzyMatch(oi.name, oj.name);
-      const contactMatch = dateMatch && contactI && contactI === _normContact(oj.contact);
-      // Address match only within same day — prevents cross-date false-positive grouping
-      const addrMatch = dateMatch && _addressFuzzyMatch(oi.address, oj.address);
-      if(nameMatch || contactMatch || addrMatch) union(i,j);
+      const contactJ = _normContact(oj.contact);
+      const addrJ    = _normAddr(oj.address);
+      // STRICT: BOTH phone AND full address must match exactly
+      const phoneMatch = contactI && contactJ && contactI === contactJ;
+      const addrMatch  = addrI && addrJ && addrI === addrJ;
+      if(phoneMatch && addrMatch) union(i,j);
     }
   }
   // Group by root
