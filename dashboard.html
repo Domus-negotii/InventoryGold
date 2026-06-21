@@ -12914,30 +12914,32 @@ function renderMergeSetSelector() {
 function selectMergeSet(gi) {
   _mergeSetIdx = gi;
   const group = _mergeDupSets[gi];
-  // Default: first two orders in the group
+  // Store ALL indices — support N orders, not just A and B
   _mergeIdxA = group[0].i;
   _mergeIdxB = group[1].i;
+  window._mergeGroupIndices = group.map(item => item.i); // all indices for N-order merge
   renderMergeSetSelector();
   renderMergeOrderCards();
   updateMergePreview();
 }
 
 function renderMergeOrderCards() {
-  const oA = S.orders[_mergeIdxA];
-  const oB = S.orders[_mergeIdxB];
-  if(!oA || !oB) return;
+  const grid = document.getElementById('merge-preview-grid');
+  if(!grid) return;
+  const indices = window._mergeGroupIndices || [_mergeIdxA, _mergeIdxB];
+  const LABELS  = ['A','B','C','D','E','F'];
+  const COLORS  = ['var(--blue)','var(--orange)','var(--green)','var(--gold)','var(--red)','var(--muted)'];
 
   function orderCard(o, idx, label, colorVar) {
     const itemsHtml = (o.items||[]).map(it => {
-      const isGrams = it.grams > 0;
-      const qty = isGrams ? `${it.grams}g` : `×${it.qty||1}`;
+      const qty = it.grams > 0 ? `${it.grams}g` : `×${it.qty||1}`;
       return `<div style="font-size:10.5px;">🔹 <strong>${it.code||'—'}</strong> ${it.desc||''} (${qty}) = ${p(it.total||0)}</div>`;
     }).join('');
-    return `<div>
-      <div style="font-size:10px;font-weight:700;color:${colorVar};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">${label}</div>
+    return `<div style="background:var(--navy);border-radius:8px;padding:12px;border:2px solid ${colorVar};">
+      <div style="font-size:10px;font-weight:700;color:${colorVar};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">📋 Order ${label}</div>
       <div style="font-weight:700;font-size:13px;">${onum(idx)} — ${o.name}</div>
       <div style="font-size:11px;color:var(--muted);">${o.contact||'—'} | ${o.date}</div>
-      <div style="font-size:11px;margin-top:6px;color:var(--blue);">👤 Admin: <strong>${o.admin||'—'}</strong></div>
+      <div style="font-size:11px;margin-top:4px;color:var(--blue);">👤 Admin: <strong>${o.admin||'—'}</strong></div>
       <div style="margin-top:6px;">${itemsHtml}</div>
       <div style="margin-top:6px;display:flex;justify-content:space-between;font-size:11.5px;">
         <span style="color:var(--muted);">SF: <strong>${p(o.shipping||0)}</strong></span>
@@ -12946,35 +12948,42 @@ function renderMergeOrderCards() {
     </div>`;
   }
 
-  const elA = document.getElementById('merge-order-a');
-  const elB = document.getElementById('merge-order-b');
-  if(elA) { elA.innerHTML = orderCard(oA, _mergeIdxA, '📋 Order A', 'var(--blue)'); elA.style.borderColor = 'var(--blue)'; }
-  if(elB) { elB.innerHTML = orderCard(oB, _mergeIdxB, '📋 Order B', 'var(--orange)'); elB.style.borderColor = 'var(--orange)'; }
+  // Render all order cards dynamically (A, B, C, D...)
+  const cols = Math.min(indices.length, 3); // max 3 columns
+  grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  grid.innerHTML = indices.map((idx, n) => {
+    const o = S.orders[idx];
+    if(!o) return '';
+    return orderCard(o, idx, LABELS[n] || String(n+1), COLORS[n] || 'var(--muted)');
+  }).join('');
 }
 
 function updateMergePreview() {
-  const oA = S.orders[_mergeIdxA];
-  const oB = S.orders[_mergeIdxB];
-  if(!oA || !oB) return;
+  const indices = window._mergeGroupIndices || [_mergeIdxA, _mergeIdxB];
+  const orders  = indices.map(i => S.orders[i]).filter(Boolean);
+  if(orders.length < 2) return;
 
-  // SF decision
+  // SF decision across all orders
   const sfChoice = document.querySelector('input[name="merge-sf"]:checked')?.value || 'higher';
   let mergedSF;
-  if(sfChoice === 'higher') mergedSF = Math.max(oA.shipping||0, oB.shipping||0);
-  else if(sfChoice === 'lower') mergedSF = Math.min(oA.shipping||0, oB.shipping||0);
+  const allSF = orders.map(o => o.shipping||0);
+  if(sfChoice === 'higher') mergedSF = Math.max(...allSF);
+  else if(sfChoice === 'lower') mergedSF = Math.min(...allSF);
   else mergedSF = parseFloat(document.getElementById('merge-sf-custom')?.value)||0;
 
-  // Merged items
-  const mergedItems = [...oA.items, ...oB.items];
+  // Merged items from ALL orders
+  const mergedItems = orders.flatMap(o => o.items||[]);
   const mergedItemsTotal = mergedItems.reduce((s,it) => s + (it.total||0), 0);
   const mergedGrandTotal = mergedItemsTotal + mergedSF;
 
-  // Admins
-  const adminA = oA.admin || '';
-  const adminB = oB.admin || '';
-  const adminList = [...new Set([adminA, adminB].filter(Boolean))];
+  // Admins — unique list from all orders
+  const adminList = [...new Set(orders.map(o=>o.admin||'').filter(Boolean))];
   const adminDisplay = adminList.join(' / ');
   const incentiveEach = adminList.length > 0 ? (25 / adminList.length).toFixed(2) : '25.00';
+
+  // Customer names — unique, joined with /
+  const customerNames = [...new Set(orders.map(o=>(o.name||'').trim()).filter(Boolean))];
+  const customerDisplay = customerNames.join(' / ');
 
   const el = document.getElementById('merge-result-preview');
   if(!el) return;
@@ -12984,147 +12993,141 @@ function updateMergePreview() {
   }).join('');
 
   el.innerHTML = `
-    <div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">✅ Merged Order Preview</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px;">
-      <div>
-        <div><strong>${oA.name}</strong></div>
-        <div style="color:var(--muted);font-size:11px;">${oA.contact||'—'} | ${oA.date}</div>
-        <div style="color:var(--blue);font-size:11px;margin-top:4px;">👤 Admins: <strong>${adminDisplay}</strong></div>
-        <div style="font-size:10.5px;color:var(--muted);margin-top:2px;">
-          Incentive: ₱25 ÷ ${adminList.length} = <strong style="color:var(--gold);">₱${incentiveEach} each</strong>
-        </div>
-        <div style="font-size:10.5px;color:var(--muted);margin-top:2px;">
-          Rider parcel fee: <strong style="color:var(--gold);">₱10</strong> (1 parcel lang)
-        </div>
-      </div>
-      <div>
-        <div style="margin-bottom:4px;">${itemsHtml}</div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;padding-top:4px;border-top:1px solid var(--navy-border);">
-          <span>Items Total: <strong>${p(mergedItemsTotal)}</strong></span>
-          <span>SF: <strong>${p(mergedSF)}</strong></span>
-        </div>
-        <div style="font-size:14px;font-weight:700;color:var(--green);margin-top:4px;text-align:right;">
-          Grand Total: ${p(mergedGrandTotal)}
-        </div>
+    <div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">✅ Merged Order Preview (${orders.length} orders)</div>
+    <div style="font-weight:700;font-size:13px;margin-bottom:2px;">${customerDisplay}</div>
+    <div style="font-size:11px;color:var(--muted);">${orders[0].contact||'—'} | ${orders[0].date}</div>
+    <div style="font-size:11px;margin-top:4px;color:var(--blue);">👥 Admins: <strong>${adminDisplay||'—'}</strong></div>
+    <div style="font-size:10.5px;color:var(--muted);margin-top:2px;">
+      Incentive: ₱25 ÷ ${adminList.length} = <strong style="color:var(--gold);">₱${incentiveEach} each</strong>
+      &nbsp;&nbsp; Rider parcel fee: <strong style="color:var(--orange);">₱10</strong> (1 parcel lang)
+    </div>
+    <div style="margin-top:8px;display:grid;grid-template-columns:1fr auto;gap:4px 16px;align-items:start;">
+      <div>${itemsHtml}</div>
+      <div style="text-align:right;white-space:nowrap;">
+        <div style="font-size:11.5px;">Items Total: <strong>${p(mergedItemsTotal)}</strong></div>
+        <div style="font-size:11.5px;">SF: <strong>${p(mergedSF)}</strong></div>
+        <div style="font-size:14px;font-weight:800;color:var(--green);margin-top:4px;">Grand Total: ${p(mergedGrandTotal)}</div>
       </div>
     </div>`;
 }
 
+
 function confirmMerge() {
-  const oA = S.orders[_mergeIdxA];
-  const oB = S.orders[_mergeIdxB];
-  if(!oA || !oB) return;
+  // N-order merge: get all indices from the group
+  const allIndices = (window._mergeGroupIndices || [_mergeIdxA, _mergeIdxB]).slice().sort((a,b)=>a-b);
+  const allOrders  = allIndices.map(i => S.orders[i]);
 
-  // GUARD: Never merge Cancelled or RTO orders — they are already settled
-  if(['Cancelled','RTO','Delivered'].includes(oA.status) ||
-     ['Cancelled','RTO','Delivered'].includes(oB.status)) {
-    toast('⚠️ Hindi pwedeng i-merge — may cancelled o delivered na order sa selection. I-refresh at subukan ulit.');
+  if(allOrders.some(o => !o)) { toast('⚠️ May missing order — i-refresh at subukan ulit.'); return; }
+
+  // GUARD: Never merge Cancelled/RTO/Delivered orders
+  if(allOrders.some(o => ['Cancelled','RTO','Delivered'].includes(o.status))) {
+    toast('⚠️ Hindi pwedeng i-merge — may cancelled o delivered na order. I-refresh at subukan ulit.');
+    return;
+  }
+  // Same-day requirement
+  const dates = [...new Set(allOrders.map(o=>o.date))];
+  if(dates.length > 1) {
+    toast('⚠️ Hindi pwedeng i-merge — may iba-ibang petsa ang orders. Same day lang ang pwedeng i-merge.');
     return;
   }
 
-  // Same-day requirement: only allow merging orders with the same date
-  if(oA.date !== oB.date) {
-    toast(`⚠️ Hindi pwedeng i-merge! ${onum(_mergeIdxA)} is ${oA.date} and ${onum(_mergeIdxB)} is ${oB.date}. Same day lang ang pwedeng i-merge.`);
-    return;
-  }
-
+  // SF decision
   const sfChoice = document.querySelector('input[name="merge-sf"]:checked')?.value || 'higher';
   let mergedSF;
-  if(sfChoice === 'higher') mergedSF = Math.max(oA.shipping||0, oB.shipping||0);
-  else if(sfChoice === 'lower') mergedSF = Math.min(oA.shipping||0, oB.shipping||0);
+  const allSF = allOrders.map(o=>o.shipping||0);
+  if(sfChoice === 'higher') mergedSF = Math.max(...allSF);
+  else if(sfChoice === 'lower') mergedSF = Math.min(...allSF);
   else mergedSF = parseFloat(document.getElementById('merge-sf-custom')?.value)||0;
 
-  const mergedItems = [...oA.items, ...oB.items];
-  const mergedItemsTotal = mergedItems.reduce((s,it) => s + (it.total||0), 0);
-  const mergedGrandTotal = mergedItemsTotal + mergedSF;
+  const mergedItems     = allOrders.flatMap(o => o.items||[]);
+  const mergedItemsTotal= mergedItems.reduce((s,it) => s+(it.total||0), 0);
+  const mergedGrandTotal= mergedItemsTotal + mergedSF;
 
-  const adminA = oA.admin || '';
-  const adminB = oB.admin || '';
-  const adminList = [...new Set([adminA, adminB].filter(Boolean))];
+  const adminList    = [...new Set(allOrders.map(o=>o.admin||'').filter(Boolean))];
   const adminDisplay = adminList.join(' / ');
+  // Customer names — unique, joined with /  (JUAN / PEDRO / LUNA)
+  const customerNames   = [...new Set(allOrders.map(o=>(o.name||'').trim()).filter(Boolean))];
+  const customerDisplay = customerNames.join(' / ');
 
-  // Determine which index survives (lower index = keep as main)
-  const keepIdx   = Math.min(_mergeIdxA, _mergeIdxB);
-  const removeIdx = Math.max(_mergeIdxA, _mergeIdxB);
-  const oKeep   = S.orders[keepIdx];
-  const oRemove = S.orders[removeIdx];
+  // Surviving order = lowest index; absorbed = all others (remove highest-index first)
+  const keepIdx     = allIndices[0];
+  const removeIdxs  = allIndices.slice(1).reverse(); // remove highest first to preserve indices
+  const oKeep       = S.orders[keepIdx];
 
-  // Save merge log before modifying
+  // Save merge log
   if(!S.mergeLog) S.mergeLog = [];
   S.mergeLog.push({
     mergedAt: new Date().toISOString(),
     mergedBy: currentUser?.name || 'Checker',
     survivingOrderNum: onum(keepIdx),
-    absorbedOrderNum: onum(removeIdx),
-    customerName: oA.name,
-    contact: oA.contact||'',
-    date: oA.date,
-    adminA, adminB, adminList,
-    sfA: oA.shipping||0, sfB: oB.shipping||0, mergedSF,
-    itemsA: oA.items.length, itemsB: oB.items.length,
-    mergedGrandTotal
+    absorbedOrderNums: removeIdxs.map(i => onum(i)),
+    customerNames, customerDisplay,
+    contact: oKeep.contact||'',
+    date: oKeep.date,
+    adminList, adminDisplay,
+    mergedSF, mergedGrandTotal,
+    orderCount: allOrders.length
   });
 
-  // Restore inventory for BOTH orders before merge so the combined set
-  // can be deducted exactly once when checker re-verifies the merged order.
-  // GUARD: record the absorbed order number so Return Log doesn't double-restore.
+  // Restore inventory for ALL orders before merge (PROTECTED pattern)
   const _mergeRestoreRef = 'merge_restore_' + Date.now();
-  if(oKeep.inventoryDeducted) {
-    _restoreOrderItems(oKeep.items, oKeep.date||today(),
-      'Pre-merge restore – ' + onum(keepIdx), (oKeep._id||_mergeRestoreRef)+'_keep');
-  }
-  if(oRemove.inventoryDeducted) {
-    _restoreOrderItems(oRemove.items, oRemove.date||today(),
-      'Pre-merge restore – ' + onum(removeIdx), (oRemove._id||_mergeRestoreRef)+'_rem');
-  }
-  // Mark returnLog entries for the absorbed order as merge-restored so
-  // saveReturnLog / renderCancelledItems won't double-restore inventory for them.
-  const _absorbedNum = onum(removeIdx);
-  (S.returnLog||[]).forEach(r => {
-    if(r.orderNum === _absorbedNum && !r.mergeRestored) r.mergeRestored = true;
-  });
   if(!window._mergeRestoredOrders) window._mergeRestoredOrders = new Set();
-  window._mergeRestoredOrders.add(_absorbedNum);
-  // Apply merge to surviving order
+  allIndices.forEach((idx, n) => {
+    const o = S.orders[idx];
+    if(o && o.inventoryDeducted) {
+      _restoreOrderItems(o.items, o.date||today(),
+        'Pre-merge restore – ' + onum(idx), (o._id||_mergeRestoreRef)+'_'+n);
+    }
+  });
+
+  // Mark returnLog entries for ALL absorbed orders as merge-restored
+  removeIdxs.forEach(idx => {
+    const _absNum = onum(idx);
+    (S.returnLog||[]).forEach(r => { if(r.orderNum===_absNum && !r.mergeRestored) r.mergeRestored=true; });
+    window._mergeRestoredOrders.add(_absNum);
+  });
+
+  // Apply merge to surviving order (lowest index)
   S.orders[keepIdx] = {
     ...oKeep,
+    name: customerDisplay,        // JUAN / PEDRO / LUNA
     items: mergedItems,
     itemsTotal: mergedItemsTotal,
     shipping: mergedSF,
     grandTotal: mergedGrandTotal,
     admin: adminDisplay,
-    adminList: adminList,
-    _id: oKeep._id || oA._id || ('o_merge_'+Date.now()),
-    createdAt: oKeep.createdAt || oA.createdAt,
-    encodedBy: oKeep.encodedBy || oA.encodedBy,
-    mergedFrom: [onum(keepIdx), onum(removeIdx)],
+    adminList,
+    _id: oKeep._id || ('o_merge_'+Date.now()),
+    createdAt: oKeep.createdAt,
+    encodedBy: oKeep.encodedBy,
+    mergedFrom: allIndices.map(i=>onum(i)),
     mergedAt: new Date().toISOString(),
     checkerStatus: 'Pending',
     verificationStatus: 'Not Verified',
-    inventoryDeducted: false  // CRITICAL: reset so verify deducts merged set exactly once
+    inventoryDeducted: false  // CRITICAL: reset — verify deducts merged set exactly once
   };
 
-  // Ensure absorbed order has an _id before removal — required for Firebase filter.
-  // Orders without _id bypass the _mergeDeletedIds filter in DWF, causing orphaned rows.
-  if(!oRemove._id) {
-    oRemove._id = 'merged_absorbed_' + Date.now() + '_' + removeIdx;
-    S.orders[removeIdx]._id = oRemove._id; // write it before splice
-  }
-  const _absorbedId  = oRemove._id;
-  const _absorbedOrderNum = onum(removeIdx); // capture BEFORE splice shifts indices
-
-  // Remove the absorbed order (higher index first to preserve indices)
-  S.orders.splice(removeIdx, 1);
-
-  // Track absorbed order → pre-write fetch + SAR won't resurrect it.
-  // Track by _id (guaranteed above) AND by orderNum fallback.
+  // Remove absorbed orders — highest index first to preserve lower indices
   if(!window._mergeDeletedIds) window._mergeDeletedIds = new Set();
-  window._mergeDeletedIds.add(_absorbedId);
-  window._mergeDeletedIds.add('ORDERNUM:' + _absorbedOrderNum);
+  removeIdxs.forEach(removeIdx => {
+    const oRemove = S.orders[removeIdx];
+    if(!oRemove) return;
+    // Guarantee _id before removal (required for Firebase _mergeDeletedIds filter)
+    if(!oRemove._id) {
+      oRemove._id = 'merged_absorbed_' + Date.now() + '_' + removeIdx;
+      S.orders[removeIdx]._id = oRemove._id;
+    }
+    const _absorbedId      = oRemove._id;
+    const _absorbedOrderNum= onum(removeIdx);
+    S.orders.splice(removeIdx, 1);
+    window._mergeDeletedIds.add(_absorbedId);
+    window._mergeDeletedIds.add('ORDERNUM:' + _absorbedOrderNum);
+  });
 
   save();
   closeModal('modal-merge-orders');
-  toast(`✅ Orders merged! ${onum(keepIdx)} ← absorbed ${onum(removeIdx)}. Admin incentive: ₱${(25/adminList.length).toFixed(2)} each.`);
+  const absorbedNums = removeIdxs.map((_,n) => onum(allIndices[n+1])).join(', ');
+  toast(`✅ ${allOrders.length} orders merged! ${onum(keepIdx)} ← absorbed [${absorbedNums}]. Admin incentive: ₱${(25/adminList.length).toFixed(2)} each.`);
   renderChecker();
   if(currentRole==='owner') renderDash();
 }
