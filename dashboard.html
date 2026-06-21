@@ -12840,33 +12840,27 @@ function _addressFuzzyMatch(a, b) {
   return matchCount / shorter.length >= 0.75;
 }
 function detectDuplicates(orders) {
-  // STRICT MERGE DETECTION:
-  // Two orders are duplicates ONLY IF both conditions are met simultaneously:
-  //   1. Exact phone number match (normalized digits)
-  //   2. Full address match (normalized, not just city)
-  // Fuzzy name or address-only matches are intentionally EXCLUDED to prevent
-  // false-positive groupings that would incorrectly suggest merging distinct orders.
+  // MERGE DETECTION — two orders are flagged as duplicates if ANY of:
+  //   1. Same exact phone number (most reliable signal)
+  //   2. Same fuzzy name + same date
+  // Address matching removed — free-text address is too variable for reliable exact match.
+  // Cancelled/RTO/Delivered orders are excluded before this function is called.
   const n = orders.length;
   const parent = orders.map((_,i)=>i);
   function find(x){ return parent[x]===x?x:(parent[x]=find(parent[x])); }
   function union(x,y){ parent[find(x)]=find(y); }
 
-  function _normAddr(a) {
-    return (a||'').toLowerCase().replace(/[^a-z0-9]/g,'').trim();
-  }
-
   for(let i=0;i<n;i++){
     const oi = orders[i].o;
+    const dateI    = oi.date||'';
     const contactI = _normContact(oi.contact);
-    const addrI    = _normAddr(oi.address);
     for(let j=i+1;j<n;j++){
       const oj = orders[j].o;
-      const contactJ = _normContact(oj.contact);
-      const addrJ    = _normAddr(oj.address);
-      // STRICT: BOTH phone AND full address must match exactly
-      const phoneMatch = contactI && contactJ && contactI === contactJ;
-      const addrMatch  = addrI && addrJ && addrI === addrJ;
-      if(phoneMatch && addrMatch) union(i,j);
+      const dateMatch    = (oj.date||'') === dateI;
+      const phoneMatch   = contactI && contactI === _normContact(oj.contact);
+      const nameMatch    = dateMatch && _nameFuzzyMatch(oi.name, oj.name);
+      // Flag as duplicate if same phone OR (same fuzzy name + same date)
+      if(phoneMatch || nameMatch) union(i,j);
     }
   }
   // Group by root
