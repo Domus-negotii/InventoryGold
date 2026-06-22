@@ -7350,12 +7350,21 @@ function renderPnl(){
   const margin = totalSales ? ((netProfit/totalSales)*100).toFixed(1) : '0.0';
 
   // === ADMIN INCENTIVES ===
-  const adminDel={};
+  // Count parcels per admin (integer), earn ₱25 per parcel delivered.
+  // For merged orders (shared admin), each admin earns ₱25÷adminCount per parcel.
+  const adminDel   = {}; // parcel-share count (may be fractional for shared admins)
+  const adminCount = {}; // for display: full parcel count (always integer)
   incomeOrders.forEach(o=>{
     const admins = o.adminList&&o.adminList.length>0?o.adminList:(o.admin?[o.admin]:[]);
-    const share = 25/Math.max(1,admins.length);
-    admins.forEach(a=>{if(a)adminDel[a]=(adminDel[a]||0)+share;});
+    const share = 1/Math.max(1,admins.length); // parcel share
+    admins.forEach(a=>{
+      if(!a) return;
+      adminDel[a]   = (adminDel[a]  ||0) + share;
+      adminCount[a] = (adminCount[a]||0) + 1;   // each admin gets 1 parcel credit
+    });
   });
+  // Round to 2 decimal places to avoid floating-point artifacts (.0000000)
+  Object.keys(adminDel).forEach(a => { adminDel[a] = Math.round(adminDel[a]*100)/100; });
   const totalAdminInc = Object.values(adminDel).reduce((s,v)=>s+v,0);
 
   const row=(label,val,color,indent=false,bold=false)=>`<div style="display:flex;justify-content:space-between;padding:${bold?'9px':'6px'} ${indent?'20px':'0'} ${bold?'9px':'6px'} 0;border-bottom:1px solid var(--navy-border);font-size:${bold?'13px':'12.5px'};">
@@ -7400,7 +7409,7 @@ function renderPnl(){
     </div>
     <div class="card" style="margin-top:13px;">
       <div class="card-header"><span class="card-title">Admin Incentives (₱25/parcel)</span></div>
-      ${Object.entries(adminDel).length?Object.entries(adminDel).sort((a,b)=>b[1]-a[1]).map(([a,c])=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="font-weight:600;">${a}</span><span style="color:var(--muted);">${c}×₱25 = <strong style="color:var(--green);">${p(c*25)}</strong></span></div>`).join(''):'<p style="color:var(--muted);font-size:12px;padding:8px 0;">No sales in range</p>'}
+      ${Object.entries(adminDel).length?Object.entries(adminDel).sort((a,b)=>b[1]-a[1]).map(([a,c])=>{const cnt=adminCount[a]||0; const earn=(Math.round(c*25*100)/100); return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="font-weight:600;">${a}</span><span style="color:var(--muted);">${cnt} parcel${cnt!==1?'s':''} = <strong style="color:var(--green);">₱${earn.toFixed(2)}</strong></span></div>`;}).join(''):'<p style="color:var(--muted);font-size:12px;padding:8px 0;">No sales in range</p>'}
       <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:12.5px;font-weight:600;"><span>Total Admin Incentives</span><span style="color:var(--green);">${p(totalAdminInc)}</span></div>
     </div>
     <div class="card" style="margin-top:13px;">
@@ -10582,12 +10591,12 @@ function _getOrderCategory(order) {
 function _computeBaog(order) {
   const total = order.grandTotal || 0;
 
-  // Count total items (qty for fixprice, 1 per grams row)
-  const itemCount = (order.items||[]).reduce((s, it) => {
-    const inv = S.inventory.find(iv => iv.code && it.code && iv.code.toUpperCase() === it.code.toUpperCase());
-    if(inv && inv.itemType === 'fixprice') return s + (it.qty || 1);
-    return s + 1;
-  }, 0);
+  // Count UNIQUE serial numbers (item codes) — must have 10+ distinct codes.
+  // 3 items of the same code = 1 serial, not 3. Need 10 different serials.
+  const uniqueSerials = new Set(
+    (order.items||[]).map(it => (it.code||'').toUpperCase().trim()).filter(Boolean)
+  );
+  const itemCount = uniqueSerials.size; // unique serial count
   if(itemCount < 10) return null;
 
   // Compute silver-only total (exclude gold items)
@@ -13018,13 +13027,21 @@ function renderMergeOrderCards() {
   const LABELS  = ['A','B','C','D','E','F'];
   const COLORS  = ['var(--blue)','var(--orange)','var(--green)','var(--gold)','var(--red)','var(--muted)'];
 
-  function orderCard(o, idx, label, colorVar) {
+  function orderCard(o, idx, n, label, colorVar) {
     const itemsHtml = (o.items||[]).map(it => {
       const qty = it.grams > 0 ? `${it.grams}g` : `×${it.qty||1}`;
       return `<div style="font-size:10.5px;">🔹 <strong>${it.code||'—'}</strong> ${it.desc||''} (${qty}) = ${p(it.total||0)}</div>`;
     }).join('');
+    // X button — only show if there are more than 2 orders (need minimum 2 to merge)
+    const canRemove = indices.length > 2;
+    const xBtn = canRemove
+      ? `<button onclick="removeMergeCard(${n})" style="background:var(--red);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:13px;cursor:pointer;line-height:1;font-weight:700;" title="Remove from merge">✕</button>`
+      : '';
     return `<div style="background:var(--navy);border-radius:8px;padding:12px;border:2px solid ${colorVar};">
-      <div style="font-size:10px;font-weight:700;color:${colorVar};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">📋 Order ${label}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <div style="font-size:10px;font-weight:700;color:${colorVar};text-transform:uppercase;letter-spacing:0.5px;">📋 Order ${label}</div>
+        ${xBtn}
+      </div>
       <div style="font-weight:700;font-size:13px;">${onum(idx)} — ${o.name}</div>
       <div style="font-size:11px;color:var(--muted);">${o.contact||'—'} | ${o.date}</div>
       <div style="font-size:11px;margin-top:4px;color:var(--blue);">👤 Admin: <strong>${o.admin||'—'}</strong></div>
@@ -13036,14 +13053,23 @@ function renderMergeOrderCards() {
     </div>`;
   }
 
-  // Render all order cards dynamically (A, B, C, D...)
-  const cols = Math.min(indices.length, 3); // max 3 columns
+  const cols = Math.min(indices.length, 3);
   grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
   grid.innerHTML = indices.map((idx, n) => {
     const o = S.orders[idx];
     if(!o) return '';
-    return orderCard(o, idx, LABELS[n] || String(n+1), COLORS[n] || 'var(--muted)');
+    return orderCard(o, idx, n, LABELS[n] || String(n+1), COLORS[n] || 'var(--muted)');
   }).join('');
+}
+
+function removeMergeCard(n) {
+  const indices = window._mergeGroupIndices || [_mergeIdxA, _mergeIdxB];
+  if(indices.length <= 2) { toast('⚠️ Minimum 2 orders ang kailangan para mag-merge.'); return; }
+  window._mergeGroupIndices = indices.filter((_,i) => i !== n);
+  _mergeIdxA = window._mergeGroupIndices[0];
+  _mergeIdxB = window._mergeGroupIndices[1];
+  renderMergeOrderCards();
+  updateMergePreview();
 }
 
 function updateMergePreview() {
@@ -13073,6 +13099,10 @@ function updateMergePreview() {
   const customerNames = [...new Set(orders.map(o=>(o.name||'').trim()).filter(Boolean))];
   const customerDisplay = customerNames.join(' / ');
 
+  // Combined contact: if all same → show once; if different → join with /
+  const allContacts = [...new Set(orders.map(o=>(o.contact||'').trim()).filter(Boolean))];
+  const contactDisplay = allContacts.length === 1 ? allContacts[0] : allContacts.join(' / ');
+
   const el = document.getElementById('merge-result-preview');
   if(!el) return;
   const itemsHtml = mergedItems.map(it => {
@@ -13083,7 +13113,7 @@ function updateMergePreview() {
   el.innerHTML = `
     <div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">✅ Merged Order Preview (${orders.length} orders)</div>
     <div style="font-weight:700;font-size:13px;margin-bottom:2px;">${customerDisplay}</div>
-    <div style="font-size:11px;color:var(--muted);">${orders[0].contact||'—'} | ${orders[0].date}</div>
+    <div style="font-size:11px;color:var(--muted);">${contactDisplay} | ${orders[0].date}</div>
     <div style="font-size:11px;margin-top:4px;color:var(--blue);">👥 Admins: <strong>${adminDisplay||'—'}</strong></div>
     <div style="font-size:10.5px;color:var(--muted);margin-top:2px;">
       Incentive: ₱25 ÷ ${adminList.length} = <strong style="color:var(--gold);">₱${incentiveEach} each</strong>
