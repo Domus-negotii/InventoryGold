@@ -8721,43 +8721,9 @@ function riderUpdateStatus(orderIdx, newStatus) {
   if(storedStatus === 'Delivered' && !S.orders[orderIdx].dateDelivered) {
     S.orders[orderIdx].dateDelivered = today();
   }
-  // ── SPECIAL PREFIX HOOK: whole-order status change ─────────────────────
-  // When whole order becomes Delivered or Cancelled, sync all prefixed items
+  // ── SPECIAL PREFIX HOOK: FPG/PGS/PGG/FPS/FPW whole-order status sync ──
   if(storedStatus === 'Delivered' || storedStatus === 'Cancelled') {
-    const _o = S.orders[orderIdx];
-    if(_o && Array.isArray(_o.items)) {
-      const _oNum = onum(orderIdx);
-      if(!S.otherItems) S.otherItems = [];
-      _o.items.forEach((item, ii) => {
-        const _code   = (item.code||'').toUpperCase().trim();
-        const _prefix = typeof _getOiPrefix === 'function' ? _getOiPrefix(_code) : null;
-        if(!_prefix) return;
-        let _oiEntry = S.otherItems.find(r => r.orderNum === _oNum && r.itemIdx === ii);
-        if(!_oiEntry) {
-          const _defProfit = (_OI_PREFIXES[_prefix]||0);
-          const _qty  = item.grams > 0 ? item.grams : (item.qty||1);
-          const _pft  = _defProfit * _qty;
-          const _price= item.total||0;
-          _oiEntry = {
-            _id:'oi_'+Date.now()+'_'+ii+'_'+Math.random().toString(36).slice(2,6),
-            orderNum:_oNum, orderIdx, itemIdx:ii,
-            code:item.code||'', desc:item.desc||'',
-            qty:item.qty||1, grams:item.grams||0, pergram:item.pergram||0,
-            total:_price, profit:_pft, capital:Math.max(0,_price-_pft),
-            profitPerUnit:_defProfit, prefix:_prefix,
-            status:'product', isFpPg:true,
-            createdAt:new Date().toISOString(),
-            checkedBy:currentUser?.name||'Rider',
-            admin:_o.admin||'', riderName:_o.assignedRider||'', date:_o.date||''
-          };
-          S.otherItems.push(_oiEntry);
-        }
-        // Guard: never overwrite a 'cancelled' entry with 'remitted' (item was individually cancelled)
-        if(_oiEntry.status !== 'cancelled') {
-          _oiEntry.status = storedStatus === 'Delivered' ? 'remitted' : 'cancelled';
-        }
-      });
-    }
+    _syncOiPrefixStatus(orderIdx, storedStatus === 'Delivered' ? 'remitted' : 'cancelled');
   }
   save();
   if(storedStatus === 'Update') {
@@ -10083,6 +10049,50 @@ function calcRemit() { populateRemitParcels(); }
 // ── OTHER ITEMS STATUS SYNC ─────────────────────────────────────────────────
 // Call _syncOtherItemStatus(orderNum, newStatus) when an order's items are
 // cancelled or remitted so S.otherItems reflects the current state.
+// ── OTHER ITEMS PREFIX SYNC ─────────────────────────────────────────────────
+// Syncs all FPG/PGS/PGG/FPS/FPW items in an order to the correct Other Items tab.
+// newStatus: 'cancelled' → Cancelled tab | 'remitted' → Sales tab
+// Guards: never overwrites 'cancelled' with 'remitted'
+// CALL FROM: any place where an order or item reaches Delivered or Cancelled.
+function _syncOiPrefixStatus(orderIdx, newStatus) {
+  const _o = S.orders[orderIdx];
+  if(!_o) return;
+  const _oNum = onum(orderIdx);
+  if(!S.otherItems) S.otherItems = [];
+  (_o.items||[]).forEach((item, ii) => {
+    const _code   = (item.code||'').toUpperCase().trim();
+    const _prefix = typeof _getOiPrefix === 'function' ? _getOiPrefix(_code) : null;
+    if(!_prefix) return; // only prefixed items
+    let _oiEntry = S.otherItems.find(r => r.orderNum === _oNum && r.itemIdx === ii);
+    if(!_oiEntry) {
+      // Create entry if not yet captured
+      const _defProfit = (_OI_PREFIXES[_prefix]||0);
+      const _qty  = item.grams > 0 ? item.grams : (item.qty||1);
+      const _pft  = _defProfit * _qty;
+      const _price= item.total||0;
+      _oiEntry = {
+        _id: 'oi_'+Date.now()+'_'+ii+'_'+Math.random().toString(36).slice(2,6),
+        orderNum:_oNum, orderIdx, itemIdx:ii,
+        code:item.code||'', desc:item.desc||'',
+        qty:item.qty||1, grams:item.grams||0, pergram:item.pergram||0,
+        total:_price, profit:_pft, capital:Math.max(0,_price-_pft),
+        profitPerUnit:_defProfit, prefix:_prefix,
+        status:'product', isFpPg:true,
+        createdAt:new Date().toISOString(),
+        checkedBy:currentUser?.name||'System',
+        admin:_o.admin||'', riderName:_o.assignedRider||'', date:_o.date||''
+      };
+      S.otherItems.push(_oiEntry);
+    }
+    // Guard: never overwrite 'cancelled' with 'remitted'
+    if(newStatus === 'cancelled') {
+      _oiEntry.status = 'cancelled';
+    } else if(_oiEntry.status !== 'cancelled') {
+      _oiEntry.status = newStatus; // 'remitted'
+    }
+  });
+}
+
 function _syncOtherItemStatus(orderNum, newStatus) {
   if(!S.otherItems) return;
   S.otherItems.forEach(r => {
@@ -10986,8 +10996,9 @@ function renderOtherItemsPage() {
       <td style="font-size:11px;font-weight:600;color:var(--gold);">${r.orderNum}</td>
       <td style="font-size:11px;font-weight:700;color:var(--blue);">${r.code}${_badge}</td>
       <td style="font-size:11px;">${r.desc||'—'}</td>
-      <td style="font-size:11px;text-align:center;white-space:nowrap;min-width:110px;padding:6px 12px;">
-        <span style="display:inline-block;">${_qtyPart}</span>${_pgPart ? `<br><span style="font-size:10px;color:var(--muted);">${_pgPart.trim()}</span>` : ''}
+      <td style="font-size:11px;text-align:center;min-width:120px;padding:6px 14px;vertical-align:middle;">
+        <div style="font-weight:600;line-height:1.8;">${_qtyPart}</div>
+        ${_pgPart ? `<div style="font-size:10px;color:var(--muted);margin-top:2px;line-height:1.4;">${_pgPart.trim()}</div>` : ''}
       </td>
       <td style="font-size:11px;text-align:right;color:var(--green);font-weight:600;">${p(r.total||0)}</td>
       <td style="font-size:11px;text-align:right;color:var(--muted);">${p(_capital)}</td>
@@ -12184,6 +12195,7 @@ function _confirmDelivered(orderIdx, renderFn) {
   S.orders[orderIdx].dateDelivered = delDate;
   S.orders[orderIdx].lbcStatus = 'Delivered';
   S.orders[orderIdx].status = 'Delivered';
+  _syncOiPrefixStatus(orderIdx, 'remitted'); // prefixed items → Other Items Sales
   save();
   toast('✅ Status → Delivered — Naka-reflect na sa P&L & Daily Parcels');
   if(renderFn==='lbc') renderLbcDelivery();
@@ -12502,6 +12514,7 @@ function codDelivCancelOrder(orderIdx) {
     S.orders[orderIdx].cancelledBy     = (currentUser && currentUser.name) || 'Checker';
     S.orders[orderIdx].cancelledAt     = new Date().toISOString();
     S.orders[orderIdx].inventoryRestored = true; // flag: block any future double-restore
+    _syncOiPrefixStatus(orderIdx, 'cancelled'); // prefixed items → Other Items Cancelled
 
     if(!S.deletedOrders) S.deletedOrders = [];
     if(!S.deletedOrders.some(function(d){ return d.orderNum === onum(orderIdx); })) {
