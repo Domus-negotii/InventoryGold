@@ -10966,15 +10966,22 @@ function renderOtherItemsPage() {
   const _dfFrom    = typeof mdy2ymd === 'function' ? mdy2ymd(_dfFromRaw) : _dfFromRaw;
   const _dfTo      = typeof mdy2ymd === 'function' ? mdy2ymd(_dfToRaw)   : _dfToRaw;
   // ── SELF-HEALING: auto-correct status based on current order state ─────────
-  // If an entry was captured before status sync was implemented, fix it now.
+  // Runs every render — fixes entries captured before the status-sync was implemented.
+  // Saves to Firebase when any correction is made so all devices see the fix.
+  let _healChanged = false;
   (S.otherItems||[]).forEach(r => {
-    const _oi = typeof r.orderIdx === 'number' ? S.orders[r.orderIdx] : null;
-    const _oByNum = !_oi ? (S.orders||[]).find((_o,_i) => onum(_i) === r.orderNum) : null;
-    const _order  = _oi || _oByNum;
+    const _oIdx   = typeof r.orderIdx === 'number' ? r.orderIdx : -1;
+    const _order  = _oIdx >= 0 ? S.orders[_oIdx]
+                  : (S.orders||[]).find((_o,_i) => onum(_i) === r.orderNum);
     if(!_order) return;
-    if(_order.status === 'Delivered' && r.status === 'product') r.status = 'remitted';
-    if((_order.status === 'Cancelled' || _order.status === 'RTO') && r.status === 'product') r.status = 'cancelled';
+    if(_order.status === 'Delivered' && r.status === 'product') {
+      r.status = 'remitted'; _healChanged = true;
+    }
+    if((_order.status === 'Cancelled' || _order.status === 'RTO') && r.status === 'product') {
+      r.status = 'cancelled'; _healChanged = true;
+    }
   });
+  if(_healChanged) save(); // push corrected statuses to Firebase
 
   const items = (S.otherItems||[]).filter(r => {
     if(r.status !== _oiTab) return false;
@@ -10993,14 +11000,10 @@ function renderOtherItemsPage() {
     return;
   }
   const rows = items.map(r => {
-    // Qty / Grams / Per Gram — no nested backticks (fixes column shift bug)
-    const _isGrams   = r.grams > 0;
-    const _qtyPart   = _isGrams ? (r.grams + ' g') : ('× ' + (r.qty||1));
-    const _pgPart    = _isGrams && r.pergram > 0 ? ('@ ₱' + r.pergram + '/g') : '';
-    const _pgHtml    = _pgPart
-      ? ('<br><span style=\'font-size:10px;color:var(--muted);\'>' + _pgPart + '</span>')
-      : '';
-    const qtyGrams   = _qtyPart + (_pgPart ? ' ' + _pgPart : '');
+    // Qty/Grams — simple text, no nested HTML (avoids column shift)
+    const _isGrams = r.grams > 0;
+    const _qtyText = _isGrams ? (r.grams + 'g') : ('x' + (r.qty||1));
+    const _pgText  = _isGrams && r.pergram > 0 ? ('@ P' + r.pergram + '/g') : '';
     // Profit is user-editable; capital is auto-computed: Capital = Price - Profit
     const _profit  = r.profit  !== undefined ? r.profit  : Math.max(0,(r.total||0)-(r.capital||0));
     const _capital = r.capital !== undefined ? r.capital : Math.max(0,(r.total||0)-_profit);
@@ -11013,9 +11016,9 @@ function renderOtherItemsPage() {
       <td style="font-size:11px;font-weight:600;color:var(--gold);">${r.orderNum}</td>
       <td style="font-size:11px;font-weight:700;color:var(--blue);">${r.code}${_badge}</td>
       <td style="font-size:11px;">${r.desc||'—'}</td>
-      <td style="font-size:11px;text-align:center;min-width:120px;padding:6px 14px;vertical-align:middle;">
-        <div style="font-weight:600;line-height:1.8;">${_qtyPart}</div>
-        ${_pgHtml}
+      <td style="font-size:11px;text-align:center;white-space:nowrap;padding:4px 10px;">
+        <strong>${_qtyText}</strong>
+        ${_pgText ? '<br><small style="color:#aaa">' + _pgText + '</small>' : ''}
       </td>
       <td style="font-size:11px;text-align:right;color:var(--green);font-weight:600;">${p(r.total||0)}</td>
       <td style="font-size:11px;text-align:right;color:var(--muted);">${p(_capital)}</td>
