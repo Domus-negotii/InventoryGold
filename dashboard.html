@@ -1230,6 +1230,7 @@ function _showRulesHint() {
       <div class="nav-item" onclick="gotoPage('benefits')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>Benefits</div>
       <div class="nav-item" onclick="gotoPage('incentives')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>Incentives / Baog</div>
     </div>
+    <div class="nav-item" onclick="gotoPage('otheritems')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>Other Items</div>
     <div class="nav-section">
       <div class="nav-label">Finance</div>
       <div class="nav-item" onclick="gotoPage('dailysales')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Daily Sales Record</div>
@@ -2091,6 +2092,22 @@ function _showRulesHint() {
   <div id="incentives-page-content"></div>
 </div>
 
+
+<!-- OTHER ITEMS PAGE -->
+<div class="page" id="page-otheritems">
+  <div class="action-row no-print">
+    <div>
+      <span style="font-size:18px;font-weight:700;color:var(--gold);">📦 Other Items</span>
+      <span style="font-size:11px;color:var(--muted);margin-left:10px;">Items not in inventory (FP/PG prefix or unregistered serials)</span>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;" class="no-print">
+    <button class="tab-btn" id="oi-tab-product" onclick="setOiTab('product')" style="background:var(--blue);color:#fff;">📦 Products</button>
+    <button class="tab-btn" id="oi-tab-cancelled" onclick="setOiTab('cancelled')" style="background:var(--navy-border);color:var(--muted);">✖ Cancelled</button>
+    <button class="tab-btn" id="oi-tab-remitted" onclick="setOiTab('remitted')" style="background:var(--navy-border);color:var(--muted);">✅ Sales</button>
+  </div>
+  <div id="otheritems-content"></div>
+</div>
 
 <!-- BENEFITS PAGE -->
 <div class="page page-lockable" id="page-benefits">
@@ -2963,7 +2980,7 @@ const KEY='gce_v5';
 let S = {
   orders:[], riders:[], locations:[], payroll:[], expenses:[], inventory:[],
   stockLog:[], remitLog:[], cashbondLog:[], benefitsLog:[], deletedOrders:[],
-  mergeLog:[], adminNames:[], adminAccounts:[], lastGlobalClear:'',
+  mergeLog:[], otherItems:[], adminNames:[], adminAccounts:[], lastGlobalClear:'',
   govSettings:{sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25},
   bizInfo:{}, tabPasswords:{checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},
   specialPasswords:{remitter:'remit2026',sorter:'sort2026',checker:'check2026'}
@@ -3126,7 +3143,7 @@ function renderPage(n){
       riders:renderRiders,dailyparcels:renderDailyParcels,sorting:renderSorting,returns:renderReturns,deletedorders:renderDeletedOrders,
       dailysales:renderDailySales,payroll:()=>renderPayroll(payTab),expenses:renderExpenses,
       pnl:renderPnl,inventory:()=>switchInvTab(invTab),adminsheets:renderAdminSheets,settings:renderSettings,
-      ridersremit:renderRemitPage,cashbond:renderCashbondPage,benefits:renderBenefitsPage,incentives:renderIncentivesPage
+      ridersremit:renderRemitPage,cashbond:renderCashbondPage,benefits:renderBenefitsPage,incentives:renderIncentivesPage,otheritems:renderOtherItemsPage
     })[n]?.();
   } catch(e) {
     console.error(`renderPage('${n}') error:`, e);
@@ -4193,6 +4210,46 @@ function updatePaymentNotes(orderIdx, notes) {
   S.orders[orderIdx].paymentNotes = notes;
   save();
 }
+// ── OTHER ITEMS CAPTURE — PROTECTED ────────────────────────────────────────
+// Called on verify. Scans order items: any with FP/PG prefix OR not in inventory
+// → added to S.otherItems as status='product'. Never affects PnL.
+// ═══════════════════════════════════════════════════════════════════════════
+function _captureOtherItems(orderIdx) {
+  if(!S.orders[orderIdx]) return;
+  const o     = S.orders[orderIdx];
+  const _oNum = onum(orderIdx);
+  if(!S.otherItems) S.otherItems = [];
+  (o.items||[]).forEach((it, ii) => {
+    const _code  = (it.code||'').toUpperCase().trim();
+    if(!_code) return;
+    const _isFpPg = _code.startsWith('FP') || _code.startsWith('PG');
+    const _inInv  = (S.inventory||[]).some(inv => inv.code && inv.code.toUpperCase() === _code);
+    if(!_isFpPg && _inInv) return; // normal inventory item — skip
+    // Avoid duplicates
+    if(S.otherItems.some(r => r.orderNum === _oNum && r.itemIdx === ii)) return;
+    S.otherItems.push({
+      _id:      'oi_' + Date.now() + '_' + ii + '_' + Math.random().toString(36).slice(2,6),
+      orderNum: _oNum,
+      orderIdx: orderIdx,
+      itemIdx:  ii,
+      code:     it.code  || '',
+      desc:     it.desc  || '',
+      qty:      it.qty   || 1,
+      grams:    it.grams || 0,
+      pergram:  it.pergram || 0,
+      total:    it.total || 0,
+      capital:  0,
+      status:   'product',   // product → cancelled → remitted
+      isFpPg:   _isFpPg,
+      createdAt: new Date().toISOString(),
+      checkedBy: currentUser?.name || 'Checker',
+      admin:    o.admin || '',
+      riderName: o.assignedRider || '',
+      date:     o.date || '',
+    });
+  });
+}
+
 function updateVerifStatus(orderIdx, status) {
   const o = S.orders[orderIdx];
   if((o.paymentStatus||'No Payment') !== 'Fully Paid') {
@@ -4261,6 +4318,10 @@ function updateVerifStatus(orderIdx, status) {
     if(o.lbcStatus === 'Ready to Pick-up'){
       S.orders[orderIdx].lbcStatus = 'Preparing';
     }
+  }
+  // ── OTHER ITEMS: capture FP/PG + non-inventory items on verify ────────────
+  if(status === 'Verified' && S.orders[orderIdx]) {
+    _captureOtherItems(orderIdx);
   }
   save(); renderChecker();
   toast(`✅ Verification: ${status}${status==='Verified'?' — Inventory deducted.':' — Inventory restored.'}`);
@@ -4341,6 +4402,8 @@ function verifyOrder(i){
       S.orders[i].lbcStatus = 'Preparing';
     }
   }
+  // ── OTHER ITEMS: capture FP/PG + non-inventory items ──────────────────────
+  _captureOtherItems(i);
   persist();
   save();
   const _toastMsg = _isCourierOrder
@@ -7911,7 +7974,7 @@ function clearAllTransactions() {
 
   // ── 2. Wipe all transaction arrays ──────────────────────────────────────
   // ═══ TX_KEYS: ONLY transaction data — NEVER add 'inventory','riders','adminAccounts' ═
-  const _TX_KEYS = ['orders','returnLog','deletedOrders','stockLog','remitLog',
+  const _TX_KEYS = ['orders','returnLog','deletedOrders','stockLog','remitLog','otherItems',
                     'cashbondLog','benefitsLog','payroll','expenses','mergeLog'];
   _TX_KEYS.forEach(k=>{ S[k] = []; });
 
@@ -9873,6 +9936,16 @@ function recalcRemitNet() {
 
 function calcRemit() { populateRemitParcels(); }
 
+// ── OTHER ITEMS STATUS SYNC ─────────────────────────────────────────────────
+// Call _syncOtherItemStatus(orderNum, newStatus) when an order's items are
+// cancelled or remitted so S.otherItems reflects the current state.
+function _syncOtherItemStatus(orderNum, newStatus) {
+  if(!S.otherItems) return;
+  S.otherItems.forEach(r => {
+    if(r.orderNum === orderNum) r.status = newStatus;
+  });
+}
+
 function saveRemit() {
   // Concurrency lock: prevent double-click creating duplicate remit entries
   if(window._remitSaving) { toast('⏳ Please wait, saving...'); return; }
@@ -10003,6 +10076,10 @@ function saveRemit() {
     S.remitLog[+editIdx] = entry;
   } else {
     S.remitLog.push(entry);
+  }
+  // Sync otherItems to 'remitted' for all orders in this batch
+  if(remitStatus === 'Remitted') {
+    myOrders.forEach(o => _syncOtherItemStatus(onum(o.idx), 'remitted'));
   }
 
 
@@ -10697,6 +10774,89 @@ function showIncentiveDetail(oi) {
   </div>`;
   document.body.appendChild(overlay);
   overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove(); });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OTHER ITEMS PAGE — tracks FP/PG and non-inventory items separately from PnL
+// PROTECTED: values here MUST NOT be included in renderPnl calculations.
+// ═══════════════════════════════════════════════════════════════════════════
+let _oiTab = 'product';
+function setOiTab(tab) {
+  _oiTab = tab;
+  ['product','cancelled','remitted'].forEach(t => {
+    const btn = document.getElementById('oi-tab-' + t);
+    if(btn) { btn.style.background = t===tab ? 'var(--blue)' : 'var(--navy-border)'; btn.style.color = t===tab ? '#fff' : 'var(--muted)'; }
+  });
+  renderOtherItemsPage();
+}
+
+function saveOiCapital(id, val) {
+  const r = (S.otherItems||[]).find(x => x._id === id);
+  if(!r) return;
+  r.capital = parseFloat(val)||0;
+  save();
+}
+
+function renderOtherItemsPage() {
+  const el = document.getElementById('otheritems-content');
+  if(!el) return;
+  const items = (S.otherItems||[]).filter(r => r.status === _oiTab);
+  const labels = {product:'Products',cancelled:'Cancelled',remitted:'Sales'};
+  if(!items.length) {
+    el.innerHTML = `<div class="card"><p style="color:var(--muted);padding:24px;text-align:center;">Wala pang ${labels[_oiTab]||_oiTab} na Other Items.</p></div>`;
+    return;
+  }
+  const rows = items.map(r => {
+    const qtyGrams = r.grams > 0
+      ? `${r.grams}g${r.pergram > 0 ? ` @ ₱${r.pergram}/g` : ''}`
+      : `×${r.qty||1}`;
+    const profit     = (r.total||0) - (r.capital||0);
+    const profitColor = profit >= 0 ? 'var(--green)' : 'var(--red)';
+    const safeId     = (r._id||'').replace(/[^a-z0-9_]/gi,'_');
+    return `<tr>
+      <td style="font-size:11px;font-weight:600;color:var(--gold);">${r.orderNum}</td>
+      <td style="font-size:11px;font-weight:700;color:var(--blue);">${r.code}</td>
+      <td style="font-size:11px;">${r.desc||'—'}</td>
+      <td style="font-size:11px;text-align:center;">${qtyGrams}</td>
+      <td style="font-size:11px;text-align:right;color:var(--green);font-weight:600;">${p(r.total||0)}</td>
+      <td style="text-align:right;">
+        <input type="number" min="0" value="${r.capital||0}"
+          onchange="saveOiCapital('${r._id}',this.value)"
+          style="width:80px;font-size:11px;text-align:right;padding:3px 6px;background:var(--navy);color:var(--white);border:1px solid var(--navy-border);border-radius:4px;">
+      </td>
+      <td style="font-size:11px;text-align:right;font-weight:700;color:${profitColor};">${p(profit)}</td>
+      <td style="font-size:10px;color:var(--muted);">${r.admin||'—'}</td>
+      <td style="font-size:10px;color:var(--muted);">${r.date||'—'}</td>
+    </tr>`;
+  }).join('');
+  const totalPrice   = items.reduce((s,r)=>s+(r.total||0),0);
+  const totalCapital = items.reduce((s,r)=>s+(r.capital||0),0);
+  const totalProfit  = totalPrice - totalCapital;
+  el.innerHTML = `
+    <div class="card" style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr style="color:var(--gold);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid var(--navy-border);">
+          <th style="padding:8px 6px;text-align:left;">Order#</th>
+          <th style="padding:8px 6px;text-align:left;">Serial Code</th>
+          <th style="padding:8px 6px;text-align:left;">Description</th>
+          <th style="padding:8px 6px;text-align:center;">Qty / G / Per Gram</th>
+          <th style="padding:8px 6px;text-align:right;">Price</th>
+          <th style="padding:8px 6px;text-align:right;">Capital</th>
+          <th style="padding:8px 6px;text-align:right;">Profit</th>
+          <th style="padding:8px 6px;text-align:left;">Admin</th>
+          <th style="padding:8px 6px;text-align:left;">Date</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr style="border-top:2px solid var(--navy-border);font-weight:700;">
+          <td colspan="4" style="padding:8px 6px;color:var(--muted);font-size:11px;">TOTAL (${items.length} items)</td>
+          <td style="padding:8px 6px;text-align:right;color:var(--green);">${p(totalPrice)}</td>
+          <td style="padding:8px 6px;text-align:right;color:var(--muted);">${p(totalCapital)}</td>
+          <td style="padding:8px 6px;text-align:right;color:${totalProfit>=0?'var(--green)':'var(--red)'};">${p(totalProfit)}</td>
+          <td colspan="2"></td>
+        </tr></tfoot>
+      </table>
+      <p style="font-size:10px;color:var(--muted);margin-top:8px;">⚠️ Amounts here are <strong>excluded from PnL</strong> — off-book items tracked separately.</p>
+    </div>`;
 }
 
 function renderIncentivesPage() {
