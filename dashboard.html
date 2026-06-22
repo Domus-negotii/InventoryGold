@@ -10591,12 +10591,10 @@ function _getOrderCategory(order) {
 function _computeBaog(order) {
   const total = order.grandTotal || 0;
 
-  // Count UNIQUE serial numbers (item codes) — must have 10+ distinct codes.
-  // 3 items of the same code = 1 serial, not 3. Need 10 different serials.
-  const uniqueSerials = new Set(
-    (order.items||[]).map(it => (it.code||'').toUpperCase().trim()).filter(Boolean)
-  );
-  const itemCount = uniqueSerials.size; // unique serial count
+  // Count total item ENTRIES (rows) — 10 entries qualifies regardless of serial.
+  // Same serial entered 10 times = 10 entries = qualifies.
+  // One entry with qty=10 = still 1 entry (each row = 1 entry/serial).
+  const itemCount = (order.items||[]).length;
   if(itemCount < 10) return null;
 
   // Compute silver-only total (exclude gold items)
@@ -13166,6 +13164,9 @@ function confirmMerge() {
   // Customer names — unique, joined with /  (JUAN / PEDRO / LUNA)
   const customerNames   = [...new Set(allOrders.map(o=>(o.name||'').trim()).filter(Boolean))];
   const customerDisplay = customerNames.join(' / ');
+  // Contact numbers — unique, joined with /  (same=show once, diff=show all)
+  const contactList    = [...new Set(allOrders.map(o=>(o.contact||'').trim()).filter(Boolean))];
+  const contactDisplay = contactList.join(' / ');
 
   // Surviving order = lowest index; absorbed = all others (remove highest-index first)
   const keepIdx     = allIndices[0];
@@ -13209,6 +13210,8 @@ function confirmMerge() {
   S.orders[keepIdx] = {
     ...oKeep,
     name: customerDisplay,        // JUAN / PEDRO / LUNA
+    contact: contactDisplay,      // 09123 / 09456 (or single if same)
+    contactList,                  // for future reference
     items: mergedItems,
     itemsTotal: mergedItemsTotal,
     shipping: mergedSF,
