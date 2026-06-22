@@ -10999,79 +10999,89 @@ function renderOtherItemsPage() {
   });
   const labels = {product:'Products',cancelled:'Cancelled',remitted:'Sales'};
   if(!items.length) {
-    const _dateCtx = (_dfFrom||_dfTo) ? ` (${_dfFromRaw||'start'} → ${_dfToRaw||'end'})` : '';
+    const _dateCtx = (_dfFrom||_dfTo) ? ' (' + (_dfFromRaw||'start') + ' to ' + (_dfToRaw||'end') + ')' : '';
     const _allCount = (S.otherItems||[]).filter(r=>r.status===_oiTab).length;
     const _hint = (!_dfFrom && !_dfTo && _allCount===0 && _oiTab==='product')
       ? '<br><span style="font-size:10px;color:var(--muted);">Items appear here after Checker verifies an order with FPG / PGS / PGG / FPS / FPW serial codes.</span>'
       : '';
-    el.innerHTML = `<div class="card"><p style="color:var(--muted);padding:24px;text-align:center;">Wala pang ${labels[_oiTab]||_oiTab} na Other Items${_dateCtx}.${_hint}</p></div>`;
+    el.innerHTML = '<div class="card"><p style="color:var(--muted);padding:24px;text-align:center;">Wala pang ' + (labels[_oiTab]||_oiTab) + ' na Other Items' + _dateCtx + '.' + _hint + '</p></div>';
     return;
   }
+
+  // Column formulas:
+  // QTY/G            = r.grams (grams item) or r.qty (unit item)
+  // PRICE PER QTY/G  = r.pergram (grams) or r.total/qty (unit) — price for 1g or 1pc
+  // DEFAULT PROFIT   = r.profitPerUnit (e.g. 320 for FPG) — profit per g/pc
+  // CAPITAL PER QTY/G = PRICE PER QTY/G - DEFAULT PROFIT
+  // TOTAL CAPITAL    = QTY/G × CAPITAL PER QTY/G
+  // ITEMS TOTAL      = r.total (full sale price)
+  // TOTAL PROFIT     = ITEMS TOTAL - TOTAL CAPITAL
+
   const rows = items.map(r => {
-    // Qty/Grams — simple text, no nested HTML (avoids column shift)
-    const _isGrams = r.grams > 0;
-    const _qtyText = _isGrams ? (r.grams + 'g') : ('x' + (r.qty||1));
-    const _pgText  = _isGrams && r.pergram > 0 ? ('@ P' + r.pergram + '/g') : '';
-    // Profit is user-editable; capital is auto-computed: Capital = Price - Profit
-    const _profit  = r.profit  !== undefined ? r.profit  : Math.max(0,(r.total||0)-(r.capital||0));
-    const _capital = r.capital !== undefined ? r.capital : Math.max(0,(r.total||0)-_profit);
-    const profitColor = _profit >= 0 ? 'var(--green)' : 'var(--red)';
-    // Prefix badge
-    const _badge = r.prefix
-      ? `<span style="font-size:9px;background:rgba(201,168,76,0.15);color:var(--gold);padding:1px 5px;border-radius:3px;margin-left:4px;">${r.prefix}</span>`
+    const _isGrams      = r.grams > 0;
+    const _qty          = _isGrams ? r.grams : (r.qty||1);
+    const _qtyLabel     = _isGrams ? (_qty + 'g') : ('x' + _qty);
+    const _pricePerUnit = _isGrams ? (r.pergram||0) : (r.qty > 0 ? Math.round((r.total||0)/(r.qty)*100)/100 : (r.total||0));
+    const _defaultProfit= r.profitPerUnit || 0;
+    const _capPerUnit   = Math.max(0, _pricePerUnit - _defaultProfit);
+    const _totalCapital = Math.round(_qty * _capPerUnit * 100) / 100;
+    const _itemsTotal   = r.total || 0;
+    const _totalProfit  = Math.round((_itemsTotal - _totalCapital) * 100) / 100;
+    const _profitColor  = _totalProfit >= 0 ? 'var(--green)' : 'var(--red)';
+    const _badge        = r.prefix
+      ? '<span style="font-size:9px;background:rgba(201,168,76,0.15);color:var(--gold);padding:1px 5px;border-radius:3px;margin-left:4px;">' + r.prefix + '</span>'
       : '';
-    return `<tr>
-      <td style="font-size:11px;font-weight:600;color:var(--gold);">${r.orderNum}</td>
-      <td style="font-size:11px;font-weight:700;color:var(--blue);">${r.code}${_badge}</td>
-      <td style="font-size:11px;">${r.desc||'—'}</td>
-      <td style="font-size:11px;text-align:center;white-space:nowrap;padding:4px 10px;">
-        <strong>${_qtyText}</strong>
-        ${_pgText ? '<br><small style="color:#aaa">' + _pgText + '</small>' : ''}
-      </td>
-      <td style="font-size:11px;text-align:right;color:var(--green);font-weight:600;">${p(r.total||0)}</td>
-      <td style="font-size:11px;text-align:right;color:var(--muted);">${p(_capital)}</td>
-      <td style="text-align:right;">
-        <input type="number" min="0" step="0.01" value="${_profit}"
-          onchange="saveOiProfit('${r._id}',this.value)"
-          title="Editable — default: ₱${r.profitPerUnit||0} × qty/grams"
-          style="width:90px;font-size:11px;text-align:right;padding:3px 6px;background:var(--navy);color:var(--green);border:1px solid var(--green);border-radius:4px;font-weight:700;">
-      </td>
-      <td style="font-size:10px;color:var(--muted);">${r.admin||'—'}</td>
-      <td style="font-size:10px;color:var(--muted);">${r.date||'—'}</td>
-    </tr>`;
+    return '<tr>'
+      + '<td style="font-size:11px;font-weight:700;color:var(--blue);white-space:nowrap;">' + r.code + _badge + '</td>'
+      + '<td style="font-size:11px;">' + (r.desc||'—') + '</td>'
+      + '<td style="font-size:11px;text-align:center;white-space:nowrap;min-width:70px;">' + _qtyLabel + '</td>'
+      + '<td style="font-size:11px;text-align:right;white-space:nowrap;">' + p(_pricePerUnit) + '</td>'
+      + '<td style="font-size:11px;text-align:right;white-space:nowrap;color:var(--muted);">' + p(_capPerUnit) + '</td>'
+      + '<td style="font-size:11px;text-align:right;white-space:nowrap;color:var(--muted);">' + p(_totalCapital) + '</td>'
+      + '<td style="font-size:11px;text-align:right;white-space:nowrap;color:var(--green);font-weight:600;">' + p(_itemsTotal) + '</td>'
+      + '<td style="font-size:11px;text-align:right;white-space:nowrap;font-weight:700;color:' + _profitColor + ';">' + p(_totalProfit) + '</td>'
+      + '<td style="font-size:10px;color:var(--muted);white-space:nowrap;">' + (r.date||'—') + '</td>'
+      + '</tr>';
   }).join('');
-  const totalPrice   = items.reduce((s,r)=>s+(r.total||0),0);
-  const _getProfit   = r => r.profit!==undefined ? r.profit : Math.max(0,(r.total||0)-(r.capital||0));
-  const totalProfit  = items.reduce((s,r)=>s+_getProfit(r),0);
-  const totalCapital = totalPrice - totalProfit;
-  el.innerHTML = `
-    <div class="card" style="overflow-x:auto;">
-      <table style="width:100%;border-collapse:collapse;font-size:12px;">
-        <thead><tr style="color:var(--gold);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid var(--navy-border);">
-          <th style="padding:8px 6px;text-align:left;">Order#</th>
-          <th style="padding:8px 6px;text-align:left;">Serial Code</th>
-          <th style="padding:8px 6px;text-align:left;">Description</th>
-          <th style="padding:8px 12px;text-align:center;min-width:110px;white-space:nowrap;">Qty / G<br><span style="font-size:9px;color:var(--muted);font-weight:400;">Per Gram</span></th>
-          <th style="padding:8px 6px;text-align:right;">Price</th>
-          <th style="padding:8px 6px;text-align:right;">Capital<br><span style="font-size:9px;color:var(--muted);font-weight:400;">Price−Profit</span></th>
-          <th style="padding:8px 6px;text-align:right;">Profit ✏️<br><span style="font-size:9px;color:var(--muted);font-weight:400;">Editable</span></th>
-          <th style="padding:8px 6px;text-align:left;">Admin</th>
-          <th style="padding:8px 6px;text-align:left;">Date</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-        <tfoot><tr style="border-top:2px solid var(--navy-border);font-weight:700;">
-          <td colspan="4" style="padding:8px 6px;color:var(--muted);font-size:11px;">TOTAL (${items.length} items)</td>
-          <td style="padding:8px 6px;text-align:right;color:var(--green);">${p(totalPrice)}</td>
-          <td style="padding:8px 6px;text-align:right;color:var(--muted);">${p(totalCapital)}</td>
-          <td style="padding:8px 6px;text-align:right;color:${totalProfit>=0?'var(--green)':'var(--red)'};">${p(totalProfit)}</td>
-          <td colspan="2"></td>
-        </tr></tfoot>
-      </table>
-      <p style="font-size:10px;color:var(--muted);margin-top:8px;">
-        ⚠️ Amounts here are <strong>excluded from PnL</strong> — off-book items tracked separately.
-        &nbsp;|&nbsp; <strong>Capital</strong> = Price − Profit (auto-computed). <strong>Profit</strong> = editable (default: profitPerUnit × qty/grams).
-      </p>
-    </div>`;
+
+  const _totItemsTotal   = items.reduce((s,r) => s + (r.total||0), 0);
+  const _totCapital      = items.reduce((s,r) => {
+    const _isG = r.grams > 0;
+    const _q   = _isG ? r.grams : (r.qty||1);
+    const _ppu = _isG ? (r.pergram||0) : (r.qty > 0 ? Math.round((r.total||0)/(r.qty)*100)/100 : (r.total||0));
+    const _cpu = Math.max(0, _ppu - (r.profitPerUnit||0));
+    return s + Math.round(_q * _cpu * 100) / 100;
+  }, 0);
+  const _totProfit = Math.round((_totItemsTotal - _totCapital) * 100) / 100;
+
+  el.innerHTML = '<div class="card" style="overflow-x:auto;">'
+    + '<table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:auto;">'
+    + '<thead><tr style="color:var(--gold);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid var(--navy-border);">'
+    + '<th style="padding:8px 8px;text-align:left;white-space:nowrap;">Serial Code</th>'
+    + '<th style="padding:8px 8px;text-align:left;">Description</th>'
+    + '<th style="padding:8px 8px;text-align:center;white-space:nowrap;">QTY / G</th>'
+    + '<th style="padding:8px 8px;text-align:right;white-space:nowrap;">Price<br><span style="font-size:9px;font-weight:400;color:var(--muted);">per QTY/G</span></th>'
+    + '<th style="padding:8px 8px;text-align:right;white-space:nowrap;">Capital<br><span style="font-size:9px;font-weight:400;color:var(--muted);">per QTY/G</span></th>'
+    + '<th style="padding:8px 8px;text-align:right;white-space:nowrap;">Total Capital</th>'
+    + '<th style="padding:8px 8px;text-align:right;white-space:nowrap;">Items Total</th>'
+    + '<th style="padding:8px 8px;text-align:right;white-space:nowrap;">Total Profit</th>'
+    + '<th style="padding:8px 8px;text-align:center;white-space:nowrap;">Date</th>'
+    + '</tr></thead>'
+    + '<tbody>' + rows + '</tbody>'
+    + '<tfoot><tr style="border-top:2px solid var(--navy-border);font-weight:700;font-size:12px;">'
+    + '<td colspan="3" style="padding:8px 8px;color:var(--muted);">TOTAL (' + items.length + ' items)</td>'
+    + '<td colspan="2"></td>'
+    + '<td style="padding:8px 8px;text-align:right;color:var(--muted);">' + p(_totCapital) + '</td>'
+    + '<td style="padding:8px 8px;text-align:right;color:var(--green);">' + p(_totItemsTotal) + '</td>'
+    + '<td style="padding:8px 8px;text-align:right;color:' + (_totProfit>=0?'var(--green)':'var(--red)') + ';">' + p(_totProfit) + '</td>'
+    + '<td></td>'
+    + '</tr></tfoot>'
+    + '</table>'
+    + '<p style="font-size:10px;color:var(--muted);margin-top:8px;">'
+    + '⚠️ Amounts excluded from PnL — off-book items. '
+    + '| Capital/QTY = Price/QTY − Default Profit | Total Capital = QTY × Capital/QTY | Total Profit = Items Total − Total Capital'
+    + '</p>'
+    + '</div>';
 }
 
 function renderIncentivesPage() {
