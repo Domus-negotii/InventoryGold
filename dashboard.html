@@ -8752,7 +8752,10 @@ function riderUpdateStatus(orderIdx, newStatus) {
           };
           S.otherItems.push(_oiEntry);
         }
-        _oiEntry.status = storedStatus === 'Delivered' ? 'remitted' : 'cancelled';
+        // Guard: never overwrite a 'cancelled' entry with 'remitted' (item was individually cancelled)
+        if(_oiEntry.status !== 'cancelled') {
+          _oiEntry.status = storedStatus === 'Delivered' ? 'remitted' : 'cancelled';
+        }
       });
     }
   }
@@ -8844,7 +8847,13 @@ function riderItemStatus(orderIdx, itemIdx, newStatus) {
         };
         S.otherItems.push(_oiEntry);
       }
-      _oiEntry.status = normalizedStatus === 'Cancelled' ? 'cancelled' : 'remitted';
+      // Guard: never overwrite 'cancelled' with 'remitted'
+      if(normalizedStatus === 'Cancelled') {
+        _oiEntry.status = 'cancelled';
+      } else if(_oiEntry.status !== 'cancelled') {
+        // Only set to remitted if not already cancelled
+        _oiEntry.status = 'remitted';
+      }
     }
   }
   save();
@@ -10977,7 +10986,9 @@ function renderOtherItemsPage() {
       <td style="font-size:11px;font-weight:600;color:var(--gold);">${r.orderNum}</td>
       <td style="font-size:11px;font-weight:700;color:var(--blue);">${r.code}${_badge}</td>
       <td style="font-size:11px;">${r.desc||'—'}</td>
-      <td style="font-size:11px;text-align:center;">${qtyGrams}</td>
+      <td style="font-size:11px;text-align:center;white-space:nowrap;min-width:110px;padding:6px 12px;">
+        <span style="display:inline-block;">${_qtyPart}</span>${_pgPart ? `<br><span style="font-size:10px;color:var(--muted);">${_pgPart.trim()}</span>` : ''}
+      </td>
       <td style="font-size:11px;text-align:right;color:var(--green);font-weight:600;">${p(r.total||0)}</td>
       <td style="font-size:11px;text-align:right;color:var(--muted);">${p(_capital)}</td>
       <td style="text-align:right;">
@@ -11001,7 +11012,7 @@ function renderOtherItemsPage() {
           <th style="padding:8px 6px;text-align:left;">Order#</th>
           <th style="padding:8px 6px;text-align:left;">Serial Code</th>
           <th style="padding:8px 6px;text-align:left;">Description</th>
-          <th style="padding:8px 6px;text-align:center;">Qty / G / Per Gram</th>
+          <th style="padding:8px 12px;text-align:center;min-width:110px;white-space:nowrap;">Qty / G<br><span style="font-size:9px;color:var(--muted);font-weight:400;">Per Gram</span></th>
           <th style="padding:8px 6px;text-align:right;">Price</th>
           <th style="padding:8px 6px;text-align:right;">Capital<br><span style="font-size:9px;color:var(--muted);font-weight:400;">Price−Profit</span></th>
           <th style="padding:8px 6px;text-align:right;">Profit ✏️<br><span style="font-size:9px;color:var(--muted);font-weight:400;">Editable</span></th>
