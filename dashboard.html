@@ -10968,13 +10968,22 @@ function setOiTab(tab) {
 }
 
 function saveOiProfit(id, val) {
-  // Profit is editable — capital is auto-computed as: Capital = Price - Profit
   const r = (S.otherItems||[]).find(x => x._id === id);
   if(!r) return;
   r.profit  = parseFloat(val)||0;
   r.capital = Math.max(0, (r.total||0) - r.profit);
   save();
-  renderOtherItemsPage(); // re-render to show updated capital
+  renderOtherItemsPage();
+}
+
+function saveOiCapitalPerUnit(id, val) {
+  // Capital per QTY/G is editable — overrides the default (Price - DefaultProfit).
+  // Total Capital and Total Profit are recalculated on render from this value.
+  const r = (S.otherItems||[]).find(x => x._id === id);
+  if(!r) return;
+  r.capitalPerUnit = parseFloat(val)||0; // persisted override
+  save();
+  renderOtherItemsPage();
 }
 
 function renderOtherItemsPage() {
@@ -11023,7 +11032,11 @@ function renderOtherItemsPage() {
     const _qtyLabel     = _isGrams ? (_qty + 'g') : ('x' + _qty);
     const _pricePerUnit = _isGrams ? (r.pergram||0) : (r.qty > 0 ? Math.round((r.total||0)/(r.qty)*100)/100 : (r.total||0));
     const _defaultProfit= r.profitPerUnit || 0;
-    const _capPerUnit   = Math.max(0, _pricePerUnit - _defaultProfit);
+    const _capPerUnitDefault = Math.max(0, _pricePerUnit - _defaultProfit);
+    // Use stored override if user has edited it; otherwise use the default
+    const _capPerUnit   = (r.capitalPerUnit !== undefined && r.capitalPerUnit !== null)
+                        ? r.capitalPerUnit
+                        : _capPerUnitDefault;
     const _totalCapital = Math.round(_qty * _capPerUnit * 100) / 100;
     const _itemsTotal   = r.total || 0;
     const _totalProfit  = Math.round((_itemsTotal - _totalCapital) * 100) / 100;
@@ -11036,7 +11049,12 @@ function renderOtherItemsPage() {
       + '<td style="font-size:11px;">' + (r.desc||'—') + '</td>'
       + '<td style="font-size:11px;text-align:center;white-space:nowrap;min-width:70px;">' + _qtyLabel + '</td>'
       + '<td style="font-size:11px;text-align:right;white-space:nowrap;">' + p(_pricePerUnit) + '</td>'
-      + '<td style="font-size:11px;text-align:right;white-space:nowrap;color:var(--muted);">' + p(_capPerUnit) + '</td>'
+      + '<td style="text-align:right;white-space:nowrap;padding:2px 4px;">'
+      +   '<input type="number" min="0" step="0.01" value="' + _capPerUnit + '"'
+      +     ' onchange="saveOiCapitalPerUnit(\'' + r._id + '\',this.value)"'
+      +     ' title="Editable — default: ' + _capPerUnitDefault + '"'
+      +     ' style="width:85px;font-size:11px;text-align:right;padding:3px 6px;background:var(--navy);color:var(--muted);border:1px solid var(--navy-border);border-radius:4px;">'
+      + '</td>'
       + '<td style="font-size:11px;text-align:right;white-space:nowrap;color:var(--muted);">' + p(_totalCapital) + '</td>'
       + '<td style="font-size:11px;text-align:right;white-space:nowrap;color:var(--green);font-weight:600;">' + p(_itemsTotal) + '</td>'
       + '<td style="font-size:11px;text-align:right;white-space:nowrap;font-weight:700;color:' + _profitColor + ';">' + p(_totalProfit) + '</td>'
@@ -11049,7 +11067,8 @@ function renderOtherItemsPage() {
     const _isG = r.grams > 0;
     const _q   = _isG ? r.grams : (r.qty||1);
     const _ppu = _isG ? (r.pergram||0) : (r.qty > 0 ? Math.round((r.total||0)/(r.qty)*100)/100 : (r.total||0));
-    const _cpu = Math.max(0, _ppu - (r.profitPerUnit||0));
+    const _cpuDefault = Math.max(0, _ppu - (r.profitPerUnit||0));
+    const _cpu = (r.capitalPerUnit !== undefined && r.capitalPerUnit !== null) ? r.capitalPerUnit : _cpuDefault;
     return s + Math.round(_q * _cpu * 100) / 100;
   }, 0);
   const _totProfit = Math.round((_totItemsTotal - _totCapital) * 100) / 100;
