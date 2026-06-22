@@ -4280,7 +4280,10 @@ function _captureOtherItems(orderIdx) {
       capital:  _capital,         // auto-computed: Price - Profit (NOT editable)
       profitPerUnit: _defaultProfitPerUnit,
       prefix:   _prefix || '',
-      status:   'product',        // product → cancelled → remitted
+      // Initial status based on current order state
+      status:   o.status === 'Delivered' ? 'remitted'
+              : (o.status === 'Cancelled' || o.status === 'RTO') ? 'cancelled'
+              : 'product',
       createdAt: new Date().toISOString(),
       checkedBy: currentUser?.name || 'Checker',
       admin:    o.admin || '',
@@ -10979,11 +10982,14 @@ function renderOtherItemsPage() {
     return;
   }
   const rows = items.map(r => {
-    // Qty / Grams / Per Gram — formatted with clear spaces
+    // Qty / Grams / Per Gram — no nested backticks (fixes column shift bug)
     const _isGrams   = r.grams > 0;
-    const _qtyPart   = _isGrams ? `${r.grams} g` : `× ${r.qty||1}`;
-    const _pgPart    = _isGrams && r.pergram > 0 ? ` @ ₱${r.pergram}/g` : '';
-    const qtyGrams   = _qtyPart + _pgPart;
+    const _qtyPart   = _isGrams ? (r.grams + ' g') : ('× ' + (r.qty||1));
+    const _pgPart    = _isGrams && r.pergram > 0 ? ('@ ₱' + r.pergram + '/g') : '';
+    const _pgHtml    = _pgPart
+      ? ('<div style="font-size:10px;color:var(--muted);margin-top:3px;">' + _pgPart + '</div>')
+      : '';
+    const qtyGrams   = _qtyPart + (_pgPart ? ' ' + _pgPart : '');
     // Profit is user-editable; capital is auto-computed: Capital = Price - Profit
     const _profit  = r.profit  !== undefined ? r.profit  : Math.max(0,(r.total||0)-(r.capital||0));
     const _capital = r.capital !== undefined ? r.capital : Math.max(0,(r.total||0)-_profit);
@@ -10998,7 +11004,7 @@ function renderOtherItemsPage() {
       <td style="font-size:11px;">${r.desc||'—'}</td>
       <td style="font-size:11px;text-align:center;min-width:120px;padding:6px 14px;vertical-align:middle;">
         <div style="font-weight:600;line-height:1.8;">${_qtyPart}</div>
-        ${_pgPart ? `<div style="font-size:10px;color:var(--muted);margin-top:2px;line-height:1.4;">${_pgPart.trim()}</div>` : ''}
+        ${_pgHtml}
       </td>
       <td style="font-size:11px;text-align:right;color:var(--green);font-weight:600;">${p(r.total||0)}</td>
       <td style="font-size:11px;text-align:right;color:var(--muted);">${p(_capital)}</td>
