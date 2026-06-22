@@ -10965,6 +10965,17 @@ function renderOtherItemsPage() {
   const _dfToRaw   = (document.getElementById('oi-date-to')?.value||'').trim();
   const _dfFrom    = typeof mdy2ymd === 'function' ? mdy2ymd(_dfFromRaw) : _dfFromRaw;
   const _dfTo      = typeof mdy2ymd === 'function' ? mdy2ymd(_dfToRaw)   : _dfToRaw;
+  // ── SELF-HEALING: auto-correct status based on current order state ─────────
+  // If an entry was captured before status sync was implemented, fix it now.
+  (S.otherItems||[]).forEach(r => {
+    const _oi = typeof r.orderIdx === 'number' ? S.orders[r.orderIdx] : null;
+    const _oByNum = !_oi ? (S.orders||[]).find((_o,_i) => onum(_i) === r.orderNum) : null;
+    const _order  = _oi || _oByNum;
+    if(!_order) return;
+    if(_order.status === 'Delivered' && r.status === 'product') r.status = 'remitted';
+    if((_order.status === 'Cancelled' || _order.status === 'RTO') && r.status === 'product') r.status = 'cancelled';
+  });
+
   const items = (S.otherItems||[]).filter(r => {
     if(r.status !== _oiTab) return false;
     if(_dfFrom && r.date < _dfFrom) return false;
@@ -10987,7 +10998,7 @@ function renderOtherItemsPage() {
     const _qtyPart   = _isGrams ? (r.grams + ' g') : ('× ' + (r.qty||1));
     const _pgPart    = _isGrams && r.pergram > 0 ? ('@ ₱' + r.pergram + '/g') : '';
     const _pgHtml    = _pgPart
-      ? ('<div style="font-size:10px;color:var(--muted);margin-top:3px;">' + _pgPart + '</div>')
+      ? ('<br><span style=\'font-size:10px;color:var(--muted);\'>' + _pgPart + '</span>')
       : '';
     const qtyGrams   = _qtyPart + (_pgPart ? ' ' + _pgPart : '');
     // Profit is user-editable; capital is auto-computed: Capital = Price - Profit
