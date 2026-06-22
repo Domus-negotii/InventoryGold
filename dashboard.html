@@ -2101,10 +2101,15 @@ function _showRulesHint() {
       <span style="font-size:11px;color:var(--muted);margin-left:10px;">Items not in inventory (FP/PG prefix or unregistered serials)</span>
     </div>
   </div>
-  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;" class="no-print">
+  <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center;" class="no-print">
     <button class="tab-btn" id="oi-tab-product" onclick="setOiTab('product')" style="background:var(--blue);color:#fff;">📦 Products</button>
     <button class="tab-btn" id="oi-tab-cancelled" onclick="setOiTab('cancelled')" style="background:var(--navy-border);color:var(--muted);">✖ Cancelled</button>
     <button class="tab-btn" id="oi-tab-remitted" onclick="setOiTab('remitted')" style="background:var(--navy-border);color:var(--muted);">✅ Sales</button>
+    <div style="display:flex;gap:6px;align-items:center;margin-left:auto;">
+      <input type="text" id="oi-date-filter" class="form-control" placeholder="MM/DD/YYYY"
+        maxlength="10" style="width:130px;font-size:11px;" oninput="renderOtherItemsPage()">
+      <button class="btn btn-outline btn-sm" onclick="document.getElementById('oi-date-filter').value='';renderOtherItemsPage()">All Dates</button>
+    </div>
   </div>
   <div id="otheritems-content"></div>
 </div>
@@ -5348,6 +5353,28 @@ function saveReturnLog() {
   };
   const editIdx = document.getElementById('ret-log-edit-idx').value;
   if(editIdx!=='') S.returnLog[+editIdx]=entry; else S.returnLog.push(entry);
+
+  // ── OTHER ITEMS: when a return is logged for an order, mark matching
+  // otherItems (FP/PG or non-inventory) as 'cancelled' — they were returned.
+  // This moves them from Products tab to Cancelled tab in Other Items page.
+  if(orderNum && parsedItemIdx !== null) {
+    if(!S.otherItems) S.otherItems = [];
+    S.otherItems.forEach(r => {
+      if(r.orderNum === orderNum && r.itemIdx === parsedItemIdx) {
+        r.status = 'cancelled';
+        r.returnLoggedAt = new Date().toISOString();
+      }
+    });
+  } else if(orderNum) {
+    // Whole-order return — cancel all otherItems for this order
+    S.otherItems.forEach(r => {
+      if(r.orderNum === orderNum && r.status !== 'remitted') {
+        r.status = 'cancelled';
+        r.returnLoggedAt = new Date().toISOString();
+      }
+    });
+  }
+
   save();
   closeModal('modal-return-log');
   toast('✅ Return recorded!');
@@ -10800,10 +10827,16 @@ function saveOiCapital(id, val) {
 function renderOtherItemsPage() {
   const el = document.getElementById('otheritems-content');
   if(!el) return;
-  const items = (S.otherItems||[]).filter(r => r.status === _oiTab);
+  // Date filter — convert MM/DD/YYYY → YYYY-MM-DD to match r.date
+  const _dfRaw = (document.getElementById('oi-date-filter')?.value||'').trim();
+  const _df    = typeof mdy2ymd === 'function' ? mdy2ymd(_dfRaw) : _dfRaw;
+  const items = (S.otherItems||[]).filter(r =>
+    r.status === _oiTab && (!_df || r.date === _df)
+  );
   const labels = {product:'Products',cancelled:'Cancelled',remitted:'Sales'};
   if(!items.length) {
-    el.innerHTML = `<div class="card"><p style="color:var(--muted);padding:24px;text-align:center;">Wala pang ${labels[_oiTab]||_oiTab} na Other Items.</p></div>`;
+    const _dateCtx = _df ? ` para sa ${_dfRaw}` : '';
+    el.innerHTML = `<div class="card"><p style="color:var(--muted);padding:24px;text-align:center;">Wala pang ${labels[_oiTab]||_oiTab} na Other Items${_dateCtx}.</p></div>`;
     return;
   }
   const rows = items.map(r => {
