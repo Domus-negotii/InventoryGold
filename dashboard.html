@@ -674,7 +674,7 @@ async function _directWriteFirebase(data, opts){
     // ── Write all other arrays normally ───────────────────────────────────────────────────
     ['orders','riders','locations','payroll','expenses','inventory','stockLog',
      'adminNames','remitLog','cashbondLog','benefitsLog','returnLog',
-     'deletedOrders','mergeLog'].forEach(k=>{
+     'deletedOrders','mergeLog','otherItems'].forEach(k=>{
       if(!skipKeys.has(k) && k!=='orders' && k!=='deletedOrders') fields[k] = _toFS(S2[k]||[]);
     });
     ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{ fields[k] = _toFS(S2[k]||{}); });
@@ -753,6 +753,7 @@ window.loadFromFirebase = async function() {
     if(!Array.isArray(data.returnLog))     data.returnLog     = [];
     if(!Array.isArray(data.deletedOrders)) data.deletedOrders = [];
     if(!Array.isArray(data.mergeLog))      data.mergeLog      = [];
+    if(!Array.isArray(data.otherItems))    data.otherItems    = [];
     if(!Array.isArray(data.adminAccounts)) data.adminAccounts = [];
     if(!Array.isArray(data.adminNames))    data.adminNames    = [];
     if(!data.tabPasswords)     data.tabPasswords     = {checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''};
@@ -4219,19 +4220,47 @@ function updatePaymentNotes(orderIdx, notes) {
 // Called on verify. Scans order items: any with FP/PG prefix OR not in inventory
 // → added to S.otherItems as status='product'. Never affects PnL.
 // ═══════════════════════════════════════════════════════════════════════════
+// ── OTHER ITEMS PREFIX TABLE ──────────────────────────────────────────────
+// Specific serial prefixes that go to Other Items tab.
+// defaultProfit = profit per gram (for grams items) or per unit (for fix-price items)
+// Capital = Price - Profit (auto-computed, NOT user-entered)
+// Profit = defaultProfit × qty/grams (editable by user)
+const _OI_PREFIXES = {
+  FPG: 320,  // per gram
+  PGS: 50,   // per gram
+  PGG: 200,  // per gram
+  FPS: 150,  // per gram
+  FPW: 240,  // per gram
+};
+
+function _getOiPrefix(code) {
+  const c = (code||'').toUpperCase().trim();
+  for(const prefix of Object.keys(_OI_PREFIXES)) {
+    if(c.startsWith(prefix)) return prefix;
+  }
+  return null;
+}
+
 function _captureOtherItems(orderIdx) {
   if(!S.orders[orderIdx]) return;
   const o     = S.orders[orderIdx];
   const _oNum = onum(orderIdx);
   if(!S.otherItems) S.otherItems = [];
   (o.items||[]).forEach((it, ii) => {
-    const _code  = (it.code||'').toUpperCase().trim();
+    const _code   = (it.code||'').toUpperCase().trim();
     if(!_code) return;
-    const _isFpPg = _code.startsWith('FP') || _code.startsWith('PG');
+    const _prefix = _getOiPrefix(_code);
     const _inInv  = (S.inventory||[]).some(inv => inv.code && inv.code.toUpperCase() === _code);
-    if(!_isFpPg && _inInv) return; // normal inventory item — skip
-    // Avoid duplicates
+    // Only capture: specific OI prefix codes OR not in inventory
+    if(!_prefix && _inInv) return;
+    // Avoid duplicates (same order+item already captured)
     if(S.otherItems.some(r => r.orderNum === _oNum && r.itemIdx === ii)) return;
+    // Compute default profit: defaultProfitPerUnit × qty or grams
+    const _defaultProfitPerUnit = _prefix ? _OI_PREFIXES[_prefix] : 0;
+    const _qty      = it.grams > 0 ? it.grams : (it.qty || 1);
+    const _profit   = _defaultProfitPerUnit * _qty;
+    const _price    = it.total || 0;
+    const _capital  = Math.max(0, _price - _profit); // Capital = Price - Profit
     S.otherItems.push({
       _id:      'oi_' + Date.now() + '_' + ii + '_' + Math.random().toString(36).slice(2,6),
       orderNum: _oNum,
@@ -4242,10 +4271,12 @@ function _captureOtherItems(orderIdx) {
       qty:      it.qty   || 1,
       grams:    it.grams || 0,
       pergram:  it.pergram || 0,
-      total:    it.total || 0,
-      capital:  0,
-      status:   'product',   // product → cancelled → remitted
-      isFpPg:   _isFpPg,
+      total:    _price,
+      profit:   _profit,          // editable — default = defaultProfitPerUnit × qty/grams
+      capital:  _capital,         // auto-computed: Price - Profit (NOT editable)
+      profitPerUnit: _defaultProfitPerUnit,
+      prefix:   _prefix || '',
+      status:   'product',        // product → cancelled → remitted
       createdAt: new Date().toISOString(),
       checkedBy: currentUser?.name || 'Checker',
       admin:    o.admin || '',
@@ -7855,7 +7886,7 @@ function manualRefresh() {
       const _SETUP = new Set(['riders','locations']);
       ['orders','riders','locations','payroll','expenses','inventory',
        'stockLog','adminNames','remitLog','cashbondLog','benefitsLog',
-       'returnLog','deletedOrders'].forEach(k=>{
+       'returnLog','deletedOrders','mergeLog','otherItems'].forEach(k=>{
         const local  = Array.isArray(S[k]) ? S[k] : [];
         const remote = Array.isArray(fbData[k]) ? fbData[k] : [];
         if(_SETUP.has(k)){
@@ -10817,11 +10848,14 @@ function setOiTab(tab) {
   renderOtherItemsPage();
 }
 
-function saveOiCapital(id, val) {
+function saveOiProfit(id, val) {
+  // Profit is editable — capital is auto-computed as: Capital = Price - Profit
   const r = (S.otherItems||[]).find(x => x._id === id);
   if(!r) return;
-  r.capital = parseFloat(val)||0;
+  r.profit  = parseFloat(val)||0;
+  r.capital = Math.max(0, (r.total||0) - r.profit);
   save();
+  renderOtherItemsPage(); // re-render to show updated capital
 }
 
 function renderOtherItemsPage() {
@@ -10836,35 +10870,46 @@ function renderOtherItemsPage() {
   const labels = {product:'Products',cancelled:'Cancelled',remitted:'Sales'};
   if(!items.length) {
     const _dateCtx = _df ? ` para sa ${_dfRaw}` : '';
-    el.innerHTML = `<div class="card"><p style="color:var(--muted);padding:24px;text-align:center;">Wala pang ${labels[_oiTab]||_oiTab} na Other Items${_dateCtx}.</p></div>`;
+    const _allCount = (S.otherItems||[]).filter(r=>r.status===_oiTab).length;
+    const _hint = (!_df && _allCount===0 && _oiTab==='product')
+      ? '<br><span style="font-size:10px;color:var(--muted);">Items appear here after Checker verifies an order with FPG / PGS / PGG / FPS / FPW serial codes.</span>'
+      : '';
+    el.innerHTML = `<div class="card"><p style="color:var(--muted);padding:24px;text-align:center;">Wala pang ${labels[_oiTab]||_oiTab} na Other Items${_dateCtx}.${_hint}</p></div>`;
     return;
   }
   const rows = items.map(r => {
     const qtyGrams = r.grams > 0
       ? `${r.grams}g${r.pergram > 0 ? ` @ ₱${r.pergram}/g` : ''}`
       : `×${r.qty||1}`;
-    const profit     = (r.total||0) - (r.capital||0);
-    const profitColor = profit >= 0 ? 'var(--green)' : 'var(--red)';
-    const safeId     = (r._id||'').replace(/[^a-z0-9_]/gi,'_');
+    // Profit is user-editable; capital is auto-computed: Capital = Price - Profit
+    const _profit  = r.profit  !== undefined ? r.profit  : Math.max(0,(r.total||0)-(r.capital||0));
+    const _capital = r.capital !== undefined ? r.capital : Math.max(0,(r.total||0)-_profit);
+    const profitColor = _profit >= 0 ? 'var(--green)' : 'var(--red)';
+    // Prefix badge
+    const _badge = r.prefix
+      ? `<span style="font-size:9px;background:rgba(201,168,76,0.15);color:var(--gold);padding:1px 5px;border-radius:3px;margin-left:4px;">${r.prefix}</span>`
+      : '';
     return `<tr>
       <td style="font-size:11px;font-weight:600;color:var(--gold);">${r.orderNum}</td>
-      <td style="font-size:11px;font-weight:700;color:var(--blue);">${r.code}</td>
+      <td style="font-size:11px;font-weight:700;color:var(--blue);">${r.code}${_badge}</td>
       <td style="font-size:11px;">${r.desc||'—'}</td>
       <td style="font-size:11px;text-align:center;">${qtyGrams}</td>
       <td style="font-size:11px;text-align:right;color:var(--green);font-weight:600;">${p(r.total||0)}</td>
+      <td style="font-size:11px;text-align:right;color:var(--muted);">${p(_capital)}</td>
       <td style="text-align:right;">
-        <input type="number" min="0" value="${r.capital||0}"
-          onchange="saveOiCapital('${r._id}',this.value)"
-          style="width:80px;font-size:11px;text-align:right;padding:3px 6px;background:var(--navy);color:var(--white);border:1px solid var(--navy-border);border-radius:4px;">
+        <input type="number" min="0" step="0.01" value="${_profit}"
+          onchange="saveOiProfit('${r._id}',this.value)"
+          title="Editable — default: ₱${r.profitPerUnit||0} × qty/grams"
+          style="width:90px;font-size:11px;text-align:right;padding:3px 6px;background:var(--navy);color:var(--green);border:1px solid var(--green);border-radius:4px;font-weight:700;">
       </td>
-      <td style="font-size:11px;text-align:right;font-weight:700;color:${profitColor};">${p(profit)}</td>
       <td style="font-size:10px;color:var(--muted);">${r.admin||'—'}</td>
       <td style="font-size:10px;color:var(--muted);">${r.date||'—'}</td>
     </tr>`;
   }).join('');
   const totalPrice   = items.reduce((s,r)=>s+(r.total||0),0);
-  const totalCapital = items.reduce((s,r)=>s+(r.capital||0),0);
-  const totalProfit  = totalPrice - totalCapital;
+  const _getProfit   = r => r.profit!==undefined ? r.profit : Math.max(0,(r.total||0)-(r.capital||0));
+  const totalProfit  = items.reduce((s,r)=>s+_getProfit(r),0);
+  const totalCapital = totalPrice - totalProfit;
   el.innerHTML = `
     <div class="card" style="overflow-x:auto;">
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
@@ -10874,8 +10919,8 @@ function renderOtherItemsPage() {
           <th style="padding:8px 6px;text-align:left;">Description</th>
           <th style="padding:8px 6px;text-align:center;">Qty / G / Per Gram</th>
           <th style="padding:8px 6px;text-align:right;">Price</th>
-          <th style="padding:8px 6px;text-align:right;">Capital</th>
-          <th style="padding:8px 6px;text-align:right;">Profit</th>
+          <th style="padding:8px 6px;text-align:right;">Capital<br><span style="font-size:9px;color:var(--muted);font-weight:400;">Price−Profit</span></th>
+          <th style="padding:8px 6px;text-align:right;">Profit ✏️<br><span style="font-size:9px;color:var(--muted);font-weight:400;">Editable</span></th>
           <th style="padding:8px 6px;text-align:left;">Admin</th>
           <th style="padding:8px 6px;text-align:left;">Date</th>
         </tr></thead>
@@ -10888,7 +10933,10 @@ function renderOtherItemsPage() {
           <td colspan="2"></td>
         </tr></tfoot>
       </table>
-      <p style="font-size:10px;color:var(--muted);margin-top:8px;">⚠️ Amounts here are <strong>excluded from PnL</strong> — off-book items tracked separately.</p>
+      <p style="font-size:10px;color:var(--muted);margin-top:8px;">
+        ⚠️ Amounts here are <strong>excluded from PnL</strong> — off-book items tracked separately.
+        &nbsp;|&nbsp; <strong>Capital</strong> = Price − Profit (auto-computed). <strong>Profit</strong> = editable (default: profitPerUnit × qty/grams).
+      </p>
     </div>`;
 }
 
@@ -10988,7 +11036,7 @@ async function initApp(){
         // ── Firebase is the ONLY source of truth ─────────────────────
         ['orders','riders','locations','payroll','expenses','inventory','stockLog',
          'adminNames','adminAccounts','remitLog','cashbondLog','benefitsLog',
-         'returnLog','deletedOrders','mergeLog'].forEach(k=>{
+         'returnLog','deletedOrders','mergeLog','otherItems'].forEach(k=>{
           if(Array.isArray(fbData[k])) S[k] = fbData[k];
         });
         ['govSettings','bizInfo','tabPasswords','specialPasswords'].forEach(k=>{
@@ -11092,7 +11140,7 @@ async function _preloadLoginData(){
     if(fbData.lastGlobalClear) S.lastGlobalClear = fbData.lastGlobalClear;
     if(Array.isArray(fbData._deletedInventoryCodes)) S._deletedInventoryCodes = fbData._deletedInventoryCodes;
     ['payroll','expenses','inventory','stockLog','remitLog','cashbondLog',
-     'benefitsLog','returnLog','deletedOrders','mergeLog','locations'].forEach(k=>{
+     'benefitsLog','returnLog','deletedOrders','mergeLog','locations','otherItems'].forEach(k=>{
       if(Array.isArray(fbData[k])) S[k] = fbData[k];
     });
     ['govSettings','bizInfo','tabPasswords'].forEach(k=>{
@@ -11144,7 +11192,7 @@ function _applyGlobalClear(fbData) {
   if(!remoteClearTs) return false;
   if(remoteClearTs > localClearTs) {
     const _TX = ['orders','returnLog','deletedOrders','stockLog','remitLog',
-                 'cashbondLog','benefitsLog','payroll','expenses','mergeLog'];
+                 'cashbondLog','benefitsLog','otherItems','payroll','expenses','mergeLog'];
     _TX.forEach(k=>{ S[k] = []; });
     S.lastGlobalClear = remoteClearTs;
     toast('🔄 System was cleared by Owner. Local data wiped on this device.');
@@ -11252,7 +11300,7 @@ function startAutoRefresh(){
       // ── Check if Owner cleared all data ──
       if(remoteClear && remoteClear > (S.lastGlobalClear||'')) {
         const _TX = ['orders','returnLog','deletedOrders','stockLog','remitLog',
-                     'cashbondLog','benefitsLog','payroll','expenses','mergeLog'];
+                     'cashbondLog','benefitsLog','otherItems','payroll','expenses','mergeLog'];
         _TX.forEach(k=>{ S[k] = []; });
         S.lastGlobalClear = remoteClear;
         toast('🔄 System was cleared by Owner. Data wiped on this device.');
@@ -11282,10 +11330,10 @@ function startAutoRefresh(){
       const _keysToSync = _encModalOpen
         ? ['riders','locations','payroll','expenses',
            'adminNames','adminAccounts',
-           'returnLog','deletedOrders','mergeLog']  // skip 'orders' while user is editing
+           'returnLog','deletedOrders','mergeLog','otherItems']  // skip 'orders' while user is editing
         : ['riders','locations','payroll','expenses',
            'adminNames','adminAccounts',
-           'returnLog','deletedOrders','mergeLog'];
+           'returnLog','deletedOrders','mergeLog','otherItems'];
       _keysToSync.forEach(k=>{
         if(Array.isArray(fbData[k])) S[k] = fbData[k];
       });
@@ -11309,15 +11357,19 @@ function startAutoRefresh(){
       // Without this, a SAR cycle that runs before Firebase confirms the delete would
       // bring the deleted entry back from fbArr into S[key].
       const _deadRemitIds = window._deletedRemitIds || new Set();
-      ['remitLog','cashbondLog','benefitsLog','stockLog'].forEach(key=>{
+      ['remitLog','cashbondLog','benefitsLog','stockLog','otherItems'].forEach(key=>{
         if(!Array.isArray(fbData[key])) return;
         const fbArr = fbData[key];
         const localArr = S[key]||[];
         const fbById = new Map(fbArr.filter(e=>e&&e._id).map(e=>[e._id, e]));
+        // Local wins for capital edits (user may have edited while Firebase was in-flight)
+        const localById = new Map(localArr.filter(e=>e&&e._id).map(e=>[e._id,e]));
         const localOnly = localArr.filter(e => e && e._id && !fbById.has(e._id));
         // Filter out entries that were deleted locally (even if Firebase still has them)
         const fbFiltered = fbArr.filter(e => !e?._id || !_deadRemitIds.has(e._id));
-        S[key] = [...fbFiltered, ...localOnly];
+        // For otherItems: local capital edits win over Firebase (capital is user-entered)
+        const merged = [...fbFiltered.map(e => (e&&e._id&&localById.has(e._id)) ? localById.get(e._id) : e), ...localOnly];
+        S[key] = merged;
       });
       // Once Firebase confirms the deletes (next SAR after write), clear the deleted set
       // We know Firebase is up-to-date when _lastKnownWriteTs matches remote ts
@@ -13550,7 +13602,8 @@ document.addEventListener('visibilitychange', async ()=>{
     const _localOrdersBackup = S.orders ? [...S.orders] : [];
     ['riders','locations','payroll','expenses','stockLog',
      'adminNames','adminAccounts',
-     'returnLog','deletedOrders','mergeLog'].forEach(k=>{
+     'returnLog','deletedOrders','mergeLog','otherItems',
+     'remitLog','cashbondLog','benefitsLog'].forEach(k=>{
       if(Array.isArray(fbData[k])) S[k] = fbData[k];
     });
     // Orders: safe merge — don't blindly overwrite locally-pending encodes
