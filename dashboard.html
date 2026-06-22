@@ -11001,7 +11001,7 @@ function renderOtherItemsPage() {
   if(!items.length) {
     const _dateCtx = (_dfFrom||_dfTo) ? ` (${_dfFromRaw||'start'} → ${_dfToRaw||'end'})` : '';
     const _allCount = (S.otherItems||[]).filter(r=>r.status===_oiTab).length;
-    const _hint = (!_df && _allCount===0 && _oiTab==='product')
+    const _hint = (!_dfFrom && !_dfTo && _allCount===0 && _oiTab==='product')
       ? '<br><span style="font-size:10px;color:var(--muted);">Items appear here after Checker verifies an order with FPG / PGS / PGG / FPS / FPW serial codes.</span>'
       : '';
     el.innerHTML = `<div class="card"><p style="color:var(--muted);padding:24px;text-align:center;">Wala pang ${labels[_oiTab]||_oiTab} na Other Items${_dateCtx}.${_hint}</p></div>`;
