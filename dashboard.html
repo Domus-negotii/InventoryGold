@@ -4257,8 +4257,17 @@ function _captureOtherItems(orderIdx) {
     const _inInv  = (S.inventory||[]).some(inv => inv.code && inv.code.toUpperCase() === _code);
     // Only capture: specific OI prefix codes OR not in inventory
     if(!_prefix && _inInv) return;
-    // Avoid duplicates (same order+item already captured)
-    if(S.otherItems.some(r => r.orderNum === _oNum && r.itemIdx === ii)) return;
+    // Check if entry already exists
+    const _existIdx = S.otherItems.findIndex(r => r.orderNum === _oNum && r.itemIdx === ii);
+    if(_existIdx >= 0) {
+      // Entry exists — if it was wrongly moved to remitted/cancelled but order is active,
+      // reset it to 'product' (re-verify = fresh start in Products tab)
+      const _ex = S.otherItems[_existIdx];
+      if(_ex.status !== 'product') {
+        _ex.status = 'product'; // re-verified → back to Products
+      }
+      return; // don't create duplicate
+    }
     // Compute default profit: defaultProfitPerUnit × qty or grams
     const _defaultProfitPerUnit = _prefix ? _OI_PREFIXES[_prefix] : 0;
     const _qty      = it.grams > 0 ? it.grams : (it.qty || 1);
@@ -4280,10 +4289,10 @@ function _captureOtherItems(orderIdx) {
       capital:  _capital,         // auto-computed: Price - Profit (NOT editable)
       profitPerUnit: _defaultProfitPerUnit,
       prefix:   _prefix || '',
-      // Initial status based on current order state
-      status:   o.status === 'Delivered' ? 'remitted'
-              : (o.status === 'Cancelled' || o.status === 'RTO') ? 'cancelled'
-              : 'product',
+      // Status always starts as 'product' when checker verifies.
+      // Transitions: product → remitted (on Deliver) or product → cancelled (on Cancel)
+      // via _syncOiPrefixStatus. Never inferred from order status.
+      status: 'product',
       createdAt: new Date().toISOString(),
       checkedBy: currentUser?.name || 'Checker',
       admin:    o.admin || '',
@@ -4362,9 +4371,13 @@ function updateVerifStatus(orderIdx, status) {
       S.orders[orderIdx].lbcStatus = 'Preparing';
     }
   }
-  // ── OTHER ITEMS: capture FP/PG + non-inventory items on verify ────────────
+  // ── OTHER ITEMS: capture on verify, remove on un-verify ──────────────────
   if(status === 'Verified' && S.orders[orderIdx]) {
     _captureOtherItems(orderIdx);
+  } else if(status !== 'Verified' && S.otherItems && S.otherItems.length) {
+    // Un-verify: remove this order's entries from Other Items
+    const _uvNum = onum(orderIdx);
+    S.otherItems = S.otherItems.filter(r => r.orderNum !== _uvNum);
   }
   save(); renderChecker();
   toast(`✅ Verification: ${status}${status==='Verified'?' — Inventory deducted.':' — Inventory restored.'}`);
@@ -4523,6 +4536,13 @@ function unverifyOrder(i){
   if(_isCourierUnv){
     const _nonRevertable=['Drop off at LBC','Drop off at EMS','Drop off at FedEx','Out for Delivery','Delivered','RTO'];
     if(!_nonRevertable.includes(S.orders[i].lbcStatus)) S.orders[i].lbcStatus = 'Preparing';
+  }
+  // ── OTHER ITEMS: remove entries for this order on unverify ────────────────
+  // When checker un-verifies, the items disappear from Other Items Products tab.
+  // If rider later re-delivers or cancels, they'll be re-added by _syncOiPrefixStatus.
+  if(S.otherItems && S.otherItems.length) {
+    const _uNum = onum(i);
+    S.otherItems = S.otherItems.filter(r => r.orderNum !== _uNum);
   }
   save(); toast('↩ Set back to Pending. Inventory restored.'); renderChecker();
   // Refresh ALL inventory tabs immediately — both Products list and Stock Ledger
@@ -10965,23 +10985,11 @@ function renderOtherItemsPage() {
   const _dfToRaw   = (document.getElementById('oi-date-to')?.value||'').trim();
   const _dfFrom    = typeof mdy2ymd === 'function' ? mdy2ymd(_dfFromRaw) : _dfFromRaw;
   const _dfTo      = typeof mdy2ymd === 'function' ? mdy2ymd(_dfToRaw)   : _dfToRaw;
-  // ── SELF-HEALING: auto-correct status based on current order state ─────────
-  // Runs every render — fixes entries captured before the status-sync was implemented.
-  // Saves to Firebase when any correction is made so all devices see the fix.
-  let _healChanged = false;
-  (S.otherItems||[]).forEach(r => {
-    const _oIdx   = typeof r.orderIdx === 'number' ? r.orderIdx : -1;
-    const _order  = _oIdx >= 0 ? S.orders[_oIdx]
-                  : (S.orders||[]).find((_o,_i) => onum(_i) === r.orderNum);
-    if(!_order) return;
-    if(_order.status === 'Delivered' && r.status === 'product') {
-      r.status = 'remitted'; _healChanged = true;
-    }
-    if((_order.status === 'Cancelled' || _order.status === 'RTO') && r.status === 'product') {
-      r.status = 'cancelled'; _healChanged = true;
-    }
-  });
-  if(_healChanged) save(); // push corrected statuses to Firebase
+  // STATUS RULE (strict — no auto-healing from order status):
+  // 'product'  → set by _captureOtherItems on Checker Verify
+  // 'remitted' → set by _syncOiPrefixStatus when rider marks Delivered
+  // 'cancelled'→ set by _syncOiPrefixStatus when rider marks Cancelled
+  // Status is managed ONLY by explicit rider/checker actions. Never auto-inferred.
 
   const items = (S.otherItems||[]).filter(r => {
     if(r.status !== _oiTab) return false;
