@@ -10272,7 +10272,9 @@ function saveRemit() {
   const cashbond    = 100;
   const parcelFee   = delivered.length * 10;
   const netSF       = Math.max(0, sfRider90 - cashbond - parcelFee - manualBenefits);
-  const netTotal    = Math.max(0, codSubtotal - netSF);
+  // Net to Remit = COD items collected + total SF collected
+  // Rider hands over everything: items + SF (no deductions at remit stage)
+  const netTotal    = codSubtotal + deliveredSF;
 
   const entry = {
     _id: _uuid(), // required for SAR _id-based merge to prevent race condition wipe
