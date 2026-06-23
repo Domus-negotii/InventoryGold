@@ -8608,8 +8608,17 @@ function renderRiderParcels() {
     const isGrams = (o.items||[]).some(it=>it.grams>0 && !it.fixPrice);
     const itemStatuses = o.itemStatuses || {};
     // Compute active (non-cancelled) items total
+    const itemCancelQty = o.itemCancelQty || {};
     const activeItemsTotal = (o.items||[]).reduce((s,it,ii) => {
-      return itemStatuses[ii] === 'Cancelled' ? s : s + (it.total||0);
+      if(itemStatuses[ii] === 'Cancelled') return s; // fully cancelled
+      const cxQty = itemCancelQty[ii] || 0;
+      if(cxQty > 0) {
+        // partial cancel: subtract cancelled portion
+        const totalQty = it.grams || it.qty || 1;
+        const ppu = (it.total||0) / Math.max(1, totalQty);
+        return s + Math.max(0, (it.total||0) - ppu * cxQty);
+      }
+      return s + (it.total||0);
     }, 0);
     const cancelledCount = (o.items||[]).filter((_,ii) => itemStatuses[ii] === 'Cancelled').length;
 
@@ -8716,8 +8725,8 @@ function renderRiderParcels() {
       <td>${o.date}</td>
       <td style="font-weight:600;">
         ${hasCancelledItems
-          ? `<span style="color:var(--gold);">${p(o.grandTotal)}</span><br><span style="font-size:9.5px;color:var(--muted);">(${cancelledCount} item${cancelledCount>1?'s':''} cancelled)</span>`
-          : `<span style="color:var(--green);">${p(o.grandTotal)}</span>`}
+          ? `<span style="color:var(--gold);">${p(activeItemsTotal)}</span><br><span style="font-size:9.5px;color:var(--muted);">(${cancelledCount} item${cancelledCount>1?'s':''} cancelled)</span>`
+          : `<span style="color:var(--green);">${p(activeItemsTotal)}</span>`}
       </td>
       <td><span class="status ${sclass(o.status)}">${o.status}</span></td>
       <td>
@@ -8744,7 +8753,7 @@ function renderRiderParcels() {
           : '💰 Remit para sa parcel na ito:'}
       </td>
       <td colspan="4" style="font-size:11px;font-weight:700;color:${o.status==='Delivered'?'var(--green)':o.status==='Cancelled'?'var(--red)':'var(--muted)'};">
-        ${o.status==='Delivered' ? p(o.grandTotal) : o.status==='Cancelled' ? '₱0.00' : '(pending)'}
+        ${o.status==='Delivered' ? p(activeItemsTotal) : o.status==='Cancelled' ? '₱0.00' : '(pending)'}
       </td>
     </tr>`;
   }).join('') :
