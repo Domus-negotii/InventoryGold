@@ -4285,10 +4285,10 @@ function _captureOtherItems(orderIdx) {
     // Check if entry already exists
     const _existIdx = S.otherItems.findIndex(r => r.orderNum === _oNum && r.itemIdx === ii);
     if(_existIdx >= 0) {
-      // Entry exists — preserve 'cancelled' and 'remitted' statuses (rider already acted)
-      // Only reset to 'product' if the status was 'product' already (no-op)
-      // Do NOT reset cancelled → product or remitted → product on re-verify
-      return; // don't create duplicate or overwrite lifecycle status
+      // Re-verify: set isVerified:true → item becomes visible again in correct tab
+      // Do NOT change status (cancelled stays cancelled, remitted stays remitted)
+      S.otherItems[_existIdx].isVerified = true;
+      return; // don't create duplicate
     }
     // Compute default profit: defaultProfitPerUnit × qty or grams
     const _defaultProfitPerUnit = _prefix ? _OI_PREFIXES[_prefix] : 0;
@@ -4314,9 +4314,10 @@ function _captureOtherItems(orderIdx) {
       // Status always starts as 'product' when checker verifies.
       // Transitions: product → remitted (on Deliver) or product → cancelled (on Cancel)
       // via _syncOiPrefixStatus. Never inferred from order status.
-      status: 'product',
-      createdAt: new Date().toISOString(),
-      checkedBy: currentUser?.name || 'Checker',
+      status:     'product',
+      isVerified: true,      // set by Checker verify; false = hidden from all tabs
+      createdAt:  new Date().toISOString(),
+      checkedBy:  currentUser?.name || 'Checker',
       admin:    o.admin || '',
       riderName: o.assignedRider || '',
       date:     o.date || '',
@@ -4397,9 +4398,11 @@ function updateVerifStatus(orderIdx, status) {
   if(status === 'Verified' && S.orders[orderIdx]) {
     _captureOtherItems(orderIdx);
   } else if(status !== 'Verified' && S.otherItems && S.otherItems.length) {
-    // Un-verify: remove this order's entries from Other Items
+    // Un-verify: set isVerified:false → hidden from all tabs
     const _uvNum = onum(orderIdx);
-    S.otherItems = S.otherItems.filter(r => r.orderNum !== _uvNum);
+    S.otherItems.forEach(r => {
+      if(r.orderNum === _uvNum) r.isVerified = false;
+    });
   }
   save(); renderChecker();
   toast(`✅ Verification: ${status}${status==='Verified'?' — Inventory deducted.':' — Inventory restored.'}`);
@@ -4570,13 +4573,15 @@ function unverifyOrder(i){
     const _nonRevertable=['Drop off at LBC','Drop off at EMS','Drop off at FedEx','Out for Delivery','Delivered','RTO'];
     if(!_nonRevertable.includes(S.orders[i].lbcStatus)) S.orders[i].lbcStatus = 'Preparing';
   }
-  // ── OTHER ITEMS CLEANUP ON UNVERIFY ─────────────────────────────────────────
-  // RULE: unverify removes ALL otherItems for this order (clean slate).
-  // Re-verify will re-add them as 'product'. Rider deliver/cancel re-adds via _syncOiPrefixStatus.
-  // This prevents stale 'product' entries from persisting after unverify.
+  // ── OTHER ITEMS: unverify = set isVerified:false (hidden from all tabs) ─────
+  // RULE: unverify does NOT delete entries (rider may have acted on them).
+  // isVerified:false hides the item from ALL tabs until re-verified.
+  // Re-verify will set isVerified:true again.
   if(S.otherItems && S.otherItems.length) {
     const _uNum = onum(i);
-    S.otherItems = S.otherItems.filter(r => r.orderNum !== _uNum);
+    S.otherItems.forEach(r => {
+      if(r.orderNum === _uNum) r.isVerified = false;
+    });
   }
   save(); toast('↩ Set back to Pending. Inventory restored.'); renderChecker();
   // Refresh ALL inventory tabs immediately — both Products list and Stock Ledger
@@ -8858,9 +8863,10 @@ function riderUpdateStatus(orderIdx, newStatus) {
     S.orders[orderIdx].dateDelivered = today();
   }
   // ── SPECIAL PREFIX HOOK: FPG/PGS/PGG/FPS/FPW whole-order status sync ──
-  if(storedStatus === 'Delivered' || storedStatus === 'Cancelled') {
-    _syncOiPrefixStatus(orderIdx, storedStatus === 'Delivered' ? 'remitted' : 'cancelled');
+  if(storedStatus === 'Cancelled') {
+    _syncOiPrefixStatus(orderIdx, 'cancelled'); // Cancelled → Other Items Cancelled tab
   }
+  // Delivered: stays in Products tab until remitter officially saves (saveRemit → remitted)
   save();
   if(storedStatus === 'Update') {
     toast('🔔 Marked For Update — routed to COD Delivery monitor.');
@@ -8972,13 +8978,12 @@ function riderItemStatus(orderIdx, itemIdx, newStatus) {
         };
         S.otherItems.push(_oiEntry);
       }
-      // Guard: never overwrite 'cancelled' with 'remitted'
+      // Cancelled → Other Items Cancelled tab immediately
+      // Delivered → stays in Products until remitter saves (saveRemit → remitted)
       if(normalizedStatus === 'Cancelled') {
         _oiEntry.status = 'cancelled';
-      } else if(_oiEntry.status !== 'cancelled') {
-        // Only set to remitted if not already cancelled
-        _oiEntry.status = 'remitted';
       }
+      // NOTE: 'remitted' is set ONLY by saveRemit when remitter officially saves
     }
   }
   save();
@@ -10254,9 +10259,15 @@ function _syncOiPrefixStatus(orderIdx, newStatus) {
 }
 
 function _syncOtherItemStatus(orderNum, newStatus) {
+  // Called from saveRemit when remitter officially saves.
+  // Rules: cancelled stays cancelled; only 'product' items move to 'remitted'
   if(!S.otherItems) return;
   S.otherItems.forEach(r => {
-    if(r.orderNum === orderNum) r.status = newStatus;
+    if(r.orderNum !== orderNum) return;
+    if(r.isVerified === false) return; // unverified items stay hidden
+    if(newStatus === 'remitted' && r.status === 'cancelled') return; // cancelled never becomes remitted
+    if(newStatus === 'remitted' && r.status !== 'product') return;   // only product→remitted
+    r.status = newStatus;
   });
 }
 
@@ -11189,6 +11200,9 @@ function renderOtherItemsPage() {
 
   const items = (S.otherItems||[]).filter(r => {
     if(r.status !== _oiTab) return false;
+    // isVerified gate: items with isVerified:false are hidden from ALL tabs
+    // (backward compat: entries without the field are treated as verified)
+    if(r.isVerified === false) return false;
     if(_dfFrom && r.date < _dfFrom) return false;
     if(_dfTo   && r.date > _dfTo)   return false;
     return true;
@@ -12457,7 +12471,8 @@ function _confirmDelivered(orderIdx, renderFn) {
   S.orders[orderIdx].dateDelivered = delDate;
   S.orders[orderIdx].lbcStatus = 'Delivered';
   S.orders[orderIdx].status = 'Delivered';
-  _syncOiPrefixStatus(orderIdx, 'remitted'); // prefixed items → Other Items Sales
+  // NOTE: otherItems status moves to 'remitted' only when REMITTER saves (saveRemit)
+  // NOT on Delivered alone — per spec: Delivered + Remitted = Sales tab
   save();
   toast('✅ Status → Delivered — Naka-reflect na sa P&L & Daily Parcels');
   if(renderFn==='lbc') renderLbcDelivery();
