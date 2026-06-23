@@ -10489,6 +10489,25 @@ function renderRemitPage() {
     byRider[e.riderName].push({...e, idx: e._realIdx});
   });
 
+  // ── Effective amount helper (defined once, used throughout) ────────────────
+  // grandTotal minus fully/partially cancelled items — what rider actually collected
+  const _effectiveAmount = (o) => {
+    if(o.status === 'Cancelled' || o.status === 'RTO') return 0;
+    const iS  = o.itemStatuses||{};
+    const iCQ = o.itemCancelQty||{};
+    let cancelled = 0;
+    (o.items||[]).forEach((it, ii) => {
+      if(iS[ii] === 'Cancelled') {
+        cancelled += (it.total||0);
+      } else if(iCQ[ii] > 0) {
+        const totalQty = it.grams||it.qty||1;
+        const ppu = (it.total||0) / Math.max(1, totalQty);
+        cancelled += ppu * iCQ[ii];
+      }
+    });
+    return Math.max(0, (o.grandTotal||0) - cancelled);
+  };
+
   if(!filteredLog.length){
     el.innerHTML = `<div class="card"><p style="color:var(--muted);padding:20px;text-align:center;">Walang remit entries${df?' para sa petsang ito':''}.</p></div>`;
     const tEl=document.getElementById('remit-page-total-net'); if(tEl) tEl.style.display='none';
@@ -10561,25 +10580,7 @@ function renderRemitPage() {
     const inTransit  = riderOrders.filter(o=>!['Delivered','Cancelled','RTO','Update'].includes(o.status));
 
     // ── Per-order details: items display ──
-    // Compute effective remit amount for an order:
-    // grandTotal minus any items that are fully cancelled or partially cancelled
-    const _effectiveAmount = (o) => {
-      if(o.status === 'Cancelled' || o.status === 'RTO') return 0;
-      const iS  = o.itemStatuses||{};
-      const iCQ = o.itemCancelQty||{};
-      let cancelled = 0;
-      (o.items||[]).forEach((it, ii) => {
-        if(iS[ii] === 'Cancelled') {
-          cancelled += (it.total||0); // fully cancelled item
-        } else if(iCQ[ii] > 0) {
-          // partially cancelled: price per unit × cancelled qty
-          const totalQty = it.grams||it.qty||1;
-          const ppu = (it.total||0) / Math.max(1, totalQty);
-          cancelled += ppu * iCQ[ii];
-        }
-      });
-      return Math.max(0, (o.grandTotal||0) - cancelled);
-    };
+    // _effectiveAmount defined at top of function (moved)
 
     const renderOrderItems = (o) => {
       const iS  = o.itemStatuses||{};
