@@ -4421,14 +4421,18 @@ function verifyOrder(i){
   if(!S.orders[i]) { console.warn('[GOE] verifyOrder: invalid index', i); return; }
   // GUARD: block verify if order is in a detected merge group
   // Checker must merge or dismiss the duplicate alert before verifying.
-  const _dupSets = window._checkerDupSets || [];
+  // Check dismissal set — orders explicitly removed via X button skip the block
+  if(!window._mergeGroupDismissed) window._mergeGroupDismissed = new Set();
   const _myOrderNum = onum(i);
-  const _inDupGroup = _dupSets.some(group =>
-    group.some(item => onum(item.i) === _myOrderNum)
-  );
-  if(_inDupGroup) {
-    toast('⚠️ Hindi pwedeng i-verify — na-detect na DUPLICATE ang order na ito. I-MERGE muna o alisin sa merge group bago mag-verify.');
-    return;
+  if(!window._mergeGroupDismissed.has(_myOrderNum)) {
+    const _dupSets = window._checkerDupSets || [];
+    const _inDupGroup = _dupSets.some(group =>
+      group.some(item => onum(item.i) === _myOrderNum)
+    );
+    if(_inDupGroup) {
+      toast('⚠️ Hindi pwedeng i-verify — na-detect na DUPLICATE ang order na ito. I-MERGE muna o alisin sa merge group bago mag-verify.');
+      return;
+    }
   }
   // Guard: prevent double-click during in-progress verify/unverify
   if(window._verifyBusy) { toast('⏳ Please wait...'); return; }
@@ -13691,10 +13695,11 @@ function removeMergeCard(n) {
   // Remove the card — if only 1 remains, close modal (nothing to merge)
   window._mergeGroupIndices = indices.filter((_,i) => i !== n);
   if(window._mergeGroupIndices.length < 2) {
-    // Remove this order from the dup group so verify is unblocked
-    window._checkerDupSets = (window._checkerDupSets||[]).filter(g =>
-      !g.some(item => item.i === indices[n])
-    );
+    // Add the removed order to dismissal set so verify stays unblocked
+    // even after renderChecker() re-runs detectDuplicates() and rebuilds _checkerDupSets
+    if(!window._mergeGroupDismissed) window._mergeGroupDismissed = new Set();
+    const _removedOrderNum = onum(indices[n]);
+    window._mergeGroupDismissed.add(_removedOrderNum);
     closeModal('modal-merge-orders');
     toast('✅ Order removed from merge group — verify is now unblocked.');
     try { renderChecker(); } catch(e) {}
@@ -13881,6 +13886,8 @@ function confirmMerge() {
     window._mergeDeletedIds.add('ORDERNUM:' + _absorbedOrderNum);
   });
 
+  // Clear dismissal set — merge completed, clean slate for next detection
+  if(window._mergeGroupDismissed) window._mergeGroupDismissed.clear();
   save();
   closeModal('modal-merge-orders');
   const absorbedNums = removeIdxs.map((_,n) => onum(allIndices[n+1])).join(', ');
