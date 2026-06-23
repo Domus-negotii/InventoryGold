@@ -10436,11 +10436,11 @@ function renderRemitPage() {
   if(totEl){
     totEl.style.display='flex'; totEl.style.flexDirection='column'; totEl.style.gap='2px';
     totEl.innerHTML=`
-      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Total Net — All Riders${df?' ('+df+')':''}</div>
+      <div style="font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Total Net — All Riders${df?' ('+df+')':''}</div>
       <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
         <span style="font-size:15px;font-weight:700;color:var(--green);">${p(grandAllNet)}</span>
-        <span style="font-size:10.5px;color:var(--muted);">Subtotal: <strong style="color:var(--blue);">${p(grandAllSub)}</strong></span>
-        ${grandPending>0?`<span style="font-size:10.5px;color:var(--orange);">⏳ ${grandPending} pending</span>`:'<span style="font-size:10.5px;color:var(--green);">✅ All Remitted</span>'}
+        <span style="font-size:13px;color:var(--muted);">Subtotal: <strong style="color:var(--blue);">${p(grandAllSub)}</strong></span>
+        ${grandPending>0?`<span style="font-size:13px;color:var(--orange);">⏳ ${grandPending} pending</span>`:'<span style="font-size:13px;color:var(--green);">✅ All Remitted</span>'}
       </div>`;
   }
   // ── Total Company Cut card ────────────────────────────────────────────────
@@ -10486,6 +10486,26 @@ function renderRemitPage() {
     const inTransit  = riderOrders.filter(o=>!['Delivered','Cancelled','RTO','Update'].includes(o.status));
 
     // ── Per-order details: items display ──
+    // Compute effective remit amount for an order:
+    // grandTotal minus any items that are fully cancelled or partially cancelled
+    const _effectiveAmount = (o) => {
+      if(o.status === 'Cancelled' || o.status === 'RTO') return 0;
+      const iS  = o.itemStatuses||{};
+      const iCQ = o.itemCancelQty||{};
+      let cancelled = 0;
+      (o.items||[]).forEach((it, ii) => {
+        if(iS[ii] === 'Cancelled') {
+          cancelled += (it.total||0); // fully cancelled item
+        } else if(iCQ[ii] > 0) {
+          // partially cancelled: price per unit × cancelled qty
+          const totalQty = it.grams||it.qty||1;
+          const ppu = (it.total||0) / Math.max(1, totalQty);
+          cancelled += ppu * iCQ[ii];
+        }
+      });
+      return Math.max(0, (o.grandTotal||0) - cancelled);
+    };
+
     const renderOrderItems = (o) => {
       const iS  = o.itemStatuses||{};
       const iCQ = o.itemCancelQty||{};
@@ -10498,23 +10518,23 @@ function renderRemitPage() {
         const unit     = it.grams>0?'g':'pcs';
         const ppu      = it.total/Math.max(1,totalQty);
         const discTag  = it.discount>0
-          ? `<span style="color:var(--red);font-size:9px;font-weight:700;"> 🏷️-₱${it.discount.toFixed(2)}</span>`:'';
+          ? `<span style="color:var(--red);font-size:11px;font-weight:700;"> 🏷️-₱${it.discount.toFixed(2)}</span>`:'';
         const remarkTag = remark
-          ? `<div style="font-size:9px;color:var(--orange);margin-top:2px;">💬 ${remark}</div>`:'' ;
+          ? `<div style="font-size:11px;color:var(--orange);margin-top:2px;">💬 ${remark}</div>`:'' ;
         if(isCx)
-          return `<div style="color:var(--red);font-size:9.5px;">[Cx] ${it.code}: ${it.desc} ×${totalQty}${unit} = ${p(it.total)}${remarkTag}</div>`;
+          return `<div style="color:var(--red);font-size:13px;">[Cx] ${it.code}: ${it.desc} ×${totalQty}${unit} = ${p(it.total)}${remarkTag}</div>`;
         if(cxQty>0){
           const cxAmt=cxQty*ppu; const remAmt=it.total-cxAmt;
-          return `<div style="font-size:9.5px;">
+          return `<div style="font-size:13px;">
             <span style="color:var(--text);">${it.code}: ${it.desc}</span>${discTag}
             <span style="color:var(--red);"> ❌${cxQty}${unit}=-${p(cxAmt)}</span>
             <span style="color:var(--green);"> ✅${totalQty-cxQty}${unit}=${p(remAmt)}</span>
             ${remarkTag}
           </div>`;
         }
-        return `<div style="font-size:9.5px;">${it.code}: ${it.desc} ×${totalQty}${unit} = ${p(it.total)}${discTag}${remarkTag}</div>`;
+        return `<div style="font-size:13px;">${it.code}: ${it.desc} ×${totalQty}${unit} = ${p(it.total)}${discTag}${remarkTag}</div>`;
       }).join('') + (o.globalDiscountReason && o.globalDiscountReason.trim()
-        ? `<div style="margin-top:4px;padding:3px 7px;background:rgba(74,144,217,0.1);border-left:2px solid var(--blue);border-radius:3px;font-size:9px;"><span style="color:var(--blue);font-weight:700;">🏷️ Order Note:</span> <em style="color:var(--white);">${o.globalDiscountReason.trim()}</em>${o.globalDiscount>0?' — <strong style="color:var(--red);">-'+p(o.globalDiscount)+'</strong>':''}</div>` : '');
+        ? `<div style="margin-top:4px;padding:3px 7px;background:rgba(74,144,217,0.1);border-left:2px solid var(--blue);border-radius:3px;font-size:11px;"><span style="color:var(--blue);font-weight:700;">🏷️ Order Note:</span> <em style="color:var(--white);">${o.globalDiscountReason.trim()}</em>${o.globalDiscount>0?' — <strong style="color:var(--red);">-'+p(o.globalDiscount)+'</strong>':''}</div>` : '');
     };
 
     // ── Sections of orders ──
@@ -10522,7 +10542,7 @@ function renderRemitPage() {
       if(!orders.length) return '';
       return `
         <div style="margin:10px 0 6px;font-size:11px;font-weight:700;color:${titleColor};">${icon} ${title} (${orders.length})</div>
-        <div class="table-wrap"><table style="font-size:10.5px;width:100%;table-layout:fixed;border-collapse:collapse;">
+        <div class="table-wrap"><table style="font-size:13px;width:100%;table-layout:fixed;border-collapse:collapse;">
           <colgroup>
             <col style="width:72px;">   <!-- Order # -->
             <col style="width:130px;">  <!-- Customer -->
@@ -10532,29 +10552,29 @@ function renderRemitPage() {
             <col style="width:130px;">  <!-- Rider Remark -->
           </colgroup>
           <thead><tr style="background:rgba(201,168,76,0.07);">
-            <th style="padding:6px 8px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;">Order #</th>
-            <th style="padding:6px 8px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;">Customer</th>
-            <th style="padding:6px 8px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;">Items</th>
-            <th style="padding:6px 8px;text-align:right;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;">SF</th>
-            <th style="padding:6px 8px;text-align:right;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;">Amount</th>
-            <th style="padding:6px 8px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;">Rider Remark</th>
+            <th style="padding:6px 8px;text-align:left;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;">Order #</th>
+            <th style="padding:6px 8px;text-align:left;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;">Customer</th>
+            <th style="padding:6px 8px;text-align:left;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;">Items</th>
+            <th style="padding:6px 8px;text-align:right;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;">SF</th>
+            <th style="padding:6px 8px;text-align:right;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;">Amount</th>
+            <th style="padding:6px 8px;text-align:left;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;">Rider Remark</th>
           </tr></thead>
           <tbody>
             ${orders.map(o=>`<tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
-              <td style="padding:6px 8px;color:var(--gold);font-size:10px;font-weight:700;text-align:left;word-break:break-all;">${onum(o.oi)}</td>
+              <td style="padding:6px 8px;color:var(--gold);font-size:13px;font-weight:700;text-align:left;word-break:break-all;">${onum(o.oi)}</td>
               <td style="padding:6px 8px;text-align:left;word-break:break-word;">
-                <div style="font-weight:600;font-size:10.5px;">${o.name}</div>
-                <div style="color:var(--muted);font-size:9px;margin-top:1px;">${o.contact||''}</div>
+                <div style="font-weight:600;font-size:13px;">${o.name}</div>
+                <div style="color:var(--muted);font-size:11px;margin-top:1px;">${o.contact||''}</div>
               </td>
               <td style="padding:6px 8px;text-align:left;">${renderOrderItems(o)}</td>
               <td style="padding:6px 8px;text-align:right;color:var(--blue);white-space:nowrap;">${p(o.shipping||0)}</td>
-              <td style="padding:6px 8px;text-align:right;font-weight:700;white-space:nowrap;color:${o.status==='Cancelled'?'var(--red)':'var(--green)'};">${p(o.grandTotal||0)}</td>
-              <td style="padding:6px 8px;text-align:left;font-size:9.5px;color:var(--orange);word-break:break-word;">${o.riderRemarks||'—'}</td>
+              <td style="padding:6px 8px;text-align:right;font-weight:700;white-space:nowrap;color:${o.status==='Cancelled'?'var(--red)':'var(--green)'};">${p(_effectiveAmount(o))}</td>
+              <td style="padding:6px 8px;text-align:left;font-size:13px;color:var(--orange);word-break:break-word;">${o.riderRemarks||'—'}</td>
             </tr>`).join('')}
             <tr style="background:rgba(201,168,76,0.06);font-weight:700;border-top:2px solid rgba(201,168,76,0.2);">
-              <td colspan="3" style="padding:7px 8px;color:${titleColor};text-align:left;font-size:10.5px;">Subtotal</td>
-              <td style="padding:7px 8px;text-align:right;color:var(--blue);font-size:10.5px;">${p(orders.reduce((s,o)=>s+(o.shipping||0),0))}</td>
-              <td style="padding:7px 8px;text-align:right;color:${titleColor};font-size:12px;font-weight:800;">${p(orders.reduce((s,o)=>s+((o.status!=='Cancelled'&&o.status!=='RTO')?o.grandTotal||0:0),0))}</td>
+              <td colspan="3" style="padding:7px 8px;color:${titleColor};text-align:left;font-size:13px;">Subtotal</td>
+              <td style="padding:7px 8px;text-align:right;color:var(--blue);font-size:13px;">${p(orders.reduce((s,o)=>s+(o.shipping||0),0))}</td>
+              <td style="padding:7px 8px;text-align:right;color:${titleColor};font-size:14px;font-weight:800;">${p(orders.filter(o=>o.status==='Delivered').reduce((s,o)=>s+_effectiveAmount(o),0))}</td>
               <td></td>
             </tr>
           </tbody>
@@ -10582,7 +10602,7 @@ function renderRemitPage() {
       <!-- ── Expandable Body ── -->
       <div id="${safeId}" style="display:none;">
         <!-- Remit Log Summary -->
-        <div style="padding:10px 14px 6px;font-size:10.5px;font-weight:700;color:var(--gold);border-bottom:1px solid rgba(255,255,255,0.05);">
+        <div style="padding:10px 14px 6px;font-size:13px;font-weight:700;color:var(--gold);border-bottom:1px solid rgba(255,255,255,0.05);">
           📋 Remit Entries
         </div>
         <div class="table-wrap" style="padding:0 14px 10px;">
@@ -10600,16 +10620,16 @@ function renderRemitPage() {
               <col style="width:80px;">   <!-- Actions -->
             </colgroup>
             <thead><tr style="background:rgba(201,168,76,0.08);">
-              <th style="padding:8px 10px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Date</th>
-              <th style="padding:8px 6px;text-align:center;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Parcels</th>
-              <th style="padding:8px 6px;text-align:center;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;color:var(--green);border-bottom:1px solid rgba(255,255,255,0.07);">✅ Del</th>
-              <th style="padding:8px 6px;text-align:center;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;color:var(--red);border-bottom:1px solid rgba(255,255,255,0.07);">❌ Cx</th>
-              <th style="padding:8px 10px;text-align:right;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Total SF</th>
-              <th style="padding:8px 10px;text-align:right;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;color:var(--red);border-bottom:1px solid rgba(255,255,255,0.07);">−10%</th>
-              <th style="padding:8px 10px;text-align:right;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;color:var(--blue);border-bottom:1px solid rgba(255,255,255,0.07);">COD Subtotal</th>
-              <th style="padding:8px 10px;text-align:right;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;color:var(--gold);border-bottom:1px solid rgba(255,255,255,0.07);">Net to Remit</th>
-              <th style="padding:8px 10px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Status</th>
-              <th style="padding:8px 10px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Actions</th>
+              <th style="padding:8px 10px;text-align:left;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Date</th>
+              <th style="padding:8px 6px;text-align:center;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Parcels</th>
+              <th style="padding:8px 6px;text-align:center;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;color:var(--green);border-bottom:1px solid rgba(255,255,255,0.07);">✅ Del</th>
+              <th style="padding:8px 6px;text-align:center;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;color:var(--red);border-bottom:1px solid rgba(255,255,255,0.07);">❌ Cx</th>
+              <th style="padding:8px 10px;text-align:right;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Total SF</th>
+              <th style="padding:8px 10px;text-align:right;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;color:var(--red);border-bottom:1px solid rgba(255,255,255,0.07);">−10%</th>
+              <th style="padding:8px 10px;text-align:right;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;color:var(--blue);border-bottom:1px solid rgba(255,255,255,0.07);">COD Subtotal</th>
+              <th style="padding:8px 10px;text-align:right;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;color:var(--gold);border-bottom:1px solid rgba(255,255,255,0.07);">Net to Remit</th>
+              <th style="padding:8px 10px;text-align:left;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Status</th>
+              <th style="padding:8px 10px;text-align:left;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Actions</th>
             </tr></thead>
             <tbody>
               ${entries.map(e=>{
@@ -10640,7 +10660,7 @@ function renderRemitPage() {
                       ${st!=='Remitted'
                         ?`<button class="btn btn-outline btn-sm" onclick="openRemitModal(${e.idx})">✏️</button>
                            <button class="btn btn-red btn-sm" onclick="delRemit(${e.idx})">🗑️</button>`
-                        :`<span style="font-size:9.5px;color:var(--green);padding:3px 6px;">🔒 Remitted</span>`
+                        :`<span style="font-size:13px;color:var(--green);padding:3px 6px;">🔒 Remitted</span>`
                       }
                     </div>
                   </td>
@@ -10649,8 +10669,8 @@ function renderRemitPage() {
               <!-- TOTAL footer row — colspan matches column positions exactly -->
               <tr style="background:rgba(201,168,76,0.1);font-weight:700;font-size:11.5px;border-top:2px solid rgba(201,168,76,0.25);">
                 <td colspan="6" style="padding:8px 10px;color:var(--gold);text-align:left;">TOTAL — ${riderName}</td>
-                <td style="padding:8px 10px;text-align:right;color:var(--blue);font-size:12px;">${p(grandSubtotal)}</td>
-                <td style="padding:8px 10px;text-align:right;color:var(--gold);font-size:12px;">${p(grandNet)}</td>
+                <td style="padding:8px 10px;text-align:right;color:var(--blue);font-size:14px;">${p(grandSubtotal)}</td>
+                <td style="padding:8px 10px;text-align:right;color:var(--gold);font-size:14px;">${p(grandNet)}</td>
                 <td colspan="2"></td>
               </tr>
             </tbody>
@@ -10795,7 +10815,7 @@ function renderCashbondPage() {
     const type = entries[0]?.type||'';
     return `<div class="card" style="margin-bottom:11px;">
       <div class="card-header">
-        <span class="card-title">${type==='rider'?'🏍️':'👤'} ${person} <span style="font-size:10px;color:var(--muted);font-weight:400;">(${type})</span></span>
+        <span class="card-title">${type==='rider'?'🏍️':'👤'} ${person} <span style="font-size:13px;color:var(--muted);font-weight:400;">(${type})</span></span>
         <span style="color:var(--green);font-weight:700;font-size:13px;">Total: ${p(total)}</span>
       </div>
       <div class="table-wrap"><table style="font-size:11.5px;">
@@ -10805,7 +10825,7 @@ function renderCashbondPage() {
         <tbody>
           ${entries.map(e=>`<tr>
             <td>${e.date}</td><td style="color:var(--green);font-weight:600;">${p(e.amount)}</td>
-            <td style="font-size:10.5px;">${e.notes||'—'}</td>
+            <td style="font-size:13px;">${e.notes||'—'}</td>
             <td><button class="btn btn-red btn-sm" onclick="delCashbond(${e.idx})">🗑️</button></td>
           </tr>`).join('')}
           <tr style="background:rgba(201,168,76,0.06);font-weight:700;"><td>Total</td><td style="color:var(--green);" colspan="3">${p(total)}</td></tr>
@@ -11003,9 +11023,9 @@ function showIncentiveDetail(oi) {
     const itCat = (inv && (inv.category||'gold') === 'silver') ? '🥈 Silver' : '🥇 Gold';
     const itCatColor = (inv && (inv.category||'gold') === 'silver') ? '#b0b0cc' : 'var(--gold)';
     return `<tr>
-      <td style="font-family:monospace;font-size:10px;color:var(--gold);">${it.code||'—'}</td>
+      <td style="font-family:monospace;font-size:13px;color:var(--gold);">${it.code||'—'}</td>
       <td style="font-size:11px;">${it.desc||'—'}</td>
-      <td style="text-align:center;font-size:10px;color:${itCatColor};">${itCat}</td>
+      <td style="text-align:center;font-size:13px;color:${itCatColor};">${itCat}</td>
       <td style="text-align:center;font-size:11px;">${it.grams>0?it.grams+'g':'×'+(it.qty||1)}</td>
       <td style="color:var(--green);text-align:right;font-size:11px;">${p(it.total)}</td>
     </tr>`;
@@ -11033,7 +11053,7 @@ function showIncentiveDetail(oi) {
       <div class="stat-card orange" style="flex:1;min-width:120px;padding:10px;"><div class="stat-label">Items</div><div style="font-weight:700;">${result?.itemCount||0}</div></div>
       <div class="stat-card ${cat}" style="flex:1;min-width:120px;padding:10px;background:rgba(201,168,76,0.1);"><div class="stat-label">Category</div><div style="font-weight:700;color:${cat==='gold'?'var(--gold)':'#b0b0cc'};">${cat==='gold'?'🥇 GOLD':'🥈 SILVER'}</div></div>
     </div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">📦 Ordered Items</div>
+    <div style="font-size:14px;color:var(--muted);margin-bottom:8px;">📦 Ordered Items</div>
     <div class="table-wrap" style="margin-bottom:14px;"><table style="font-size:11px;width:100%;">
       <thead><tr style="background:rgba(201,168,76,0.08);">
         <th>Code</th><th>Description</th><th>Category</th><th>Qty/Grams</th><th>Amount</th>
@@ -11043,7 +11063,7 @@ function showIncentiveDetail(oi) {
     ${result ? `<div style="background:rgba(201,168,76,0.07);border:1px solid rgba(201,168,76,0.2);border-radius:8px;padding:12px;">
       <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">💰 Baog Formula</div>
       <div style="font-size:13px;">${formula}</div>
-    </div>` : '<div style="color:var(--red);font-size:12px;">⚠️ Hindi pa qualified sa baog.</div>'}
+    </div>` : '<div style="color:var(--red);font-size:14px;">⚠️ Hindi pa qualified sa baog.</div>'}
   </div>`;
   document.body.appendChild(overlay);
   overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove(); });
@@ -11108,7 +11128,7 @@ function renderOtherItemsPage() {
     const _dateCtx = (_dfFrom||_dfTo) ? ' (' + (_dfFromRaw||'start') + ' to ' + (_dfToRaw||'end') + ')' : '';
     const _allCount = (S.otherItems||[]).filter(r=>r.status===_oiTab).length;
     const _hint = (!_dfFrom && !_dfTo && _allCount===0 && _oiTab==='product')
-      ? '<br><span style="font-size:10px;color:var(--muted);">Items appear here after Checker verifies an order with FPG / PGS / PGG / FPS / FPW serial codes.</span>'
+      ? '<br><span style="font-size:13px;color:var(--muted);">Items appear here after Checker verifies an order with FPG / PGS / PGG / FPS / FPW serial codes.</span>'
       : '';
     el.innerHTML = '<div class="card"><p style="color:var(--muted);padding:24px;text-align:center;">Wala pang ' + (labels[_oiTab]||_oiTab) + ' na Other Items' + _dateCtx + '.' + _hint + '</p></div>';
     return;
@@ -11139,7 +11159,7 @@ function renderOtherItemsPage() {
     const _totalProfit  = Math.round((_itemsTotal - _totalCapital) * 100) / 100;
     const _profitColor  = _totalProfit >= 0 ? 'var(--green)' : 'var(--red)';
     const _badge        = r.prefix
-      ? '<span style="font-size:9px;background:rgba(201,168,76,0.15);color:var(--gold);padding:1px 5px;border-radius:3px;margin-left:4px;">' + r.prefix + '</span>'
+      ? '<span style="font-size:11px;background:rgba(201,168,76,0.15);color:var(--gold);padding:1px 5px;border-radius:3px;margin-left:4px;">' + r.prefix + '</span>'
       : '';
     return '<tr>'
       + '<td style="font-size:11px;font-weight:700;color:var(--blue);white-space:nowrap;">' + r.code + _badge + '</td>'
@@ -11155,7 +11175,7 @@ function renderOtherItemsPage() {
       + '<td style="font-size:11px;text-align:right;white-space:nowrap;color:var(--muted);">' + p(_totalCapital) + '</td>'
       + '<td style="font-size:11px;text-align:right;white-space:nowrap;color:var(--green);font-weight:600;">' + p(_itemsTotal) + '</td>'
       + '<td style="font-size:11px;text-align:right;white-space:nowrap;font-weight:700;color:' + _profitColor + ';">' + p(_totalProfit) + '</td>'
-      + '<td style="font-size:10px;color:var(--muted);white-space:nowrap;">' + (r.date||'—') + '</td>'
+      + '<td style="font-size:13px;color:var(--muted);white-space:nowrap;">' + (r.date||'—') + '</td>'
       + '</tr>';
   }).join('');
 
@@ -11171,20 +11191,20 @@ function renderOtherItemsPage() {
   const _totProfit = Math.round((_totItemsTotal - _totCapital) * 100) / 100;
 
   el.innerHTML = '<div class="card" style="overflow-x:auto;">'
-    + '<table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:auto;">'
-    + '<thead><tr style="color:var(--gold);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid var(--navy-border);">'
+    + '<table style="width:100%;border-collapse:collapse;font-size:14px;table-layout:auto;">'
+    + '<thead><tr style="color:var(--gold);font-size:13px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid var(--navy-border);">'
     + '<th style="padding:8px 8px;text-align:left;white-space:nowrap;">Serial Code</th>'
     + '<th style="padding:8px 8px;text-align:left;">Description</th>'
     + '<th style="padding:8px 8px;text-align:center;white-space:nowrap;">QTY / G</th>'
-    + '<th style="padding:8px 8px;text-align:right;white-space:nowrap;">Price<br><span style="font-size:9px;font-weight:400;color:var(--muted);">per QTY/G</span></th>'
-    + '<th style="padding:8px 8px;text-align:right;white-space:nowrap;">Capital<br><span style="font-size:9px;font-weight:400;color:var(--muted);">per QTY/G</span></th>'
+    + '<th style="padding:8px 8px;text-align:right;white-space:nowrap;">Price<br><span style="font-size:11px;font-weight:400;color:var(--muted);">per QTY/G</span></th>'
+    + '<th style="padding:8px 8px;text-align:right;white-space:nowrap;">Capital<br><span style="font-size:11px;font-weight:400;color:var(--muted);">per QTY/G</span></th>'
     + '<th style="padding:8px 8px;text-align:right;white-space:nowrap;">Total Capital</th>'
     + '<th style="padding:8px 8px;text-align:right;white-space:nowrap;">Items Total</th>'
     + '<th style="padding:8px 8px;text-align:right;white-space:nowrap;">Total Profit</th>'
     + '<th style="padding:8px 8px;text-align:center;white-space:nowrap;">Date</th>'
     + '</tr></thead>'
     + '<tbody>' + rows + '</tbody>'
-    + '<tfoot><tr style="border-top:2px solid var(--navy-border);font-weight:700;font-size:12px;">'
+    + '<tfoot><tr style="border-top:2px solid var(--navy-border);font-weight:700;font-size:14px;">'
     + '<td colspan="3" style="padding:8px 8px;color:var(--muted);">TOTAL (' + items.length + ' items)</td>'
     + '<td colspan="2"></td>'
     + '<td style="padding:8px 8px;text-align:right;color:var(--muted);">' + p(_totCapital) + '</td>'
@@ -11193,7 +11213,7 @@ function renderOtherItemsPage() {
     + '<td></td>'
     + '</tr></tfoot>'
     + '</table>'
-    + '<p style="font-size:10px;color:var(--muted);margin-top:8px;">'
+    + '<p style="font-size:13px;color:var(--muted);margin-top:8px;">'
     + '⚠️ Amounts excluded from PnL — off-book items. '
     + '| Capital/QTY = Price/QTY − Default Profit | Total Capital = QTY × Capital/QTY | Total Profit = Items Total − Total Capital'
     + '</p>'
@@ -11248,8 +11268,8 @@ function renderIncentivesPage() {
         ? p(q.total)+' ÷ 9,500 × 80 × 5%'
         : p(q.silverTotal)+' ÷ 1,000 × 80 × 5%';
       const catBadge = q.cat==='gold'
-        ? '<span style="background:rgba(201,168,76,0.2);color:var(--gold);padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">🥇 GOLD</span>'
-        : '<span style="background:rgba(160,160,180,0.2);color:#b0b0cc;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">🥈 SILVER</span>';
+        ? '<span style="background:rgba(201,168,76,0.2);color:var(--gold);padding:2px 8px;border-radius:4px;font-size:13px;font-weight:700;">🥇 GOLD</span>'
+        : '<span style="background:rgba(160,160,180,0.2);color:#b0b0cc;padding:2px 8px;border-radius:4px;font-size:13px;font-weight:700;">🥈 SILVER</span>';
       const isCourier = q.o.paymentMethod==='LBC'||q.o.paymentMethod==='EMS'||q.o.paymentMethod==='FedEx';
       html += '<tr style="cursor:pointer;" onclick="showIncentiveDetail('+q.oi+')" title="Click to view order details">'
         + '<td style="color:var(--gold);font-weight:600;">'+onum(q.oi)+'</td>'
@@ -11258,10 +11278,10 @@ function renderIncentivesPage() {
         + '<td>'+catBadge+'</td>'
         + '<td style="text-align:center;font-weight:700;">'+q.itemCount+'</td>'
         + '<td style="color:var(--green);font-weight:600;">'+p(q.total)+'</td>'
-        + '<td style="color:'+(q.cat==='silver'?'#b0b0cc':'var(--green)')+';font-size:10px;">'+(q.cat==='silver'?p(q.silverTotal)+' (silver)':p(q.total)+' (all)')+'</td>'
-        + '<td style="font-size:10px;color:var(--muted);">'+formula+'</td>'
+        + '<td style="color:'+(q.cat==='silver'?'#b0b0cc':'var(--green)')+';font-size:13px;">'+(q.cat==='silver'?p(q.silverTotal)+' (silver)':p(q.total)+' (all)')+'</td>'
+        + '<td style="font-size:13px;color:var(--muted);">'+formula+'</td>'
         + '<td style="color:var(--gold);font-weight:700;font-size:13px;">'+p(q.baog)+'</td>'
-        + '<td style="font-size:9.5px;">'+(isCourier?'<span style="color:var(--green);">✅ Verified</span>':'<span style="color:var(--blue);">💰 Remitted</span>')+'</td>'
+        + '<td style="font-size:13px;">'+(isCourier?'<span style="color:var(--green);">✅ Verified</span>':'<span style="color:var(--blue);">💰 Remitted</span>')+'</td>'
         + '</tr>';
     });
     html += '<tr style="background:rgba(201,168,76,0.06);font-weight:700;">'
@@ -11844,14 +11864,14 @@ function renderOrderMgmt() {
     const trackNum = o.trackingNumber || '—';
     return `<tr>
       <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
-      <td style="font-weight:500;">${o.name}<br><span style="color:var(--muted);font-size:9px;">${o.contact||''}</span></td>
+      <td style="font-weight:500;">${o.name}<br><span style="color:var(--muted);font-size:11px;">${o.contact||''}</span></td>
       <td style="font-family:monospace;font-size:11px;color:var(--blue);">${trackNum}</td>
       <td style="font-size:11px;">${o.admin||'—'}</td>
       <td>${o.date}</td>
       <td style="font-size:11px;color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'}">${o.dateOfDropoff||'—'}</td>
       <td style="font-weight:600;color:${lbcColor(lbcSt)}">${icon} ${lbcSt}</td>
       <td>
-        <select class="form-control" style="width:165px;font-size:10.5px;padding:3px 5px;" onchange="omUpdateStatus(${i},this.value)">
+        <select class="form-control" style="width:165px;font-size:13px;padding:3px 5px;" onchange="omUpdateStatus(${i},this.value)">
           ${getOmStatuses(lbcSt, o.paymentMethod).map(s=>`<option${lbcSt===s?' selected':''}>${s}</option>`).join('')}
         </select>
       </td>
@@ -12061,10 +12081,10 @@ function openDailyDetail(orderIdx) {
     return `<tr style="${isCancelled ? 'opacity:0.65;' : ''}">
       <td style="font-family:monospace;font-size:11px;color:var(--gold);">${it.code||'—'}</td>
       <td style="font-size:11.5px;">${it.desc||'—'}</td>
-      <td style="text-align:center;">${qtyStr}<br><span style="font-size:9.5px;color:var(--muted);">${rateStr}</span></td>
+      <td style="text-align:center;">${qtyStr}<br><span style="font-size:13px;color:var(--muted);">${rateStr}</span></td>
       <td style="text-align:right;color:${isCancelled?'var(--muted)':'var(--green)'};font-weight:600;${isCancelled?'text-decoration:line-through;':''}">₱${Number(it.total||0).toFixed(2)}</td>
-      <td><span style="font-size:9.5px;font-weight:700;color:${stColor};">${stLabel}</span></td>
-      <td style="font-size:10px;color:var(--orange);">${remark||'—'}</td>
+      <td><span style="font-size:13px;font-weight:700;color:${stColor};">${stLabel}</span></td>
+      <td style="font-size:13px;color:var(--orange);">${remark||'—'}</td>
     </tr>`;
   }).join('');
 
@@ -12076,44 +12096,44 @@ function openDailyDetail(orderIdx) {
   document.getElementById('daily-detail-title').textContent = `📦 ${onum(orderIdx)} — ${o.name}`;
   document.getElementById('daily-detail-content').innerHTML = `
     <!-- Order Summary -->
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;font-size:12px;">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;font-size:14px;">
       <div style="background:var(--navy);border-radius:8px;padding:10px 14px;flex:1;min-width:180px;">
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;">Customer</div>
+        <div style="font-size:13px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;">Customer</div>
         <div style="font-weight:700;">${o.name}</div>
         <div style="color:var(--muted);">${o.contact||'—'}${o.backupContact?' / '+o.backupContact:''}</div>
-        <div style="font-size:10.5px;margin-top:4px;">${o.address||'—'}${o.landmark?' — '+o.landmark:''}</div>
+        <div style="font-size:13px;margin-top:4px;">${o.address||'—'}${o.landmark?' — '+o.landmark:''}</div>
       </div>
       <div style="background:var(--navy);border-radius:8px;padding:10px 14px;flex:1;min-width:180px;">
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;">Order Info</div>
+        <div style="font-size:13px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;">Order Info</div>
         <div>📅 ${o.date}</div>
         <div>👤 Admin: <strong>${o.admin||'—'}</strong></div>
         <div>🏍️ Rider: <strong style="color:var(--blue);">${o.assignedRider||'Unassigned'}</strong></div>
         <div>💳 Method: <strong>${o.paymentMethod||'COD'}</strong></div>
       </div>
       <div style="background:var(--navy);border-radius:8px;padding:10px 14px;flex:1;min-width:150px;">
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;">Amounts</div>
+        <div style="font-size:13px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;">Amounts</div>
         <div>Items: <strong>₱${Number(o.itemsTotal||0).toFixed(2)}</strong></div>
         <div>SF: <strong>₱${Number(o.shipping||0).toFixed(2)}</strong></div>
         <div style="font-size:14px;margin-top:4px;">Total: <strong style="color:var(--green);">₱${Number(o.grandTotal||0).toFixed(2)}</strong></div>
       </div>
       <div style="background:var(--navy);border-radius:8px;padding:10px 14px;flex:1;min-width:130px;">
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;">Status</div>
-        <div><span class="status ${sclass(o.status)}" style="font-size:12px;">${o.status}</span></div>
+        <div style="font-size:13px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;">Status</div>
+        <div><span class="status ${sclass(o.status)}" style="font-size:14px;">${o.status}</span></div>
         <div style="margin-top:6px;"><span class="checker-tag ${o.checkerStatus==='Verified'?'verified':'pending'}">${o.checkerStatus||'Pending'}</span></div>
-        ${o.riderRemarks ? `<div style="margin-top:6px;font-size:10.5px;color:var(--orange);">⚠️ ${o.riderRemarks}</div>` : ''}
+        ${o.riderRemarks ? `<div style="margin-top:6px;font-size:13px;color:var(--orange);">⚠️ ${o.riderRemarks}</div>` : ''}
       </div>
     </div>
 
     <!-- Cancel summary if any -->
-    ${isOrderCancelled ? `<div style="background:rgba(224,85,85,0.1);border:1px solid rgba(224,85,85,0.3);border-radius:7px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--red);">
+    ${isOrderCancelled ? `<div style="background:rgba(224,85,85,0.1);border:1px solid rgba(224,85,85,0.3);border-radius:7px;padding:10px 14px;margin-bottom:12px;font-size:14px;color:var(--red);">
       ❌ <strong>Whole Order Cancelled</strong> — Grand Total: <span style="text-decoration:line-through;">₱${Number(o.grandTotal||0).toFixed(2)}</span> → ₱0.00
     </div>` : ''}
-    ${(!isOrderCancelled && (cancelledItemCount > 0 || partialItems > 0)) ? `<div style="background:rgba(224,138,48,0.08);border:1px solid rgba(224,138,48,0.3);border-radius:7px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--orange);">
+    ${(!isOrderCancelled && (cancelledItemCount > 0 || partialItems > 0)) ? `<div style="background:rgba(224,138,48,0.08);border:1px solid rgba(224,138,48,0.3);border-radius:7px;padding:10px 14px;margin-bottom:12px;font-size:14px;color:var(--orange);">
       ⚠️ ${cancelledItemCount} item(s) fully cancelled, ${partialItems} item(s) partially cancelled
     </div>` : ''}
 
     <!-- Items Table -->
-    <div style="font-size:10px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Order Items</div>
+    <div style="font-size:13px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Order Items</div>
     <div class="table-wrap">
       <table style="font-size:11.5px;">
         <thead><tr style="background:rgba(201,168,76,0.08);">
@@ -12246,10 +12266,10 @@ function renderLbcDelivery() {
       const isCancelled = itemStatuses[ii] === 'Cancelled';
       const isGrams = it.grams > 0;
       const qtyStr = isGrams ? `${it.grams}g` : `×${it.qty||1}`;
-      return `<div style="font-size:10.5px;padding:1px 0;${isCancelled?'text-decoration:line-through;color:var(--muted);':''}">
+      return `<div style="font-size:13px;padding:1px 0;${isCancelled?'text-decoration:line-through;color:var(--muted);':''}">
         ${isCancelled?'❌':'🔹'} <strong style="color:${isCancelled?'var(--muted)':'var(--gold)'};">${it.code||'—'}</strong>
         <span style="color:var(--muted);">${it.desc||''}</span>
-        <span style="color:var(--blue);font-size:9.5px;">(${qtyStr})</span>
+        <span style="color:var(--blue);font-size:13px;">(${qtyStr})</span>
         = <span style="font-weight:600;">${p(it.total)}</span>
       </div>`;
     }).join('');
@@ -12263,23 +12283,23 @@ function renderLbcDelivery() {
           <span style="color:var(--muted);font-size:11px;">${o.contact||''}</span>
           <span style="font-size:11px;">${o.date}</span>
           <span style="color:var(--green);font-weight:700;">${p(o.grandTotal)}</span>
-          <span style="font-size:10px;font-weight:700;color:${statusColor};padding:2px 8px;background:rgba(255,255,255,0.05);border-radius:4px;">${lst}</span>
-          ${tn!=='—'?`<span style="font-family:monospace;font-size:10px;color:var(--blue);">📦 ${tn}</span>`:''}
-          ${isRTO&&o.rtoReason?`<span style="font-size:10px;color:var(--red);">📝 ${o.rtoReason}</span>`:''}
-          ${isODZ?`<span style="font-size:10px;color:var(--orange);">⚠️ ODZ/Incomplete</span>`:''}
+          <span style="font-size:13px;font-weight:700;color:${statusColor};padding:2px 8px;background:rgba(255,255,255,0.05);border-radius:4px;">${lst}</span>
+          ${tn!=='—'?`<span style="font-family:monospace;font-size:13px;color:var(--blue);">📦 ${tn}</span>`:''}
+          ${isRTO&&o.rtoReason?`<span style="font-size:13px;color:var(--red);">📝 ${o.rtoReason}</span>`:''}
+          ${isODZ?`<span style="font-size:13px;color:var(--orange);">⚠️ ODZ/Incomplete</span>`:''}
         </div>
-        <span id="${safeId}-arrow" style="color:var(--muted);font-size:12px;">▶</span>
+        <span id="${safeId}-arrow" style="color:var(--muted);font-size:14px;">▶</span>
       </div>
       <div id="${safeId}" style="display:none;padding:0 14px 14px;border-top:1px solid var(--navy-border);margin-top:4px;" onclick="event.stopPropagation()">
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:11.5px;margin-top:10px;">
-          <div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Customer</span><br><strong>${o.name}</strong><br><span style="color:var(--muted);font-size:10.5px;">${o.contact||'—'}</span></div>
-          <div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Address</span><br>${o.address||'—'}${o.landmark?'<br><span style="color:var(--muted);font-size:10px;">🏠 '+o.landmark+'</span>':''}</div>
-          <div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Admin / Method</span><br>${o.admin||'—'} · <span style="color:var(--blue);">${o.paymentMethod}</span></div>
-          <div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Tracking #</span><br><span style="font-family:monospace;color:var(--blue);">${tn}</span></div>
-          <div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Date Paid</span><br><span style="color:${o.dateOfPayment?'var(--green)':'var(--muted)'};">${o.dateOfPayment||'—'}</span></div>
-          <div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Date Drop-off</span><br><span style="color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">${o.dateOfDropoff||'—'}</span></div>
-          ${o.dateDelivered?`<div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Date Delivered</span><br><span style="color:var(--green);">${o.dateDelivered}</span></div>`:''}
-          <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Items</span><br>${itemList||'—'}</div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Customer</span><br><strong>${o.name}</strong><br><span style="color:var(--muted);font-size:13px;">${o.contact||'—'}</span></div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Address</span><br>${o.address||'—'}${o.landmark?'<br><span style="color:var(--muted);font-size:13px;">🏠 '+o.landmark+'</span>':''}</div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Admin / Method</span><br>${o.admin||'—'} · <span style="color:var(--blue);">${o.paymentMethod}</span></div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Tracking #</span><br><span style="font-family:monospace;color:var(--blue);">${tn}</span></div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Paid</span><br><span style="color:${o.dateOfPayment?'var(--green)':'var(--muted)'};">${o.dateOfPayment||'—'}</span></div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Drop-off</span><br><span style="color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">${o.dateOfDropoff||'—'}</span></div>
+          ${o.dateDelivered?`<div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Delivered</span><br><span style="color:var(--green);">${o.dateDelivered}</span></div>`:''}
+          <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Items</span><br>${itemList||'—'}</div>
         </div>
       </div>
     </div>`;
@@ -12538,18 +12558,18 @@ function renderCodDelivPage() {
             <span style="color:var(--muted);font-size:11px;">${o.contact||''}</span>
             <span style="font-size:11px;">${dateCol}</span>
             <span style="color:var(--green);font-weight:700;">${p(o.grandTotal)}</span>
-            <span style="font-size:10.5px;font-weight:700;color:${statusColor};padding:2px 8px;background:rgba(255,255,255,0.05);border-radius:4px;">${o.status}</span>
-            ${(reason&&reason!=='—')?'<span style="font-size:10px;color:'+(tab==='ForUpdate'?'var(--orange)':'var(--red)')+';">'+( tab==='ForUpdate'?'🔔 ':'📝 ')+reason+'</span>':''}
+            <span style="font-size:13px;font-weight:700;color:${statusColor};padding:2px 8px;background:rgba(255,255,255,0.05);border-radius:4px;">${o.status}</span>
+            ${(reason&&reason!=='—')?'<span style="font-size:13px;color:'+(tab==='ForUpdate'?'var(--orange)':'var(--red)')+';">'+( tab==='ForUpdate'?'🔔 ':'📝 ')+reason+'</span>':''}
           </div>
-          <span id="${safeId}-arrow" style="color:var(--muted);font-size:12px;">▶</span>
+          <span id="${safeId}-arrow" style="color:var(--muted);font-size:14px;">▶</span>
         </div>
         <div id="${safeId}" style="display:none;padding:0 14px 12px;border-top:1px solid var(--navy-border);margin-top:4px;" onclick="event.stopPropagation()">
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:11.5px;margin-top:8px;">
-            <div><span style="color:var(--muted);font-size:10px;">ADDRESS</span><br>${o.address||'—'}</div>
-            <div><span style="color:var(--muted);font-size:10px;">ADMIN</span><br>${o.admin||'—'}</div>
-            <div><span style="color:var(--muted);font-size:10px;">RIDER</span><br>${o.assignedRider||'—'}</div>
-            <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:10px;">ITEMS</span><br>${itemsList||'—'}</div>
-            ${reason!=='—'?'<div style="grid-column:1/-1;"><span style="color:var(--red);font-size:10px;">REASON</span><br>'+reason+'</div>':''}
+            <div><span style="color:var(--muted);font-size:13px;">ADDRESS</span><br>${o.address||'—'}</div>
+            <div><span style="color:var(--muted);font-size:13px;">ADMIN</span><br>${o.admin||'—'}</div>
+            <div><span style="color:var(--muted);font-size:13px;">RIDER</span><br>${o.assignedRider||'—'}</div>
+            <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:13px;">ITEMS</span><br>${itemsList||'—'}</div>
+            ${reason!=='—'?'<div style="grid-column:1/-1;"><span style="color:var(--red);font-size:13px;">REASON</span><br>'+reason+'</div>':''}
           </div>
           <div style="display:flex;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid var(--navy-border);flex-wrap:wrap;">
             ${tab==='ForUpdate'
@@ -12581,31 +12601,31 @@ function renderCodDelivPage() {
             <div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:10px;">📅 SCHEDULE FOR DELIVERY</div>
             <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px;">
               <div>
-                <label style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">Delivery Date *</label>
+                <label style="font-size:13px;color:var(--muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">Delivery Date *</label>
                 <input type="date" id="${safeId}-delivdate" min="${today()}" value="${o.scheduledDelivery||today()}"
-                  style="height:34px;padding:5px 9px;font-size:12px;border:1px solid var(--navy-border);border-radius:6px;background:var(--navy);color:var(--text);width:100%;box-sizing:border-box;">
+                  style="height:34px;padding:5px 9px;font-size:14px;border:1px solid var(--navy-border);border-radius:6px;background:var(--navy);color:var(--text);width:100%;box-sizing:border-box;">
               </div>
               <div>
-                <label style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">Assign Rider</label>
+                <label style="font-size:13px;color:var(--muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">Assign Rider</label>
                 <select id="${safeId}-rider"
-                  style="height:34px;padding:5px 9px;font-size:12px;border:1px solid var(--navy-border);border-radius:6px;background:var(--navy);color:var(--text);width:100%;box-sizing:border-box;">
+                  style="height:34px;padding:5px 9px;font-size:14px;border:1px solid var(--navy-border);border-radius:6px;background:var(--navy);color:var(--text);width:100%;box-sizing:border-box;">
                   <option value="${o.assignedRider||''}">${o.assignedRider||'— Keep current —'}</option>
                   ${(S.riders||[]).filter(r=>r.name&&r.name!==o.assignedRider).map(r=>'<option value="'+r.name+'">'+r.name+'</option>').join('')}
                 </select>
               </div>
               <div style="grid-column:1/-1;">
-                <label style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">Correction Notes</label>
+                <label style="font-size:13px;color:var(--muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">Correction Notes</label>
                 <input type="text" id="${safeId}-notes" value="${o.updateReason||''}" placeholder="Address fix, contact update, etc."
-                  style="height:34px;padding:5px 9px;font-size:12px;border:1px solid var(--navy-border);border-radius:6px;background:var(--navy);color:var(--text);width:100%;box-sizing:border-box;">
+                  style="height:34px;padding:5px 9px;font-size:14px;border:1px solid var(--navy-border);border-radius:6px;background:var(--navy);color:var(--text);width:100%;box-sizing:border-box;">
               </div>
             </div>
             <div style="display:flex;gap:8px;">
               <button onclick="event.stopPropagation();saveCodForUpdateDispatch(${i},'${safeId}')"
-                style="background:var(--gold);color:#1a1a2e;border:none;padding:7px 20px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;flex:1;">
+                style="background:var(--gold);color:#1a1a2e;border:none;padding:7px 20px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;flex:1;">
                 ✅ Save & Dispatch
               </button>
               <button onclick="event.stopPropagation();document.getElementById('${safeId}-editpane').style.display='none'"
-                style="background:rgba(255,255,255,0.05);border:1px solid var(--navy-border);color:var(--muted);padding:7px 14px;border-radius:6px;cursor:pointer;font-size:12px;">
+                style="background:rgba(255,255,255,0.05);border:1px solid var(--navy-border);color:var(--muted);padding:7px 14px;border-radius:6px;cursor:pointer;font-size:14px;">
                 Cancel
               </button>
             </div>
@@ -12825,10 +12845,10 @@ function renderEmsDelivery() {
       const isCancelled = itemStatuses[ii] === 'Cancelled';
       const isGrams = it.grams > 0;
       const qtyStr = isGrams ? `${it.grams}g` : `×${it.qty||1}`;
-      return `<div style="font-size:10.5px;padding:1px 0;${isCancelled?'text-decoration:line-through;color:var(--muted);':''}">
+      return `<div style="font-size:13px;padding:1px 0;${isCancelled?'text-decoration:line-through;color:var(--muted);':''}">
         ${isCancelled?'❌':'🔹'} <strong style="color:${isCancelled?'var(--muted)':'var(--gold)'};">${it.code||'—'}</strong>
         <span style="color:var(--muted);">${it.desc||''}</span>
-        <span style="color:var(--blue);font-size:9.5px;">(${qtyStr})</span>
+        <span style="color:var(--blue);font-size:13px;">(${qtyStr})</span>
         = <span style="font-weight:600;">${p(it.total)}</span>
       </div>`;
     }).join('');
@@ -12842,22 +12862,22 @@ function renderEmsDelivery() {
           <span style="color:var(--muted);font-size:11px;">${o.contact||''}</span>
           <span style="font-size:11px;">${o.date}</span>
           <span style="color:var(--green);font-weight:700;">${p(o.grandTotal)}</span>
-          <span style="font-size:10px;font-weight:700;color:${statusColor};padding:2px 8px;background:rgba(255,255,255,0.05);border-radius:4px;">✈️ ${lst}</span>
-          ${tn!=='—'?`<span style="font-family:monospace;font-size:10px;color:var(--blue);">📦 ${tn}</span>`:''}
-          ${isRTO&&o.rtoReason?`<span style="font-size:10px;color:var(--red);">📝 ${o.rtoReason}</span>`:''}
+          <span style="font-size:13px;font-weight:700;color:${statusColor};padding:2px 8px;background:rgba(255,255,255,0.05);border-radius:4px;">✈️ ${lst}</span>
+          ${tn!=='—'?`<span style="font-family:monospace;font-size:13px;color:var(--blue);">📦 ${tn}</span>`:''}
+          ${isRTO&&o.rtoReason?`<span style="font-size:13px;color:var(--red);">📝 ${o.rtoReason}</span>`:''}
         </div>
-        <span id="${safeId}-arrow" style="color:var(--muted);font-size:12px;">▶</span>
+        <span id="${safeId}-arrow" style="color:var(--muted);font-size:14px;">▶</span>
       </div>
       <div id="${safeId}" style="display:none;padding:0 14px 14px;border-top:1px solid var(--navy-border);margin-top:4px;" onclick="event.stopPropagation()">
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:11.5px;margin-top:10px;">
-          <div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Customer</span><br><strong>${o.name}</strong><br><span style="color:var(--muted);font-size:10.5px;">${o.contact||'—'}</span></div>
-          <div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Address</span><br>${o.address||'—'}${o.landmark?'<br><span style="color:var(--muted);font-size:10px;">🏠 '+o.landmark+'</span>':''}</div>
-          <div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Admin</span><br>${o.admin||'—'}</div>
-          <div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Tracking #</span><br><span style="font-family:monospace;color:var(--blue);">${tn}</span></div>
-          <div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Date Paid</span><br><span style="color:${o.dateOfPayment?'var(--green)':'var(--muted)'};">${o.dateOfPayment||'—'}</span></div>
-          <div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Date Drop-off</span><br><span style="color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">${o.dateOfDropoff||'—'}</span></div>
-          ${o.dateDelivered?`<div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Date Delivered</span><br><span style="color:var(--green);">${o.dateDelivered}</span></div>`:''}
-          <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Items</span><br>${itemList||'—'}</div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Customer</span><br><strong>${o.name}</strong><br><span style="color:var(--muted);font-size:13px;">${o.contact||'—'}</span></div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Address</span><br>${o.address||'—'}${o.landmark?'<br><span style="color:var(--muted);font-size:13px;">🏠 '+o.landmark+'</span>':''}</div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Admin</span><br>${o.admin||'—'}</div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Tracking #</span><br><span style="font-family:monospace;color:var(--blue);">${tn}</span></div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Paid</span><br><span style="color:${o.dateOfPayment?'var(--green)':'var(--muted)'};">${o.dateOfPayment||'—'}</span></div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Drop-off</span><br><span style="color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">${o.dateOfDropoff||'—'}</span></div>
+          ${o.dateDelivered?`<div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Delivered</span><br><span style="color:var(--green);">${o.dateDelivered}</span></div>`:''}
+          <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Items</span><br>${itemList||'—'}</div>
         </div>
       </div>
     </div>`;
@@ -13026,23 +13046,23 @@ function renderDeletedOrders() {
     const itemsHtml = (d.items||[]).map(it => {
       const isGrams = (it.grams||0) > 0;
       const qty = isGrams ? `${it.grams}g` : `×${it.qty||1}`;
-      return `<div style="font-size:10px;">🔹 <strong>${it.code||'—'}</strong> ${it.desc||''} (${qty}) = ${p(it.total||0)}</div>`;
+      return `<div style="font-size:13px;">🔹 <strong>${it.code||'—'}</strong> ${it.desc||''} (${qty}) = ${p(it.total||0)}</div>`;
     }).join('');
     return `<tr style="background:rgba(224,85,85,0.04);">
       <td style="color:var(--red);font-weight:600;">${d.orderNum||'—'}</td>
-      <td style="font-weight:500;">${d.name}<br><span style="font-size:9.5px;color:var(--muted);">${d.contact||'—'}</span></td>
-      <td style="font-size:10.5px;">${d.address||'—'}${d.landmark?'<br>🏠 '+d.landmark:''}</td>
+      <td style="font-weight:500;">${d.name}<br><span style="font-size:13px;color:var(--muted);">${d.contact||'—'}</span></td>
+      <td style="font-size:13px;">${d.address||'—'}${d.landmark?'<br>🏠 '+d.landmark:''}</td>
       <td style="font-size:11px;">${d.admin||'—'}</td>
-      <td><span style="font-size:9.5px;font-weight:700;color:${pmColor(d.paymentMethod||'COD')}">${pmIcon(d.paymentMethod||'COD')} ${d.paymentMethod||'COD'}</span></td>
+      <td><span style="font-size:13px;font-weight:700;color:${pmColor(d.paymentMethod||'COD')}">${pmIcon(d.paymentMethod||'COD')} ${d.paymentMethod||'COD'}</span></td>
       <td style="font-size:11px;">${d.date}</td>
-      <td style="font-size:10px;">${itemsHtml}</td>
+      <td style="font-size:13px;">${itemsHtml}</td>
       <td style="color:var(--green);font-weight:600;">${p(d.grandTotal||0)}</td>
-      <td style="font-size:10px;color:var(--red);max-width:200px;">
+      <td style="font-size:13px;color:var(--red);max-width:200px;">
         <strong>${d.reason||'—'}</strong>
-        <div style="font-size:9px;color:var(--muted);margin-top:2px;">By: ${d.cancelledBy||'—'}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">By: ${d.cancelledBy||'—'}</div>
       </td>
-      <td style="font-size:10.5px;color:var(--muted);">
-        ${cancelDate}<br><span style="font-size:9px;">${cancelTime}</span>
+      <td style="font-size:13px;color:var(--muted);">
+        ${cancelDate}<br><span style="font-size:11px;">${cancelTime}</span>
       </td>
     </tr>`;
   }).join('');
@@ -13139,10 +13159,10 @@ function renderFedexDelivery() {
     const itemList = (o.items||[]).map((it,ii) => {
       const isCancelled = itemStatuses[ii] === 'Cancelled';
       const isGrams = it.grams > 0;
-      return `<div style="font-size:10.5px;padding:1px 0;${isCancelled?'text-decoration:line-through;color:var(--muted);':''}">
+      return `<div style="font-size:13px;padding:1px 0;${isCancelled?'text-decoration:line-through;color:var(--muted);':''}">
         ${isCancelled?'❌':'🔹'} <strong style="color:${isCancelled?'var(--muted)':'var(--gold)'};">${it.code||'—'}</strong>
         <span style="color:var(--muted);">${it.desc||''}</span>
-        <span style="color:var(--blue);font-size:9.5px;">(${isGrams?it.grams+'g':'×'+(it.qty||1)})</span>
+        <span style="color:var(--blue);font-size:13px;">(${isGrams?it.grams+'g':'×'+(it.qty||1)})</span>
         = <span style="font-weight:600;">${p(it.total)}</span>
       </div>`;
     }).join('');
@@ -13156,22 +13176,22 @@ function renderFedexDelivery() {
           <span style="color:var(--muted);font-size:11px;">${o.contact||''}</span>
           <span style="font-size:11px;">${o.date}</span>
           <span style="color:var(--green);font-weight:700;">${p(o.grandTotal)}</span>
-          <span style="font-size:10px;font-weight:700;color:${statusColor};padding:2px 8px;background:rgba(255,255,255,0.05);border-radius:4px;">📦 ${lst}</span>
-          ${tn!=='—'?`<span style="font-family:monospace;font-size:10px;color:var(--blue);">${tn}</span>`:''}
-          ${isRTO&&o.rtoReason?`<span style="font-size:10px;color:var(--red);">📝 ${o.rtoReason}</span>`:''}
+          <span style="font-size:13px;font-weight:700;color:${statusColor};padding:2px 8px;background:rgba(255,255,255,0.05);border-radius:4px;">📦 ${lst}</span>
+          ${tn!=='—'?`<span style="font-family:monospace;font-size:13px;color:var(--blue);">${tn}</span>`:''}
+          ${isRTO&&o.rtoReason?`<span style="font-size:13px;color:var(--red);">📝 ${o.rtoReason}</span>`:''}
         </div>
-        <span id="${safeId}-arrow" style="color:var(--muted);font-size:12px;">▶</span>
+        <span id="${safeId}-arrow" style="color:var(--muted);font-size:14px;">▶</span>
       </div>
       <div id="${safeId}" style="display:none;padding:0 14px 14px;border-top:1px solid var(--navy-border);margin-top:4px;" onclick="event.stopPropagation()">
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:11.5px;margin-top:10px;">
-          <div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Customer</span><br><strong>${o.name}</strong><br><span style="color:var(--muted);font-size:10.5px;">${o.contact||'—'}</span></div>
-          <div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Address</span><br>${o.address||'—'}${o.landmark?'<br><span style="color:var(--muted);font-size:10px;">🏠 '+o.landmark+'</span>':''}</div>
-          <div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Admin</span><br>${o.admin||'—'}</div>
-          <div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Tracking #</span><br><span style="font-family:monospace;color:var(--blue);">${tn}</span></div>
-          <div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Date Paid</span><br><span style="color:${o.dateOfPayment?'var(--green)':'var(--muted)'};">${o.dateOfPayment||'—'}</span></div>
-          <div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Date Drop-off</span><br><span style="color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">${o.dateOfDropoff||'—'}</span></div>
-          ${o.dateDelivered?`<div><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Date Delivered</span><br><span style="color:var(--green);">${o.dateDelivered}</span></div>`:''}
-          <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:10px;text-transform:uppercase;">Items</span><br>${itemList||'—'}</div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Customer</span><br><strong>${o.name}</strong><br><span style="color:var(--muted);font-size:13px;">${o.contact||'—'}</span></div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Address</span><br>${o.address||'—'}${o.landmark?'<br><span style="color:var(--muted);font-size:13px;">🏠 '+o.landmark+'</span>':''}</div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Admin</span><br>${o.admin||'—'}</div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Tracking #</span><br><span style="font-family:monospace;color:var(--blue);">${tn}</span></div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Paid</span><br><span style="color:${o.dateOfPayment?'var(--green)':'var(--muted)'};">${o.dateOfPayment||'—'}</span></div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Drop-off</span><br><span style="color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">${o.dateOfDropoff||'—'}</span></div>
+          ${o.dateDelivered?`<div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Delivered</span><br><span style="color:var(--green);">${o.dateDelivered}</span></div>`:''}
+          <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Items</span><br>${itemList||'—'}</div>
         </div>
       </div>
     </div>`;
@@ -13239,10 +13259,10 @@ function renderCheckerDeleted() {
       const isGrams = (it.grams||0) > 0;
       const qty = isGrams ? `${it.grams}g` : `×${it.qty||1}`;
       const rate = isGrams && it.pergram ? ` @ ₱${Number(it.pergram).toFixed(2)}/g` : '';
-      return `<div style="font-size:10px;padding:1px 0;">
+      return `<div style="font-size:13px;padding:1px 0;">
         🔹 <strong style="color:var(--gold);">${it.code||'—'}</strong>
         <span style="color:var(--muted);">${it.desc||''}</span>
-        <span style="color:var(--blue);font-size:9px;">(${qty}${rate})</span>
+        <span style="color:var(--blue);font-size:11px;">(${qty}${rate})</span>
         = <span style="color:var(--green);font-weight:600;">${p(it.total||0)}</span>
       </div>`;
     }).join('');
@@ -13254,36 +13274,36 @@ function renderCheckerDeleted() {
       <td style="color:var(--red);font-weight:700;white-space:nowrap;">${d.orderNum||'—'}</td>
       <td style="min-width:130px;">
         <div style="font-weight:600;">${d.name||'—'}</div>
-        <div style="font-size:9.5px;color:var(--muted);">${d.contact||'—'}${d.backupContact?'<br>📱 '+d.backupContact:''}</div>
+        <div style="font-size:13px;color:var(--muted);">${d.contact||'—'}${d.backupContact?'<br>📱 '+d.backupContact:''}</div>
       </td>
-      <td style="font-size:10px;max-width:160px;">${d.address||'—'}${d.landmark?'<br><span style="color:var(--muted);">🏠 '+d.landmark+'</span>':''}</td>
+      <td style="font-size:13px;max-width:160px;">${d.address||'—'}${d.landmark?'<br><span style="color:var(--muted);">🏠 '+d.landmark+'</span>':''}</td>
       <td style="font-size:11px;color:var(--blue);">${d.admin||'—'}</td>
       <td>
-        <span style="font-size:9.5px;font-weight:700;color:${pmColor(d.paymentMethod||'COD')};padding:2px 6px;border-radius:4px;background:rgba(74,144,217,0.08);">
+        <span style="font-size:13px;font-weight:700;color:${pmColor(d.paymentMethod||'COD')};padding:2px 6px;border-radius:4px;background:rgba(74,144,217,0.08);">
           ${pmIcon(d.paymentMethod||'COD')} ${d.paymentMethod||'COD'}
         </span>
-        ${d.trackingNumber?'<div style="font-family:monospace;font-size:9px;color:var(--blue);margin-top:2px;">🔢 '+d.trackingNumber+'</div>':''}
+        ${d.trackingNumber?'<div style="font-family:monospace;font-size:11px;color:var(--blue);margin-top:2px;">🔢 '+d.trackingNumber+'</div>':''}
       </td>
       <td style="font-size:11px;white-space:nowrap;">${d.date||'—'}</td>
       <td style="min-width:180px;">${itemsHtml}</td>
       <td style="color:var(--green);font-weight:700;white-space:nowrap;">${p(d.grandTotal||0)}</td>
       <td>
-        <span style="font-size:9.5px;font-weight:700;color:${payColor(paySt)};padding:2px 6px;border-radius:4px;background:rgba(46,204,138,0.06);">
+        <span style="font-size:13px;font-weight:700;color:${payColor(paySt)};padding:2px 6px;border-radius:4px;background:rgba(46,204,138,0.06);">
           ${paySt}
         </span>
-        <div style="font-size:9px;color:var(--muted);margin-top:2px;">${verSt}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">${verSt}</div>
       </td>
       <td style="min-width:180px;">
         <div style="font-size:11px;font-weight:700;color:var(--red);">${d.reason||'—'}</div>
-        <div style="font-size:9px;color:var(--muted);margin-top:2px;">
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">
           ⚠️ Possible fake payment / unverified
         </div>
       </td>
-      <td style="font-size:10.5px;color:var(--orange);font-weight:600;">${d.cancelledBy||'—'}</td>
-      <td style="font-size:10.5px;white-space:nowrap;">
+      <td style="font-size:13px;color:var(--orange);font-weight:600;">${d.cancelledBy||'—'}</td>
+      <td style="font-size:13px;white-space:nowrap;">
         <div>${cancelDate}</div>
-        <div style="font-size:9px;color:var(--muted);">${cancelTime}</div>
-        <div style="font-size:9px;color:${daysSince===0?'var(--green)':daysSince<=3?'var(--orange)':'var(--muted)'};">${daysLabel}</div>
+        <div style="font-size:11px;color:var(--muted);">${cancelTime}</div>
+        <div style="font-size:11px;color:${daysSince===0?'var(--green)':daysSince<=3?'var(--orange)':'var(--muted)'};">${daysLabel}</div>
       </td>
     </tr>`;
   }).join('');
@@ -13308,28 +13328,28 @@ function renderCheckerForUpdate() {
   const rows = list.map(({o,i}) => {
     const itemsHtml = (o.items||[]).map((it,ii) => {
       const isCancelled = (o.itemStatuses||{})[ii] === 'Cancelled';
-      return `<div style="font-size:10px;${isCancelled?'text-decoration:line-through;color:var(--muted);':''}">
+      return `<div style="font-size:13px;${isCancelled?'text-decoration:line-through;color:var(--muted);':''}">
         ${isCancelled?'❌':'🔹'} <strong>${it.code||'—'}</strong> ${it.desc||''} (${it.grams>0?it.grams+'g':'×'+(it.qty||1)}) = ${p(it.total||0)}
       </div>`;
     }).join('');
 
     return `<tr style="background:rgba(224,138,48,0.05);">
       <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
-      <td style="font-weight:500;">${o.name}<br><span style="font-size:9.5px;color:var(--muted);">${o.contact||'—'}</span></td>
-      <td style="font-size:10.5px;">${o.address||'—'}${o.landmark?'<br>🏠 '+o.landmark:''}</td>
+      <td style="font-weight:500;">${o.name}<br><span style="font-size:13px;color:var(--muted);">${o.contact||'—'}</span></td>
+      <td style="font-size:13px;">${o.address||'—'}${o.landmark?'<br>🏠 '+o.landmark:''}</td>
       <td style="font-size:11px;color:var(--blue);">🏍️ ${o.assignedRider||'Unassigned'}</td>
       <td style="font-size:11px;">${o.admin||'—'}</td>
       <td>${o.date}</td>
-      <td style="font-size:10px;">${itemsHtml}</td>
+      <td style="font-size:13px;">${itemsHtml}</td>
       <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
-      <td style="font-size:10.5px;color:var(--orange);">${o.riderRemarks||'<span style="color:var(--muted);">No remarks</span>'}</td>
+      <td style="font-size:13px;color:var(--orange);">${o.riderRemarks||'<span style="color:var(--muted);">No remarks</span>'}</td>
       <td>
         <div style="display:flex;gap:5px;flex-wrap:wrap;">
           ${(currentRole==='checker'||currentRole==='owner')
             ? `<button class="btn btn-green btn-sm" onclick="openReDeliverPicker(${i})">🔁 Re-Deliver</button>
                <button class="btn btn-red btn-sm" onclick="resolveUpdate(${i},'Cancelled')">✕ Cancel</button>
                <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>`
-            : `<span style="font-size:10.5px;color:var(--muted);padding:4px 8px;background:rgba(201,168,76,0.07);border-radius:6px;">🔒 View only</span>
+            : `<span style="font-size:13px;color:var(--muted);padding:4px 8px;background:rgba(201,168,76,0.07);border-radius:6px;">🔒 View only</span>
                <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>`}
         </div>
       </td>
@@ -13553,7 +13573,7 @@ function renderMergeOrderCards() {
   function orderCard(o, idx, n, label, colorVar) {
     const itemsHtml = (o.items||[]).map(it => {
       const qty = it.grams > 0 ? `${it.grams}g` : `×${it.qty||1}`;
-      return `<div style="font-size:10.5px;">🔹 <strong>${it.code||'—'}</strong> ${it.desc||''} (${qty}) = ${p(it.total||0)}</div>`;
+      return `<div style="font-size:13px;">🔹 <strong>${it.code||'—'}</strong> ${it.desc||''} (${qty}) = ${p(it.total||0)}</div>`;
     }).join('');
     // X button — always show, but only remove if >2 remain (min 2 to merge)
     const canRemove = true;
@@ -13562,7 +13582,7 @@ function renderMergeOrderCards() {
       : '';
     return `<div style="background:var(--navy);border-radius:8px;padding:12px;border:2px solid ${colorVar};">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-        <div style="font-size:10px;font-weight:700;color:${colorVar};text-transform:uppercase;letter-spacing:0.5px;">📋 Order ${label}</div>
+        <div style="font-size:13px;font-weight:700;color:${colorVar};text-transform:uppercase;letter-spacing:0.5px;">📋 Order ${label}</div>
         ${xBtn}
       </div>
       <div style="font-weight:700;font-size:13px;">${onum(idx)} — ${o.name}</div>
@@ -13630,15 +13650,15 @@ function updateMergePreview() {
   if(!el) return;
   const itemsHtml = mergedItems.map(it => {
     const qty = it.grams > 0 ? `${it.grams}g` : `×${it.qty||1}`;
-    return `<div style="font-size:10.5px;">🔹 <strong>${it.code||'—'}</strong> ${it.desc||''} (${qty}) = ${p(it.total||0)}</div>`;
+    return `<div style="font-size:13px;">🔹 <strong>${it.code||'—'}</strong> ${it.desc||''} (${qty}) = ${p(it.total||0)}</div>`;
   }).join('');
 
   el.innerHTML = `
-    <div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">✅ Merged Order Preview (${orders.length} orders)</div>
+    <div style="font-size:13px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">✅ Merged Order Preview (${orders.length} orders)</div>
     <div style="font-weight:700;font-size:13px;margin-bottom:2px;">${customerDisplay}</div>
     <div style="font-size:11px;color:var(--muted);">${contactDisplay} | ${orders[0].date}</div>
     <div style="font-size:11px;margin-top:4px;color:var(--blue);">👥 Admins: <strong>${adminDisplay||'—'}</strong></div>
-    <div style="font-size:10.5px;color:var(--muted);margin-top:2px;">
+    <div style="font-size:13px;color:var(--muted);margin-top:2px;">
       Incentive: ₱25 ÷ ${adminList.length} = <strong style="color:var(--gold);">₱${incentiveEach} each</strong>
       &nbsp;&nbsp; Rider parcel fee: <strong style="color:var(--orange);">₱10</strong> (1 parcel lang)
     </div>
