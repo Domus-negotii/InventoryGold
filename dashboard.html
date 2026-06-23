@@ -7540,8 +7540,25 @@ function renderPnl(){
     // No cost data available for this item
     return 0;
   }
-  const totalCOGS = incomeOrders.reduce((s,o)=>
-    s + (o.items||[]).reduce((is,it)=> is + calcItemCOGS(it), 0), 0);
+  // COGS must only count items that generated revenue:
+  // Exclude fully-cancelled items and For Update items (not collected).
+  // Proportionally reduce COGS for partially-cancelled items.
+  const totalCOGS = incomeOrders.reduce((s,o) => {
+    const iS  = o.itemStatuses  || {};
+    const iCQ = o.itemCancelQty || {};
+    return s + (o.items||[]).reduce((is, it, ii) => {
+      if(iS[ii] === 'Cancelled' || iS[ii] === 'Update') return is; // excluded from revenue
+      const fullCOGS = calcItemCOGS(it);
+      const cxQty = iCQ[ii] || 0;
+      if(cxQty > 0) {
+        // Partial cancel: reduce COGS proportionally
+        const totalQty = it.grams || it.qty || 1;
+        const remainRatio = Math.max(0, (totalQty - cxQty) / totalQty);
+        return is + fullCOGS * remainRatio;
+      }
+      return is + fullCOGS;
+    }, 0);
+  }, 0);
   const grossProfit = totalSales - totalCOGS;
 
   // === OPERATING EXPENSES by standard categories ===
@@ -13671,8 +13688,18 @@ function renderMergeOrderCards() {
 
 function removeMergeCard(n) {
   const indices = window._mergeGroupIndices || [_mergeIdxA, _mergeIdxB];
-  if(indices.length <= 2) { toast('⚠️ Minimum 2 orders ang kailangan para mag-merge.'); return; }
+  // Remove the card — if only 1 remains, close modal (nothing to merge)
   window._mergeGroupIndices = indices.filter((_,i) => i !== n);
+  if(window._mergeGroupIndices.length < 2) {
+    // Remove this order from the dup group so verify is unblocked
+    window._checkerDupSets = (window._checkerDupSets||[]).filter(g =>
+      !g.some(item => item.i === indices[n])
+    );
+    closeModal('modal-merge-orders');
+    toast('✅ Order removed from merge group — verify is now unblocked.');
+    try { renderChecker(); } catch(e) {}
+    return;
+  }
   _mergeIdxA = window._mergeGroupIndices[0];
   _mergeIdxB = window._mergeGroupIndices[1];
   renderMergeOrderCards();
