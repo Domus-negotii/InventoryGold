@@ -4298,10 +4298,11 @@ function _captureOtherItems(orderIdx) {
     const _capital  = Math.max(0, _price - _profit); // Capital = Price - Profit
     S.otherItems.push({
       _id:      'oi_' + Date.now() + '_' + ii + '_' + Math.random().toString(36).slice(2,6),
-      orderNum: _oNum,
-      orderIdx: orderIdx,
-      itemIdx:  ii,
-      code:     it.code  || '',
+      orderNum:     _oNum,
+      orderIdx:     orderIdx,
+      itemIdx:      ii,
+      customerName: o.name || '',
+      code:         it.code  || '',
       desc:     it.desc  || '',
       qty:      it.qty   || 1,
       grams:    it.grams || 0,
@@ -7475,11 +7476,22 @@ function renderPnl(){
 
   // === SALES (New structure: exclude shipping from Total Sales) ===
   // COD: use dateDelivered for accurate period matching; fall back to encode date
-  const codDelivered = S.orders.filter(o=>{if(!o||!o.status)return false;
+  // Build set of remitted rider+date combos — only Remitted entries count in PnL
+  // Key format: "riderName|date" for O(1) lookup
+  const _remittedKeys = new Set(
+    (S.remitLog||[])
+      .filter(e => e.remitStatus === 'Remitted')
+      .map(e => (e.riderName||'') + '|' + (e.date||''))
+  );
+  const codDelivered = S.orders.filter(o=>{
+    if(!o||!o.status) return false;
     if(o.status!=='Delivered') return false;
     if((o.paymentMethod||'COD')!=='COD') return false;
     const delivDate = o.dateDelivered || o.date;
-    return delivDate>=from && delivDate<=to;
+    if(delivDate<from || delivDate>to) return false;
+    // Only count if rider has officially remitted for this date
+    const _key = (o.assignedRider||'') + '|' + (o.date||'');
+    return _remittedKeys.has(_key);
   });
   const courierVerified = S.orders.filter(o=>o&&
     (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx') &&
@@ -10039,10 +10051,12 @@ function populateRemitParcels() {
   // Rider pays: cashbond + parcelFee (₱10/parcel) + manualBenefits
   // Net to Remit = codSubtotal - sfRider90 - cashbond - parcelFee - manualBenefits
   const sfNetRider = sfRider90; // kept for dataset compatibility
-  // Rider's Net SF = All SF minus ALL deductions (what rider actually nets from SF)
+  // Rider's Net SF = All SF minus ALL deductions (kept for display/dataset compat)
   const netSF = Math.max(0, sfRider90 - cashbond - parcelFee - manualBenefits);
-  // Net Total to Remit = Subtotal (Delivered+SF) minus Rider's Net SF
-  const netTotal = Math.max(0, codSubtotal - netSF);
+  // Net Total to Remit = COD items collected + total SF (matches saveRemit formula)
+  // Rider dashboard shows grandTotal (already net of cancels/updates).
+  // Remitter simply adds SF on top — no further deductions at remit stage.
+  const netTotal = codSubtotal + deliveredSF;
 
   // Build parcel rows — shows whole-order cancels AND per-item partial cancels
   const rows = myOrders.map((o,pi)=>{
@@ -10543,14 +10557,20 @@ function renderRemitPage() {
 
   // ── Render each rider as a SEPARATE top-level card ────────────────────────
   el.innerHTML = Object.entries(byRider).map(([riderName, entries])=>{
-    // Recompute grand totals live from actual orders (not saved entry values)
-    const _allEntryOrders = (S.orders||[]).map((o,oi)=>({...o,oi}))
-      .filter(o => o && o.assignedRider === riderName &&
-        entries.some(e => e.date === o.date));
-    const _allDel = _allEntryOrders.filter(o=>o.status==='Delivered');
-    const grandSubtotal = _allDel.reduce((s,o)=>s+_effectiveAmount(o),0);
-    const _allSF        = _allDel.reduce((s,o)=>s+(o.shipping||0),0);
-    const grandNet      = grandSubtotal + _allSF;
+    // Grand totals: sum of per-entry amounts
+    // Remitted entries → use their saved e.codSubtotal / e.netTotal (finalized)
+    // Remitting entries → live-compute from remaining orders for that date
+    const _entryAmounts = entries.map(e => {
+      if(e.remitStatus === 'Remitted') {
+        return { sub: e.codSubtotal||0, net: e.netTotal||0 };
+      }
+      const _eDel = (S.orders||[]).filter(o=>o&&o.assignedRider===riderName&&o.date===e.date&&o.status==='Delivered');
+      const _eSub = _eDel.reduce((s,o)=>s+(o.itemsTotal||o.grandTotal||0),0);
+      return { sub: _eSub, net: _eSub };
+    });
+    const grandSubtotal = _entryAmounts.reduce((s,a)=>s+a.sub,0);
+    const _allSF        = entries.reduce((s,e)=>s+(e.totalSF||0),0);
+    const grandNet      = _entryAmounts.reduce((s,a)=>s+a.net,0);
     const remittedCount = entries.filter(e=>e.remitStatus==='Remitted').length;
     const allRemitted   = remittedCount===entries.length;
     const safeId = 'rr_'+riderName.replace(/[^a-zA-Z0-9]/g,'_');
@@ -10562,13 +10582,23 @@ function renderRemitPage() {
     // For Remitted entries: orders with createdAt <= entry.remittedAt (covered by this batch)
     // For active entries (For Remittance/Remitting): all orders for that date not yet covered
     const _entryRemittedEntries = entries.filter(e => e.remitStatus==='Remitted' && e.remittedAt);
+    // Find the latest remittedAt from Remitted entries — orders after this belong to the next batch
+    const _lastRemittedAt = _entryRemittedEntries.length
+      ? _entryRemittedEntries.map(e=>e.remittedAt).sort().pop()
+      : null;
+    const _hasUnremittedEntry = entries.some(e=>e.remitStatus!=='Remitted');
     const riderOrders = (S.orders||[]).map((o,oi)=>({...o,oi}))
       .filter(o => {
         if(o.assignedRider !== riderName) return false;
         if(df && o.date !== df) return false;
         if(o.date !== entries[0]?.date && !df) {
-          // Multi-date view: include all dates that have entries
           if(!entries.some(e=>e.date===o.date)) return false;
+        }
+        // If there are Remitted entries AND an active Remitting entry:
+        // only show orders that were created AFTER the last remittedAt (new batch)
+        if(_lastRemittedAt && _hasUnremittedEntry) {
+          const _orderCreated = o.createdAt || o.date;
+          if(_orderCreated < _lastRemittedAt) return false; // belongs to previous remit
         }
         return true;
       });
@@ -10714,9 +10744,18 @@ function renderRemitPage() {
                 // these live counts reflect the real current state immediately.
                 // Financial values (codSubtotal, netTotal, etc.) remain from the
                 // saved entry — only display counts are refreshed live.
-                const _liveOrders = (S.orders||[]).filter(o=>
-                  o && o.assignedRider === e.riderName && o.date === e.date
-                );
+                // Per-entry live orders: for Remitting entries, exclude orders already remitted
+                const _prevRemittedAt = entries
+                  .filter(pe => pe.remitStatus==='Remitted' && pe.remittedAt && pe !== e)
+                  .map(pe=>pe.remittedAt).sort().pop() || null;
+                const _liveOrders = (S.orders||[]).filter(o=>{
+                  if(!o || o.assignedRider !== e.riderName || o.date !== e.date) return false;
+                  if(e.remitStatus !== 'Remitted' && _prevRemittedAt) {
+                    const _oc = o.createdAt || o.date;
+                    if(_oc < _prevRemittedAt) return false; // belongs to previous remit
+                  }
+                  return true;
+                });
                 const _liveParcels   = _liveOrders.length;
                 const _liveDelivered = _liveOrders.filter(o=>o.status==='Delivered').length;
                 const _liveCancelled = _liveOrders.filter(o=>['Cancelled','RTO','Update'].includes(o.status)).length;
@@ -10724,8 +10763,10 @@ function renderRemitPage() {
                 // This corrects old entries saved before the cancel-deduction fix
                 const _liveDelOrders = _liveOrders.filter(o=>o.status==='Delivered');
                 const _liveSF        = _liveDelOrders.reduce((s,o)=>s+(o.shipping||0),0);
-                const _liveSubtotal  = _liveDelOrders.reduce((s,o)=>s+_effectiveAmount(o),0);
-                const _liveNet       = _liveSubtotal + _liveSF;
+                // grandTotal already includes SF (grandTotal = itemsTotal + shipping)
+                // Use itemsTotal for COD subtotal, add SF separately for NET
+                const _liveSubtotal  = _liveDelOrders.reduce((s,o)=>s+(o.itemsTotal||o.grandTotal||0),0);
+                const _liveNet       = _liveSubtotal; // SF already in the amounts riders collect
                 return `<tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
                   <td style="padding:7px 10px;white-space:nowrap;text-align:left;">${e.date}</td>
                   <td style="padding:7px 6px;text-align:center;">${_liveParcels}</td>
@@ -10733,8 +10774,8 @@ function renderRemitPage() {
                   <td style="padding:7px 6px;text-align:center;color:${_liveCancelled>0?'var(--red)':'var(--muted)'};">${_liveCancelled}</td>
                   <td style="padding:7px 10px;text-align:right;">${p(e.totalSF||0)}</td>
                   <td style="padding:7px 10px;text-align:right;color:var(--red);">-${p(e.sf10||0)}</td>
-                  <td style="padding:7px 10px;text-align:right;color:var(--blue);font-weight:600;">${p(_liveSubtotal)}</td>
-                  <td style="padding:7px 10px;text-align:right;color:var(--gold);font-weight:700;">${p(_liveNet)}</td>
+                  <td style="padding:7px 10px;text-align:right;color:var(--blue);font-weight:600;">${p(e.remitStatus==='Remitted' ? (e.codSubtotal||_liveSubtotal) : _liveSubtotal)}</td>
+                  <td style="padding:7px 10px;text-align:right;color:var(--gold);font-weight:700;">${p(e.remitStatus==='Remitted' ? (e.netTotal||_liveNet) : _liveNet)}</td>
                   <td style="padding:7px 10px;font-weight:600;color:${statusColor(st)};white-space:nowrap;text-align:left;">${statusIcon(st)} ${st}</td>
                   <td style="padding:7px 10px;text-align:left;">
                     <div style="display:flex;gap:4px;">
@@ -11247,6 +11288,7 @@ function renderOtherItemsPage() {
       : '';
     return '<tr>'
       + '<td style="font-size:11px;font-weight:700;color:var(--blue);white-space:nowrap;">' + r.code + _badge + '</td>'
+      + '<td style="font-size:11px;white-space:nowrap;">' + (r.customerName||'—') + '</td>'
       + '<td style="font-size:11px;">' + (r.desc||'—') + '</td>'
       + '<td style="font-size:11px;text-align:center;white-space:nowrap;min-width:70px;">' + _qtyLabel + '</td>'
       + '<td style="font-size:11px;text-align:right;white-space:nowrap;">' + p(_pricePerUnit) + '</td>'
@@ -11278,6 +11320,7 @@ function renderOtherItemsPage() {
     + '<table style="width:100%;border-collapse:collapse;font-size:14px;table-layout:auto;">'
     + '<thead><tr style="color:var(--gold);font-size:13px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid var(--navy-border);">'
     + '<th style="padding:8px 8px;text-align:left;white-space:nowrap;">Serial Code</th>'
+    + '<th style="padding:8px 8px;text-align:left;white-space:nowrap;">Customer</th>'
     + '<th style="padding:8px 8px;text-align:left;">Description</th>'
     + '<th style="padding:8px 8px;text-align:center;white-space:nowrap;">QTY / G</th>'
     + '<th style="padding:8px 8px;text-align:right;white-space:nowrap;">Price<br><span style="font-size:11px;font-weight:400;color:var(--muted);">per QTY/G</span></th>'
@@ -11289,7 +11332,7 @@ function renderOtherItemsPage() {
     + '</tr></thead>'
     + '<tbody>' + rows + '</tbody>'
     + '<tfoot><tr style="border-top:2px solid var(--navy-border);font-weight:700;font-size:14px;">'
-    + '<td colspan="3" style="padding:8px 8px;color:var(--muted);">TOTAL (' + items.length + ' items)</td>'
+    + '<td colspan="4" style="padding:8px 8px;color:var(--muted);">TOTAL (' + items.length + ' items)</td>'
     + '<td colspan="2"></td>'
     + '<td style="padding:8px 8px;text-align:right;color:var(--muted);">' + p(_totCapital) + '</td>'
     + '<td style="padding:8px 8px;text-align:right;color:var(--green);">' + p(_totItemsTotal) + '</td>'
@@ -12629,7 +12672,10 @@ function renderCodDelivPage() {
     const reason = tab==='ForUpdate'
       ? (o.updateReason||o.riderNote||o.paymentNotes||'Needs rider update')
       : (o.cancelReason||o.rtoReason||'—');
-    const itemsList = (o.items||[]).map(it=>it.grams>0?`${it.desc||it.code} ${it.grams}g`:`${it.desc||it.code} ×${it.qty||1}`).join(', ');
+    const itemsList = (o.items||[]).map(it=>{
+      const _sc = it.code ? '['+it.code+'] ' : '';
+      return it.grams>0 ? (_sc+(it.desc||it.code)+' '+it.grams+'g') : (_sc+(it.desc||it.code)+' x'+(it.qty||1));
+    }).join(', ');
     // Req#1: For Update tab — check if this order's rider+date is officially Remitted
     const _isRemitted = tab==='ForUpdate' && (S.remitLog||[]).some(r=>
       r.riderName === o.assignedRider && r.date === o.date && r.remitStatus === 'Remitted'
