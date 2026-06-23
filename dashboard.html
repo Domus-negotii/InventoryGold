@@ -893,6 +893,18 @@ function _mergeOrders(fbOrders, localOrders) {
     if (localO.itemStatuses && Object.keys(localO.itemStatuses).length > 0) {
       merged.itemStatuses = {...(fbO.itemStatuses||{}), ...localO.itemStatuses};
     }
+    // Merge itemCancelQty, itemRemarks, oiItemQty, oiItemStatus:
+    // Firebase wins (other device may have more recent values).
+    // Local only wins if Firebase doesn't have the field yet (write in-flight).
+    ['itemCancelQty','itemRemarks','oiItemQty','oiItemStatus'].forEach(field => {
+      if (fbO[field] && Object.keys(fbO[field]).length > 0) {
+        // Firebase has data — merge: Firebase base + local override
+        merged[field] = {...(fbO[field]||{}), ...(localO[field]||{})};
+      } else if (localO[field] && Object.keys(localO[field]).length > 0) {
+        // Only local has data — keep local (write still in-flight)
+        merged[field] = localO[field];
+      }
+    });
     // checkerStatus: trust local ONLY within a 15-second write-grace window after
     // this device performed a verify/unverify action (write may still be in-flight).
     // After that window — or on any OTHER device that never acted — Firebase wins,
@@ -11614,8 +11626,26 @@ function startAutoRefresh(){
         const localOnly = localArr.filter(e => e && e._id && !fbById.has(e._id));
         // Filter out entries that were deleted locally (even if Firebase still has them)
         const fbFiltered = fbArr.filter(e => !e?._id || !_deadRemitIds.has(e._id));
-        // For otherItems: local capital edits win over Firebase (capital is user-entered)
-        const merged = [...fbFiltered.map(e => (e&&e._id&&localById.has(e._id)) ? localById.get(e._id) : e), ...localOnly];
+        // otherItems: smart field-level merge
+        // status → Firebase wins (lifecycle: verify→product, deliver→remitted, cancel→cancelled)
+        // capitalPerUnit, profit → local wins (user-edited on this device, may be in-flight)
+        // all other fields → Firebase wins (canonical)
+        const merged = [...fbFiltered.map(e => {
+          if(!e || !e._id || !localById.has(e._id)) return e;
+          const loc = localById.get(e._id);
+          if(key === 'otherItems') {
+            return {
+              ...e,                          // Firebase base (all fields)
+              // Local overrides for user-edited fields only:
+              capitalPerUnit: loc.capitalPerUnit !== undefined ? loc.capitalPerUnit : e.capitalPerUnit,
+              profit:         loc.profit         !== undefined ? loc.profit         : e.profit,
+              // status: Firebase wins (other device may have moved it)
+              status: e.status || loc.status,
+            };
+          }
+          // For remitLog/stockLog/etc: local wins (preserves edits in-flight)
+          return loc;
+        }), ...localOnly];
         S[key] = merged;
       });
       // Once Firebase confirms the deletes (next SAR after write), clear the deleted set
