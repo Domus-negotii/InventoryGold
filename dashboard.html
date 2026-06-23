@@ -2724,15 +2724,19 @@ function _showRulesHint() {
       <!-- Fix price mode rows -->
       <div class="form-group inv-fixprice-row" style="display:none;">
         <label>Fix Price (₱) per unit</label>
-        <input type="number" class="form-control" id="inv-fixprice" value="0.00" step="0.01" onkeydown="invNextField(event,this)" onwheel="return false;">
+        <input type="number" class="form-control" id="inv-fixprice" value="0.00" step="0.01" oninput="calcInv()" onkeydown="invNextField(event,this)" onwheel="return false;">
       </div>
       <div class="form-group inv-fixprice-row" style="display:none;">
         <label>Capital / Cost per unit (₱)</label>
-        <input type="number" class="form-control" id="inv-capital-fix" value="0.00" step="0.01" onkeydown="invNextField(event,this)" placeholder="Cost price per unit" onwheel="return false;">
+        <input type="number" class="form-control" id="inv-capital-fix" value="0.00" step="0.01" oninput="calcInv()" onkeydown="invNextField(event,this)" placeholder="Cost price per unit" onwheel="return false;">
       </div>
       <div class="form-group inv-fixprice-row" style="display:none;">
         <label>Quantity *</label>
-        <input type="number" class="form-control" id="inv-qty" value="0" min="0" onkeydown="invNextField(event,this)" onwheel="return false;">
+        <input type="number" class="form-control" id="inv-qty" value="0" min="0" oninput="calcInv()" onkeydown="invNextField(event,this)" onwheel="return false;">
+      </div>
+      <div class="form-group inv-fixprice-row" style="display:none;">
+        <label>Unit Value (auto)</label>
+        <input class="form-control" id="inv-unitval-fix" readonly style="background:rgba(201,168,76,0.08);color:var(--gold);" placeholder="Fix Price × Quantity">
       </div>
     </div>
     <input type="hidden" id="inv-edit-idx" value="">
@@ -3999,6 +4003,7 @@ function renderChecker(){
     });
     // ── Duplicate detection (fuzzy name, same contact, or same address + date) ──
     const dupSets = detectDuplicates(list);
+    window._checkerDupSets = dupSets; // expose globally so verifyOrder can check
 
     // Show duplicate alert banner
     const dupBanner = document.getElementById('checker-dup-banner');
@@ -4399,6 +4404,17 @@ function assignRiderFromChecker(orderIdx, riderName) {
 function verifyOrder(i){
   // GUARD: null-check order exists before any inventory/status mutation
   if(!S.orders[i]) { console.warn('[GOE] verifyOrder: invalid index', i); return; }
+  // GUARD: block verify if order is in a detected merge group
+  // Checker must merge or dismiss the duplicate alert before verifying.
+  const _dupSets = window._checkerDupSets || [];
+  const _myOrderNum = onum(i);
+  const _inDupGroup = _dupSets.some(group =>
+    group.some(item => onum(item.i) === _myOrderNum)
+  );
+  if(_inDupGroup) {
+    toast('⚠️ Hindi pwedeng i-verify — na-detect na DUPLICATE ang order na ito. I-MERGE muna o alisin sa merge group bago mag-verify.');
+    return;
+  }
   // Guard: prevent double-click during in-progress verify/unverify
   if(window._verifyBusy) { toast('⏳ Please wait...'); return; }
   window._verifyBusy = true;
@@ -6561,8 +6577,13 @@ function openAddInvModal() {
   setTimeout(()=>document.getElementById('inv-code')?.focus(), 120);
 }
 function calcInv(){
-  const g=+document.getElementById('inv-grams').value||0,pg=+document.getElementById('inv-pergram').value||0;
+  // Grams mode: Unit Value = grams × per gram
+  const g=+document.getElementById('inv-grams').value||0, pg=+document.getElementById('inv-pergram').value||0;
   const uv=document.getElementById('inv-unitval'); if(uv) uv.value=p(g*pg);
+  // Fix Price mode: Unit Value = fix price × qty
+  const fp=parseFloat(document.getElementById('inv-fixprice')?.value)||0;
+  const qty=+document.getElementById('inv-qty')?.value||0;
+  const uvf=document.getElementById('inv-unitval-fix'); if(uvf) uvf.value=p(fp*qty);
 }
 function openEditInv(i){
   const it=S.inventory[i];
@@ -8603,6 +8624,18 @@ function renderRiderParcels() {
       const itemRemarks = o.itemRemarks || {};
       const itemRemark = itemRemarks[ii] || '';
 
+      // OI-prefix detection for FPG/PGS/PGG/FPS/FPW
+      const _itmCode   = (it.code||'').toUpperCase().trim();
+      const _oiPrefix  = typeof _getOiPrefix === 'function' ? _getOiPrefix(_itmCode) : null;
+      // FPG/FPS/FPW → price per qty unit; PGS/PGG → price per gram
+      const _isQtyBased= ['FPG','FPS','FPW'].includes(_oiPrefix);
+      const _isGramBased= ['PGS','PGG'].includes(_oiPrefix);
+      const _priceLabel= _isQtyBased ? 'Price/qty' : _isGramBased ? 'Price/gram' : '';
+      // OI qty/grams input value (stored in o.oiItemQty)
+      const _oiQtyStore = (o.oiItemQty || {})[ii] !== undefined ? (o.oiItemQty||{})[ii] : (isGramsItem ? it.grams : (it.qty||1));
+      // OI item status (stored in o.oiItemStatus)
+      const _oiSt      = (o.oiItemStatus || {})[ii] || 'Pending';
+
       return `<tr style="background:rgba(15,27,45,0.7);${isCancelledItem?'opacity:0.65;':''}">
         <td colspan="2" style="padding:4px 10px 4px 28px;font-size:10.5px;">
           ${isCancelledItem?'❌':'🔹'} <strong style="color:${isCancelledItem?'var(--red)':'var(--white)'};">${it.code||'—'}</strong>
@@ -8639,6 +8672,24 @@ function renderRiderParcels() {
             <input class="form-control" style="width:130px;font-size:9.5px;padding:2px 5px;margin-top:2px;border-color:var(--orange);"
               placeholder="Cancel reason..." value="${itemRemark}"
               onblur="riderSaveItemRemark(${o.idx},${ii},this.value)">` : ''}
+            ${_oiPrefix ? `
+            <div style="margin-top:5px;padding:5px 7px;background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.2);border-radius:5px;">
+              <div style="font-size:9px;color:var(--gold);font-weight:700;margin-bottom:4px;">📦 ${_oiPrefix} Item</div>
+              <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+                <select style="font-size:9.5px;padding:2px 5px;background:var(--navy);color:var(--white);border:1px solid var(--navy-border);border-radius:4px;"
+                  onchange="riderOiItemStatus(${o.idx},${ii},this.value)">
+                  <option${_oiSt==='Pending'?' selected':''}>Pending</option>
+                  <option${_oiSt==='Delivered'?' selected':''}>Delivered</option>
+                  <option${_oiSt==='Cancelled'?' selected':''}>Cancelled</option>
+                </select>
+                <div style="display:flex;align-items:center;gap:3px;">
+                  <span style="font-size:9px;color:var(--muted);">${_priceLabel} qty:</span>
+                  <input type="number" min="0" step="${_isGramBased?'0.01':'1'}" value="${_oiQtyStore}"
+                    style="width:60px;font-size:10px;padding:2px 4px;border-radius:4px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);"
+                    onchange="riderOiItemQty(${o.idx},${ii},this.value)" onwheel="return false;">
+                </div>
+              </div>
+            </div>` : ''}
           </div>
         </td>
         <td colspan="4" style="font-size:9.5px;color:${stColor};font-weight:700;">
@@ -8788,6 +8839,29 @@ function riderSaveRemarks(orderIdx, remarks) {
   S.orders[orderIdx].riderRemarks = remarks;
   save();
 }
+function riderOiItemStatus(orderIdx, itemIdx, newStatus) {
+  // Rider sets status for an OI-prefix item (FPG/PGS/PGG/FPS/FPW)
+  const o = S.orders[orderIdx];
+  if(!o) return;
+  if(!o.oiItemStatus) o.oiItemStatus = {};
+  o.oiItemStatus[itemIdx] = newStatus;
+  // Sync to S.otherItems
+  const _oNum = onum(orderIdx);
+  if(newStatus === 'Delivered') _syncOiPrefixStatus(orderIdx, 'remitted');
+  else if(newStatus === 'Cancelled') _syncOiPrefixStatus(orderIdx, 'cancelled');
+  save();
+  renderRiderParcels();
+}
+
+function riderOiItemQty(orderIdx, itemIdx, val) {
+  // Rider sets the qty/grams for an OI-prefix item
+  const o = S.orders[orderIdx];
+  if(!o) return;
+  if(!o.oiItemQty) o.oiItemQty = {};
+  o.oiItemQty[itemIdx] = parseFloat(val)||0;
+  save();
+}
+
 function riderSaveItemRemark(orderIdx, itemIdx, remark) {
   if(!S.orders[orderIdx]) return;
   if(!S.orders[orderIdx].itemRemarks) S.orders[orderIdx].itemRemarks = {};
