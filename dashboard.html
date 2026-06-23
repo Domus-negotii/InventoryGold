@@ -10250,9 +10250,23 @@ function saveRemit() {
     .filter(o=>o.assignedRider===rider.name && o.date===date);
   const delivered   = myOrders.filter(o=>o.status==='Delivered');
   const cancelled   = myOrders.filter(o=>['Cancelled','RTO','Update'].includes(o.status));
-  // COD Subtotal: Delivered only — only completed deliveries count
+  // COD Subtotal: Delivered only — deduct fully/partially cancelled items
+  const _remitEffective = (o) => {
+    const iS  = o.itemStatuses  || {};
+    const iCQ = o.itemCancelQty || {};
+    return (o.items||[]).reduce((s, it, ii) => {
+      if(iS[ii] === 'Cancelled') return s;
+      const cxQty = iCQ[ii] || 0;
+      if(cxQty > 0) {
+        const totalQty = it.grams || it.qty || 1;
+        const ppu = (it.total||0) / Math.max(1, totalQty);
+        return s + Math.max(0, (it.total||0) - ppu * cxQty);
+      }
+      return s + (it.total||0);
+    }, 0);
+  };
   const deliveredSF = delivered.reduce((s,o)=>s+(o.shipping||0),0);
-  const codSubtotal = delivered.reduce((s,o)=>s+(o.grandTotal||0),0);
+  const codSubtotal = delivered.reduce((s,o)=>s+_remitEffective(o),0);
   const sf10        = deliveredSF * 0.10;
   const sfRider90   = deliveredSF * 0.90;
   const cashbond    = 100;
