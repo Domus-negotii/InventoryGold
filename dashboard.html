@@ -8916,13 +8916,25 @@ function riderItemStatus(orderIdx, itemIdx, newStatus) {
     const _isNowOut    = (normalizedStatus === 'Cancelled' || normalizedStatus === 'Update');
     const _wasOut      = (prevStatus       === 'Cancelled' || prevStatus       === 'Update');
     if(_isNowOut && !_wasOut) {
-      // Deduct from order total — item no longer collectible (Cancelled OR For Update)
-      order.itemsTotal = Math.max(0, (order.itemsTotal||0) - itemVal);
-      order.grandTotal = Math.max(0, (order.grandTotal||0) - itemVal);
+      // Deduct from order total — but subtract only what hasn't been deducted yet
+      // by riderItemPartialCancel (which already deducted cancelled qty × ppu).
+      // This prevents double-deduction when cancel qty input triggers full cancel.
+      const _alreadyCancelledQty = (order.itemCancelQty||{})[itemIdx] || 0;
+      const _totalQty = item.grams || item.qty || 1;
+      const _alreadyDeducted = (_alreadyCancelledQty / _totalQty) * itemVal;
+      const _remainToDeduct  = Math.max(0, itemVal - _alreadyDeducted);
+      order.itemsTotal = Math.max(0, (order.itemsTotal||0) - _remainToDeduct);
+      order.grandTotal = Math.max(0, (order.grandTotal||0) - _remainToDeduct);
       const _label = normalizedStatus === 'Update' ? 'For Update' : 'Cancelled';
-      toast(`${normalizedStatus==='Update'?'🔄':'❌'} Item ${_label} — ${p(itemVal)} deducted from order total.`);
+      if(_remainToDeduct > 0) {
+        toast(`${normalizedStatus==='Update'?'🔄':'❌'} Item ${_label} — ${p(_remainToDeduct)} deducted from order total.`);
+      } else {
+        toast(`${normalizedStatus==='Update'?'🔄':'❌'} Item ${_label} — already deducted via cancel qty.`);
+      }
     } else if(_wasOut && !_isNowOut) {
       // Restore — add back to order total
+      // Also clear any partial cancel qty since item is being restored
+      if(order.itemCancelQty) order.itemCancelQty[itemIdx] = 0;
       order.itemsTotal = (order.itemsTotal||0) + itemVal;
       order.grandTotal = (order.grandTotal||0) + itemVal;
       toast(`✅ Item restored — ${p(itemVal)} added back to order total.`);
