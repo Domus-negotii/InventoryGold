@@ -8662,7 +8662,7 @@ function renderRiderParcels() {
                   <option${itemSt==='For Update'?' selected':''}>For Update</option>
               </select>`
             }
-            ${!isCancelledItem && totalQty > 1 && !isGramsItem ? `
+            ${!isCancelledItem && totalQty > 1 && (!isGramsItem || _isQtyBasedQL) ? `
             <div style="display:flex;align-items:center;gap:3px;margin-top:2px;">
               <span style="font-size:9px;color:var(--muted);">Cancel qty:</span>
               <input type="number" min="0" max="${remainQty}" step="${isGramsItem?0.01:1}"
