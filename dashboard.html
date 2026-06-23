@@ -7502,20 +7502,9 @@ function renderPnl(){
   // TOTAL SALES = Item Sales (excluding OI-prefix items) + (Remitted SF x 10%)
   // Effective items total per order: exclude fully/partially cancelled item amounts
   // This ensures PnL matches Daily Sales actual collected amounts
-  const _pnlEffective = (o) => {
-    const iS  = o.itemStatuses  || {};
-    const iCQ = o.itemCancelQty || {};
-    return (o.items||[]).reduce((s, it, ii) => {
-      if(iS[ii] === 'Cancelled') return s; // fully cancelled
-      const cxQty = iCQ[ii] || 0;
-      if(cxQty > 0) {
-        const totalQty = it.grams || it.qty || 1;
-        const ppu = (it.total||0) / Math.max(1, totalQty);
-        return s + Math.max(0, (it.total||0) - ppu * cxQty);
-      }
-      return s + (it.total||0);
-    }, 0);
-  };
+  // _pnlEffective: grandTotal already reflects cancelled/update deductions from rider.
+  // Use it directly — don't re-subtract items again.
+  const _pnlEffective = (o) => o.grandTotal || 0;
   const totalItemsSales = incomeOrders.reduce((s,o)=>s+_pnlEffective(o)-_oiPrefixTotal(o),0);
   const totalDiscountsAll = incomeOrders.reduce((s,o)=>s+(parseFloat(o.totalDiscount)||0),0);
   // SF 10% Company revenue = sum of sf10 from ALL remit log entries in date range
@@ -8645,19 +8634,10 @@ function renderRiderParcels() {
     const itemStatuses = o.itemStatuses || {};
     // Compute active (non-cancelled) items total
     const itemCancelQty = o.itemCancelQty || {};
-    // For Update order = rider doesn't collect yet → ₱0 (same as Cancelled)
+    // grandTotal is already reduced by riderItemStatus for cancelled/update items.
+    // For Update ORDER (whole order): ₱0. Otherwise: use grandTotal directly.
     const _orderIsUpdate = o.status === 'Update';
-    const activeItemsTotal = _orderIsUpdate ? 0 : (o.items||[]).reduce((s,it,ii) => {
-      if(itemStatuses[ii] === 'Cancelled') return s; // fully cancelled
-      const cxQty = itemCancelQty[ii] || 0;
-      if(cxQty > 0) {
-        // partial cancel: subtract cancelled portion
-        const totalQty = it.grams || it.qty || 1;
-        const ppu = (it.total||0) / Math.max(1, totalQty);
-        return s + Math.max(0, (it.total||0) - ppu * cxQty);
-      }
-      return s + (it.total||0);
-    }, 0);
+    const activeItemsTotal = _orderIsUpdate ? 0 : (o.grandTotal || 0);
     const cancelledCount = (o.items||[]).filter((_,ii) => itemStatuses[ii] === 'Cancelled').length;
 
     const itemRowsHtml = (o.items||[]).map((it,ii) => {
@@ -8933,13 +8913,16 @@ function riderItemStatus(orderIdx, itemIdx, newStatus) {
   const item = order.items[itemIdx];
   if(item) {
     const itemVal = item.total || 0;
-    if(normalizedStatus === 'Cancelled' && prevStatus !== 'Cancelled') {
-      // Adjust order total only — inventory stays deducted until Return Log is pressed
+    const _isNowOut    = (normalizedStatus === 'Cancelled' || normalizedStatus === 'Update');
+    const _wasOut      = (prevStatus       === 'Cancelled' || prevStatus       === 'Update');
+    if(_isNowOut && !_wasOut) {
+      // Deduct from order total — item no longer collectible (Cancelled OR For Update)
       order.itemsTotal = Math.max(0, (order.itemsTotal||0) - itemVal);
       order.grandTotal = Math.max(0, (order.grandTotal||0) - itemVal);
-      toast(`❌ Item cancelled — ${p(itemVal)} deducted from order total.`);
-    } else if(prevStatus === 'Cancelled' && normalizedStatus !== 'Cancelled') {
-      // Un-cancel — add back to order total only
+      const _label = normalizedStatus === 'Update' ? 'For Update' : 'Cancelled';
+      toast(`${normalizedStatus==='Update'?'🔄':'❌'} Item ${_label} — ${p(itemVal)} deducted from order total.`);
+    } else if(_wasOut && !_isNowOut) {
+      // Restore — add back to order total
       order.itemsTotal = (order.itemsTotal||0) + itemVal;
       order.grandTotal = (order.grandTotal||0) + itemVal;
       toast(`✅ Item restored — ${p(itemVal)} added back to order total.`);
@@ -10295,20 +10278,9 @@ function saveRemit() {
   const delivered   = myOrders.filter(o=>o.status==='Delivered');
   const cancelled   = myOrders.filter(o=>['Cancelled','RTO','Update'].includes(o.status));
   // COD Subtotal: Delivered only — deduct fully/partially cancelled items
-  const _remitEffective = (o) => {
-    const iS  = o.itemStatuses  || {};
-    const iCQ = o.itemCancelQty || {};
-    return (o.items||[]).reduce((s, it, ii) => {
-      if(iS[ii] === 'Cancelled') return s;
-      const cxQty = iCQ[ii] || 0;
-      if(cxQty > 0) {
-        const totalQty = it.grams || it.qty || 1;
-        const ppu = (it.total||0) / Math.max(1, totalQty);
-        return s + Math.max(0, (it.total||0) - ppu * cxQty);
-      }
-      return s + (it.total||0);
-    }, 0);
-  };
+  // _remitEffective: grandTotal is already reduced by rider actions (cancel/update).
+  // Trust it directly — do not re-subtract cancelled items here (double deduction).
+  const _remitEffective = (o) => o.grandTotal || 0;
   const deliveredSF = delivered.reduce((s,o)=>s+(o.shipping||0),0);
   const codSubtotal = delivered.reduce((s,o)=>s+_remitEffective(o),0);
   const sf10        = deliveredSF * 0.10;
@@ -10491,21 +10463,12 @@ function renderRemitPage() {
 
   // ── Effective amount helper (defined once, used throughout) ────────────────
   // grandTotal minus fully/partially cancelled items — what rider actually collected
+  // _effectiveAmount: grandTotal is already reduced by riderItemStatus when rider
+  // cancels or marks For Update. Do NOT re-subtract [Cx] items here — that causes
+  // double deduction. Trust grandTotal as the clean, already-adjusted value.
   const _effectiveAmount = (o) => {
     if(o.status === 'Cancelled' || o.status === 'RTO') return 0;
-    const iS  = o.itemStatuses||{};
-    const iCQ = o.itemCancelQty||{};
-    let cancelled = 0;
-    (o.items||[]).forEach((it, ii) => {
-      if(iS[ii] === 'Cancelled') {
-        cancelled += (it.total||0);
-      } else if(iCQ[ii] > 0) {
-        const totalQty = it.grams||it.qty||1;
-        const ppu = (it.total||0) / Math.max(1, totalQty);
-        cancelled += ppu * iCQ[ii];
-      }
-    });
-    return Math.max(0, (o.grandTotal||0) - cancelled);
+    return o.grandTotal || 0; // already clean — riderItemStatus already deducted
   };
 
   if(!filteredLog.length){
@@ -14041,5 +14004,4 @@ document.addEventListener('visibilitychange', async ()=>{
 });
 </script>
 </body>
-  
 </html>
