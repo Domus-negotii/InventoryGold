@@ -7439,10 +7439,22 @@ function renderPnl(){
     (o.dateOfPayment||'').slice(0,10)>=from && (o.dateOfPayment||'').slice(0,10)<=to);
   const incomeOrders = [...codDelivered, ...courierVerified];
 
+  // ── OI-PREFIX EXCLUSION ────────────────────────────────────────────────────
+  // Items with FPG/PGS/PGG/FPS/FPW serial numbers are tracked in Other Items tab.
+  // Their sale amounts must NOT appear in PnL — they are off-book transactions.
+  // Compute the total of OI-prefix items per order and subtract from sales.
+  function _oiPrefixTotal(order) {
+    return (order.items||[]).reduce((s, it) => {
+      const _code = (it.code||'').toUpperCase().trim();
+      const _isOI = typeof _getOiPrefix === 'function' && _getOiPrefix(_code);
+      return _isOI ? s + (it.total||0) : s;
+    }, 0);
+  }
+
   // TOTAL SALES = grandTotal (items + shipping - discounts) = what customer actually paid
   // This matches Dashboard revenue and Daily Sales figures exactly
-  // TOTAL SALES = Item Sales + (Remitted SF x 10%)
-  const totalItemsSales = incomeOrders.reduce((s,o)=>s+(o.itemsTotal||0),0);
+  // TOTAL SALES = Item Sales (excluding OI-prefix items) + (Remitted SF x 10%)
+  const totalItemsSales = incomeOrders.reduce((s,o)=>s+(o.itemsTotal||0)-_oiPrefixTotal(o),0);
   const totalDiscountsAll = incomeOrders.reduce((s,o)=>s+(parseFloat(o.totalDiscount)||0),0);
   // SF 10% Company revenue = sum of sf10 from ALL remit log entries in date range
   // Uses same logic as Riders Remit "Total Company Cut" card (grandAllSF10)
