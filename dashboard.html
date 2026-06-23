@@ -4220,15 +4220,19 @@ function updatePaymentNotes(orderIdx, notes) {
   S.orders[orderIdx].paymentNotes = notes;
   save();
 }
-// ── OTHER ITEMS CAPTURE — PROTECTED ────────────────────────────────────────
-// Called on verify. Scans order items: any with FP/PG prefix OR not in inventory
-// → added to S.otherItems as status='product'. Never affects PnL.
 // ═══════════════════════════════════════════════════════════════════════════
-// ── OTHER ITEMS PREFIX TABLE ──────────────────────────────────────────────
-// Specific serial prefixes that go to Other Items tab.
-// defaultProfit = profit per gram (for grams items) or per unit (for fix-price items)
-// Capital = Price - Profit (auto-computed, NOT user-entered)
-// Profit = defaultProfit × qty/grams (editable by user)
+// _captureOtherItems — PROTECTED. Called ONLY from verifyOrder + updateVerifStatus.
+// Adds FPG/PGS/PGG/FPS/FPW items to S.otherItems with status='product'.
+// Status NEVER based on order.status — always starts as 'product'.
+// Corresponding cleanup: unverifyOrder + updateVerifStatus remove entries on unverify.
+// ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// OTHER ITEMS PREFIX TABLE — PROTECTED
+// Add new prefixes here. Format: PREFIX: defaultProfitPerUnit
+// These prefixes are EXCLUDED from PnL (renderPnl uses _getOiPrefix to skip them).
+// Lifecycle: Verify → product | Delivered → remitted | Cancelled → cancelled
+// DO NOT add non-OI items here. DO NOT change without updating _getOiPrefix.
+// ═══════════════════════════════════════════════════════════════════════════
 const _OI_PREFIXES = {
   FPG: 320,  // per gram
   PGS: 50,   // per gram
@@ -4245,6 +4249,7 @@ function _getOiPrefix(code) {
   return null;
 }
 
+// PROTECTED — call only from verifyOrder / updateVerifStatus
 function _captureOtherItems(orderIdx) {
   if(!S.orders[orderIdx]) return;
   const o     = S.orders[orderIdx];
@@ -4537,9 +4542,10 @@ function unverifyOrder(i){
     const _nonRevertable=['Drop off at LBC','Drop off at EMS','Drop off at FedEx','Out for Delivery','Delivered','RTO'];
     if(!_nonRevertable.includes(S.orders[i].lbcStatus)) S.orders[i].lbcStatus = 'Preparing';
   }
-  // ── OTHER ITEMS: remove entries for this order on unverify ────────────────
-  // When checker un-verifies, the items disappear from Other Items Products tab.
-  // If rider later re-delivers or cancels, they'll be re-added by _syncOiPrefixStatus.
+  // ── OTHER ITEMS CLEANUP ON UNVERIFY ─────────────────────────────────────────
+  // RULE: unverify removes ALL otherItems for this order (clean slate).
+  // Re-verify will re-add them as 'product'. Rider deliver/cancel re-adds via _syncOiPrefixStatus.
+  // This prevents stale 'product' entries from persisting after unverify.
   if(S.otherItems && S.otherItems.length) {
     const _uNum = onum(i);
     S.otherItems = S.otherItems.filter(r => r.orderNum !== _uNum);
@@ -7439,10 +7445,12 @@ function renderPnl(){
     (o.dateOfPayment||'').slice(0,10)>=from && (o.dateOfPayment||'').slice(0,10)<=to);
   const incomeOrders = [...codDelivered, ...courierVerified];
 
-  // ── OI-PREFIX EXCLUSION ────────────────────────────────────────────────────
-  // Items with FPG/PGS/PGG/FPS/FPW serial numbers are tracked in Other Items tab.
-  // Their sale amounts must NOT appear in PnL — they are off-book transactions.
-  // Compute the total of OI-prefix items per order and subtract from sales.
+  // ═══ OI-PREFIX EXCLUSION — DO NOT REMOVE ══════════════════════════════════
+  // FPG/PGS/PGG/FPS/FPW items are off-book — tracked in Other Items tab only.
+  // Their amounts MUST be excluded from PnL to avoid double-counting.
+  // _oiPrefixTotal() uses _getOiPrefix() which reads _OI_PREFIXES — single source of truth.
+  // If new prefixes are added to _OI_PREFIXES, they are automatically excluded here.
+  // ═══════════════════════════════════════════════════════════════════════════
   function _oiPrefixTotal(order) {
     return (order.items||[]).reduce((s, it) => {
       const _code = (it.code||'').toUpperCase().trim();
@@ -10084,11 +10092,12 @@ function calcRemit() { populateRemitParcels(); }
 // ── OTHER ITEMS STATUS SYNC ─────────────────────────────────────────────────
 // Call _syncOtherItemStatus(orderNum, newStatus) when an order's items are
 // cancelled or remitted so S.otherItems reflects the current state.
-// ── OTHER ITEMS PREFIX SYNC ─────────────────────────────────────────────────
-// Syncs all FPG/PGS/PGG/FPS/FPW items in an order to the correct Other Items tab.
-// newStatus: 'cancelled' → Cancelled tab | 'remitted' → Sales tab
-// Guards: never overwrites 'cancelled' with 'remitted'
-// CALL FROM: any place where an order or item reaches Delivered or Cancelled.
+// ═══════════════════════════════════════════════════════════════════════════
+// _syncOiPrefixStatus — CALL FROM EVERY Delivered/Cancelled action.
+// 'cancelled' → Other Items Cancelled tab | 'remitted' → Other Items Sales tab
+// GUARD: once 'cancelled', never overwritten to 'remitted'.
+// REQUIRED call sites: _confirmDelivered, codDelivCancelOrder, riderUpdateStatus, riderItemStatus
+// ═══════════════════════════════════════════════════════════════════════════
 function _syncOiPrefixStatus(orderIdx, newStatus) {
   const _o = S.orders[orderIdx];
   if(!_o) return;
@@ -11006,11 +11015,12 @@ function renderOtherItemsPage() {
   const _dfToRaw   = (document.getElementById('oi-date-to')?.value||'').trim();
   const _dfFrom    = typeof mdy2ymd === 'function' ? mdy2ymd(_dfFromRaw) : _dfFromRaw;
   const _dfTo      = typeof mdy2ymd === 'function' ? mdy2ymd(_dfToRaw)   : _dfToRaw;
-  // STATUS RULE (strict — no auto-healing from order status):
-  // 'product'  → set by _captureOtherItems on Checker Verify
-  // 'remitted' → set by _syncOiPrefixStatus when rider marks Delivered
-  // 'cancelled'→ set by _syncOiPrefixStatus when rider marks Cancelled
-  // Status is managed ONLY by explicit rider/checker actions. Never auto-inferred.
+  // ═══ STATUS RULE — STRICT, DO NOT ADD AUTO-HEALING ════════════════════════
+  // 'product'   → _captureOtherItems on Checker Verify (ONLY entry point)
+  // 'remitted'  → _syncOiPrefixStatus('remitted') on Delivered
+  // 'cancelled' → _syncOiPrefixStatus('cancelled') on Cancelled
+  // Status NEVER inferred from order.status on render — that caused wrong-tab bugs.
+  // ═══════════════════════════════════════════════════════════════════════════
 
   const items = (S.otherItems||[]).filter(r => {
     if(r.status !== _oiTab) return false;
