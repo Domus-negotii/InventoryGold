@@ -4256,6 +4256,7 @@ const _OI_PREFIXES = {
   PGG: 200,  // per gram
   FPS: 150,  // per gram
   FPW: 240,  // per gram
+  _FPGP_GENERIC: 100, // generic FP/PG prefix (any FP* or PG* not in list above) → profit 100
 };
 
 function _getOiPrefix(code) {
@@ -4263,6 +4264,8 @@ function _getOiPrefix(code) {
   for(const prefix of Object.keys(_OI_PREFIXES)) {
     if(c.startsWith(prefix)) return prefix;
   }
+  // Generic FP/PG prefix detection (not one of the known 5) → default profit 100
+  if(c.startsWith('FP') || c.startsWith('PG')) return '_FPGP_GENERIC';
   return null;
 }
 
@@ -4282,13 +4285,10 @@ function _captureOtherItems(orderIdx) {
     // Check if entry already exists
     const _existIdx = S.otherItems.findIndex(r => r.orderNum === _oNum && r.itemIdx === ii);
     if(_existIdx >= 0) {
-      // Entry exists — if it was wrongly moved to remitted/cancelled but order is active,
-      // reset it to 'product' (re-verify = fresh start in Products tab)
-      const _ex = S.otherItems[_existIdx];
-      if(_ex.status !== 'product') {
-        _ex.status = 'product'; // re-verified → back to Products
-      }
-      return; // don't create duplicate
+      // Entry exists — preserve 'cancelled' and 'remitted' statuses (rider already acted)
+      // Only reset to 'product' if the status was 'product' already (no-op)
+      // Do NOT reset cancelled → product or remitted → product on re-verify
+      return; // don't create duplicate or overwrite lifecycle status
     }
     // Compute default profit: defaultProfitPerUnit × qty or grams
     const _defaultProfitPerUnit = _prefix ? _OI_PREFIXES[_prefix] : 0;
@@ -7495,7 +7495,23 @@ function renderPnl(){
   // TOTAL SALES = grandTotal (items + shipping - discounts) = what customer actually paid
   // This matches Dashboard revenue and Daily Sales figures exactly
   // TOTAL SALES = Item Sales (excluding OI-prefix items) + (Remitted SF x 10%)
-  const totalItemsSales = incomeOrders.reduce((s,o)=>s+(o.itemsTotal||0)-_oiPrefixTotal(o),0);
+  // Effective items total per order: exclude fully/partially cancelled item amounts
+  // This ensures PnL matches Daily Sales actual collected amounts
+  const _pnlEffective = (o) => {
+    const iS  = o.itemStatuses  || {};
+    const iCQ = o.itemCancelQty || {};
+    return (o.items||[]).reduce((s, it, ii) => {
+      if(iS[ii] === 'Cancelled') return s; // fully cancelled
+      const cxQty = iCQ[ii] || 0;
+      if(cxQty > 0) {
+        const totalQty = it.grams || it.qty || 1;
+        const ppu = (it.total||0) / Math.max(1, totalQty);
+        return s + Math.max(0, (it.total||0) - ppu * cxQty);
+      }
+      return s + (it.total||0);
+    }, 0);
+  };
+  const totalItemsSales = incomeOrders.reduce((s,o)=>s+_pnlEffective(o)-_oiPrefixTotal(o),0);
   const totalDiscountsAll = incomeOrders.reduce((s,o)=>s+(parseFloat(o.totalDiscount)||0),0);
   // SF 10% Company revenue = sum of sf10 from ALL remit log entries in date range
   // Uses same logic as Riders Remit "Total Company Cut" card (grandAllSF10)
@@ -8624,7 +8640,9 @@ function renderRiderParcels() {
     const itemStatuses = o.itemStatuses || {};
     // Compute active (non-cancelled) items total
     const itemCancelQty = o.itemCancelQty || {};
-    const activeItemsTotal = (o.items||[]).reduce((s,it,ii) => {
+    // For Update order = rider doesn't collect yet → ₱0 (same as Cancelled)
+    const _orderIsUpdate = o.status === 'Update';
+    const activeItemsTotal = _orderIsUpdate ? 0 : (o.items||[]).reduce((s,it,ii) => {
       if(itemStatuses[ii] === 'Cancelled') return s; // fully cancelled
       const cxQty = itemCancelQty[ii] || 0;
       if(cxQty > 0) {
@@ -10496,8 +10514,14 @@ function renderRemitPage() {
 
   // ── Render each rider as a SEPARATE top-level card ────────────────────────
   el.innerHTML = Object.entries(byRider).map(([riderName, entries])=>{
-    const grandSubtotal = entries.reduce((s,e)=>s+(e.codSubtotal||e.subtotal||0),0);
-    const grandNet      = entries.reduce((s,e)=>s+(e.netTotal||e.netEarn||0),0);
+    // Recompute grand totals live from actual orders (not saved entry values)
+    const _allEntryOrders = (S.orders||[]).map((o,oi)=>({...o,oi}))
+      .filter(o => o && o.assignedRider === riderName &&
+        entries.some(e => e.date === o.date));
+    const _allDel = _allEntryOrders.filter(o=>o.status==='Delivered');
+    const grandSubtotal = _allDel.reduce((s,o)=>s+_effectiveAmount(o),0);
+    const _allSF        = _allDel.reduce((s,o)=>s+(o.shipping||0),0);
+    const grandNet      = grandSubtotal + _allSF;
     const remittedCount = entries.filter(e=>e.remitStatus==='Remitted').length;
     const allRemitted   = remittedCount===entries.length;
     const safeId = 'rr_'+riderName.replace(/[^a-zA-Z0-9]/g,'_');
@@ -10685,6 +10709,12 @@ function renderRemitPage() {
                 const _liveParcels   = _liveOrders.length;
                 const _liveDelivered = _liveOrders.filter(o=>o.status==='Delivered').length;
                 const _liveCancelled = _liveOrders.filter(o=>['Cancelled','RTO','Update'].includes(o.status)).length;
+                // Recompute COD subtotal live from actual orders (not saved e.codSubtotal)
+                // This corrects old entries saved before the cancel-deduction fix
+                const _liveDelOrders = _liveOrders.filter(o=>o.status==='Delivered');
+                const _liveSF        = _liveDelOrders.reduce((s,o)=>s+(o.shipping||0),0);
+                const _liveSubtotal  = _liveDelOrders.reduce((s,o)=>s+_effectiveAmount(o),0);
+                const _liveNet       = _liveSubtotal + _liveSF;
                 return `<tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
                   <td style="padding:7px 10px;white-space:nowrap;text-align:left;">${e.date}</td>
                   <td style="padding:7px 6px;text-align:center;">${_liveParcels}</td>
@@ -10692,8 +10722,8 @@ function renderRemitPage() {
                   <td style="padding:7px 6px;text-align:center;color:${_liveCancelled>0?'var(--red)':'var(--muted)'};">${_liveCancelled}</td>
                   <td style="padding:7px 10px;text-align:right;">${p(e.totalSF||0)}</td>
                   <td style="padding:7px 10px;text-align:right;color:var(--red);">-${p(e.sf10||0)}</td>
-                  <td style="padding:7px 10px;text-align:right;color:var(--blue);font-weight:600;">${p(e.codSubtotal||e.subtotal||0)}</td>
-                  <td style="padding:7px 10px;text-align:right;color:var(--gold);font-weight:700;">${p(e.netTotal||e.netEarn||0)}</td>
+                  <td style="padding:7px 10px;text-align:right;color:var(--blue);font-weight:600;">${p(_liveSubtotal)}</td>
+                  <td style="padding:7px 10px;text-align:right;color:var(--gold);font-weight:700;">${p(_liveNet)}</td>
                   <td style="padding:7px 10px;font-weight:600;color:${statusColor(st)};white-space:nowrap;text-align:left;">${statusIcon(st)} ${st}</td>
                   <td style="padding:7px 10px;text-align:left;">
                     <div style="display:flex;gap:4px;">
