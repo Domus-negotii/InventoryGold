@@ -10241,6 +10241,7 @@ function saveRemit() {
     .filter(o=>o.assignedRider===rider.name && o.date===date);
   const delivered   = myOrders.filter(o=>o.status==='Delivered');
   const cancelled   = myOrders.filter(o=>['Cancelled','RTO','Update'].includes(o.status));
+  // COD Subtotal: Delivered only — only completed deliveries count
   const deliveredSF = delivered.reduce((s,o)=>s+(o.shipping||0),0);
   const codSubtotal = delivered.reduce((s,o)=>s+(o.grandTotal||0),0);
   const sf10        = deliveredSF * 0.10;
@@ -10564,7 +10565,7 @@ function renderRemitPage() {
     return `<div class="card" style="margin-bottom:14px;">
       <!-- ── Rider Header (click to expand/collapse) ── -->
       <div class="card-header" style="cursor:pointer;user-select:none;" onclick="toggleRemitRider('${safeId}')">
-        <span class="card-title" style="font-size:14px;">
+        <span class="card-title" style="font-size:18px;font-weight:700;">
           🏍️ ${riderName}
           <span id="${safeId}_arrow" style="font-size:11px;color:var(--muted);margin-left:8px;">▶</span>
         </span>
