@@ -8698,7 +8698,7 @@ function renderRiderParcels() {
                 <option${itemSt==='Pending'?' selected':''}>Pending</option>
                 <option${itemSt==='Delivered'?' selected':''}>Delivered</option>
                 <option${itemSt==='Cancelled'?' selected':''}>Cancelled (All)</option>
-                  <option${itemSt==='For Update'?' selected':''}>For Update</option>
+                  <option${(itemSt==='For Update'||itemSt==='Update')?' selected':''}>For Update</option>
               </select>`
             }
             ${(totalQty > 1 && !isGramsItem) || (totalQty > 1 && _isQtyBasedQL) || _isQtyBasedQL ? `
@@ -8904,7 +8904,10 @@ function riderItemStatus(orderIdx, itemIdx, newStatus) {
   if(!order.itemStatuses) order.itemStatuses = {};
 
   // Normalize status value ("Cancelled (All)" → "Cancelled")
-  const normalizedStatus = newStatus.startsWith('Cancelled') ? 'Cancelled' : newStatus;
+  // Normalize: "Cancelled (All)" → "Cancelled", "For Update" → "Update"
+  const normalizedStatus = newStatus.startsWith('Cancelled') ? 'Cancelled'
+                         : newStatus === 'For Update' ? 'Update'
+                         : newStatus;
   const prevStatus = order.itemStatuses[itemIdx] || 'Pending';
   if(prevStatus === normalizedStatus) return;
 
