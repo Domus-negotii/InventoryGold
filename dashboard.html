@@ -2703,19 +2703,19 @@ function _showRulesHint() {
         <label>Description *</label>
         <input class="form-control" id="inv-desc" onkeydown="invNextField(event,this)">
       </div>
-      <!-- Row 4: Grams + Per Gram (grams mode) -->
+      <!-- Row 4: Grams + Capital (matches Fix Price layout: price | capital) -->
       <div class="form-group inv-grams-row">
         <label>Grams (total in stock) *</label>
         <input type="number" class="form-control" id="inv-grams" value="0" oninput="calcInv()" onkeydown="invNextField(event,this)" onwheel="return false;">
       </div>
       <div class="form-group inv-grams-row">
-        <label>Price Per Gram (₱)</label>
-        <input type="number" class="form-control" id="inv-pergram" value="0.00" step="0.01" oninput="calcInv()" onkeydown="invNextField(event,this)" onwheel="return false;">
-      </div>
-      <!-- Row 5: Capital + Unit Value (grams mode) -->
-      <div class="form-group inv-grams-row">
         <label>Capital / Cost per gram (₱)</label>
         <input type="number" class="form-control" id="inv-capital-gram" value="0.00" step="0.01" oninput="calcInv()" onkeydown="invNextField(event,this)" placeholder="Cost price per gram" onwheel="return false;">
+      </div>
+      <!-- Row 5: Price Per Gram + Unit Value (matches Fix Price layout: qty | unit value) -->
+      <div class="form-group inv-grams-row">
+        <label>Price Per Gram (₱)</label>
+        <input type="number" class="form-control" id="inv-pergram" value="0.00" step="0.01" oninput="calcInv()" onkeydown="invNextField(event,this)" onwheel="return false;">
       </div>
       <div class="form-group inv-grams-row">
         <label>Unit Value (auto)</label>
@@ -8678,24 +8678,6 @@ function renderRiderParcels() {
             <input class="form-control" style="width:130px;font-size:9.5px;padding:2px 5px;margin-top:2px;border-color:var(--orange);"
               placeholder="Cancel reason..." value="${itemRemark}"
               onblur="riderSaveItemRemark(${o.idx},${ii},this.value)">` : ''}
-            ${_oiPrefix ? `
-            <div style="margin-top:5px;padding:5px 7px;background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.2);border-radius:5px;">
-              <div style="font-size:9px;color:var(--gold);font-weight:700;margin-bottom:4px;">📦 ${_oiPrefix} Item</div>
-              <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
-                <select style="font-size:9.5px;padding:2px 5px;background:var(--navy);color:var(--white);border:1px solid var(--navy-border);border-radius:4px;"
-                  onchange="riderOiItemStatus(${o.idx},${ii},this.value)">
-                  <option${_oiSt==='Pending'?' selected':''}>Pending</option>
-                  <option${_oiSt==='Delivered'?' selected':''}>Delivered</option>
-                  <option${_oiSt==='Cancelled'?' selected':''}>Cancelled</option>
-                </select>
-                <div style="display:flex;align-items:center;gap:3px;">
-                  <span style="font-size:9px;color:var(--muted);">${_priceLabel} qty:</span>
-                  <input type="number" min="0" step="${_isGramBased?'0.01':'1'}" value="${_oiQtyStore}"
-                    style="width:60px;font-size:10px;padding:2px 4px;border-radius:4px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);"
-                    onchange="riderOiItemQty(${o.idx},${ii},this.value)" onwheel="return false;">
-                </div>
-              </div>
-            </div>` : ''}
           </div>
         </td>
         <td colspan="4" style="font-size:9.5px;color:${stColor};font-weight:700;">
