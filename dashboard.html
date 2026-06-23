@@ -792,7 +792,7 @@ window.loadFromFirebase = async function() {
     // These crash EVERY downstream consumer (renderChecker, _mergeOrders, filters).
     // Clean at the single point of entry so all consumers are protected.
     if(Array.isArray(data.orders)) {
-      data.orders = data.orders.filter(o => o && typeof o === 'object' && o.status);
+      data.orders = data.orders.filter(o => o && typeof o === 'object' && o.status) // NULL GUARD — do not remove;
     }
     // Status migration for old records
     const SM={'In Transit':'Preparing','Delivering':'Out for Delivery','For Return':'Update','Returned':'Cancelled'};
@@ -890,6 +890,11 @@ function _mergeOrders(fbOrders, localOrders) {
     if (localO.itemInventoryRestored && Object.keys(localO.itemInventoryRestored).length > 0) {
       merged.itemInventoryRestored = {...(fbO.itemInventoryRestored||{}), ...localO.itemInventoryRestored};
     }
+    // ═══ CROSS-DEVICE MERGE BARRIER ═══════════════════════════════════════════
+    // Firebase base ({...fbO}) is spread first — all Firebase fields come through.
+    // Local overrides only for: itemStatuses, itemCancelQty, itemRemarks, oiItemQty, oiItemStatus
+    // BARRIER: Do NOT add new local-win overrides without understanding sync implications.
+    // ═══════════════════════════════════════════════════════════════════════════
     if (localO.itemStatuses && Object.keys(localO.itemStatuses).length > 0) {
       merged.itemStatuses = {...(fbO.itemStatuses||{}), ...localO.itemStatuses};
     }
@@ -4269,7 +4274,15 @@ function _getOiPrefix(code) {
   return null;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// _captureOtherItems — PROTECTED ENTRY POINT
+// CALL ONLY FROM: verifyOrder, updateVerifStatus
+// BARRIER: isVerified:true set here — unverified items never appear in tabs
+// BARRIER: customerName stored for Other Items display
+// BARRIER: status always 'product' — never inferred from order status
+// BARRIER: existing entries have isVerified restored, NOT status reset
 // PROTECTED — call only from verifyOrder / updateVerifStatus
+// ═══════════════════════════════════════════════════════════════════════════
 function _captureOtherItems(orderIdx) {
   if(!S.orders[orderIdx]) return;
   const o     = S.orders[orderIdx];
@@ -4422,6 +4435,18 @@ function verifyOrder(i){
   if(!S.orders[i]) { console.warn('[GOE] verifyOrder: invalid index', i); return; }
   // GUARD: block verify if order is in a detected merge group
   // Checker must merge or dismiss the duplicate alert before verifying.
+  // ═══ MERGE BLOCK BARRIER ══════════════════════════════════════════════════
+  // BARRIER: _mergeGroupDismissed persists across renderChecker() re-renders.
+  // WHY: renderChecker() rebuilds _checkerDupSets via detectDuplicates() — clearing
+  //      _checkerDupSets directly is immediately overwritten.
+  // RULE: Add order to _mergeGroupDismissed (not clear _checkerDupSets) to unblock.
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ═══ VERIFY ORDER MERGE GUARD ══════════════════════════════════════════════
+  // Two-layer check: (1) dismissal set (X button pressed) → skip block.
+  // (2) _checkerDupSets (detected duplicates) → block with toast.
+  // _mergeGroupDismissed persists across renderChecker() re-renders.
+  // Cleared by confirmMerge() after successful merge.
+  // ═══════════════════════════════════════════════════════════════════════════
   // Check dismissal set — orders explicitly removed via X button skip the block
   if(!window._mergeGroupDismissed) window._mergeGroupDismissed = new Set();
   const _myOrderNum = onum(i);
@@ -5749,7 +5774,7 @@ function sortDrop(e, colEl) {
   if(S.orders[idx].assignedRider === newRider) return; // no change
   S.orders[idx].assignedRider = newRider;
   // ═══════════════════════════════════════════════════════════════════
-  // STATUS LOCK — DO NOT ADD STATUS CHANGES HERE.
+  // STATUS LOCK — DO NOT ADD STATUS CHANGES HERE — STATUS LOCK — GUARDED SECTION.
   // Status escalations (Preparing→Ready→OFD→Delivered) happen ONLY in:
   //   COD Tracking (riderUpdateStatus) / LBC-EMS-FedEx (lbcdUpdateStatus etc.)
   // Adding status logic to drag-and-drop or dropdown reassign is a BUG.
@@ -5775,7 +5800,7 @@ function sortReassign(orderIdx, encodedRider) {
   if(S.orders[orderIdx].assignedRider === newRider) return; // no change
   S.orders[orderIdx].assignedRider = newRider;
   // ═══════════════════════════════════════════════════════════════════
-  // STATUS LOCK — DO NOT ADD STATUS CHANGES HERE. See sortDrop comment.
+  // STATUS LOCK — DO NOT ADD STATUS CHANGES HERE — STATUS LOCK — GUARDED SECTION. See sortDrop comment.
   // ═══════════════════════════════════════════════════════════════════
   save();
   renderSorting();
@@ -7476,6 +7501,11 @@ function renderPnl(){
 
   // === SALES (New structure: exclude shipping from Total Sales) ===
   // COD: use dateDelivered for accurate period matching; fall back to encode date
+  // ═══ PnL REMITTED FILTER GUARD — DO NOT REMOVE ════════════════════════════
+  // PnL only counts orders whose rider+date has a Remitted remitLog entry.
+  // This ensures PnL reflects actual collected & officially remitted revenue only.
+  // Key format: "riderName|date" for O(1) lookup across all orders.
+  // ═══════════════════════════════════════════════════════════════════════════
   // Build set of remitted rider+date combos — only Remitted entries count in PnL
   // Key format: "riderName|date" for O(1) lookup
   const _remittedKeys = new Set(
@@ -7499,7 +7529,7 @@ function renderPnl(){
     (o.dateOfPayment||'').slice(0,10)>=from && (o.dateOfPayment||'').slice(0,10)<=to);
   const incomeOrders = [...codDelivered, ...courierVerified];
 
-  // ═══ OI-PREFIX EXCLUSION — DO NOT REMOVE ══════════════════════════════════
+  // ═══ OI-PREFIX EXCLUSION — DO NOT REMOVE — PERMANENT GUARD ═════════════════
   // FPG/PGS/PGG/FPS/FPW items are off-book — tracked in Other Items tab only.
   // Their amounts MUST be excluded from PnL to avoid double-counting.
   // _oiPrefixTotal() uses _getOiPrefix() which reads _OI_PREFIXES — single source of truth.
@@ -7556,6 +7586,11 @@ function renderPnl(){
     // No cost data available for this item
     return 0;
   }
+  // ═══ PnL COGS GUARD — DO NOT REMOVE ═══════════════════════════════════════
+  // COGS must match revenue: exclude Cancelled and For Update items.
+  // Including their cost when they're excluded from revenue inflates the loss.
+  // Partial cancels: reduce COGS proportionally (remainRatio = remaining/total).
+  // ═══════════════════════════════════════════════════════════════════════════
   // COGS must only count items that generated revenue:
   // Exclude fully-cancelled items and For Update items (not collected).
   // Proportionally reduce COGS for partially-cancelled items.
@@ -8667,10 +8702,11 @@ function renderRiderParcels() {
     const itemStatuses = o.itemStatuses || {};
     // Compute active (non-cancelled) items total
     const itemCancelQty = o.itemCancelQty || {};
-    // grandTotal is already reduced by riderItemStatus for cancelled/update items.
-    // For Update ORDER (whole order): ₱0. Otherwise: use grandTotal directly.
+    // BARRIER: grandTotal is already reduced by riderItemStatus/riderItemPartialCancel.
+    // DO NOT re-subtract cancelled/update items here — that causes double deduction.
+    // For Update ORDER (whole order status): ₱0. Otherwise: trust grandTotal.
     const _orderIsUpdate = o.status === 'Update';
-    const activeItemsTotal = _orderIsUpdate ? 0 : (o.grandTotal || 0);
+    const activeItemsTotal = _orderIsUpdate ? 0 : (o.grandTotal || 0); // GUARDED — do not add item-level loop here
     const cancelledCount = (o.items||[]).filter((_,ii) => itemStatuses[ii] === 'Cancelled').length;
 
     const itemRowsHtml = (o.items||[]).map((it,ii) => {
@@ -8930,13 +8966,34 @@ function riderSaveItemRemark(orderIdx, itemIdx, remark) {
   save();
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// riderItemStatus — GUARDED FUNCTION
+// RULE: grandTotal is THE SINGLE SOURCE OF TRUTH for order amounts.
+// BARRIER: _alreadyCancelledQty prevents double-deduction when cancel qty
+//          input (riderItemPartialCancel) and status dropdown both fire.
+// BARRIER: 'For Update' normalizes to 'Update' before any comparison.
+// DO NOT add deductions outside of this function's _isNowOut/_wasOut logic.
+// ═══════════════════════════════════════════════════════════════════════════
 function riderItemStatus(orderIdx, itemIdx, newStatus) {
+// ═══════════════════════════════════════════════════════════════════════════
+// riderItemPartialCancel — PARTIAL CANCEL DEDUCTION GUARD
+// FORMULA: deducts DIFF only (newCancelAmt - prevCancelAmt) to prevent double-deduction.
+// Mutates o.grandTotal directly — downstream code must trust grandTotal as clean.
+// ═══════════════════════════════════════════════════════════════════════════
   const order = S.orders[orderIdx];
   if(!order) return;
   // Direct save — status applies immediately on selection, no guards or dialogs.
   if(!order.itemStatuses) order.itemStatuses = {};
 
   // Normalize status value ("Cancelled (All)" → "Cancelled")
+// ═══════════════════════════════════════════════════════════════════════════
+// riderItemStatus — ITEM DEDUCTION GUARD
+// STATUS FLOW: Pending → Cancelled/Update → deducts from grandTotal ONCE.
+// _alreadyCancelledQty check prevents double-deduction when cancel qty input
+// already deducted part/all of the item amount.
+// RESTORE: Cancelled/Update → Pending → adds back to grandTotal.
+// "For Update" string normalized to "Update" internally.
+// ═══════════════════════════════════════════════════════════════════════════
   // Normalize: "Cancelled (All)" → "Cancelled", "For Update" → "Update"
   const normalizedStatus = newStatus.startsWith('Cancelled') ? 'Cancelled'
                          : newStatus === 'For Update' ? 'Update'
@@ -9022,6 +9079,11 @@ function riderItemStatus(orderIdx, itemIdx, newStatus) {
 }
 
 // Partial cancel: cancel specific qty from a multi-qty item
+// ═══════════════════════════════════════════════════════════════════════════
+// riderItemPartialCancel — GUARDED FUNCTION
+// BARRIER: Only deducts the DIFF (newDeducted - prevDeducted) from grandTotal.
+// Never deducts the full amount — prevents double-deduction with riderItemStatus.
+// ═══════════════════════════════════════════════════════════════════════════
 function riderItemPartialCancel(orderIdx, itemIdx, cancelQtyStr, totalQty, isGrams) {
   const order = S.orders[orderIdx];
   if(!order) return;
@@ -10053,6 +10115,10 @@ function populateRemitParcels() {
   const sfNetRider = sfRider90; // kept for dataset compatibility
   // Rider's Net SF = All SF minus ALL deductions (kept for display/dataset compat)
   const netSF = Math.max(0, sfRider90 - cashbond - parcelFee - manualBenefits);
+  // ═══ MODAL FORMULA GUARD — must match saveRemit formula exactly ══════════
+  // netTotal = codSubtotal + deliveredSF (items collected + SF)
+  // DO NOT change to codSubtotal - netSF (that was the old wrong formula).
+  // ═══════════════════════════════════════════════════════════════════════════
   // Net Total to Remit = COD items collected + total SF (matches saveRemit formula)
   // Rider dashboard shows grandTotal (already net of cancels/updates).
   // Remitter simply adds SF on top — no further deductions at remit stage.
@@ -10247,6 +10313,12 @@ function calcRemit() { populateRemitParcels(); }
 // Call _syncOtherItemStatus(orderNum, newStatus) when an order's items are
 // cancelled or remitted so S.otherItems reflects the current state.
 // ═══════════════════════════════════════════════════════════════════════════
+// _syncOiPrefixStatus — LIFECYCLE LOCK
+// CALL FROM: _confirmDelivered (NOT — Delivered stays product until Remitted),
+//            codDelivCancelOrder, riderUpdateStatus (Cancelled only), riderItemStatus
+// BARRIER: 'cancelled' status is terminal — never overwritten to 'remitted'
+// BARRIER: 'remitted' only set by saveRemit via _syncOtherItemStatus
+// ═══════════════════════════════════════════════════════════════════════════
 // _syncOiPrefixStatus — CALL FROM EVERY Delivered/Cancelled action.
 // 'cancelled' → Other Items Cancelled tab | 'remitted' → Other Items Sales tab
 // GUARD: once 'cancelled', never overwritten to 'remitted'.
@@ -10292,6 +10364,11 @@ function _syncOiPrefixStatus(orderIdx, newStatus) {
 }
 
 function _syncOtherItemStatus(orderNum, newStatus) {
+  // ═══ _syncOtherItemStatus LIFECYCLE GUARD ══════════════════════════════════
+  // ONLY called from saveRemit when remitStatus = 'Remitted'.
+  // Rules: isVerified=false → skip | cancelled → never overwrite | only product→remitted.
+  // DO NOT call from any other location or with any other newStatus value.
+  // ═══════════════════════════════════════════════════════════════════════════
   // Called from saveRemit when remitter officially saves.
   // Rules: cancelled stays cancelled; only 'product' items move to 'remitted'
   if(!S.otherItems) return;
@@ -10328,6 +10405,12 @@ function saveRemit() {
   const delivered   = myOrders.filter(o=>o.status==='Delivered');
   const cancelled   = myOrders.filter(o=>['Cancelled','RTO','Update'].includes(o.status));
   // COD Subtotal: Delivered only — deduct fully/partially cancelled items
+  // ═══ REMIT COMPUTATION GUARD — DO NOT MODIFY ═════════════════════════════
+  // FORMULA: netTotal = codSubtotal + deliveredSF
+  // grandTotal is trusted directly (already net of cancels/updates).
+  // _remitEffective returns o.grandTotal — no re-subtraction of cancelled items.
+  // Double deduction was the original bug. This formula is intentionally simple.
+  // ═══════════════════════════════════════════════════════════════════════════
   // _remitEffective: grandTotal is already reduced by rider actions (cancel/update).
   // Trust it directly — do not re-subtract cancelled items here (double deduction).
   const _remitEffective = (o) => o.grandTotal || 0;
@@ -10339,8 +10422,12 @@ function saveRemit() {
   const parcelFee   = delivered.length * 10;
   const netSF       = Math.max(0, sfRider90 - cashbond - parcelFee - manualBenefits);
   // Net to Remit = COD items collected + total SF collected
-  // Rider hands over everything: items + SF (no deductions at remit stage)
-  const netTotal    = codSubtotal + deliveredSF;
+  // ═══ NET TO REMIT FORMULA — LOCKED ═══════════════════════════════════════
+  // RULE: Net = COD items (grandTotal already net of cancels) + SF collected
+  // BARRIER: Do NOT subtract cashbond/parcelFee/rider SF — display-only figures
+  // BARRIER: _remitEffective trusts grandTotal directly (no re-subtraction)
+  // MATCHES: populateRemitParcels and renderRemitPage _liveNet formulas
+  const netTotal    = codSubtotal + deliveredSF; // LOCKED
 
   const entry = {
     _id: _uuid(), // required for SAR _id-based merge to prevent race condition wipe
@@ -10513,6 +10600,11 @@ function renderRemitPage() {
 
   // ── Effective amount helper (defined once, used throughout) ────────────────
   // grandTotal minus fully/partially cancelled items — what rider actually collected
+  // ═══ _effectiveAmount GUARD — DO NOT MOVE OR DUPLICATE ════════════════════
+  // Defined at TOP of renderRemitPage so it's in scope for ALL uses:
+  // grandSubtotal, _liveSubtotal, and _entryAmounts computations.
+  // Moving it inside a .map() callback causes ReferenceError (was the original crash).
+  // ═══════════════════════════════════════════════════════════════════════════
   // _effectiveAmount: grandTotal is already reduced by riderItemStatus when rider
   // cancels or marks For Update. Do NOT re-subtract [Cx] items here — that causes
   // double deduction. Trust grandTotal as the clean, already-adjusted value.
@@ -10582,6 +10674,13 @@ function renderRemitPage() {
     // For Remitted entries: orders with createdAt <= entry.remittedAt (covered by this batch)
     // For active entries (For Remittance/Remitting): all orders for that date not yet covered
     const _entryRemittedEntries = entries.filter(e => e.remitStatus==='Remitted' && e.remittedAt);
+    // ═══ REMIT BATCH SPLIT GUARD ═══════════════════════════════════════════════
+    // When rider has 2+ remit entries on same date (1 Remitted + 1 Remitting):
+    // Orders are split by createdAt vs _lastRemittedAt timestamp.
+    // Orders before _lastRemittedAt → Remitted batch (use saved e.codSubtotal).
+    // Orders after _lastRemittedAt → Remitting batch (live computed).
+    // DO NOT remove _lastRemittedAt logic — it prevents all orders showing in both rows.
+    // ═══════════════════════════════════════════════════════════════════════════
     // Find the latest remittedAt from Remitted entries — orders after this belong to the next batch
     const _lastRemittedAt = _entryRemittedEntries.length
       ? _entryRemittedEntries.map(e=>e.remittedAt).sort().pop()
@@ -11232,6 +11331,12 @@ function renderOtherItemsPage() {
   const _dfToRaw   = (document.getElementById('oi-date-to')?.value||'').trim();
   const _dfFrom    = typeof mdy2ymd === 'function' ? mdy2ymd(_dfFromRaw) : _dfFromRaw;
   const _dfTo      = typeof mdy2ymd === 'function' ? mdy2ymd(_dfToRaw)   : _dfToRaw;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // OTHER ITEMS STATUS RULE — STRICT BARRIER — DO NOT ADD AUTO-HEALING
+  // BARRIER: isVerified=false items are ALWAYS hidden (no exceptions)
+  // BARRIER: Status NEVER inferred from order.status (causes wrong-tab bugs)
+  // BARRIER: tab filter is strict: r.status !== _oiTab
+  // ═══════════════════════════════════════════════════════════════════════════
   // ═══ STATUS RULE — STRICT, DO NOT ADD AUTO-HEALING ════════════════════════
   // 'product'   → _captureOtherItems on Checker Verify (ONLY entry point)
   // 'remitted'  → _syncOiPrefixStatus('remitted') on Delivered
