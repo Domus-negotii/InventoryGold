@@ -10686,8 +10686,8 @@ function renderRemitPage() {
   }
 
   // ── Grand Total Net bar ───────────────────────────────────────────────────
-  const grandAllNet  = filteredLog.reduce((s,e)=>s+(e.codSubtotal||e.netTotal||e.netEarn||0),0);
-  const grandAllSub  = filteredLog.reduce((s,e)=>s+(e.codSubtotal||e.subtotal||0),0);
+  const grandAllNet  = filteredLog.reduce((s,e)=>s+(e.netTotal||e.codSubtotal||e.netEarn||0),0);
+  const grandAllSub  = filteredLog.reduce((s,e)=>s+(e.codSubtotal||0)+(e.totalSF||0),0); // items+SF
   const grandAllSF10 = Math.round(filteredLog.reduce((s,e)=>s+(e.sf10||0),0)*100)/100;
   const grandPending = filteredLog.filter(e=>(e.remitStatus||'For Remittance')!=='Remitted').length;
   const totEl = document.getElementById('remit-page-total-net');
@@ -10719,7 +10719,7 @@ function renderRemitPage() {
     // Remitting entries → live-compute from remaining orders for that date
     const _entryAmounts = entries.map(e => {
       if(e.remitStatus === 'Remitted') {
-        return { sub: e.codSubtotal||0, net: e.netTotal||e.codSubtotal||0 };
+        return { sub: (e.codSubtotal||0) + (e.totalSF||0), net: e.netTotal||e.codSubtotal||0 };
       }
       const _eDel = (S.orders||[]).filter(o=>o&&o.assignedRider===riderName&&o.date===e.date&&o.status==='Delivered');
       // Recompute items from item rows (same as rider dashboard)
@@ -10735,7 +10735,7 @@ function renderRemitPage() {
       const _eSF90  = _eSF * 0.90;
       const _eNetSF = Math.max(0, _eSF90 - 100 - _eDel.length * 10);
       const _eNet   = Math.max(0, (_eSub + _eSF) - _eNetSF);
-      return { sub: _eSub, net: _eNet };
+      return { sub: _eSub + _eSF, net: _eNet }; // sub = items+SF for COD SUBTOTAL column
     });
     const grandSubtotal = _entryAmounts.reduce((s,a)=>s+a.sub,0);
     const _allSF        = entries.reduce((s,e)=>s+(e.totalSF||0),0);
@@ -10963,8 +10963,8 @@ function renderRemitPage() {
                   <td style="padding:7px 6px;text-align:center;color:${_liveCancelled>0?'var(--red)':'var(--muted)'};">${_liveCancelled}</td>
                   <td style="padding:7px 10px;text-align:right;">${p(e.totalSF||0)}</td>
                   <td style="padding:7px 10px;text-align:right;color:var(--red);">-${p(e.sf10||0)}</td>
-                  <td style="padding:7px 10px;text-align:right;color:var(--blue);font-weight:600;">${p(e.remitStatus==='Remitted' ? (e.codSubtotal||_liveSubtotal) : _liveSubtotal)}</td>
-                  <td style="padding:7px 10px;text-align:right;color:var(--gold);font-weight:700;">${p(e.remitStatus==='Remitted' ? (e.codSubtotal||_liveNet) : _liveNet)}</td>
+                  <td style="padding:7px 10px;text-align:right;color:var(--blue);font-weight:600;">${p(e.remitStatus==='Remitted' ? (e.codSubtotal||(_liveSubtotal+_liveSF)) : (_liveSubtotal+_liveSF))}</td>
+                  <td style="padding:7px 10px;text-align:right;color:var(--gold);font-weight:700;">${p(e.remitStatus==='Remitted' ? (e.netTotal||e.codSubtotal||_liveNet) : _liveNet)}</td>
                   <td style="padding:7px 10px;font-weight:600;color:${statusColor(st)};white-space:nowrap;text-align:left;">${statusIcon(st)} ${st}</td>
                   <td style="padding:7px 10px;text-align:left;">
                     <div style="display:flex;gap:4px;">
