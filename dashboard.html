@@ -7562,7 +7562,7 @@ function renderPnl(){
       .reduce((s,e)=>s+(e.sf10||0), 0)
     * 100) / 100;
   const totalShippingRev = sfRevenue10pct;
-  const totalSales = Math.round((totalItemsSales + sfRevenue10pct) * 100) / 100;
+  const totalSales = Math.round(totalItemsSales * 100) / 100; // Items only — SF excluded from sales total
   // TOTAL COST = cost of goods sold (pergram × grams or pergram × qty for each item)
   // ── COGS helper: look up capital/cost price from inventory by product code ──
   // order items store the SELLING price (pergram / fixPrice), NOT the cost price.
@@ -10116,13 +10116,13 @@ function populateRemitParcels() {
   // Rider's Net SF = All SF minus ALL deductions (kept for display/dataset compat)
   const netSF = Math.max(0, sfRider90 - cashbond - parcelFee - manualBenefits);
   // ═══ MODAL FORMULA GUARD — must match saveRemit formula exactly ══════════
-  // netTotal = codSubtotal + deliveredSF (items collected + SF)
-  // DO NOT change to codSubtotal - netSF (that was the old wrong formula).
+  // netTotal = codSubtotal (items collected only — SF excluded)
+  // DO NOT add deliveredSF here — SF is company revenue, not rider remit amount.
   // ═══════════════════════════════════════════════════════════════════════════
   // Net Total to Remit = COD items collected + total SF (matches saveRemit formula)
   // Rider dashboard shows grandTotal (already net of cancels/updates).
   // Remitter simply adds SF on top — no further deductions at remit stage.
-  const netTotal = codSubtotal + deliveredSF;
+  const netTotal = codSubtotal; // Items only — SF not added to rider remit
 
   // Build parcel rows — shows whole-order cancels AND per-item partial cancels
   const rows = myOrders.map((o,pi)=>{
@@ -10406,13 +10406,11 @@ function saveRemit() {
   const cancelled   = myOrders.filter(o=>['Cancelled','RTO','Update'].includes(o.status));
   // COD Subtotal: Delivered only — deduct fully/partially cancelled items
   // ═══ REMIT COMPUTATION GUARD — DO NOT MODIFY ═════════════════════════════
-  // FORMULA: netTotal = codSubtotal + deliveredSF
+  // FORMULA: netTotal = codSubtotal (items collected only — NO SF added)
   // grandTotal is trusted directly (already net of cancels/updates).
-  // _remitEffective returns o.grandTotal — no re-subtraction of cancelled items.
-  // Double deduction was the original bug. This formula is intentionally simple.
+  // SF is tracked separately by the company — NOT added to rider's remit total.
   // ═══════════════════════════════════════════════════════════════════════════
-  // _remitEffective: grandTotal is already reduced by rider actions (cancel/update).
-  // Trust it directly — do not re-subtract cancelled items here (double deduction).
+  // _remitEffective: grandTotal already reflects all rider deductions. Trust it.
   const _remitEffective = (o) => o.grandTotal || 0;
   const deliveredSF = delivered.reduce((s,o)=>s+(o.shipping||0),0);
   const codSubtotal = delivered.reduce((s,o)=>s+_remitEffective(o),0);
@@ -10427,7 +10425,7 @@ function saveRemit() {
   // BARRIER: Do NOT subtract cashbond/parcelFee/rider SF — display-only figures
   // BARRIER: _remitEffective trusts grandTotal directly (no re-subtraction)
   // MATCHES: populateRemitParcels and renderRemitPage _liveNet formulas
-  const netTotal    = codSubtotal + deliveredSF; // LOCKED
+  const netTotal    = codSubtotal; // Items collected only — SF tracked separately by company // LOCKED
 
   const entry = {
     _id: _uuid(), // required for SAR _id-based merge to prevent race condition wipe
