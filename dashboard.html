@@ -10655,7 +10655,7 @@ function renderRemitPage() {
         return { sub: e.codSubtotal||0, net: e.codSubtotal||0 }; // net = items only, no SF
       }
       const _eDel = (S.orders||[]).filter(o=>o&&o.assignedRider===riderName&&o.date===e.date&&o.status==='Delivered');
-      const _eSub = _eDel.reduce((s,o)=>s+(o.itemsTotal||o.grandTotal||0),0);
+      const _eSub = _eDel.reduce((s,o)=>s+_effectiveAmount(o),0);
       return { sub: _eSub, net: _eSub };
     });
     const grandSubtotal = _entryAmounts.reduce((s,a)=>s+a.sub,0);
@@ -10862,8 +10862,8 @@ function renderRemitPage() {
                 const _liveSF        = _liveDelOrders.reduce((s,o)=>s+(o.shipping||0),0);
                 // grandTotal already includes SF (grandTotal = itemsTotal + shipping)
                 // Use itemsTotal for COD subtotal, add SF separately for NET
-                const _liveSubtotal  = _liveDelOrders.reduce((s,o)=>s+(o.itemsTotal||o.grandTotal||0),0);
-                const _liveNet       = _liveSubtotal; // SF already in the amounts riders collect
+                const _liveSubtotal  = _liveDelOrders.reduce((s,o)=>s+_effectiveAmount(o),0);
+                const _liveNet       = _liveSubtotal; // grandTotal already includes SF — matches AMOUNT column
                 return `<tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
                   <td style="padding:7px 10px;white-space:nowrap;text-align:left;">${e.date}</td>
                   <td style="padding:7px 6px;text-align:center;">${_liveParcels}</td>
