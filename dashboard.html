@@ -8641,7 +8641,7 @@ function renderRiderParcels() {
   const del = myOrders.filter(o => o.status === 'Delivered');
 
   // 1. Delivered SF (Gross) — SF from delivered orders only
-  const deliveredSF_dash = del.reduce((s,o) => s + (o.shipping||0), 0);
+  const deliveredSF_dash = del.reduce((s,o)=>{const _iS=o.itemStatuses||{};const _t=(o.items||[]).length;const _cx=Object.values(_iS).filter(v=>v==='Cancelled').length;return s+(_t>_cx?(o.shipping||0):0);},0); // SF=0 if ALL items cancelled
 
   // 2. Subtotal — Delivered only (For Update excluded), minus cancelled items
   // Helper: effective amount per order (subtract cancelled + partial cancel items)
@@ -10092,7 +10092,7 @@ function populateRemitParcels() {
   const delivered = myOrders.filter(o=>o.status==='Delivered');
   const cancelled = myOrders.filter(o=>['Cancelled','RTO','Update'].includes(o.status));
   // Use DELIVERED-only SF for accurate deduction calculation
-  const deliveredSF = delivered.reduce((s,o)=>s+(o.shipping||0),0);
+  const deliveredSF = delivered.reduce((s,o)=>{const _iS=o.itemStatuses||{};const _t=(o.items||[]).length;const _cx=Object.values(_iS).filter(v=>v==='Cancelled').length;return s+(_t>_cx?(o.shipping||0):0);},0);
   const totalSF = myOrders.reduce((s,o)=>s+(o.shipping||0),0); // gross SF display
   const sf10 = deliveredSF * 0.10;           // 10% of delivered SF → company
   const sfRider90 = deliveredSF * 0.90;      // 90% of delivered SF → rider keeps
@@ -10412,7 +10412,7 @@ function saveRemit() {
   // ═══════════════════════════════════════════════════════════════════════════
   // _remitEffective: grandTotal already reflects all rider deductions. Trust it.
   const _remitEffective = (o) => o.grandTotal || 0;
-  const deliveredSF = delivered.reduce((s,o)=>s+(o.shipping||0),0);
+  const deliveredSF = delivered.reduce((s,o)=>{const _iS=o.itemStatuses||{};const _t=(o.items||[]).length;const _cx=Object.values(_iS).filter(v=>v==='Cancelled').length;return s+(_t>_cx?(o.shipping||0):0);},0);
   const codSubtotal = delivered.reduce((s,o)=>s+_remitEffective(o),0);
   const sf10        = deliveredSF * 0.10;
   const sfRider90   = deliveredSF * 0.90;
@@ -10859,7 +10859,7 @@ function renderRemitPage() {
                 // Recompute COD subtotal live from actual orders (not saved e.codSubtotal)
                 // This corrects old entries saved before the cancel-deduction fix
                 const _liveDelOrders = _liveOrders.filter(o=>o.status==='Delivered');
-                const _liveSF        = _liveDelOrders.reduce((s,o)=>s+(o.shipping||0),0);
+                const _liveSF        = _liveDelOrders.reduce((s,o)=>{const _iS=o.itemStatuses||{};const _t=(o.items||[]).length;const _cx=Object.values(_iS).filter(v=>v==='Cancelled').length;return s+(_t>_cx?(o.shipping||0):0);},0);
                 // grandTotal already includes SF (grandTotal = itemsTotal + shipping)
                 // Use itemsTotal for COD subtotal, add SF separately for NET
                 const _liveSubtotal  = _liveDelOrders.reduce((s,o)=>s+_effectiveAmount(o),0);
