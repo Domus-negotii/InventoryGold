@@ -8624,6 +8624,10 @@ function renderRiderParcels() {
       // so rider can account for it (remittance, return log, etc.).
       // Hide Cancelled ONLY if checker cancelled before rider was assigned (never dispatched)
       // If rider already had the order (Ready/OFD/etc), keep visible until remitted
+      // ═══ CANCELLED ORDER VISIBILITY GUARD ═══════════════════════════════════
+      // Rule 1: checkerCancelledDirect=true OR cancelledBy≠Rider → ALWAYS hide.
+      // Rule 2: rider-cancelled → show until Remitted, then hide.
+      // DO NOT simplify to hide-all — breaks remittance accounting for partial cancels.
       if(o.status === 'Cancelled') {
         // RULE 1: Checker cancelled the whole order → always hide
         // Detect via checkerCancelledDirect flag OR cancelledBy='Checker'/'System' (older orders)
@@ -8671,6 +8675,8 @@ function renderRiderParcels() {
   const del = myOrders.filter(o => o.status === 'Delivered');
 
   // 1. Delivered SF (Gross) — SF from delivered orders only
+  // ═══ SF CHARGE GUARD: SF=0 if ALL items in a Delivered order are cancelled ══
+  // Prevents charging SF on orders where rider collected nothing.
   const deliveredSF_dash = del.reduce((s,o)=>{const _iS=o.itemStatuses||{};const _t=(o.items||[]).length;const _cx=Object.values(_iS).filter(v=>v==='Cancelled').length;return s+(_t>_cx?(o.shipping||0):0);},0); // SF=0 if ALL items cancelled
 
   // 2. Subtotal — Delivered only (For Update excluded), minus cancelled items
@@ -8713,6 +8719,7 @@ function renderRiderParcels() {
   // Rider hands over: COD items + SF. No deductions at remit stage.
   // NET TOTAL to REMIT = Subtotal (items+SF) − Rider's Net SF
   // Rider keeps their net SF portion, hands over the rest
+  // ═══ NET FORMULA LOCK: (items+SF) - Rider Net SF. Must match saveRemit. ═══
   const netTotal_dash = Math.max(0, (codSubtotal_dash + deliveredSF_dash) - netSF_dash);
   document.getElementById('rider-dash-stats').innerHTML = `
     <div class="stat-card blue"><div class="stat-label">Total Assigned</div><div class="stat-value">${myOrders.length}</div></div>
@@ -8738,6 +8745,9 @@ function renderRiderParcels() {
     // DO NOT re-subtract cancelled/update items here — that causes double deduction.
     // For Update ORDER (whole order status): ₱0. Otherwise: trust grandTotal.
     const _orderIsUpdate = o.status === 'Update';
+    // ═══ ACTIVE ITEMS TOTAL GUARD — NEVER USE o.grandTotal DIRECTLY ══════════
+    // Always recompute from item rows. grandTotal is stale after cancel/update.
+    // SF added after loop (+o.shipping). For Update whole-order = 0.
     // Recompute from items — avoids stale grandTotal from For Update transitions
     const activeItemsTotal = _orderIsUpdate ? 0 : (() => {
       let _tot = 0;
@@ -8767,6 +8777,7 @@ function renderRiderParcels() {
       const _oiPfxQL     = typeof _getOiPrefix === 'function' ? _getOiPrefix(_itmCodeQL) : null;
       const _isQtyBasedQL= ['FPG','FPS','FPW','_FPGP_GENERIC'].includes(_oiPfxQL);
       // PG qty lock: PG* codes (except PGS, PGG) cannot have cancel qty edited
+      // ═══ PG QTY LOCK: PG* codes (except PGS, PGG) have cancel qty disabled ════
       const _isPGLocked = _itmCodeQL.startsWith('PG') && !['PGS','PGG'].includes(_itmCodeQL.slice(0,3));
       const qtyLabel = isGramsItem && !_isQtyBasedQL
         ? `${it.grams}g @ ${p(it.pergram||0)}/g`
@@ -10152,6 +10163,7 @@ function populateRemitParcels() {
   const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
   // Subtotal = sum of grandTotal (items + SF) from Delivered orders
   // Subtotal = actual collected amount per delivered order (net of cancelled items)
+  // ═══ MODAL GUARD: recompute items + net=(items+SF)-netSF (matches saveRemit) ═
   // Recompute items from item rows — same logic as rider dashboard activeItemsTotal
   // avoids stale grandTotal from partial cancel / For Update transitions
   const _prpEffective = (o) => {
@@ -10457,6 +10469,7 @@ function saveRemit() {
   // grandTotal is trusted directly (already net of cancels/updates).
   // SF is tracked separately by the company — NOT added to rider's remit total.
   // ═══════════════════════════════════════════════════════════════════════════
+  // ═══ SAVE REMIT GUARD: recompute from items + net=(items+SF)-netSF ═════════
   // _remitEffective: recompute items directly (same as rider dashboard activeItemsTotal)
   // avoids stale grandTotal from partial cancel / For Update transitions
   const _remitEffective = (o) => {
@@ -10663,6 +10676,9 @@ function renderRemitPage() {
   // _effectiveAmount: grandTotal is already reduced by riderItemStatus when rider
   // cancels or marks For Update. Do NOT re-subtract [Cx] items here — that causes
   // double deduction. Trust grandTotal as the clean, already-adjusted value.
+  // ═══ _effectiveAmount GUARD: recompute items from rows, never o.grandTotal ═══
+  // o.grandTotal is stale after partial cancels / For Update transitions.
+  // This function is called for EVERY order in the remit display — keep accurate.
   const _effectiveAmount = (o) => {
     if(o.status === 'Cancelled' || o.status === 'RTO') return 0;
     // Recompute from item rows — same as rider dashboard activeItemsTotal
@@ -10686,7 +10702,9 @@ function renderRemitPage() {
   }
 
   // ── Grand Total Net bar ───────────────────────────────────────────────────
+  // ═══ GLOBAL NET GUARD: use e.netTotal first (saved net), fallback to codSubtotal ══
   const grandAllNet  = filteredLog.reduce((s,e)=>s+(e.netTotal||e.codSubtotal||e.netEarn||0),0);
+  // ═══ GLOBAL SUBTOTAL GUARD: codSubtotal+totalSF = full collection amount ═══════
   const grandAllSub  = filteredLog.reduce((s,e)=>s+(e.codSubtotal||0)+(e.totalSF||0),0); // items+SF
   const grandAllSF10 = Math.round(filteredLog.reduce((s,e)=>s+(e.sf10||0),0)*100)/100;
   const grandPending = filteredLog.filter(e=>(e.remitStatus||'For Remittance')!=='Remitted').length;
@@ -10735,6 +10753,7 @@ function renderRemitPage() {
       const _eSF90  = _eSF * 0.90;
       const _eNetSF = Math.max(0, _eSF90 - 100 - _eDel.length * 10);
       const _eNet   = Math.max(0, (_eSub + _eSF) - _eNetSF);
+      // ═══ ENTRY AMOUNTS: sub=items+SF (COD SUBTOTAL col), net=sub-netSF (NET TO REMIT) ═
       return { sub: _eSub + _eSF, net: _eNet }; // sub = items+SF for COD SUBTOTAL column
     });
     const grandSubtotal = _entryAmounts.reduce((s,a)=>s+a.sub,0);
@@ -13333,6 +13352,7 @@ function confirmCheckerCancel() {
   });
   // Mark as Cancelled (keep in S.orders so Remitter can see it) + save cancel reason
   S.orders[orderIdx].status = 'Cancelled';
+  // ═══ CHECKER CANCEL FLAG: set on ALL cancel paths to hide from rider+dispatcher ═
   S.orders[orderIdx].checkerCancelledDirect = true; // CHECKER CANCEL: hidden from rider/dispatcher
   S.orders[orderIdx].checkerStatus = 'Pending';           // cancelled order should not remain Verified
   S.orders[orderIdx].verificationStatus = 'Not Verified'; // keep both fields in sync
