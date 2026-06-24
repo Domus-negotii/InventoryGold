@@ -10316,7 +10316,7 @@ function populateRemitParcels() {
 
   // Update calc display
   document.getElementById('remit-gross-sf').textContent = p(deliveredSF);
-  document.getElementById('remit-subtotal').textContent = p(codSubtotal);
+  document.getElementById('remit-subtotal').textContent = p(codSubtotal + deliveredSF); // items + SF = what rider collected
   document.getElementById('remit-sf-10').textContent = '-'+p(sf10);
   const cbDisplayEl = document.getElementById('remit-cashbond-display'); if(cbDisplayEl) cbDisplayEl.textContent = '-'+p(cashbond);
   const pfEl = document.getElementById('remit-parcel-fee-display'); if(pfEl) pfEl.textContent = '-'+p(parcelFee);
