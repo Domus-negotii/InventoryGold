@@ -7550,7 +7550,7 @@ function renderPnl(){
   // This ensures PnL matches Daily Sales actual collected amounts
   // _pnlEffective: grandTotal already reflects cancelled/update deductions from rider.
   // Use it directly — don't re-subtract items again.
-  const _pnlEffective = (o) => o.grandTotal || 0;
+  const _pnlEffective = (o) => o.itemsTotal || 0; // items only — grandTotal includes SF which is excluded from PnL
   const totalItemsSales = incomeOrders.reduce((s,o)=>s+_pnlEffective(o)-_oiPrefixTotal(o),0);
   const totalDiscountsAll = incomeOrders.reduce((s,o)=>s+(parseFloat(o.totalDiscount)||0),0);
   // SF 10% Company revenue = sum of sf10 from ALL remit log entries in date range
