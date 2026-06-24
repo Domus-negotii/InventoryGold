@@ -7562,7 +7562,7 @@ function renderPnl(){
       .reduce((s,e)=>s+(e.sf10||0), 0)
     * 100) / 100;
   const totalShippingRev = sfRevenue10pct;
-  const totalSales = Math.round(totalItemsSales * 100) / 100; // Items only — SF excluded from sales total
+  const totalSales = Math.round((totalItemsSales + sfRevenue10pct) * 100) / 100; // Items + 10% SF company cut
   // TOTAL COST = cost of goods sold (pergram × grams or pergram × qty for each item)
   // ── COGS helper: look up capital/cost price from inventory by product code ──
   // order items store the SELLING price (pergram / fixPrice), NOT the cost price.
@@ -7659,8 +7659,9 @@ function renderPnl(){
       <span style="font-size:11px;color:var(--muted);">${label}</span>
     </div>
     ${sH('REVENUE')}
-    ${row('TOTAL SALES = Items (Delivered & Remitted)',p(totalSales),'var(--green)',false,true)}
+    ${row('TOTAL SALES = Items + SF 10% (Remit)',p(totalSales),'var(--green)',false,true)}
     ${row('  ↳ Item Sales',p(totalItemsSales),'var(--green)',true)}
+    ${row('  ↳ SF 10% Company (from Rider Remit)','+ '+p(sfRevenue10pct),'var(--gold)',true)}
     ${totalDiscountsAll>0?row('  ↳ Discounts Given','('+p(totalDiscountsAll)+')','var(--orange)',true):''}
     ${row('TOTAL COST (COGS: Cost/g×g or Cost/pc×qty)',totalCOGS?'('+p(totalCOGS)+')':'₱0.00','var(--red)',false,true)}
     ${row('GROSS PROFIT',p(grossProfit),grossProfit>=0?'var(--green)':'var(--red)',false,true)}
