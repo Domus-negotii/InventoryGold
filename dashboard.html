@@ -2326,6 +2326,7 @@ function _showRulesHint() {
 
       <!-- SF selector -->
       <div class="form-group" style="background:var(--navy);border-radius:8px;padding:12px;margin-bottom:12px;">
+        <div style="margin-bottom:12px;"><label style="color:var(--gold);font-weight:700;margin-bottom:6px;display:block;">📍 Delivery Address:</label><div id="merge-address-options" style="padding:8px;background:rgba(15,27,45,0.5);border-radius:6px;border:1px solid var(--navy-border);min-height:40px;"></div></div>
         <label style="color:var(--gold);font-weight:700;margin-bottom:8px;display:block;">💰 Shipping Fee sa Merged Order</label>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
           <label style="font-size:12px;"><input type="radio" name="merge-sf" value="higher" checked onchange="updateMergePreview()"> Use higher SF</label>
@@ -5600,6 +5601,7 @@ function renderSorting() {
   let orders = S.orders.map((o,i)=>({...o,idx:i}))
     .filter(o => (!o.paymentMethod || o.paymentMethod === 'COD')
       && o.status !== 'Cancelled'
+      && !o.checkerCancelledDirect
       && (o.checkerStatus||'Pending') === 'Verified');
   if(df) orders = orders.filter(o=>o.date===df);
   if(sf) orders = orders.filter(o=>o.status===sf);
@@ -8150,6 +8152,18 @@ function ownerDeleteOrder(i) {
   if(currentRole !== 'owner') { toast('🔒 CEO only.'); return; }
   const o = S.orders[i];
   if(!o) return;
+  if(o.isMerged) {
+    setTimeout(() => {
+      document.querySelectorAll('#modal-edit-order input, #modal-edit-order select, #modal-edit-order textarea').forEach(el => { el.disabled = true; el.style.opacity='0.6'; el.style.cursor='not-allowed'; });
+      const sb = document.querySelector('#modal-edit-order .btn-gold');
+      if(sb) { sb.disabled=true; sb.style.opacity='0.4'; }
+      const notice = document.createElement('div');
+      notice.style.cssText = 'background:rgba(201,168,76,0.1);border:1px solid var(--gold);border-radius:6px;padding:8px 12px;margin:0 0 10px;font-size:12px;color:var(--gold);';
+      notice.innerHTML = '🔒 Merged order — read-only. Hindi na mababago ang info pagkatapos ng merge.';
+      const ff = document.querySelector('#modal-edit-order .form-group');
+      if(ff) ff.parentNode.insertBefore(notice, ff);
+    }, 50);
+  }
   if(!confirm(`DELETE permanently?\n\n${onum(i)} — ${o.name}\n₱${(o.grandTotal||0).toFixed(2)}\n\nThis cannot be undone. Inventory will NOT be affected.`)) return;
   // Push to deletedOrders for audit
   if(!S.deletedOrders) S.deletedOrders = [];
@@ -12936,6 +12950,7 @@ function codDelivCancelOrder(orderIdx) {
     }
 
     S.orders[orderIdx].status          = 'Cancelled';
+    S.orders[orderIdx].checkerCancelledDirect = true; // Hidden from dispatcher, rider, remitter
     S.orders[orderIdx].cancelReason    = 'Cancelled from COD Delivery (For Update)';
     S.orders[orderIdx].cancelledBy     = (currentUser && currentUser.name) || 'Checker';
     S.orders[orderIdx].cancelledAt     = new Date().toISOString();
@@ -13858,6 +13873,7 @@ function removeMergeCard(n) {
   _mergeIdxB = window._mergeGroupIndices[1];
   renderMergeOrderCards();
   updateMergePreview();
+  updateMergeAddressOptions();
 }
 
 function updateMergePreview() {
@@ -13959,6 +13975,12 @@ function confirmMerge() {
   const contactDisplay = contactList.join(' / ');
 
   // Surviving order = lowest index; absorbed = all others (remove highest-index first)
+  const _addrN = parseInt(document.querySelector('input[name="merge-address"]:checked')?.value||'0');
+  const _addrSrc = S.orders[allIndices[_addrN]] || allOrders[0];
+  const chosenAddress  = _addrSrc.address  || '';
+  const chosenCity     = _addrSrc.city     || '';
+  const chosenLandmark = _addrSrc.landmark || '';
+
   const keepIdx     = allIndices[0];
   const removeIdxs  = allIndices.slice(1).reverse(); // remove highest first to preserve indices
   const oKeep       = S.orders[keepIdx];
@@ -14002,6 +14024,7 @@ function confirmMerge() {
     name: customerDisplay,        // JUAN / PEDRO / LUNA
     contact: contactDisplay,      // 09123 / 09456 (or single if same)
     contactList,                  // for future reference
+    address: chosenAddress, city: chosenCity, landmark: chosenLandmark,
     items: mergedItems,
     itemsTotal: mergedItemsTotal,
     shipping: mergedSF,
@@ -14012,6 +14035,7 @@ function confirmMerge() {
     createdAt: oKeep.createdAt,
     encodedBy: oKeep.encodedBy,
     mergedFrom: allIndices.map(i=>onum(i)),
+    isMerged: true,
     mergedAt: new Date().toISOString(),
     checkerStatus: 'Pending',
     verificationStatus: 'Not Verified',
