@@ -8731,7 +8731,22 @@ function renderRiderParcels() {
     // DO NOT re-subtract cancelled/update items here — that causes double deduction.
     // For Update ORDER (whole order status): ₱0. Otherwise: trust grandTotal.
     const _orderIsUpdate = o.status === 'Update';
-    const activeItemsTotal = _orderIsUpdate ? 0 : (o.grandTotal || 0); // GUARDED — do not add item-level loop here
+    // Recompute from items — avoids stale grandTotal from For Update transitions
+    const activeItemsTotal = _orderIsUpdate ? 0 : (() => {
+      let _tot = 0;
+      (o.items||[]).forEach((it, ii) => {
+        if(itemStatuses[ii] === 'Cancelled') return;
+        const cxQty = (o.itemCancelQty||{})[ii] || 0;
+        if(cxQty > 0) {
+          const tQty = it.grams || it.qty || 1;
+          const ppu = (it.total||0) / Math.max(1, tQty);
+          _tot += Math.max(0, (it.total||0) - ppu * cxQty);
+        } else {
+          _tot += (it.total||0);
+        }
+      });
+      return _tot + (o.shipping||0);
+    })();
     const cancelledCount = (o.items||[]).filter((_,ii) => itemStatuses[ii] === 'Cancelled').length;
 
     const itemRowsHtml = (o.items||[]).map((it,ii) => {
