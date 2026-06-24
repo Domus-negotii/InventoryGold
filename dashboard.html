@@ -4139,7 +4139,7 @@ function renderChecker(){
           const verifSt = o.verificationStatus||'Not Verified';
           const canVerify = pymSt === 'Fully Paid';
           const isLocked = ['Ready','Out for Delivery','Delivered','Cancelled','Update'].includes(o.status);
-          const isDroppedOff = ['Drop off at LBC','Drop off at EMS','Drop off at FedEx','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'].includes(o.lbcStatus||'');
+          const isDroppedOff = ['Drop off at LBC','Drop off at EMS','Drop off at FedEx','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'].includes(o.lbcStatus||'') || o.checkerStatus==='Verified';
           const isODZ = (o.lbcStatus||'') === 'ODZ/Incomplete Details';
           const isDeemphasized = ['Update','Cancelled','Delivered'].includes(o.status);
           const rowStyle = isDeemphasized ? 'opacity:0.62;font-size:11px;' : '';
