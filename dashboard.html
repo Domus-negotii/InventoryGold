@@ -8620,14 +8620,13 @@ function renderRiderParcels() {
       // Hide Cancelled ONLY if checker cancelled before rider was assigned (never dispatched)
       // If rider already had the order (Ready/OFD/etc), keep visible until remitted
       if(o.status === 'Cancelled') {
-        const _riderEverSaw = o.checkerCancelledDirect !== true;
-        if(!_riderEverSaw) return false; // checker cancelled pre-dispatch — hide
-        // Rider had it — check if already remitted; if so, hide
+        // RULE 1: Checker cancelled the whole order (before rider ever saw it) → always hide
+        if(o.checkerCancelledDirect === true) return false;
+        // RULE 2: Rider had the order and cancelled item(s) → stay visible until officially remitted
         const _remitted = (S.remitLog||[]).some(r =>
           r.riderName === o.assignedRider && r.date === o.date && r.remitStatus === 'Remitted'
         );
-        if(_remitted) return false; // remitted — hide
-        return true; // rider had it, not yet remitted — keep visible
+        return !_remitted; // show until remitted, then hide
       }
       // Only show orders dispatcher marked Ready or beyond — not Preparing
       if(!RIDER_VISIBLE_STATUSES.has(o.status)) return false;
