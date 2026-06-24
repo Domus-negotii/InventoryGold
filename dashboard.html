@@ -5601,7 +5601,6 @@ function renderSorting() {
   let orders = S.orders.map((o,i)=>({...o,idx:i}))
     .filter(o => (!o.paymentMethod || o.paymentMethod === 'COD')
       && o.status !== 'Cancelled'
-      && !o.checkerCancelledDirect
       && (o.checkerStatus||'Pending') === 'Verified');
   if(df) orders = orders.filter(o=>o.date===df);
   if(sf) orders = orders.filter(o=>o.status===sf);
@@ -8618,7 +8617,7 @@ function renderRiderParcels() {
       // Only hide if checker cancelled DIRECTLY (pre-dispatch, rider never saw it).
       // If checkerCancelledDirect is not set, the order reached the rider — keep visible
       // so rider can account for it (remittance, return log, etc.).
-      if(o.status === 'Cancelled' && o.cancelledBy && o.checkerCancelledDirect) return false;
+      if(o.status === 'Cancelled') return false; // All cancelled orders hidden from rider
       // Only show orders dispatcher marked Ready or beyond — not Preparing
       if(!RIDER_VISIBLE_STATUSES.has(o.status)) return false;
       return true;
