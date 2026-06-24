@@ -2121,7 +2121,7 @@ function _showRulesHint() {
   </div>
   <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center;" class="no-print">
     <button class="tab-btn" id="oi-tab-product" onclick="setOiTab('product')" style="background:var(--blue);color:#fff;">📦 Products</button>
-    <button class="tab-btn" id="oi-tab-cancelled" onclick="setOiTab('cancelled')" style="background:var(--navy-border);color:var(--muted);">✖ Cancelled</button>
+    <!-- Cancelled tab hidden (pang-gulo lang) -->
     <button class="tab-btn" id="oi-tab-remitted" onclick="setOiTab('remitted')" style="background:var(--navy-border);color:var(--muted);">✅ Sales</button>
     <div style="display:flex;gap:6px;align-items:center;margin-left:auto;">
       <span style="font-size:11px;color:var(--muted);">From:</span>
@@ -8830,7 +8830,7 @@ function renderRiderParcels() {
                   <option${(itemSt==='For Update'||itemSt==='Update')?' selected':''}>For Update</option>
               </select>`
             }
-            ${(totalQty > 1 && !isGramsItem) || (totalQty > 1 && _isQtyBasedQL) || _isQtyBasedQL ? `
+            ${!_isPGLocked && ((totalQty > 1 && !isGramsItem) || (totalQty > 1 && _isQtyBasedQL) || _isQtyBasedQL) ? `
             <div style="display:flex;align-items:center;gap:3px;margin-top:2px;">
               <span style="font-size:9px;color:var(--muted);">Cancel qty:</span>
               <input type="number" min="0" max="${remainQty}" step="${isGramsItem?0.01:1}"
@@ -10339,7 +10339,7 @@ function populateRemitParcels() {
   const dcEl = document.getElementById('remit-delivered-count'); if(dcEl) dcEl.value = delivered.length;
   const cbEl = document.getElementById('remit-cashbond-cut'); if(cbEl) cbEl.value = 100;
   const hint = document.getElementById('remit-formula-hint');
-  if(hint) hint.textContent = `Net = ${p(codSubtotal)} − ${p(netSF)} (Rider's Net SF) = ${p(netTotal)}`;
+  if(hint) hint.textContent = `Net = ${p(codSubtotal + deliveredSF)} (Subtotal) − ${p(netSF)} (Rider's Net SF) = ${p(netTotal)}`;
   // Store for saveRemit and recalc access
   const riderEl = document.getElementById('remit-rider');
   riderEl.dataset.totalSF = deliveredSF;  // deliveredSF for formula accuracy
@@ -10359,22 +10359,27 @@ function populateRemitParcels() {
 function recalcRemitNet() {
   const riderEl = document.getElementById('remit-rider');
   if(!riderEl || !riderEl.dataset.sfNetRider) return;
-  const sfRider90 = parseFloat(riderEl.dataset.sfNetRider)||0;
-  const cashbond = parseFloat(riderEl.dataset.cashbond)||100;
-  const parcelFee = parseFloat(riderEl.dataset.parcelFee)||0;
-  const codSubtotal = parseFloat(riderEl.dataset.codSubtotal)||0;
+  const sfRider90      = parseFloat(riderEl.dataset.sfNetRider)||0;
+  const cashbond       = parseFloat(riderEl.dataset.cashbond)||100;
+  const parcelFee      = parseFloat(riderEl.dataset.parcelFee)||0;
+  const codSubtotal    = parseFloat(riderEl.dataset.codSubtotal)||0;
+  const deliveredSF    = parseFloat(riderEl.dataset.totalSF)||0;
   const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
-  // Rider's Net SF = SF90% minus all deductions
-  const netSF = Math.max(0, sfRider90 - cashbond - parcelFee - manualBenefits);
-  const netTotal = Math.max(0, codSubtotal - netSF);
-  riderEl.dataset.netSF = netSF;
+  // Rider's Net SF = SF90% minus all deductions (including benefits)
+  const netSF   = Math.max(0, sfRider90 - cashbond - parcelFee - manualBenefits);
+  // NET TO REMIT = (items + SF) − Rider's Net SF  ← matches rider dashboard formula
+  const netTotal = Math.max(0, (codSubtotal + deliveredSF) - netSF);
+  riderEl.dataset.netSF   = netSF;
   riderEl.dataset.netTotal = netTotal;
   document.getElementById('remit-sf-rider-share').textContent = p(netSF);
+  // Update Subtotal display = items + SF (stays constant, just re-render for clarity)
+  const subEl = document.getElementById('remit-subtotal');
+  if(subEl) subEl.textContent = p(codSubtotal + deliveredSF);
   const netEl = document.getElementById('remit-net-earn');
   netEl.textContent = p(netTotal);
   netEl.dataset.netEarn = netTotal;
   const hint = document.getElementById('remit-formula-hint');
-  if(hint) hint.textContent = `Net = ${p(codSubtotal)} − ${p(netSF)} (Rider's Net SF) = ${p(netTotal)}`;
+  if(hint) hint.textContent = `Net = ${p(codSubtotal + deliveredSF)} (Subtotal) − ${p(netSF)} (Rider's Net SF) = ${p(netTotal)}`;
 }
 
 function calcRemit() { populateRemitParcels(); }
@@ -10447,6 +10452,16 @@ function _syncOtherItemStatus(orderNum, newStatus) {
     if(r.isVerified === false) return; // unverified items stay hidden
     if(newStatus === 'remitted' && r.status === 'cancelled') return; // cancelled never becomes remitted
     if(newStatus === 'remitted' && r.status !== 'product') return;   // only product→remitted
+    // For Update orders: item not yet collected — do NOT move to Sales tab
+    if(newStatus === 'remitted') {
+      const _ord = (S.orders||[]).find(o=>o && onum((S.orders||[]).indexOf(o))===orderNum);
+      if(_ord && (_ord.status === 'Update' || _ord.status === 'For Update')) return;
+      // Also check item-level For Update: if this specific item is For Update, skip Sales
+      if(_ord) {
+        const _itemStatus = (_ord.itemStatuses||{})[r.itemIdx];
+        if(_itemStatus === 'Update' || _itemStatus === 'For Update') return;
+      }
+    }
     r.status = newStatus;
   });
 }
