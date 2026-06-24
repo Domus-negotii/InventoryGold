@@ -10240,17 +10240,28 @@ function populateRemitParcels() {
         else if(cxQty > 0) totalCancelledAmt += cxQty * ppu;
       });
     }
-    // grandTotal is already net of any rider cancels — use directly
-    const netRemitAmt = isWholeOrderCancelled ? 0 : Math.max(0, o.grandTotal);
+    // Recompute from item rows — same as rider dashboard / _effectiveAmount
+    // grandTotal is stale after For Update / partial-cancel transitions
+    let _recomputedItems = 0;
+    if(!isWholeOrderCancelled) {
+      (o.items||[]).forEach((it, ii) => {
+        if(itemStatuses[ii] === 'Cancelled' || itemStatuses[ii] === 'Update') return;
+        const cxQty = itemCancelQty[ii] || 0;
+        const tQty  = it.grams || it.qty || 1;
+        const ppu   = (it.total||0) / Math.max(1, tQty);
+        _recomputedItems += cxQty > 0 ? Math.max(0,(it.total||0)-ppu*cxQty) : (it.total||0);
+      });
+    }
+    const netRemitAmt = isWholeOrderCancelled ? 0 : Math.max(0, _recomputedItems + (o.shipping||0));
 
     const remitAmtDisplay = isWholeOrderCancelled
       ? `<span style="color:var(--red);font-weight:700;">₱0.00</span>
-         <div style="font-size:9px;color:var(--muted);text-decoration:line-through;">${p(o.grandTotal)} (orig)</div>`
+         <div style="font-size:9px;color:var(--muted);text-decoration:line-through;">${p(_recomputedItems + (o.shipping||0))} (orig)</div>`
       : hasAnyCancelledItems
         ? `<span style="color:var(--green);font-weight:700;">${p(netRemitAmt)}</span>
-           <div style="font-size:9px;color:var(--orange);">Orig: <span style="text-decoration:line-through;">${p(o.grandTotal + totalCancelledAmt)}</span></div>
+           <div style="font-size:9px;color:var(--orange);">Orig: <span style="text-decoration:line-through;">${p(_recomputedItems + totalCancelledAmt + (o.shipping||0))}</span></div>
            <div style="font-size:9px;color:var(--red);">❌ Cancel: -${p(totalCancelledAmt)}</div>`
-        : `<span style="color:var(--green);font-weight:700;">${p(o.grandTotal)}</span>`;
+        : `<span style="color:var(--green);font-weight:700;">${p(netRemitAmt)}</span>`;
 
     const rowBg = isWholeOrderCancelled
       ? 'background:rgba(224,85,85,0.06);'
