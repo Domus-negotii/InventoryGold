@@ -8718,7 +8718,7 @@ function renderRiderParcels() {
       // OI qty-based prefixes (FPG/FPS/FPW): show /qty not /g
       const _itmCodeQL   = (it.code||'').toUpperCase().trim();
       const _oiPfxQL     = typeof _getOiPrefix === 'function' ? _getOiPrefix(_itmCodeQL) : null;
-      const _isQtyBasedQL= ['FPG','FPS','FPW'].includes(_oiPfxQL);
+      const _isQtyBasedQL= ['FPG','FPS','FPW','_FPGP_GENERIC'].includes(_oiPfxQL);
       const qtyLabel = isGramsItem && !_isQtyBasedQL
         ? `${it.grams}g @ ${p(it.pergram||0)}/g`
         : isGramsItem && _isQtyBasedQL
