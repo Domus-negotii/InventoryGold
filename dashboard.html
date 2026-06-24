@@ -10152,26 +10152,24 @@ function populateRemitParcels() {
   const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
   // Subtotal = sum of grandTotal (items + SF) from Delivered orders
   // Subtotal = actual collected amount per delivered order (net of cancelled items)
-  // codSubtotal uses o.grandTotal directly — rider cancel functions already
-  // reduce grandTotal in real time (riderItemStatus / riderItemPartialCancel).
-  // No need to re-subtract: doing so causes double-deduction of cancelled amounts.
-  const codSubtotal = delivered.reduce((s,o) => s + (o.grandTotal||0), 0);
-  // CORRECT FORMULA:
-  // Rider collected: codSubtotal (from customers)
-  // Rider keeps: sfRider90 (their SF share)
-  // Rider pays: cashbond + parcelFee (₱10/parcel) + manualBenefits
-  // Net to Remit = codSubtotal - sfRider90 - cashbond - parcelFee - manualBenefits
+  // Recompute items from item rows — same logic as rider dashboard activeItemsTotal
+  // avoids stale grandTotal from partial cancel / For Update transitions
+  const _prpEffective = (o) => {
+    if(o.status==='Cancelled'||o.status==='RTO') return 0;
+    let _t=0; const _iS=o.itemStatuses||{},_iCQ=o.itemCancelQty||{};
+    (o.items||[]).forEach((it,ii)=>{
+      if(_iS[ii]==='Cancelled'||_iS[ii]==='Update') return;
+      const cxQty=_iCQ[ii]||0,tQty=it.grams||it.qty||1,ppu=(it.total||0)/Math.max(1,tQty);
+      _t+=cxQty>0?Math.max(0,(it.total||0)-ppu*cxQty):(it.total||0);
+    }); return _t;
+  };
+  const codSubtotal = delivered.reduce((s,o) => s + _prpEffective(o), 0);
   const sfNetRider = sfRider90; // kept for dataset compatibility
-  // Rider's Net SF = All SF minus ALL deductions (kept for display/dataset compat)
+  // Rider's Net SF = All SF minus ALL deductions
   const netSF = Math.max(0, sfRider90 - cashbond - parcelFee - manualBenefits);
-  // ═══ MODAL FORMULA GUARD — must match saveRemit formula exactly ══════════
-  // netTotal = codSubtotal (items collected only — SF excluded)
-  // DO NOT add deliveredSF here — SF is company revenue, not rider remit amount.
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Net Total to Remit = COD items collected + total SF (matches saveRemit formula)
-  // Rider dashboard shows grandTotal (already net of cancels/updates).
-  // Remitter simply adds SF on top — no further deductions at remit stage.
-  const netTotal = codSubtotal; // Items only — SF not added to rider remit
+  // ═══ MODAL FORMULA GUARD — matches saveRemit and rider dashboard ══════════
+  // NET TO REMIT = (items + SF) − Rider's Net SF
+  const netTotal = Math.max(0, (codSubtotal + deliveredSF) - netSF); // matches rider dashboard
 
   // Build parcel rows — shows whole-order cancels AND per-item partial cancels
   const rows = myOrders.map((o,pi)=>{
@@ -10459,8 +10457,17 @@ function saveRemit() {
   // grandTotal is trusted directly (already net of cancels/updates).
   // SF is tracked separately by the company — NOT added to rider's remit total.
   // ═══════════════════════════════════════════════════════════════════════════
-  // _remitEffective: grandTotal already reflects all rider deductions. Trust it.
-  const _remitEffective = (o) => o.grandTotal || 0;
+  // _remitEffective: recompute items directly (same as rider dashboard activeItemsTotal)
+  // avoids stale grandTotal from partial cancel / For Update transitions
+  const _remitEffective = (o) => {
+    if(o.status==='Cancelled'||o.status==='RTO') return 0;
+    let _t=0; const _iS=o.itemStatuses||{},_iCQ=o.itemCancelQty||{};
+    (o.items||[]).forEach((it,ii)=>{
+      if(_iS[ii]==='Cancelled'||_iS[ii]==='Update') return;
+      const cxQty=_iCQ[ii]||0,tQty=it.grams||it.qty||1,ppu=(it.total||0)/Math.max(1,tQty);
+      _t+=cxQty>0?Math.max(0,(it.total||0)-ppu*cxQty):(it.total||0);
+    }); return _t;
+  };
   const deliveredSF = delivered.reduce((s,o)=>{const _iS=o.itemStatuses||{};const _t=(o.items||[]).length;const _cx=Object.values(_iS).filter(v=>v==='Cancelled').length;return s+(_t>_cx?(o.shipping||0):0);},0);
   const codSubtotal = delivered.reduce((s,o)=>s+_remitEffective(o),0);
   const sf10        = deliveredSF * 0.10;
@@ -10474,7 +10481,8 @@ function saveRemit() {
   // BARRIER: Do NOT subtract cashbond/parcelFee/rider SF — display-only figures
   // BARRIER: _remitEffective trusts grandTotal directly (no re-subtraction)
   // MATCHES: populateRemitParcels and renderRemitPage _liveNet formulas
-  const netTotal    = codSubtotal; // Items collected only — SF tracked separately by company // LOCKED
+  // NET TO REMIT = (items + SF) − Rider's Net SF → matches rider dashboard exactly
+  const netTotal    = Math.max(0, (codSubtotal + deliveredSF) - netSF); // LOCKED — matches rider dashboard
 
   const entry = {
     _id: _uuid(), // required for SAR _id-based merge to prevent race condition wipe
@@ -10701,11 +10709,23 @@ function renderRemitPage() {
     // Remitting entries → live-compute from remaining orders for that date
     const _entryAmounts = entries.map(e => {
       if(e.remitStatus === 'Remitted') {
-        return { sub: e.codSubtotal||0, net: e.codSubtotal||0 }; // net = items only, no SF
+        return { sub: e.codSubtotal||0, net: e.netTotal||e.codSubtotal||0 };
       }
       const _eDel = (S.orders||[]).filter(o=>o&&o.assignedRider===riderName&&o.date===e.date&&o.status==='Delivered');
-      const _eSub = _eDel.reduce((s,o)=>s+_effectiveAmount(o),0);
-      return { sub: _eSub, net: _eSub };
+      // Recompute items from item rows (same as rider dashboard)
+      const _eSub = _eDel.reduce((s,o)=>{
+        let _t=0; const _iS=o.itemStatuses||{},_iCQ=o.itemCancelQty||{};
+        (o.items||[]).forEach((it,ii)=>{
+          if(_iS[ii]==='Cancelled'||_iS[ii]==='Update') return;
+          const cxQty=_iCQ[ii]||0,tQty=it.grams||it.qty||1,ppu=(it.total||0)/Math.max(1,tQty);
+          _t+=cxQty>0?Math.max(0,(it.total||0)-ppu*cxQty):(it.total||0);
+        }); return s+_t;
+      },0);
+      const _eSF    = _eDel.reduce((s,o)=>{const _iS=o.itemStatuses||{};const _t=(o.items||[]).length;const _cx=Object.values(_iS).filter(v=>v==='Cancelled').length;return s+(_t>_cx?(o.shipping||0):0);},0);
+      const _eSF90  = _eSF * 0.90;
+      const _eNetSF = Math.max(0, _eSF90 - 100 - _eDel.length * 10);
+      const _eNet   = Math.max(0, (_eSub + _eSF) - _eNetSF);
+      return { sub: _eSub, net: _eNet };
     });
     const grandSubtotal = _entryAmounts.reduce((s,a)=>s+a.sub,0);
     const _allSF        = entries.reduce((s,e)=>s+(e.totalSF||0),0);
@@ -10910,9 +10930,22 @@ function renderRemitPage() {
                 const _liveDelOrders = _liveOrders.filter(o=>o.status==='Delivered');
                 const _liveSF        = _liveDelOrders.reduce((s,o)=>{const _iS=o.itemStatuses||{};const _t=(o.items||[]).length;const _cx=Object.values(_iS).filter(v=>v==='Cancelled').length;return s+(_t>_cx?(o.shipping||0):0);},0);
                 // grandTotal already includes SF (grandTotal = itemsTotal + shipping)
-                // Use itemsTotal for COD subtotal, add SF separately for NET
-                const _liveSubtotal  = _liveDelOrders.reduce((s,o)=>s+_effectiveAmount(o),0);
-                const _liveNet       = _liveSubtotal; // grandTotal already includes SF — matches AMOUNT column
+                // Recompute items from item rows — same as rider dashboard formula
+                const _liveSubtotal  = _liveDelOrders.reduce((s,o)=>{
+                  let _t=0; const _iS=o.itemStatuses||{},_iCQ=o.itemCancelQty||{};
+                  (o.items||[]).forEach((it,ii)=>{
+                    if(_iS[ii]==='Cancelled'||_iS[ii]==='Update') return;
+                    const cxQty=_iCQ[ii]||0,tQty=it.grams||it.qty||1,ppu=(it.total||0)/Math.max(1,tQty);
+                    _t+=cxQty>0?Math.max(0,(it.total||0)-ppu*cxQty):(it.total||0);
+                  }); return s+_t;
+                },0);
+                // Net SF for this rider+entry
+                const _liveSF90   = _liveSF * 0.90;
+                const _liveCashb  = 100;
+                const _livePFee   = _liveDelivered * 10;
+                const _liveNetSF  = Math.max(0, _liveSF90 - _liveCashb - _livePFee);
+                // NET = (items + SF) − Rider's Net SF → matches rider dashboard
+                const _liveNet   = Math.max(0, (_liveSubtotal + _liveSF) - _liveNetSF);
                 return `<tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
                   <td style="padding:7px 10px;white-space:nowrap;text-align:left;">${e.date}</td>
                   <td style="padding:7px 6px;text-align:center;">${_liveParcels}</td>
