@@ -3787,10 +3787,12 @@ function renderOrders() {
     <td><span class="status ${sclass(o.status)}">${o.status}</span></td>
     <td style="white-space:nowrap;">
       ${(o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx')
-        ? `<select class="form-control" style="width:120px;font-size:10px;padding:2px 4px;border-color:${payColor(o.paymentStatus||'No Payment')};"
+        ? (o.checkerStatus==='Verified'
+          ? `<span style="font-size:10px;font-weight:600;color:${payColor(o.paymentStatus||'No Payment')};padding:2px 6px;border:1px solid ${payColor(o.paymentStatus||'No Payment')};border-radius:4px;">🔒 ${o.paymentStatus||'No Payment'}</span>`
+          : `<select class="form-control" style="width:120px;font-size:10px;padding:2px 4px;border-color:${payColor(o.paymentStatus||'No Payment')};"
              onchange="updatePaymentStatus(${i},this.value)">
              ${PAYMENT_STATUSES.map(s=>`<option${(o.paymentStatus||'No Payment')===s?' selected':''}>${s}</option>`).join('')}
-           </select>`
+           </select>`)
         : '<span style="font-size:9.5px;color:var(--muted);">COD</span>'}
     </td>
     <td><span class="checker-tag ${o.checkerStatus==='Verified'?'verified':'pending'}">${o.checkerStatus}</span></td>
@@ -7524,10 +7526,13 @@ function renderPnl(){
     const _key = (o.assignedRider||'') + '|' + (o.date||'');
     return _remittedKeys.has(_key);
   });
+  // Courier PnL income: Checker marked Verified (checkerStatus OR verificationStatus)
+  // Date: use dateDelivered → dateOfPayment → date (whichever is set)
   const courierVerified = S.orders.filter(o=>o&&
     (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx') &&
-    o.paymentStatus==='Fully Paid' && o.verificationStatus==='Verified' &&
-    (o.dateOfPayment||'').slice(0,10)>=from && (o.dateOfPayment||'').slice(0,10)<=to);
+    (o.checkerStatus==='Verified' || o.verificationStatus==='Verified') &&
+    o.status !== 'Cancelled' && o.status !== 'RTO' &&
+    (()=>{ const d=(o.dateDelivered||o.dateOfPayment||o.date||'').slice(0,10); return d>=from&&d<=to; })());
   const incomeOrders = [...codDelivered, ...courierVerified];
 
   // ═══ OI-PREFIX EXCLUSION — DO NOT REMOVE — PERMANENT GUARD ═════════════════
@@ -8706,7 +8711,9 @@ function renderRiderParcels() {
 
   // 8. Net Total to Remit = Items collected (Delivered, minus cancels) + SF
   // Rider hands over: COD items + SF. No deductions at remit stage.
-  const netTotal_dash = codSubtotal_dash + deliveredSF_dash;
+  // NET TOTAL to REMIT = Subtotal (items+SF) − Rider's Net SF
+  // Rider keeps their net SF portion, hands over the rest
+  const netTotal_dash = Math.max(0, (codSubtotal_dash + deliveredSF_dash) - netSF_dash);
   document.getElementById('rider-dash-stats').innerHTML = `
     <div class="stat-card blue"><div class="stat-label">Total Assigned</div><div class="stat-value">${myOrders.length}</div></div>
     <div class="stat-card green"><div class="stat-label">Delivered</div><div class="stat-value">${del.length}</div></div>
@@ -8759,6 +8766,8 @@ function renderRiderParcels() {
       const _itmCodeQL   = (it.code||'').toUpperCase().trim();
       const _oiPfxQL     = typeof _getOiPrefix === 'function' ? _getOiPrefix(_itmCodeQL) : null;
       const _isQtyBasedQL= ['FPG','FPS','FPW','_FPGP_GENERIC'].includes(_oiPfxQL);
+      // PG qty lock: PG* codes (except PGS, PGG) cannot have cancel qty edited
+      const _isPGLocked = _itmCodeQL.startsWith('PG') && !['PGS','PGG'].includes(_itmCodeQL.slice(0,3));
       const qtyLabel = isGramsItem && !_isQtyBasedQL
         ? `${it.grams}g @ ${p(it.pergram||0)}/g`
         : isGramsItem && _isQtyBasedQL
@@ -8814,7 +8823,7 @@ function renderRiderParcels() {
             <div style="display:flex;align-items:center;gap:3px;margin-top:2px;">
               <span style="font-size:9px;color:var(--muted);">Cancel qty:</span>
               <input type="number" min="0" max="${remainQty}" step="${isGramsItem?0.01:1}"
-                value="${cancelledQty}" style="width:55px;font-size:10px;padding:1px 4px;border-radius:4px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);"
+                value="${cancelledQty}" ${_isPGLocked ? 'disabled title="PG items: qty locked"' : ""} style="width:55px;font-size:10px;padding:1px 4px;border-radius:4px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);${_isPGLocked ? 'opacity:0.4;cursor:not-allowed;' : ''}"
                 onchange="riderItemPartialCancel(${o.idx},${ii},this.value,${totalQty},${isGramsItem?1:0})" onwheel="return false;">
               <span style="font-size:9px;color:var(--muted);">/ ${totalQty}${isGramsItem?'g':''}</span>
             </div>` : ''}
@@ -8896,7 +8905,7 @@ function renderRiderParcels() {
 
         <div class="info-row"><span style="color:var(--muted);">Total Deliveries</span><strong>${del.length} parcel${del.length!==1?'s':''}</strong></div>
         <div class="info-row"><span style="color:var(--muted);">📦 Delivered SF (Gross)</span><strong style="color:var(--gold);">${p(deliveredSF_dash)}</strong></div>
-        <div class="info-row"><span style="color:var(--muted);">💰 Subtotal (Delivered + SF)</span><strong style="color:var(--blue);">${p(codSubtotal_dash)}</strong></div>
+        <div class="info-row"><span style="color:var(--muted);">💰 Subtotal (Delivered + SF)</span><strong style="color:var(--blue);">${p(codSubtotal_dash + deliveredSF_dash)}</strong></div>
 
         <div style="border-top:1px solid var(--navy-border);margin:6px 0;"></div>
 
@@ -8916,7 +8925,7 @@ function renderRiderParcels() {
           <strong style="color:var(--green);font-size:16px;">${p(totalToRemit)}</strong>
         </div>
         <div style="font-size:9.5px;color:var(--muted);text-align:right;margin-top:3px;">
-          Net = ${p(codSubtotal_dash)} − ${p(netSF_dash)} (Net SF) = ${p(totalToRemit)}
+          Net = ${p(codSubtotal_dash + deliveredSF_dash)} (Subtotal) − ${p(netSF_dash)} (Rider Net SF) = ${p(totalToRemit)}
         </div>
       </div>
 
