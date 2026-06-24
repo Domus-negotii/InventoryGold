@@ -13264,6 +13264,7 @@ function confirmCheckerCancel() {
   });
   // Mark as Cancelled (keep in S.orders so Remitter can see it) + save cancel reason
   S.orders[orderIdx].status = 'Cancelled';
+  S.orders[orderIdx].checkerCancelledDirect = true; // CHECKER CANCEL: hidden from rider/dispatcher
   S.orders[orderIdx].checkerStatus = 'Pending';           // cancelled order should not remain Verified
   S.orders[orderIdx].verificationStatus = 'Not Verified'; // keep both fields in sync
   S.orders[orderIdx].cancelReason = reason;
