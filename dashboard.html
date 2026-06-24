@@ -10665,7 +10665,17 @@ function renderRemitPage() {
   // double deduction. Trust grandTotal as the clean, already-adjusted value.
   const _effectiveAmount = (o) => {
     if(o.status === 'Cancelled' || o.status === 'RTO') return 0;
-    return o.grandTotal || 0; // already clean — riderItemStatus already deducted
+    // Recompute from item rows — same as rider dashboard activeItemsTotal
+    // Avoids stale grandTotal from partial cancel / For Update transitions
+    let _tot = 0;
+    const _iS = o.itemStatuses||{}, _iCQ = o.itemCancelQty||{};
+    (o.items||[]).forEach((it, ii) => {
+      if(_iS[ii] === 'Cancelled' || _iS[ii] === 'Update') return;
+      const cxQty = _iCQ[ii]||0, tQty = it.grams||it.qty||1;
+      const ppu   = (it.total||0) / Math.max(1, tQty);
+      _tot += cxQty > 0 ? Math.max(0,(it.total||0)-ppu*cxQty) : (it.total||0);
+    });
+    return _tot + (o.shipping||0);
   };
 
   if(!filteredLog.length){
