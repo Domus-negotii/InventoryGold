@@ -14614,7 +14614,7 @@ function confirmMerge() {
   S.orders[keepIdx] = {
     ...oKeep,
     name: customerDisplay,        // JUAN / PEDRO / LUNA
-    contact: contactDisplay,      // 09123 / 09456 (or single if same)
+    contact: chosenContact || oKeep.contact || '',  // single selected number only
     contactList,                  // for future reference
     address: chosenAddress, city: chosenCity, landmark: chosenLandmark,
     items: mergedItems,
