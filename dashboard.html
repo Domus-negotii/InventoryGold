@@ -2438,6 +2438,7 @@ function _showRulesHint() {
         <select class="form-control enc-tab" id="enc-payment-method"
           onkeydown="encNextField(event,this)" onchange="onPaymentMethodChange()">
           <option value="COD">🏍️ COD – Own Rider, Cash on Delivery</option>
+          <option value="COD - Online Payment">📱 COD – Online Payment</option>
           <option value="LBC">📦 LBC – Payment First, LBC Delivers</option>
           <option value="EMS">✈️ EMS – Payment First, EMS Delivers</option>
           <option value="FedEx">📦 FedEx – Payment First, FedEx Delivers</option>
@@ -5980,9 +5981,10 @@ function renderDailySales(){
   });
   const codRemit = del.filter(o=>!o.paymentMethod||o.paymentMethod==='COD').reduce((s,o)=>s+(o.grandTotal||0),0);
   const lbcRemit = del.filter(o=>o.paymentMethod==='LBC').reduce((s,o)=>s+(o.grandTotal||0),0);
-  const intlRemit = del.filter(o=>o.paymentMethod==='EMS'||o.paymentMethod==='FedEx').reduce((s,o)=>s+(o.grandTotal||0),0);
-  const bankRemit = del.filter(o=>o.paymentMethod==='Via Bank').reduce((s,o)=>s+(o.grandTotal||0),0);
-  const overall = codRemit + lbcRemit + intlRemit + bankRemit;
+  const emsRemit = del.filter(o=>o.paymentMethod==='EMS').reduce((s,o)=>s+(o.grandTotal||0),0);
+  const fedexRemit = del.filter(o=>o.paymentMethod==='FedEx').reduce((s,o)=>s+(o.grandTotal||0),0);
+  const codOnlineRemit = del.filter(o=>o.paymentMethod==='COD - Online Payment').reduce((s,o)=>s+(o.grandTotal||0),0);
+  const overall = codRemit + lbcRemit + emsRemit + fedexRemit + codOnlineRemit;
   // Other Items Sales — sum of remitted OI items for this date
   const oiRemit = (S.otherItems||[])
     .filter(r => r.status === 'remitted' && r.date === d)
@@ -6002,9 +6004,9 @@ function renderDailySales(){
       <div class="card"><div class="card-header"><span class="card-title">Remit Summary</span></div>
         <div class="info-row"><span style="color:var(--muted);">COD (Cash on Delivery)</span><strong>${p(codRemit)}</strong></div>
         <div class="info-row"><span style="color:var(--muted);">LBC</span><strong>${p(lbcRemit)}</strong></div>
-        <div class="info-row"><span style="color:var(--muted);">EMS + FedEx</span><strong>${p(intlRemit)}</strong></div>
-        <div class="info-row"><span style="color:var(--muted);">VIA BANK</span><strong>${p(bankRemit)}</strong></div>
-        <div class="info-row"><span style="color:var(--muted);">GCASH</span><strong>₱0.00</strong></div>
+        <div class="info-row"><span style="color:var(--muted);">EMS</span><strong>${p(emsRemit)}</strong></div>
+        <div class="info-row"><span style="color:var(--muted);">FedEx</span><strong>${p(fedexRemit)}</strong></div>
+        <div class="info-row"><span style="color:var(--muted);">COD - Online Payment</span><strong>${p(codOnlineRemit)}</strong></div>
         <div class="info-row"><span style="color:var(--gold);">Other Items Sales</span><strong style="color:var(--gold);">${p(oiRemit)}</strong></div>
         <div class="info-row" style="border-bottom:none;font-size:14px;"><strong>OVERALL</strong><strong style="color:var(--green);">${p(overallWithOi)}</strong></div>
       </div>
@@ -6033,18 +6035,19 @@ function printDailySales(){
   });
   const codR = del.filter(o=>!o.paymentMethod||o.paymentMethod==='COD').reduce((s,o)=>s+(o.grandTotal||0),0);
   const lbcR = del.filter(o=>o.paymentMethod==='LBC').reduce((s,o)=>s+(o.grandTotal||0),0);
-  const intlR = del.filter(o=>o.paymentMethod==='EMS'||o.paymentMethod==='FedEx').reduce((s,o)=>s+(o.grandTotal||0),0);
-  const bankR = del.filter(o=>o.paymentMethod==='Via Bank').reduce((s,o)=>s+(o.grandTotal||0),0);
-  const overallR = codR + lbcR + intlR + bankR;
+  const emsR = del.filter(o=>o.paymentMethod==='EMS').reduce((s,o)=>s+(o.grandTotal||0),0);
+  const fedexR = del.filter(o=>o.paymentMethod==='FedEx').reduce((s,o)=>s+(o.grandTotal||0),0);
+  const codOnlineR = del.filter(o=>o.paymentMethod==='COD - Online Payment').reduce((s,o)=>s+(o.grandTotal||0),0);
+  const overallR = codR + lbcR + emsR + fedexR + codOnlineR;
   const pw=document.getElementById('daily-sales-print');  const _printHTML = `<div class="print-daily-wrap">
     <div class="print-daily-header"><div><h2 style="font-family:Georgia,serif;color:#9c7a2e;font-size:17px;margin:0;">Goldchelle Online Enterprises</h2><p style="font-size:10px;color:#555;">Las Pinas City, Metro Manila, PH | 0917-130-7239</p></div><div style="text-align:right;"><div style="font-size:15px;font-weight:700;color:#9c7a2e;">DAILY SALES RECORD</div><div style="font-size:11px;color:#555;">Date: ${d}</div></div></div>
     <div class="print-two-col">
       <div class="print-box"><div class="print-box-title">Remit Summary</div>
         <div class="print-row"><span>COD (Cash on Delivery)</span><span style="font-weight:600;">${p(codR)}</span></div>
         <div class="print-row"><span>LBC</span><span style="font-weight:600;">${p(lbcR)}</span></div>
-        <div class="print-row"><span>EMS + FedEx</span><span style="font-weight:600;">${p(intlR)}</span></div>
-        <div class="print-row"><span>VIA BANK</span><span style="font-weight:600;">${p(bankR)}</span></div>
-        <div class="print-row"><span>GCASH</span><span>₱0.00</span></div>
+        <div class="print-row"><span>EMS</span><span style="font-weight:600;">${p(emsR)}</span></div>
+        <div class="print-row"><span>FedEx</span><span style="font-weight:600;">${p(fedexR)}</span></div>
+        <div class="print-row"><span>COD - Online Payment</span><span style="font-weight:600;">${p(codOnlineR)}</span></div>
         <div class="print-row total-row"><span>OVERALL</span><span>${p(overallR)}</span></div>
       </div>
       <div class="print-box"><div class="print-box-title">Daily Parcels Summary</div><div class="print-row"><span>Total Parcels</span><span style="font-weight:700;">${dayO.length}</span></div><div class="print-row"><span>Delivered</span><span style="color:#27ae60;font-weight:700;">${del.length}</span></div><div class="print-row"><span>Cancel/Return</span><span style="color:#c0392b;font-weight:700;">${dayO.filter(o=>['Cancelled','RTO','Update'].includes(o.status)).length}</span></div></div>
@@ -14401,9 +14404,30 @@ function updateMergePreview() {
   const customerNames = [...new Set(orders.map(o=>(o.name||'').trim()).filter(Boolean))];
   const customerDisplay = customerNames.join(' / ');
 
-  // Combined contact: if all same → show once; if different → join with /
-  const allContacts = [...new Set(orders.map(o=>(o.contact||'').trim()).filter(Boolean))];
-  const contactDisplay = allContacts.length === 1 ? allContacts[0] : allContacts.join(' / ');
+  // Contact: use ONLY the selected radio option
+  const _cpPickVal = document.querySelector('input[name="merge-cp"]:checked')?.value;
+  let contactDisplay;
+  if(!_cpPickVal) {
+    // nothing selected yet — show all as hint
+    const allContacts = [...new Set(orders.map(o=>(o.contact||'').trim()).filter(Boolean))];
+    contactDisplay = allContacts.join(' / ');
+  } else if(_cpPickVal === 'custom') {
+    contactDisplay = document.getElementById('merge-cp-options-custom')?.value || '—';
+  } else {
+    const _cpIdx = parseInt(_cpPickVal);
+    contactDisplay = (orders[_cpIdx]?.contact || '—');
+  }
+
+  // Address: use ONLY the selected radio option
+  const _addrPickVal = document.querySelector('input[name="merge-address"]:checked')?.value;
+  let addressDisplay = '';
+  if(_addrPickVal && _addrPickVal !== 'custom') {
+    const _addrIdx = parseInt(_addrPickVal);
+    const _ao = orders[_addrIdx];
+    if(_ao) addressDisplay = [_ao.address, _ao.city, _ao.landmark].filter(Boolean).join(', ') || '—';
+  } else if(_addrPickVal === 'custom') {
+    addressDisplay = document.getElementById('merge-address-options-custom')?.value || '—';
+  }
 
   const el = document.getElementById('merge-result-preview');
   if(!el) return;
@@ -14416,6 +14440,7 @@ function updateMergePreview() {
     <div style="font-size:13px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">✅ Merged Order Preview (${orders.length} orders)</div>
     <div style="font-weight:700;font-size:13px;margin-bottom:2px;">${customerDisplay}</div>
     <div style="font-size:11px;color:var(--muted);">${contactDisplay} | ${orders[0].date}</div>
+    ${addressDisplay ? `<div style="font-size:11px;color:var(--muted);">📍 ${addressDisplay}</div>` : ''}
     <div style="font-size:11px;margin-top:4px;color:var(--blue);">👥 Admins: <strong>${adminDisplay||'—'}</strong></div>
     <div style="font-size:13px;color:var(--muted);margin-top:2px;">
       Incentive: ₱25 ÷ ${adminList.length} = <strong style="color:var(--gold);">₱${incentiveEach} each</strong>
