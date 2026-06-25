@@ -9730,28 +9730,74 @@ async function saveOrder() {
     // Merge payments: form wins if non-empty, else preserve orig
     if((!o.payments || !o.payments.length) && orig.payments && orig.payments.length) o.payments = orig.payments;
 
-    // ── Inventory adjustment on EDIT ─────────────────────────────
-    // Only touch inventory if checker already verified this order.
-    // Unverified edits never affected stock — nothing to restore or deduct.
-    // If items are identical (info-only edit), skip restore+deduct entirely.
+    // ── Inventory adjustment on EDIT (DIFF-only) ────────────────
+    // Only touch inventory if order was already verified (stock was deducted).
+    // Strategy: compute per-item delta — only restore removed/reduced items,
+    // only deduct added/increased items. Never full restore + full re-deduct.
     const hadDeducted = _invDeducted(orig);
     if(hadDeducted) {
-      // Compare old vs new items — skip inventory touch if items unchanged
-      const _itemSig = (its) => JSON.stringify((its||[]).map(it=>({
-        code:(it.code||'').toUpperCase(), grams:parseFloat(it.grams||0),
-        qty:parseFloat(it.qty||0), total:parseFloat(it.total||0)
-      })));
-      const _itemsChanged = _itemSig(orig.items) !== _itemSig(items);
-      if(_itemsChanged) {
-        // Items changed — restore old, deduct new
-        if((orig.items||[]).length > 0) {
-          _restoreOrderItems(orig.items, today(), 'Edit restore – '+name, (orig._id||'orig')+'_restore_'+Date.now());
+      const _normCode = c => (c||'').toUpperCase().trim();
+      const _ts = Date.now();
+
+      // Build maps: code → total grams or qty (aggregate same-code items)
+      const _buildMap = (its) => {
+        const m = {};
+        (its||[]).forEach(it => {
+          const code = _normCode(it.code);
+          if(!code) return;
+          const inv = S.inventory.find(iv => _normCode(iv.code) === code);
+          const isGrams = inv ? inv.itemType !== 'fixprice' : (parseFloat(it.grams||0) > 0);
+          const amt = isGrams ? parseFloat(it.grams||0) : parseFloat(it.qty||0);
+          m[code] = (m[code]||0) + amt;
+        });
+        return m;
+      };
+
+      const oldMap = _buildMap(orig.items);
+      const newMap = _buildMap(items);
+
+      // Collect all codes across old and new
+      const allCodes = new Set([...Object.keys(oldMap), ...Object.keys(newMap)]);
+      const toRestore = []; // items to add back to inventory
+      const toDeduct  = []; // items to take from inventory
+
+      allCodes.forEach(code => {
+        const oldAmt = oldMap[code] || 0;
+        const newAmt = newMap[code] || 0;
+        const diff = newAmt - oldAmt; // positive = added, negative = removed
+        if(Math.abs(diff) < 0.0001) return; // no change for this item
+
+        // Find a sample item for metadata (code, desc, etc.)
+        const sampleNew = items.find(it => _normCode(it.code) === code);
+        const sampleOld = (orig.items||[]).find(it => _normCode(it.code) === code);
+        const sample = sampleNew || sampleOld;
+        if(!sample) return;
+
+        const inv = S.inventory.find(iv => _normCode(iv.code) === code);
+        const isGrams = inv ? inv.itemType !== 'fixprice' : (parseFloat(sample.grams||0) > 0);
+
+        if(diff > 0) {
+          // More than before → deduct the additional amount only
+          const deltaItem = {...sample};
+          if(isGrams) { deltaItem.grams = diff; deltaItem.qty = 0; }
+          else { deltaItem.qty = Math.round(diff); deltaItem.grams = 0; }
+          toDeduct.push(deltaItem);
+        } else {
+          // Less than before → restore the removed amount only
+          const deltaItem = {...sample};
+          if(isGrams) { deltaItem.grams = Math.abs(diff); deltaItem.qty = 0; }
+          else { deltaItem.qty = Math.round(Math.abs(diff)); deltaItem.grams = 0; }
+          toRestore.push(deltaItem);
         }
-        o.inventoryDeducted = _deductOrderItems(items, today(), 'Edit deduct – '+name+' ('+admin+')', (o._id||String(editOrderIdx))+'_edit_'+Date.now());
-      } else {
-        // Info-only edit — items unchanged, no inventory movement needed
-        o.inventoryDeducted = true;
+      });
+
+      if(toRestore.length > 0) {
+        _restoreOrderItems(toRestore, today(), 'Edit restore (diff) – '+name, (orig._id||'orig')+'_restore_'+_ts);
       }
+      if(toDeduct.length > 0) {
+        _deductOrderItems(toDeduct, today(), 'Edit deduct (diff) – '+name, (o._id||'edit')+'_deduct_'+_ts);
+      }
+      o.inventoryDeducted = true; // still fully deducted overall
     } else {
       o.inventoryDeducted = false;
     }
@@ -14514,28 +14560,21 @@ function updateMergePreview() {
 
 
 function confirmMerge() {
-  // N-order merge: get all indices from the group
-  const allIndices = (window._mergeGroupIndices || [_mergeIdxA, _mergeIdxB]).slice().sort((a,b)=>a-b);
-  const allOrders  = allIndices.map(i => S.orders[i]);
+  // _displayIndices = order as shown in modal (Order A=0, B=1, C=2)
+  // Never sort — radio values 0,1,2 must map to exactly what checker sees
+  const _displayIndices = (window._mergeGroupIndices || [_mergeIdxA, _mergeIdxB]).slice();
+  const allOrders = _displayIndices.map(i => S.orders[i]);
 
   if(allOrders.some(o => !o)) { toast('⚠️ May missing order — i-refresh at subukan ulit.'); return; }
-
-  // GUARD: Never merge Cancelled/RTO/Delivered orders
   if(allOrders.some(o => ['Cancelled','RTO','Delivered'].includes(o.status))) {
-    toast('⚠️ Hindi pwedeng i-merge — may cancelled o delivered na order. I-refresh at subukan ulit.');
-    return;
+    toast('⚠️ Hindi pwedeng i-merge — may cancelled o delivered na order.'); return;
   }
-  // Same-day requirement
   const dates = [...new Set(allOrders.map(o=>o.date))];
   if(dates.length > 1) {
-    toast('⚠️ Hindi pwedeng i-merge — may iba-ibang petsa ang orders. Same day lang ang pwedeng i-merge.');
-    return;
+    toast('⚠️ Hindi pwedeng i-merge — may iba-ibang petsa. Same day lang ang pwedeng i-merge.'); return;
   }
 
-  // Display order = matches radio values 0,1,2 (Order A, B, C as shown in modal)
-  const _displayIndices = (window._mergeGroupIndices || allIndices);
-
-  // ── Validate all 3 required selections (MUST be at top — used below) ───────
+  // ── Validate radio selections ──────────────────────────────────
   const _addrPick = document.querySelector('input[name="merge-address"]:checked')?.value;
   const _cpPick   = document.querySelector('input[name="merge-cp"]:checked')?.value;
   const _sfPick   = document.querySelector('input[name="merge-sf-choice"]:checked')?.value;
@@ -14543,47 +14582,58 @@ function confirmMerge() {
   if(!_cpPick)   { toast('⚠️ Pumili ng Contact Number bago mag-merge!'); return; }
   if(!_sfPick)   { toast('⚠️ Pumili ng Shipping Fee bago mag-merge!'); return; }
 
-  let mergedSF;
-  if(!isNaN(parseInt(_sfPick))) mergedSF = (S.orders[_displayIndices[parseInt(_sfPick)]]?.shipping || 0);
-  else mergedSF = parseFloat(document.getElementById('merge-sf-options-custom')?.value)||0;
-
-  const mergedItems     = allOrders.flatMap(o => o.items||[]);
-  const mergedItemsTotal= mergedItems.reduce((s,it) => s+(it.total||0), 0);
-  const mergedGrandTotal= mergedItemsTotal + mergedSF;
-
-  const adminList    = [...new Set(allOrders.map(o=>o.admin||'').filter(Boolean))];
-  const adminDisplay = adminList.join(' / ');
-  // Customer names — unique, joined with / (JUAN / PEDRO); same name = show once
-  const customerNames   = [...new Set(allOrders.map(o=>(o.name||'').trim().split('/').map(n=>n.trim())).flat().filter(Boolean))];
-  const customerDisplay = [...new Set(customerNames)].join(' / ');
-
-  // Resolve address — use display order so radio 0=Order A, 1=Order B
-  let chosenAddress = '', chosenCity = '', chosenLandmark = '';
-  if(_addrPick === 'custom') {
-    chosenAddress = (document.getElementById('merge-address-options-custom')?.value||'').trim();
-  } else {
-    const _addrSrc = S.orders[_displayIndices[parseInt(_addrPick)]] || allOrders[0];
-    chosenAddress  = _addrSrc.address  || '';
-    chosenCity     = _addrSrc.city     || '';
-    chosenLandmark = _addrSrc.landmark || '';
-  }
-
-  // Resolve contact number — exact same logic as updateMergePreview's contactDisplay
+  // ── Resolve chosen values using display order ──────────────────
+  // Contact — single number only, strip any old joined values
   let chosenContact = '';
   if(_cpPick === 'custom') {
     chosenContact = (document.getElementById('merge-cp-options-custom')?.value||'').trim();
   } else {
-    const _cpIdx2 = parseInt(_cpPick);
-    const _cpSrc = S.orders[_displayIndices[_cpIdx2]] || allOrders[_cpIdx2] || allOrders[0];
-    chosenContact = (_cpSrc.contact || '').split('/')[0].trim();
+    const _src = S.orders[_displayIndices[parseInt(_cpPick)]] || allOrders[0];
+    chosenContact = (_src.contact || '').split('/')[0].trim();
   }
 
-  // Surviving order = lowest index; absorbed = all others (remove highest-index first)
-  const keepIdx     = allIndices[0];
-  const removeIdxs  = allIndices.slice(1).reverse(); // remove highest first to preserve indices
-  const oKeep       = S.orders[keepIdx];
+  // Address
+  let chosenAddress = '', chosenCity = '', chosenLandmark = '';
+  if(_addrPick === 'custom') {
+    chosenAddress = (document.getElementById('merge-address-options-custom')?.value||'').trim();
+  } else {
+    const _src = S.orders[_displayIndices[parseInt(_addrPick)]] || allOrders[0];
+    chosenAddress  = _src.address  || '';
+    chosenCity     = _src.city     || '';
+    chosenLandmark = _src.landmark || '';
+  }
 
-  // Save merge log
+  // SF
+  let mergedSF = 0;
+  if(_sfPick === 'custom') {
+    mergedSF = parseFloat(document.getElementById('merge-sf-options-custom')?.value)||0;
+  } else {
+    const _src = S.orders[_displayIndices[parseInt(_sfPick)]] || allOrders[0];
+    mergedSF = _src.shipping || 0;
+  }
+
+  // ── Build merged data ──────────────────────────────────────────
+  const mergedItems      = allOrders.flatMap(o => o.items||[]);
+  const mergedItemsTotal = mergedItems.reduce((s,it) => s+(it.total||0), 0);
+  const mergedGrandTotal = mergedItemsTotal + mergedSF;
+
+  const adminList    = [...new Set(allOrders.map(o=>o.admin||'').filter(Boolean))];
+  const adminDisplay = adminList.join(' / ');
+
+  // Customer names — deduplicated, split any existing joined names
+  const customerNames   = [...new Set(
+    allOrders.map(o=>(o.name||'').trim().split('/').map(n=>n.trim())).flat().filter(Boolean)
+  )];
+  const customerDisplay = customerNames.join(' / ');
+
+  // Surviving order = first in display order; absorbed = the rest
+  // Sort allIndices for splice safety (remove highest index first)
+  const allIndicesSorted = _displayIndices.slice().sort((a,b)=>a-b);
+  const keepIdx    = allIndicesSorted[0];
+  const removeIdxs = allIndicesSorted.slice(1).reverse();
+  const oKeep      = S.orders[keepIdx];
+
+  // ── Save merge log ─────────────────────────────────────────────
   if(!S.mergeLog) S.mergeLog = [];
   S.mergeLog.push({
     mergedAt: new Date().toISOString(),
@@ -14591,37 +14641,35 @@ function confirmMerge() {
     survivingOrderNum: onum(keepIdx),
     absorbedOrderNums: removeIdxs.map(i => onum(i)),
     customerNames, customerDisplay,
-    contact: chosenContact||oKeep.contact||'',
+    contact: chosenContact,
     date: oKeep.date,
     adminList, adminDisplay,
     mergedSF, mergedGrandTotal,
     orderCount: allOrders.length
   });
 
-  // Restore inventory for ALL orders before merge (PROTECTED pattern)
-  const _mergeRestoreRef = 'merge_restore_' + Date.now();
+  // ── Restore inventory for all orders before merge ──────────────
   if(!window._mergeRestoredOrders) window._mergeRestoredOrders = new Set();
-  allIndices.forEach((idx, n) => {
+  _displayIndices.forEach((idx, n) => {
     const o = S.orders[idx];
     if(o && o.inventoryDeducted) {
       _restoreOrderItems(o.items, o.date||today(),
-        'Pre-merge restore – ' + onum(idx), (o._id||_mergeRestoreRef)+'_'+n);
+        'Pre-merge restore – ' + onum(idx), (o._id||'merge')+'_premerge_'+n+'_'+Date.now());
     }
   });
 
-  // Mark returnLog entries for ALL absorbed orders as merge-restored
+  // Mark returnLog entries for absorbed orders
   removeIdxs.forEach(idx => {
     const _absNum = onum(idx);
     (S.returnLog||[]).forEach(r => { if(r.orderNum===_absNum && !r.mergeRestored) r.mergeRestored=true; });
     window._mergeRestoredOrders.add(_absNum);
   });
 
-  // Apply merge to surviving order (lowest index)
+  // ── Apply merged data to surviving order ──────────────────────
   S.orders[keepIdx] = {
     ...oKeep,
-    name: customerDisplay,        // JUAN / PEDRO / LUNA
-    contact: chosenContact || oKeep.contact || '',  // single selected number only
-    contactList,                  // for future reference
+    name: customerDisplay,
+    contact: chosenContact,
     address: chosenAddress, city: chosenCity, landmark: chosenLandmark,
     items: mergedItems,
     itemsTotal: mergedItemsTotal,
@@ -14632,40 +14680,38 @@ function confirmMerge() {
     _id: oKeep._id || ('o_merge_'+Date.now()),
     createdAt: oKeep.createdAt,
     encodedBy: oKeep.encodedBy,
-    mergedFrom: allIndices.map(i=>onum(i)),
+    mergedFrom: _displayIndices.map(i=>onum(i)),
     isMerged: true,
     mergedAt: new Date().toISOString(),
     checkerStatus: 'Pending',
     verificationStatus: 'Not Verified',
-    inventoryDeducted: false  // CRITICAL: reset — verify deducts merged set exactly once
+    inventoryDeducted: false
   };
 
-  // Remove absorbed orders — highest index first to preserve lower indices
+  // ── Remove absorbed orders (highest index first to preserve lower) ──
   if(!window._mergeDeletedIds) window._mergeDeletedIds = new Set();
   removeIdxs.forEach(removeIdx => {
     const oRemove = S.orders[removeIdx];
     if(!oRemove) return;
-    // Guarantee _id before removal (required for Firebase _mergeDeletedIds filter)
     if(!oRemove._id) {
       oRemove._id = 'merged_absorbed_' + Date.now() + '_' + removeIdx;
       S.orders[removeIdx]._id = oRemove._id;
     }
-    const _absorbedId      = oRemove._id;
-    const _absorbedOrderNum= onum(removeIdx);
+    window._mergeDeletedIds.add(oRemove._id);
+    window._mergeDeletedIds.add('ORDERNUM:' + onum(removeIdx));
     S.orders.splice(removeIdx, 1);
-    window._mergeDeletedIds.add(_absorbedId);
-    window._mergeDeletedIds.add('ORDERNUM:' + _absorbedOrderNum);
   });
 
-  // Clear dismissal set — merge completed, clean slate for next detection
+  // Clear dismissal set — merge completed
   if(window._mergeGroupDismissed) window._mergeGroupDismissed.clear();
   save();
   closeModal('modal-merge-orders');
-  const absorbedNums = removeIdxs.map((_,n) => onum(allIndices[n+1])).join(', ');
-  toast(`✅ ${allOrders.length} orders merged! ${onum(keepIdx)} ← absorbed [${absorbedNums}]. Admin incentive: ₱${(25/adminList.length).toFixed(2)} each.`);
+  const absorbedNums = removeIdxs.map(i => onum(i)).join(', ');
+  toast(`✅ ${allOrders.length} orders merged! ${onum(keepIdx)} ← [${absorbedNums}]. Admin incentive: ₱${(25/Math.max(1,adminList.length)).toFixed(2)} each.`);
   renderChecker();
   if(currentRole==='owner') renderDash();
 }
+
 
 // ── Pre-login: fetch latest passwords from Firebase immediately on page load ──
 // This runs BEFORE login so all devices always use the owner's latest password.
