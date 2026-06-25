@@ -8346,18 +8346,7 @@ function ownerDeleteOrder(i) {
   if(currentRole !== 'owner') { toast('🔒 CEO only.'); return; }
   const o = S.orders[i];
   if(!o) return;
-  if(o.isMerged) {
-    setTimeout(() => {
-      document.querySelectorAll('#modal-edit-order input, #modal-edit-order select, #modal-edit-order textarea').forEach(el => { el.disabled = true; el.style.opacity='0.6'; el.style.cursor='not-allowed'; });
-      const sb = document.querySelector('#modal-edit-order .btn-gold');
-      if(sb) { sb.disabled=true; sb.style.opacity='0.4'; }
-      const notice = document.createElement('div');
-      notice.style.cssText = 'background:rgba(201,168,76,0.1);border:1px solid var(--gold);border-radius:6px;padding:8px 12px;margin:0 0 10px;font-size:12px;color:var(--gold);';
-      notice.innerHTML = '🔒 Merged order — read-only. Hindi na mababago ang info pagkatapos ng merge.';
-      const ff = document.querySelector('#modal-edit-order .form-group');
-      if(ff) ff.parentNode.insertBefore(notice, ff);
-    }, 50);
-  }
+
   if(!confirm(`DELETE permanently?\n\n${onum(i)} — ${o.name}\n₱${(o.grandTotal||0).toFixed(2)}\n\nThis cannot be undone. Inventory will NOT be affected.`)) return;
   // Push to deletedOrders for audit
   if(!S.deletedOrders) S.deletedOrders = [];
@@ -14559,13 +14548,13 @@ function confirmMerge() {
     chosenLandmark = _addrSrc.landmark || '';
   }
 
-  // Resolve contact number
+  // Resolve contact number — always single number, strip any old joined values
   let chosenContact = '';
   if(_cpPick === 'custom') {
     chosenContact = (document.getElementById('merge-cp-options-custom')?.value||'').trim();
   } else {
     const _cpSrc = S.orders[allIndices[parseInt(_cpPick)]] || allOrders[0];
-    chosenContact = _cpSrc.contact || '';
+    chosenContact = (_cpSrc.contact || '').split('/')[0].trim();
   }
 
   // Surviving order = lowest index; absorbed = all others (remove highest-index first)
