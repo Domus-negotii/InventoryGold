@@ -1299,6 +1299,17 @@ function _showRulesHint() {
       <div style="text-align:center;"><div style="font-size:48px;">🔐</div><div style="font-family:var(--fh);font-size:20px;color:var(--gold);margin:8px 0;">CEO Only</div><p style="color:var(--muted);font-size:12px;">Dashboard is restricted to CEO/Owner access.</p></div>
     </div>
     <div id="dash-ceo-content">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;" class="no-print">
+      <span style="color:var(--muted);font-size:12px;">From:</span>
+      <input type="text" id="dash-date-from" placeholder="MM/DD/YYYY" maxlength="10"
+        style="width:120px;padding:4px 8px;font-size:12px;border-radius:5px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);"
+        oninput="renderDash()" onfocus="this.select()">
+      <span style="color:var(--muted);font-size:12px;">To:</span>
+      <input type="text" id="dash-date-to" placeholder="MM/DD/YYYY" maxlength="10"
+        style="width:120px;padding:4px 8px;font-size:12px;border-radius:5px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);"
+        oninput="renderDash()" onfocus="this.select()">
+      <button class="btn btn-sm" style="font-size:11px;padding:4px 10px;" onclick="document.getElementById('dash-date-from').value='';document.getElementById('dash-date-to').value='';renderDash();">All Dates</button>
+    </div>
     <div class="stats-grid" id="dash-stats"></div>
     <div class="two-col">
       <div class="card"><div class="card-header"><span class="card-title">Parcel Status</span></div><div id="dash-status"></div></div>
@@ -1745,9 +1756,9 @@ function _showRulesHint() {
     <div class="action-row no-print">
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <label style="font-size:11px;color:var(--muted);font-weight:600;">FROM</label>
-        <input type="date" class="form-control" id="pnl-from" style="width:148px;" oninput="renderPnl()">
+        <input type="text" class="form-control" id="pnl-from" placeholder="MM/DD/YYYY" maxlength="10" style="width:120px;" oninput="renderPnl()" onfocus="this.select()">
         <label style="font-size:11px;color:var(--muted);font-weight:600;">TO</label>
-        <input type="date" class="form-control" id="pnl-to" style="width:148px;" oninput="renderPnl()">
+        <input type="text" class="form-control" id="pnl-to" placeholder="MM/DD/YYYY" maxlength="10" style="width:120px;" oninput="renderPnl()" onfocus="this.select()">
         <button class="btn btn-outline btn-sm" onclick="setPnlRange('today')" style="font-size:11px;">Today</button>
         <button class="btn btn-outline btn-sm" onclick="setPnlRange('week')" style="font-size:11px;">This Week</button>
         <button class="btn btn-outline btn-sm" onclick="setPnlRange('month')" style="font-size:11px;">This Month</button>
@@ -2324,16 +2335,22 @@ function _showRulesHint() {
         <div id="merge-order-b" style="background:var(--navy);border-radius:8px;padding:12px;border:2px solid var(--navy-border);"></div>
       </div>
 
-      <!-- SF selector -->
+      <!-- Address / CP / SF selectors -->
       <div class="form-group" style="background:var(--navy);border-radius:8px;padding:12px;margin-bottom:12px;">
-        <div style="margin-bottom:12px;"><label style="color:var(--gold);font-weight:700;margin-bottom:6px;display:block;">📍 Delivery Address:</label><div id="merge-address-options" style="padding:8px;background:rgba(15,27,45,0.5);border-radius:6px;border:1px solid var(--navy-border);min-height:40px;"></div></div>
-        <label style="color:var(--gold);font-weight:700;margin-bottom:8px;display:block;">💰 Shipping Fee sa Merged Order</label>
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-          <label style="font-size:12px;"><input type="radio" name="merge-sf" value="higher" checked onchange="updateMergePreview()"> Use higher SF</label>
-          <label style="font-size:12px;"><input type="radio" name="merge-sf" value="lower" onchange="updateMergePreview()"> Use lower SF</label>
-          <label style="font-size:12px;"><input type="radio" name="merge-sf" value="custom" onchange="updateMergePreview()"> Custom:
-            <input type="number" id="merge-sf-custom" min="0" value="0" style="width:80px;font-size:11px;padding:2px 6px;margin-left:4px;" oninput="updateMergePreview()" onwheel="return false;">
-          </label>
+        <!-- ADDRESS -->
+        <div style="margin-bottom:14px;">
+          <label style="color:var(--gold);font-weight:700;margin-bottom:8px;display:block;">📍 Delivery Address <span style="color:var(--red);font-size:10px;">* required</span></label>
+          <div id="merge-address-options" style="display:flex;flex-direction:column;gap:5px;"></div>
+        </div>
+        <!-- CP NUMBER -->
+        <div style="margin-bottom:14px;">
+          <label style="color:var(--gold);font-weight:700;margin-bottom:8px;display:block;">📞 Contact Number <span style="color:var(--red);font-size:10px;">* required</span></label>
+          <div id="merge-cp-options" style="display:flex;flex-direction:column;gap:5px;"></div>
+        </div>
+        <!-- SHIPPING FEE -->
+        <div>
+          <label style="color:var(--gold);font-weight:700;margin-bottom:8px;display:block;">💰 Shipping Fee <span style="color:var(--red);font-size:10px;">* required</span></label>
+          <div id="merge-sf-options" style="display:flex;flex-direction:column;gap:5px;"></div>
         </div>
       </div>
 
@@ -2467,9 +2484,10 @@ function _showRulesHint() {
     </div>
     <div style="text-align:right;margin-top:10px;font-size:12.5px;line-height:2;">
       SF: <strong style="color:var(--gold);" id="enc-sf-disp">₱0.00</strong> &nbsp;|&nbsp;
-      Items (net): <strong style="color:var(--gold);" id="enc-items-disp">₱0.00</strong> &nbsp;|&nbsp;
+      Items Total: <strong style="color:var(--gold);" id="enc-items-disp">₱0.00</strong> &nbsp;|&nbsp;
       Discount: <strong style="color:var(--red);" id="enc-discount-disp">-₱0.00</strong>
       <span id="enc-grand-disp" style="display:none;">₱0.00</span>
+      &nbsp;|&nbsp; <span style="color:var(--white);">Grand Total (SF + Items): <strong style="color:var(--green);font-size:14px;" id="enc-grand-total-disp">₱0.00</strong></span>
     </div>
     <!-- ── Overall/Global Discount Box ── -->
     <div class="form-group" style="margin-top:10px;padding:10px 14px;background:rgba(224,85,85,0.06);border:1px solid rgba(224,85,85,0.2);border-radius:8px;">
@@ -3385,6 +3403,9 @@ window.calcEnc = function() {
   document.getElementById('enc-sf-disp').textContent = p(sf);
   document.getElementById('enc-items-disp').textContent = p(iT);
   document.getElementById('enc-grand-disp').textContent = p(grandTotal);
+  // GRAND TOTAL = SF + Items Total (shown in encode form for reference)
+  const grandTotalDisp = document.getElementById('enc-grand-total-disp');
+  if(grandTotalDisp) grandTotalDisp.textContent = p(Math.round((iT + sf) * 100) / 100);
 };
 
 // Enter key → next field in encode modal
@@ -4033,7 +4054,7 @@ function renderChecker(){
         dupBanner.innerHTML = `<div style="background:rgba(224,138,48,0.15);border:1.5px solid var(--orange);border-radius:8px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
           <div><span style="color:var(--orange);font-weight:700;">⚠️ ${dupSets.length} Possible Duplicate Order(s) Detected!</span>
           <div style="font-size:11px;color:var(--muted);margin-top:2px;">Similar name / contact / address on same date: <strong>${names}</strong></div></div>
-          <button class="btn btn-orange btn-sm" onclick="openMergeModal()">🔀 Review & Merge</button>
+          ${checkerTab === 'COD' ? '<button class="btn btn-orange btn-sm" onclick="openMergeModal()">🔀 Review &amp; Merge</button>' : '<span style="font-size:11px;color:var(--muted);">ℹ️ Merge: COD orders only.</span>'}
         </div>`;
         dupBanner.style.display = '';
       } else {
@@ -4139,7 +4160,12 @@ function renderChecker(){
           const verifSt = o.verificationStatus||'Not Verified';
           const canVerify = pymSt === 'Fully Paid';
           const isLocked = ['Ready','Out for Delivery','Delivered','Cancelled','Update'].includes(o.status);
-          const isDroppedOff = ['Drop off at LBC','Drop off at EMS','Drop off at FedEx','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'].includes(o.lbcStatus||'') || o.checkerStatus==='Verified';
+          const isCourierOrder = o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx';
+          const isDroppedOff = ['Drop off at LBC','Drop off at EMS','Drop off at FedEx','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'].includes(o.lbcStatus||'');
+          // NOTE: checkerStatus==='Verified' intentionally NOT included in isDroppedOff —
+          // checker must be able to update lbcStatus to 'Ready to Pick-up' even after verifying.
+          // Payment status is separately locked once courier is Verified (or dropped off).
+          const isPaymentLocked = isDroppedOff || (isCourierOrder && o.checkerStatus==='Verified');
           const isODZ = (o.lbcStatus||'') === 'ODZ/Incomplete Details';
           const isDeemphasized = ['Update','Cancelled','Delivered'].includes(o.status);
           const rowStyle = isDeemphasized ? 'opacity:0.62;font-size:11px;' : '';
@@ -4150,7 +4176,7 @@ function renderChecker(){
             <td>${o.date}</td>
             <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
             <td>
-              ${isDroppedOff
+              ${isPaymentLocked
                 ? `<span style="font-size:10px;font-weight:700;color:${payColor(pymSt)};padding:3px 8px;background:rgba(74,144,217,0.08);border-radius:5px;display:inline-block;">🔒 ${pymSt}</span>`
                 : `<select class="form-control" style="width:130px;font-size:10.5px;padding:3px 5px;border-color:${payColor(pymSt)};"
                     onchange="updatePaymentStatus(${i},this.value)">
@@ -4291,6 +4317,10 @@ function _captureOtherItems(orderIdx) {
   const o     = S.orders[orderIdx];
   const _oNum = onum(orderIdx);
   if(!S.otherItems) S.otherItems = [];
+
+  const _itemStatuses  = o.itemStatuses  || {};
+  const _itemCancelQty = o.itemCancelQty || {};
+
   (o.items||[]).forEach((it, ii) => {
     const _code   = (it.code||'').toUpperCase().trim();
     if(!_code) return;
@@ -4298,47 +4328,107 @@ function _captureOtherItems(orderIdx) {
     const _inInv  = (S.inventory||[]).some(inv => inv.code && inv.code.toUpperCase() === _code);
     // Only capture: specific OI prefix codes OR not in inventory
     if(!_prefix && _inInv) return;
-    // Check if entry already exists
-    const _existIdx = S.otherItems.findIndex(r => r.orderNum === _oNum && r.itemIdx === ii);
-    if(_existIdx >= 0) {
-      // Re-verify: set isVerified:true → item becomes visible again in correct tab
-      // Do NOT change status (cancelled stays cancelled, remitted stays remitted)
-      S.otherItems[_existIdx].isVerified = true;
-      return; // don't create duplicate
-    }
-    // Compute default profit: defaultProfitPerUnit × qty or grams
-    const _defaultProfitPerUnit = _prefix ? _OI_PREFIXES[_prefix] : 0;
-    const _qty      = it.grams > 0 ? it.grams : (it.qty || 1);
-    const _profit   = _defaultProfitPerUnit * _qty;
-    const _price    = it.total || 0;
-    const _capital  = Math.max(0, _price - _profit); // Capital = Price - Profit
-    S.otherItems.push({
+
+    // ── Determine quantities ───────────────────────────────────────────────
+    const _isWholeCancel = _itemStatuses[ii] === 'Cancelled';
+    const _totalQty  = it.grams > 0 ? it.grams : (it.qty || 1);
+    const _cancelQty = _isWholeCancel ? _totalQty : (parseFloat(_itemCancelQty[ii]) || 0);
+    const _delivQty  = Math.max(0, _totalQty - _cancelQty);
+
+    // Price-per-unit
+    const _ppu = _totalQty > 0 ? (it.total || 0) / _totalQty : 0;
+
+    // ── Profit defaults ────────────────────────────────────────────────────
+    const _defaultProfitPerUnit = _prefix ? (_OI_PREFIXES[_prefix] || 0) : 0;
+
+    // Helper: build a base OI entry object
+    const _baseEntry = (qtyOverride, gramsOverride, totalOverride, statusVal) => ({
       _id:      'oi_' + Date.now() + '_' + ii + '_' + Math.random().toString(36).slice(2,6),
       orderNum:     _oNum,
       orderIdx:     orderIdx,
       itemIdx:      ii,
       customerName: o.name || '',
       code:         it.code  || '',
-      desc:     it.desc  || '',
-      qty:      it.qty   || 1,
-      grams:    it.grams || 0,
-      pergram:  it.pergram || 0,
-      total:    _price,
-      profit:   _profit,          // editable — default = defaultProfitPerUnit × qty/grams
-      capital:  _capital,         // auto-computed: Price - Profit (NOT editable)
+      desc:         it.desc  || '',
+      qty:          qtyOverride,
+      grams:        gramsOverride,
+      pergram:      it.pergram || 0,
+      total:        totalOverride,
+      profit:       _defaultProfitPerUnit * (gramsOverride || qtyOverride),
+      capital:      Math.max(0, totalOverride - _defaultProfitPerUnit * (gramsOverride || qtyOverride)),
       profitPerUnit: _defaultProfitPerUnit,
       prefix:   _prefix || '',
-      // Status always starts as 'product' when checker verifies.
-      // Transitions: product → remitted (on Deliver) or product → cancelled (on Cancel)
-      // via _syncOiPrefixStatus. Never inferred from order status.
-      status:     'product',
-      isVerified: true,      // set by Checker verify; false = hidden from all tabs
+      status:   statusVal,
+      isVerified: true,
       createdAt:  new Date().toISOString(),
       checkedBy:  currentUser?.name || 'Checker',
       admin:    o.admin || '',
       riderName: o.assignedRider || '',
       date:     o.date || '',
     });
+
+    // ── Delivered portion ──────────────────────────────────────────────────
+    const _existIdx = S.otherItems.findIndex(r =>
+      r.orderNum === _oNum && r.itemIdx === ii && r.status !== 'cancelled'
+    );
+    if(_delivQty > 0) {
+      const _delivTotal = Math.round(_ppu * _delivQty * 100) / 100;
+      const _delivGrams = it.grams > 0 ? _delivQty : 0;
+      const _delivUnits = it.grams > 0 ? (it.qty || 1) : _delivQty;
+      if(_existIdx >= 0) {
+        // Re-verify: update qty/total but don't change status (unless cancelled)
+        const _e = S.otherItems[_existIdx];
+        _e.isVerified = true;
+        _e.qty   = _delivUnits;
+        _e.grams = _delivGrams;
+        _e.total = _delivTotal;
+        _e.profit = _defaultProfitPerUnit * (_delivGrams || _delivUnits);
+        _e.capital = Math.max(0, _delivTotal - _e.profit);
+        if(_e.status === 'cancelled') _e.status = 'product'; // re-verify resets
+      } else {
+        S.otherItems.push(_baseEntry(
+          it.grams > 0 ? (it.qty || 1) : _delivQty,
+          it.grams > 0 ? _delivQty : 0,
+          _delivTotal,
+          'product'
+        ));
+      }
+    } else if(_existIdx >= 0) {
+      // Whole cancel — mark existing delivered entry as cancelled
+      S.otherItems[_existIdx].status = 'cancelled';
+      S.otherItems[_existIdx].isVerified = true;
+    }
+
+    // ── Cancelled portion (partial or whole) ──────────────────────────────
+    if(_cancelQty > 0) {
+      const _cxTotal = Math.round(_ppu * _cancelQty * 100) / 100;
+      const _cxGrams = it.grams > 0 ? _cancelQty : 0;
+      const _cxUnits = it.grams > 0 ? 0 : _cancelQty; // qty for unit items
+      // Check if a cancelled entry already exists for this item
+      const _cxExistIdx = S.otherItems.findIndex(r =>
+        r.orderNum === _oNum && r.itemIdx === ii && r.status === 'cancelled'
+      );
+      if(_cxExistIdx >= 0) {
+        // Update existing cancelled entry
+        const _ce = S.otherItems[_cxExistIdx];
+        _ce.qty   = it.grams > 0 ? 0 : _cancelQty;
+        _ce.grams = it.grams > 0 ? _cancelQty : 0;
+        _ce.total = _cxTotal;
+        _ce.profit = _defaultProfitPerUnit * (_cxGrams || _cxUnits);
+        _ce.capital = Math.max(0, _cxTotal - _ce.profit);
+        _ce.isVerified = true;
+      } else {
+        // Create new cancelled entry
+        const _cxEntry = _baseEntry(
+          it.grams > 0 ? 0 : _cancelQty,
+          it.grams > 0 ? _cancelQty : 0,
+          _cxTotal,
+          'cancelled'
+        );
+        _cxEntry._id = 'oi_cx_' + Date.now() + '_' + ii + '_' + Math.random().toString(36).slice(2,6);
+        S.otherItems.push(_cxEntry);
+      }
+    }
   });
 }
 
@@ -5844,7 +5934,12 @@ function addUnassignedRiderSlot() {
 
 // ============ DAILY SALES RECORD ============
 function renderDailySales(){
-  if(!mdy2ymd((document.getElementById('ds-date')?.value||'').trim()))document.getElementById('ds-date').value=today();
+  // Default to today in MM/DD/YYYY format if blank or invalid
+  const _dsEl = document.getElementById('ds-date');
+  if(_dsEl && !mdy2ymd((_dsEl.value||'').trim())) {
+    const _n = new Date();
+    _dsEl.value = `${String(_n.getMonth()+1).padStart(2,'0')}/${String(_n.getDate()).padStart(2,'0')}/${_n.getFullYear()}`;
+  }
   const d=mdy2ymd((document.getElementById('ds-date')?.value||'').trim());
   const allO=S.orders;
   // COD: counted on dateDelivered (actual delivery date), falling back to encode date o.date
@@ -5852,8 +5947,20 @@ function renderDailySales(){
   const codDel = allO.filter(o=>{
     if(o.status!=='Delivered') return false;
     if((o.paymentMethod||'COD')!=='COD') return false;
-    const delivDate = o.dateDelivered || o.date; // use actual delivery date
-    return delivDate === d;
+    const delivDate = o.dateDelivered || o.date;
+    // Match encode date OR delivery date — order encoded on 06/24 may be delivered on 06/25
+    if(delivDate !== d && o.date !== d) return false;
+    // Exclude all-OI orders — they're counted separately in Other Items Sales
+    // An order is "all-OI" only if every item is BOTH not in inventory AND has OI prefix
+    const _items = o.items||[];
+    if(_items.length && _items.every(it => {
+      const _code = (it.code||'').toUpperCase().trim();
+      const _inInv = (S.inventory||[]).some(inv => inv.code && inv.code.toUpperCase() === _code);
+      if(_inInv) return false; // inventory items are always COD — not OI
+      const _hasPrefix = typeof _getOiPrefix === 'function' && !!_getOiPrefix(_code);
+      return _hasPrefix || !_code; // non-inventory OI prefix or blank code
+    })) return false;
+    return true;
   });
   // LBC/EMS/FedEx: counted on Full Payment Date (o.dateOfPayment), must be Verified
   const courierDel = allO.filter(o=>
@@ -5876,6 +5983,11 @@ function renderDailySales(){
   const intlRemit = del.filter(o=>o.paymentMethod==='EMS'||o.paymentMethod==='FedEx').reduce((s,o)=>s+(o.grandTotal||0),0);
   const bankRemit = del.filter(o=>o.paymentMethod==='Via Bank').reduce((s,o)=>s+(o.grandTotal||0),0);
   const overall = codRemit + lbcRemit + intlRemit + bankRemit;
+  // Other Items Sales — sum of remitted OI items for this date
+  const oiRemit = (S.otherItems||[])
+    .filter(r => r.status === 'remitted' && r.date === d)
+    .reduce((s,r) => s + (r.total||0), 0);
+  const overallWithOi = overall + oiRemit;
   document.getElementById('daily-sales-screen').innerHTML=`
     <div style="font-size:10px;color:var(--muted);margin-bottom:8px;padding:6px 10px;background:rgba(201,168,76,0.07);border-radius:6px;">
       📌 <strong>LBC/EMS/FedEx</strong> entries are counted by <strong>Full Payment Date</strong> (not order date), and only when <strong>Checker Verified</strong>.
@@ -5884,7 +5996,7 @@ function renderDailySales(){
       <div class="stat-card gold"><div class="stat-label">Encoded (${d})</div><div class="stat-value">${dayO.length}</div></div>
       <div class="stat-card green"><div class="stat-label">Sales Recognized</div><div class="stat-value">${del.length}</div></div>
       <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${dayO.filter(o=>['Cancelled','RTO','Update'].includes(o.status)).length}</div></div>
-      <div class="stat-card blue"><div class="stat-label">Total Remit</div><div class="stat-value">${p(overall)}</div></div>
+      <div class="stat-card blue"><div class="stat-label">Total Remit</div><div class="stat-value">${p(overallWithOi)}</div></div>
     </div>
     <div class="two-col">
       <div class="card"><div class="card-header"><span class="card-title">Remit Summary</span></div>
@@ -5893,7 +6005,8 @@ function renderDailySales(){
         <div class="info-row"><span style="color:var(--muted);">EMS + FedEx</span><strong>${p(intlRemit)}</strong></div>
         <div class="info-row"><span style="color:var(--muted);">VIA BANK</span><strong>${p(bankRemit)}</strong></div>
         <div class="info-row"><span style="color:var(--muted);">GCASH</span><strong>₱0.00</strong></div>
-        <div class="info-row" style="border-bottom:none;font-size:14px;"><strong>OVERALL</strong><strong style="color:var(--green);">${p(overall)}</strong></div>
+        <div class="info-row"><span style="color:var(--gold);">Other Items Sales</span><strong style="color:var(--gold);">${p(oiRemit)}</strong></div>
+        <div class="info-row" style="border-bottom:none;font-size:14px;"><strong>OVERALL</strong><strong style="color:var(--green);">${p(overallWithOi)}</strong></div>
       </div>
       <div class="card"><div class="card-header"><span class="card-title">Admin Incentives (₱25/parcel)</span></div>
         <table style="width:100%;border-collapse:collapse;font-size:12px;">
@@ -7456,7 +7569,7 @@ function setPnlRange(preset) {
     const y = d.getFullYear();
     const m = String(d.getMonth()+1).padStart(2,'0');
     const day = String(d.getDate()).padStart(2,'0');
-    return `${y}-${m}-${day}`;
+    return `${m}/${day}/${y}`; // MM/DD/YYYY to match text input format
   };
   const todayStr = fmt(now);
 
@@ -7489,11 +7602,14 @@ function renderPnl(){
   const fromEl = document.getElementById('pnl-from');
   const toEl   = document.getElementById('pnl-to');
   if(!fromEl || !toEl) return;
-  // Default to today (local timezone — NOT toISOString which is UTC)
-  if(!fromEl.value) fromEl.value = today();
-  if(!toEl.value)   toEl.value   = today();
-  const from = fromEl.value;
-  const to   = toEl.value;
+  // Default to today in MM/DD/YYYY format
+  const _todayMDY = (() => { const d=new Date(); return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`; })();
+  if(!fromEl.value) fromEl.value = _todayMDY;
+  if(!toEl.value)   toEl.value   = _todayMDY;
+  // Convert MM/DD/YYYY → YYYY-MM-DD for comparisons
+  const from = mdy2ymd(fromEl.value.trim()) || fromEl.value.trim();
+  const to   = mdy2ymd(toEl.value.trim())   || toEl.value.trim();
+  if(!from || !to) return; // incomplete input — wait for more typing
   const label = from===to ? from : `${from} → ${to}`;
 
   // ── Filter orders/expenses/payroll within date range ────────
@@ -7520,11 +7636,12 @@ function renderPnl(){
     if(!o||!o.status) return false;
     if(o.status!=='Delivered') return false;
     if((o.paymentMethod||'COD')!=='COD') return false;
-    const delivDate = o.dateDelivered || o.date;
-    if(delivDate<from || delivDate>to) return false;
-    // Only count if rider has officially remitted for this date
-    const _key = (o.assignedRider||'') + '|' + (o.date||'');
-    return _remittedKeys.has(_key);
+    // Match if EITHER encode date OR delivery date falls in range
+    const delivDate = (o.dateDelivered || o.date || '').slice(0,10);
+    const encodeDate = (o.date || '').slice(0,10);
+    const inRange = (d) => d >= from && d <= to;
+    if(!inRange(delivDate) && !inRange(encodeDate)) return false;
+    return true; // COD income recognized on delivery — no remittance gate for P&L
   });
   // Courier PnL income: Checker marked Verified (checkerStatus OR verificationStatus)
   // Date: use dateDelivered → dateOfPayment → date (whichever is set)
@@ -7568,7 +7685,14 @@ function renderPnl(){
       .reduce((s,e)=>s+(e.sf10||0), 0)
     * 100) / 100;
   const totalShippingRev = sfRevenue10pct;
-  const totalSales = Math.round((totalItemsSales + sfRevenue10pct) * 100) / 100; // Items + 10% SF company cut
+  // Other Items Sales — remitted OI items in date range (non-inventory/OI-prefix)
+  const oiSalesRevenue = (S.otherItems||[]).filter(r => {
+    if(r.status !== 'remitted') return false;
+    const _d = r.date || '';
+    return _d >= from && _d <= to;
+  }).reduce((s,r) => s + (r.total||0), 0);
+
+  const totalSales = Math.round((totalItemsSales + sfRevenue10pct + oiSalesRevenue) * 100) / 100; // Items + 10% SF + OI Sales
   // TOTAL COST = cost of goods sold (pergram × grams or pergram × qty for each item)
   // ── COGS helper: look up capital/cost price from inventory by product code ──
   // order items store the SELLING price (pergram / fixPrice), NOT the cost price.
@@ -7668,6 +7792,7 @@ function renderPnl(){
     ${row('TOTAL SALES = Items + SF 10% (Remit)',p(totalSales),'var(--green)',false,true)}
     ${row('  ↳ Item Sales',p(totalItemsSales),'var(--green)',true)}
     ${row('  ↳ SF 10% Company (from Rider Remit)','+ '+p(sfRevenue10pct),'var(--gold)',true)}
+    ${oiSalesRevenue>0?row('  ↳ Other Items Sales (non-inventory)','+ '+p(oiSalesRevenue),'var(--gold)',true):''}
     ${totalDiscountsAll>0?row('  ↳ Discounts Given','('+p(totalDiscountsAll)+')','var(--orange)',true):''}
     ${row('TOTAL COST (COGS: Cost/g×g or Cost/pc×qty)',totalCOGS?'('+p(totalCOGS)+')':'₱0.00','var(--red)',false,true)}
     ${row('GROSS PROFIT',p(grossProfit),grossProfit>=0?'var(--green)':'var(--red)',false,true)}
@@ -7765,20 +7890,38 @@ function printPnl(){
   setTimeout(()=>{try{_win.print();}catch(e){}},400);
 }
 function renderDash(){
-  const orders = (S.orders||[]).filter(o=>o && o.status); // null-guard entire array
+  const _dfFromRaw = (document.getElementById('dash-date-from')?.value||'').trim();
+  const _dfToRaw   = (document.getElementById('dash-date-to')?.value||'').trim();
+  const _dfFrom = typeof mdy2ymd==='function' ? mdy2ymd(_dfFromRaw) : _dfFromRaw;
+  const _dfTo   = typeof mdy2ymd==='function' ? mdy2ymd(_dfToRaw)   : _dfToRaw;
+
+  const allOrders = (S.orders||[]).filter(o=>o && o.status);
+  // Apply date filter — match encode date OR delivery date for Delivered orders
+  const orders = (_dfFrom || _dfTo) ? allOrders.filter(o => {
+    const _encDate = o.date || '';
+    const _delDate = o.status === 'Delivered' ? (o.dateDelivered || o.date || '') : _encDate;
+    const _inRange = (d) => (!_dfFrom || d >= _dfFrom) && (!_dfTo || d <= _dfTo);
+    return _inRange(_encDate) || _inRange(_delDate);
+  }) : allOrders;
+
   const total=orders.length;
   const del=orders.filter(o=>o.status==='Delivered').length;
   const revenue=orders.filter(o=>o.status==='Delivered').reduce((s,o)=>s+(o.grandTotal||0),0);
-  const pending=orders.filter(o=>o.checkerStatus==='Pending').length;
-  const todayO=orders.filter(o=>o.date===today()).length;
-  const expTotal=(S.expenses||[]).reduce((s,e)=>s+parseFloat(e.amount||0),0);
+  const pending=allOrders.filter(o=>o.checkerStatus==='Pending').length; // always all-time
+  const todayO=allOrders.filter(o=>o.date===today()).length; // always today
+  const expTotal=(S.expenses||[]).filter(e => {
+    if(_dfFrom && e.date < _dfFrom) return false;
+    if(_dfTo   && e.date > _dfTo)   return false;
+    return true;
+  }).reduce((s,e)=>s+parseFloat(e.amount||0),0);
+  const _dateLabel = _dfFrom||_dfTo ? `${_dfFromRaw||'—'} → ${_dfToRaw||'—'}` : 'All time';
   document.getElementById('dash-stats').innerHTML=`
-    <div class="stat-card gold"><div class="stat-label">Total Orders</div><div class="stat-value">${total}</div><div class="stat-sub">All time</div></div>
+    <div class="stat-card gold"><div class="stat-label">Total Orders</div><div class="stat-value">${total}</div><div class="stat-sub">${_dateLabel}</div></div>
     <div class="stat-card green"><div class="stat-label">Revenue</div><div class="stat-value">${p(revenue)}</div><div class="stat-sub">Delivered</div></div>
     <div class="stat-card blue"><div class="stat-label">Delivered</div><div class="stat-value">${del}</div><div class="stat-sub">of ${total}</div></div>
     <div class="stat-card orange"><div class="stat-label">Today</div><div class="stat-value">${todayO}</div><div class="stat-sub">Orders encoded</div></div>
     <div class="stat-card red"><div class="stat-label">Pending Verify</div><div class="stat-value">${pending}</div><div class="stat-sub">Checker queue</div></div>
-    <div class="stat-card purple"><div class="stat-label">Expenses</div><div class="stat-value">${p(expTotal)}</div><div class="stat-sub">Total recorded</div></div>`;
+    <div class="stat-card purple"><div class="stat-label">Expenses</div><div class="stat-value">${p(expTotal)}</div><div class="stat-sub">${_dateLabel}</div></div>`;
   const statuses=['Preparing','Ready','Out for Delivery','Delivered','RTO','Cancelled','Update'];
   document.getElementById('dash-status').innerHTML=statuses.map(s=>{
     const cnt=orders.filter(o=>o.status===s).length,pct=total?Math.round(cnt/total*100):0;
@@ -8686,6 +8829,7 @@ function renderRiderParcels() {
     const iCQ = o.itemCancelQty || {};
     return (o.items||[]).reduce((s, it, ii) => {
       if(iS[ii] === 'Cancelled') return s;
+      if(iS[ii] === 'Update' || iS[ii] === 'For Update') return s; // not yet collected
       const cxQty = iCQ[ii] || 0;
       if(cxQty > 0) {
         const totalQty = it.grams || it.qty || 1;
@@ -8713,14 +8857,15 @@ function renderRiderParcels() {
 
   // 7. Rider's Net SF = SF90% − Cashbond − Parcel Fee − Benefits
   const cashbond_dash = 100;
-  const netSF_dash = Math.max(0, sfRider90_dash - cashbond_dash - parcelFee_dash - riderBenefits_dash);
+  const netSF_dash = Math.max(0, sfRider90_dash - cashbond_dash - parcelFee_dash);
 
-  // 8. Net Total to Remit = Items collected (Delivered, minus cancels) + SF
-  // Rider hands over: COD items + SF. No deductions at remit stage.
+  // 8. Net Total to Remit = Items + SF − Rider's Net SF − Benefits
+  // Benefits are deducted directly from what rider remits (not from Rider's Net SF)
+  const netTotal_dash = Math.max(0, (codSubtotal_dash + deliveredSF_dash) - netSF_dash - riderBenefits_dash);
   // NET TOTAL to REMIT = Subtotal (items+SF) − Rider's Net SF
   // Rider keeps their net SF portion, hands over the rest
   // ═══ NET FORMULA LOCK: (items+SF) - Rider Net SF. Must match saveRemit. ═══
-  const netTotal_dash = Math.max(0, (codSubtotal_dash + deliveredSF_dash) - netSF_dash);
+  // netTotal_dash now computed above with benefits directly subtracted
   document.getElementById('rider-dash-stats').innerHTML = `
     <div class="stat-card blue"><div class="stat-label">Total Assigned</div><div class="stat-value">${myOrders.length}</div></div>
     <div class="stat-card green"><div class="stat-label">Delivered</div><div class="stat-value">${del.length}</div></div>
@@ -8753,6 +8898,7 @@ function renderRiderParcels() {
       let _tot = 0;
       (o.items||[]).forEach((it, ii) => {
         if(itemStatuses[ii] === 'Cancelled') return;
+        if(itemStatuses[ii] === 'Update' || itemStatuses[ii] === 'For Update') return; // excluded — not yet collected
         const cxQty = (o.itemCancelQty||{})[ii] || 0;
         if(cxQty > 0) {
           const tQty = it.grams || it.qty || 1;
@@ -8975,7 +9121,10 @@ function riderUpdateStatus(orderIdx, newStatus) {
   if(storedStatus === 'Cancelled') {
     _syncOiPrefixStatus(orderIdx, 'cancelled'); // Cancelled → Other Items Cancelled tab
   }
-  // Delivered: stays in Products tab until remitter officially saves (saveRemit → remitted)
+  if(storedStatus === 'Delivered') {
+    // Move Checker-verified OI items (non-inventory + prefix) to Sales on delivery
+    _syncOtherItemStatus(onum(orderIdx), 'remitted');
+  }
   save();
   if(storedStatus === 'Update') {
     toast('🔔 Marked For Update — routed to COD Delivery monitor.');
@@ -9817,7 +9966,7 @@ function setTrackingTab(tab) {
 }
 
 function renderTracking() {
-  const TRACK_STATUSES = ['Preparing','Ready','Out for Delivery','Delivered','RTO','Cancelled','Update'];
+  const TRACK_STATUSES = ['Preparing','Ready','Out for Delivery','Update'];
   const COD_UPDATE_STATUSES = ['Preparing','Ready for Pick-up'];
   const colors = {'Preparing':'orange','Ready':'blue','Out for Delivery':'gold','Delivered':'green','Cancelled':'red','Update':'purple'};
   const q = (document.getElementById('track-search')?.value||'').toLowerCase();
@@ -9869,6 +10018,8 @@ function renderTracking() {
     if((o.checkerStatus||'Pending') !== 'Verified') return false;
     // Checker-cancelled orders belong to Recently Deleted, not active tracking
     if(o.status === 'Cancelled' && o.cancelledBy) return false;
+    // Delivered and RTO orders belong in COD Delivery — hide from COD Tracking
+    if(o.status === 'Delivered' || o.status === 'RTO') return false;
     if(filt && o.status!==filt) return false;
     // Date filter: strict for all roles
     if(df && o.date !== df) return false;
@@ -10097,7 +10248,7 @@ function openRemitModal(editIdx=null) {
   document.getElementById('remit-date').value = today();
   document.getElementById('remit-edit-idx').value = editIdx !== null ? editIdx : '';
   document.getElementById('remit-modal-title').textContent = editIdx !== null ? 'Edit Remit Entry' : 'Rider Remittance';
-  // Reset benefits to 0
+  // Always reset benefits to 0 — remitter types manually each time
   const benInput = document.getElementById('remit-benefits-input');
   if(benInput) benInput.value = '0';
   // Reset status to default
@@ -10111,8 +10262,6 @@ function openRemitModal(editIdx=null) {
     const e = S.remitLog[editIdx];
     sel.value = S.riders.findIndex(r=>r.name===e.riderName);
     document.getElementById('remit-date').value = e.date;
-    // Restore manual benefits if saved
-    if(benInput) benInput.value = e.manualBenefits || 0;
     // Restore status
     document.querySelectorAll('input[name="remit-status-radio"]').forEach(r=>{ r.checked = r.value === (e.remitStatus||'For Remittance'); });
     onRemitStatusChange(e.remitStatus||'For Remittance');
@@ -10159,7 +10308,12 @@ function populateRemitParcels() {
   const cashbond = 100;
   // ₱10 per delivered parcel fee
   const parcelFee = delivered.length * 10;
-  // Benefits: read from manual input (default 0)
+  // Benefits: always default to 0.00 — remitter manually types if needed
+  const _logBenefits = (S.benefitsLog||[])
+    .filter(b => b.person === rider.name)
+    .reduce((s,b) => s + (parseFloat(b.other)||0) + (parseFloat(b.sss)||0) +
+      (parseFloat(b.philhealth)||0) + (parseFloat(b.pagibig)||0), 0);
+  // Do NOT pre-fill — leave at 0.00 for new entries
   const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
   // Subtotal = sum of grandTotal (items + SF) from Delivered orders
   // Subtotal = actual collected amount per delivered order (net of cancelled items)
@@ -10170,7 +10324,7 @@ function populateRemitParcels() {
     if(o.status==='Cancelled'||o.status==='RTO') return 0;
     let _t=0; const _iS=o.itemStatuses||{},_iCQ=o.itemCancelQty||{};
     (o.items||[]).forEach((it,ii)=>{
-      if(_iS[ii]==='Cancelled'||_iS[ii]==='Update') return;
+      if(_iS[ii]==='Cancelled'||_iS[ii]==='Update'||_iS[ii]==='For Update') return;
       const cxQty=_iCQ[ii]||0,tQty=it.grams||it.qty||1,ppu=(it.total||0)/Math.max(1,tQty);
       _t+=cxQty>0?Math.max(0,(it.total||0)-ppu*cxQty):(it.total||0);
     }); return _t;
@@ -10178,9 +10332,10 @@ function populateRemitParcels() {
   const codSubtotal = delivered.reduce((s,o) => s + _prpEffective(o), 0);
   const sfNetRider = sfRider90; // kept for dataset compatibility
   // Rider's Net SF = All SF minus ALL deductions
+  // Rider's Net SF = SF90% minus SF-based deductions only (NOT benefits)
   const netSF = Math.max(0, sfRider90 - cashbond - parcelFee - manualBenefits);
-  // ═══ MODAL FORMULA GUARD — matches saveRemit and rider dashboard ══════════
-  // NET TO REMIT = (items + SF) − Rider's Net SF
+  // ═══ MODAL FORMULA GUARD ══════════════════════════════════════════════════
+  // NET TO REMIT = (items + SF) − Rider's Net SF (benefits inside netSF)
   const netTotal = Math.max(0, (codSubtotal + deliveredSF) - netSF); // matches rider dashboard
 
   // Build parcel rows — shows whole-order cancels AND per-item partial cancels
@@ -10358,26 +10513,53 @@ function populateRemitParcels() {
 // Recalc net when manual benefits input changes
 function recalcRemitNet() {
   const riderEl = document.getElementById('remit-rider');
-  if(!riderEl || !riderEl.dataset.sfNetRider) return;
-  const sfRider90      = parseFloat(riderEl.dataset.sfNetRider)||0;
-  const cashbond       = parseFloat(riderEl.dataset.cashbond)||100;
-  const parcelFee      = parseFloat(riderEl.dataset.parcelFee)||0;
-  const codSubtotal    = parseFloat(riderEl.dataset.codSubtotal)||0;
-  const deliveredSF    = parseFloat(riderEl.dataset.totalSF)||0;
+  if(!riderEl || riderEl.value === '') return;
+  const rider = S.riders[+riderEl.value];
+  if(!rider) return;
+  const date = document.getElementById('remit-date')?.value || today();
+
+  // Recompute fresh from S.orders (same as populateRemitParcels)
+  const delivered = (S.orders||[]).filter(o => o && o.assignedRider === rider.name && o.date === date && o.status === 'Delivered');
+
+  // COD Subtotal — items only, excluding Cancelled/Update/For Update items
+  const codSubtotal = delivered.reduce((s,o) => {
+    let _t = 0;
+    const _iS = o.itemStatuses||{}, _iCQ = o.itemCancelQty||{};
+    (o.items||[]).forEach((it,ii) => {
+      if(_iS[ii]==='Cancelled'||_iS[ii]==='Update'||_iS[ii]==='For Update') return;
+      const cxQty=_iCQ[ii]||0, tQty=it.grams||it.qty||1, ppu=(it.total||0)/Math.max(1,tQty);
+      _t += cxQty>0 ? Math.max(0,(it.total||0)-ppu*cxQty) : (it.total||0);
+    });
+    return s + _t;
+  }, 0);
+
+  // Delivered SF — skip orders where all items cancelled
+  const deliveredSF = delivered.reduce((s,o) => {
+    const _iS = o.itemStatuses||{};
+    const _t = (o.items||[]).length;
+    const _cx = Object.values(_iS).filter(v=>v==='Cancelled').length;
+    return s + (_t > _cx ? (o.shipping||0) : 0);
+  }, 0);
+
+  const sfRider90 = deliveredSF * 0.90;
+  const cashbond  = 100;
+  const parcelFee = delivered.length * 10;
+
+  // Benefits: input value (pre-filled from S.benefitsLog or manual)
+  // Benefits: use exactly what's typed — 0 means 0 (no fallback to log)
   const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
-  // Rider's Net SF = SF90% minus all deductions (including benefits)
-  const netSF   = Math.max(0, sfRider90 - cashbond - parcelFee - manualBenefits);
-  // NET TO REMIT = (items + SF) − Rider's Net SF  ← matches rider dashboard formula
+
+  // Net SF and Net Total
+  const netSF    = Math.max(0, sfRider90 - cashbond - parcelFee - manualBenefits);
   const netTotal = Math.max(0, (codSubtotal + deliveredSF) - netSF);
-  riderEl.dataset.netSF   = netSF;
-  riderEl.dataset.netTotal = netTotal;
-  document.getElementById('remit-sf-rider-share').textContent = p(netSF);
-  // Update Subtotal display = items + SF (stays constant, just re-render for clarity)
+
+  // Update displays
+  const sfShareEl = document.getElementById('remit-sf-rider-share');
+  if(sfShareEl) sfShareEl.textContent = p(netSF);
+  const netEl = document.getElementById('remit-net-earn');
+  if(netEl) { netEl.textContent = p(netTotal); netEl.dataset.netEarn = netTotal; netEl.dataset.riderName = rider.name; }
   const subEl = document.getElementById('remit-subtotal');
   if(subEl) subEl.textContent = p(codSubtotal + deliveredSF);
-  const netEl = document.getElementById('remit-net-earn');
-  netEl.textContent = p(netTotal);
-  netEl.dataset.netEarn = netTotal;
   const hint = document.getElementById('remit-formula-hint');
   if(hint) hint.textContent = `Net = ${p(codSubtotal + deliveredSF)} (Subtotal) − ${p(netSF)} (Rider's Net SF) = ${p(netTotal)}`;
 }
@@ -10479,6 +10661,8 @@ function saveRemit() {
   const date = document.getElementById('remit-date').value || today();
   const remitStatus = [...document.querySelectorAll('input[name="remit-status-radio"]')]
     .find(r=>r.checked)?.value || 'For Remittance';
+  // Benefits: read directly from input (pre-filled with S.benefitsLog total; remitter can adjust)
+  // Benefits: use exactly what's typed — 0 means 0 (no fallback to log)
   const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
 
   // ── Recompute all values fresh from S.orders (don't rely on dataset) ─────
@@ -10502,7 +10686,7 @@ function saveRemit() {
     if(o.status==='Cancelled'||o.status==='RTO') return 0;
     let _t=0; const _iS=o.itemStatuses||{},_iCQ=o.itemCancelQty||{};
     (o.items||[]).forEach((it,ii)=>{
-      if(_iS[ii]==='Cancelled'||_iS[ii]==='Update') return;
+      if(_iS[ii]==='Cancelled'||_iS[ii]==='Update'||_iS[ii]==='For Update') return;
       const cxQty=_iCQ[ii]||0,tQty=it.grams||it.qty||1,ppu=(it.total||0)/Math.max(1,tQty);
       _t+=cxQty>0?Math.max(0,(it.total||0)-ppu*cxQty):(it.total||0);
     }); return _t;
@@ -10624,6 +10808,10 @@ function saveRemit() {
   }
   // Sync otherItems to 'remitted' for all orders in this batch
   if(remitStatus === 'Remitted') {
+    // First ensure OI entries exist for all delivered orders (safety net for unverified orders)
+    delivered.forEach(o => {
+      if(o.checkerStatus === 'Verified') _captureOtherItems(o.idx);
+    });
     myOrders.forEach(o => _syncOtherItemStatus(onum(o.idx), 'remitted'));
   }
 
@@ -10712,7 +10900,7 @@ function renderRemitPage() {
     let _tot = 0;
     const _iS = o.itemStatuses||{}, _iCQ = o.itemCancelQty||{};
     (o.items||[]).forEach((it, ii) => {
-      if(_iS[ii] === 'Cancelled' || _iS[ii] === 'Update') return;
+      if(_iS[ii] === 'Cancelled' || _iS[ii] === 'Update' || _iS[ii] === 'For Update') return;
       const cxQty = _iCQ[ii]||0, tQty = it.grams||it.qty||1;
       const ppu   = (it.total||0) / Math.max(1, tQty);
       _tot += cxQty > 0 ? Math.max(0,(it.total||0)-ppu*cxQty) : (it.total||0);
@@ -10729,7 +10917,28 @@ function renderRemitPage() {
 
   // ── Grand Total Net bar ───────────────────────────────────────────────────
   // ═══ GLOBAL NET GUARD: use e.netTotal first (saved net), fallback to codSubtotal ══
-  const grandAllNet  = filteredLog.reduce((s,e)=>s+(e.netTotal||e.codSubtotal||e.netEarn||0),0);
+  // ── Grand Total Net bar — live-compute for Remitting, use saved for Remitted ──
+  const grandAllNet = filteredLog.reduce((s,e) => {
+    if(e.remitStatus === 'Remitted') {
+      return s + (e.netTotal||e.codSubtotal||e.netEarn||0);
+    }
+    // Remitting: live-compute to include current benefits
+    const _rN = e.riderName || '';
+    const _rDel = (S.orders||[]).filter(o=>o&&o.assignedRider===_rN&&o.date===e.date&&o.status==='Delivered');
+    const _rSub = _rDel.reduce((ss,o)=>{
+      let _t=0; const _iS=o.itemStatuses||{},_iCQ=o.itemCancelQty||{};
+      (o.items||[]).forEach((it,ii)=>{
+        if(_iS[ii]==='Cancelled'||_iS[ii]==='Update'||_iS[ii]==='For Update') return;
+        const cxQty=_iCQ[ii]||0,tQty=it.grams||it.qty||1,ppu=(it.total||0)/Math.max(1,tQty);
+        _t+=cxQty>0?Math.max(0,(it.total||0)-ppu*cxQty):(it.total||0);
+      }); return ss+_t;
+    },0);
+    const _rSF = _rDel.reduce((ss,o)=>{const _iS=o.itemStatuses||{};const _t=(o.items||[]).length;const _cx=Object.values(_iS).filter(v=>v==='Cancelled').length;return ss+(_t>_cx?(o.shipping||0):0);},0);
+    const _rSF90 = _rSF * 0.90;
+    const _rBen = e.manualBenefits > 0 ? e.manualBenefits : (S.benefitsLog||[]).filter(b=>b.person===_rN).reduce((ss,b)=>ss+(parseFloat(b.other)||0)+(parseFloat(b.sss)||0)+(parseFloat(b.philhealth)||0)+(parseFloat(b.pagibig)||0),0);
+    const _rNetSF = Math.max(0, _rSF90 - 100 - _rDel.length * 10 - _rBen);
+    return s + Math.max(0, (_rSub + _rSF) - _rNetSF);
+  }, 0);
   // ═══ GLOBAL SUBTOTAL GUARD: codSubtotal+totalSF = full collection amount ═══════
   const grandAllSub  = filteredLog.reduce((s,e)=>s+(e.codSubtotal||0)+(e.totalSF||0),0); // items+SF
   const grandAllSF10 = Math.round(filteredLog.reduce((s,e)=>s+(e.sf10||0),0)*100)/100;
@@ -10770,14 +10979,19 @@ function renderRemitPage() {
       const _eSub = _eDel.reduce((s,o)=>{
         let _t=0; const _iS=o.itemStatuses||{},_iCQ=o.itemCancelQty||{};
         (o.items||[]).forEach((it,ii)=>{
-          if(_iS[ii]==='Cancelled'||_iS[ii]==='Update') return;
+          if(_iS[ii]==='Cancelled'||_iS[ii]==='Update'||_iS[ii]==='For Update') return;
           const cxQty=_iCQ[ii]||0,tQty=it.grams||it.qty||1,ppu=(it.total||0)/Math.max(1,tQty);
           _t+=cxQty>0?Math.max(0,(it.total||0)-ppu*cxQty):(it.total||0);
         }); return s+_t;
       },0);
       const _eSF    = _eDel.reduce((s,o)=>{const _iS=o.itemStatuses||{};const _t=(o.items||[]).length;const _cx=Object.values(_iS).filter(v=>v==='Cancelled').length;return s+(_t>_cx?(o.shipping||0):0);},0);
       const _eSF90  = _eSF * 0.90;
-      const _eNetSF = Math.max(0, _eSF90 - 100 - _eDel.length * 10);
+      // Benefits: use saved e.manualBenefits if present, else fall back to S.benefitsLog
+      const _eBenefits = e.manualBenefits > 0 ? e.manualBenefits : (S.benefitsLog||[])
+        .filter(b => b.person === riderName)
+        .reduce((s,b) => s + (parseFloat(b.other)||0) + (parseFloat(b.sss)||0) +
+          (parseFloat(b.philhealth)||0) + (parseFloat(b.pagibig)||0), 0);
+      const _eNetSF = Math.max(0, _eSF90 - 100 - _eDel.length * 10 - _eBenefits);
       const _eNet   = Math.max(0, (_eSub + _eSF) - _eNetSF);
       // ═══ ENTRY AMOUNTS: sub=items+SF (COD SUBTOTAL col), net=sub-netSF (NET TO REMIT) ═
       return { sub: _eSub + _eSF, net: _eNet }; // sub = items+SF for COD SUBTOTAL column
@@ -10989,17 +11203,22 @@ function renderRemitPage() {
                 const _liveSubtotal  = _liveDelOrders.reduce((s,o)=>{
                   let _t=0; const _iS=o.itemStatuses||{},_iCQ=o.itemCancelQty||{};
                   (o.items||[]).forEach((it,ii)=>{
-                    if(_iS[ii]==='Cancelled'||_iS[ii]==='Update') return;
+                    if(_iS[ii]==='Cancelled'||_iS[ii]==='Update'||_iS[ii]==='For Update') return;
                     const cxQty=_iCQ[ii]||0,tQty=it.grams||it.qty||1,ppu=(it.total||0)/Math.max(1,tQty);
                     _t+=cxQty>0?Math.max(0,(it.total||0)-ppu*cxQty):(it.total||0);
                   }); return s+_t;
                 },0);
-                // Net SF for this rider+entry
+                // Net SF for this rider+entry — matches rider dashboard formula
                 const _liveSF90   = _liveSF * 0.90;
                 const _liveCashb  = 100;
                 const _livePFee   = _liveDelivered * 10;
-                const _liveNetSF  = Math.max(0, _liveSF90 - _liveCashb - _livePFee);
-                // NET = (items + SF) − Rider's Net SF → matches rider dashboard
+                // Benefits: use saved e.manualBenefits if present, else S.benefitsLog
+                const _liveBenefits = e.manualBenefits > 0 ? e.manualBenefits : (S.benefitsLog||[])
+                  .filter(b => b.person === riderName)
+                  .reduce((s,b) => s + (parseFloat(b.other)||0) + (parseFloat(b.sss)||0) +
+                    (parseFloat(b.philhealth)||0) + (parseFloat(b.pagibig)||0), 0);
+                const _liveNetSF  = Math.max(0, _liveSF90 - _liveCashb - _livePFee - _liveBenefits);
+                // NET = (items + SF) − Rider's Net SF (benefits inside netSF)
                 const _liveNet   = Math.max(0, (_liveSubtotal + _liveSF) - _liveNetSF);
                 return `<tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
                   <td style="padding:7px 10px;white-space:nowrap;text-align:left;">${e.date}</td>
@@ -11249,6 +11468,8 @@ function saveBenefits() {
   }
   save(); closeModal('modal-benefits'); toast('✅ Benefits entry saved!');
   renderBenefitsPage();
+  // Auto-refresh Riders Remit so Net/Total Net reflects new benefits immediately
+  if(typeof renderRemitPage === 'function') renderRemitPage();
 }
 
 function renderBenefitsPage() {
@@ -11479,6 +11700,22 @@ function renderOtherItemsPage() {
   // Status NEVER inferred from order.status on render — that caused wrong-tab bugs.
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // ── Auto-heal: move 'product' OI items to 'remitted' if order is already Delivered ──
+  // This handles items that were Delivered before the Delivered→remitted sync was added.
+  let _oiHealed = false;
+  (S.otherItems||[]).forEach(r => {
+    if(r.status !== 'product' || r.isVerified === false) return;
+    const _ord = (S.orders||[]).find(o => o && onum((S.orders||[]).indexOf(o)) === r.orderNum);
+    if(_ord && _ord.status === 'Delivered') {
+      const _iS = (_ord.itemStatuses||{})[r.itemIdx];
+      if(_iS !== 'Update' && _iS !== 'For Update') {
+        r.status = 'remitted';
+        _oiHealed = true;
+      }
+    }
+  });
+  if(_oiHealed) save();
+
   const items = (S.otherItems||[]).filter(r => {
     if(r.status !== _oiTab) return false;
     // isVerified gate: items with isVerified:false are hidden from ALL tabs
@@ -11662,7 +11899,9 @@ function renderIncentivesPage() {
 
 function delBenefits(i) {
   _confirmDel(`Delete benefits entry for "${S.benefitsLog[i]?.person}"?`, ()=>{
-    S.benefitsLog.splice(i,1); save(); renderBenefitsPage(); toast('🗑️ Benefits entry deleted');
+    S.benefitsLog.splice(i,1); save(); renderBenefitsPage();
+    if(typeof renderRemitPage === 'function') renderRemitPage();
+    toast('🗑️ Benefits entry deleted');
   });
 }
 
@@ -12667,6 +12906,7 @@ function renderLbcDelivery() {
           <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Drop-off</span><br><span style="color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">${o.dateOfDropoff||'—'}</span></div>
           ${o.dateDelivered?`<div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Delivered</span><br><span style="color:var(--green);">${o.dateDelivered}</span></div>`:''}
           <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Items</span><br>${itemList||'—'}</div>
+          ${lbcDeliveryTab === 'ofd' ? `<div style="grid-column:1/-1;margin-top:6px;"><button class="btn btn-green btn-sm" onclick="markCourierDelivered(${i},'LBC')" style="font-weight:700;font-size:12px;">✅ Mark as Delivered</button></div>` : ''}
         </div>
       </div>
     </div>`;
@@ -12678,6 +12918,26 @@ function renderLbcDelivery() {
 
   } catch(e) { console.error('[GOE] renderLbcDelivery error:', e); }}
 
+
+// ── Mark Courier Order as Delivered (LBC / EMS / FedEx) ─────────────────────
+function markCourierDelivered(orderIdx, method) {
+  const o = S.orders[orderIdx];
+  if(!o) return;
+  if(!confirm(`Mark ${onum(orderIdx)} — ${o.name} as Delivered?`)) return;
+  // Set lbcStatus to Delivered
+  o.lbcStatus = 'Delivered';
+  // Set order status to Delivered and stamp dateDelivered
+  o.status = 'Delivered';
+  if(!o.dateDelivered) o.dateDelivered = today();
+  save();
+  // Sync OI items if any
+  _syncOtherItemStatus(onum(orderIdx), 'remitted');
+  toast(`✅ ${onum(orderIdx)} marked as Delivered!`);
+  // Re-render appropriate delivery page
+  if(method === 'LBC') renderLbcDelivery();
+  else if(method === 'EMS') renderEmsDelivery();
+  else if(method === 'FedEx') renderFedexDelivery();
+}
 
 // ── Shared RTO / Delivery Date modal helpers ─────────────────────────────────
 function _promptRTO(orderIdx, renderFn) {
@@ -12862,9 +13122,24 @@ function renderCodDelivPage() {
   // Only COD orders
   const allCOD = (S.orders||[]).filter(o=>(o.paymentMethod||'COD')==='COD');
 
+  // Helper: returns true if ALL items in this order are OI items (non-inventory or OI-prefix)
+  // Those orders belong in Other Items Sales, not COD Delivery
+  const _isAllOiOrder = (o) => {
+    const items = o.items||[];
+    if(!items.length) return false;
+    return items.every(it => {
+      const _code = (it.code||'').toUpperCase().trim();
+      if(!_code) return false;
+      const _inInv = (S.inventory||[]).some(inv => inv.code && inv.code.toUpperCase() === _code);
+      if(_inInv) return false; // inventory item → always COD, not OI
+      const _hasPrefix = typeof _getOiPrefix === 'function' && !!_getOiPrefix(_code);
+      return _hasPrefix || !_inInv;
+    });
+  };
+
   // Stats
   const updateCount= allCOD.filter(o=>o.status==='Update').length;
-  const delivCount = allCOD.filter(o=>o.status==='Delivered').length;
+  const delivCount = allCOD.filter(o=>o.status==='Delivered' && !_isAllOiOrder(o)).length;
   const cancelCount= allCOD.filter(o=>o.status==='Cancelled').length;
   const totalRev   = allCOD.filter(o=>o.status==='Delivered').reduce((s,o)=>s+(o.grandTotal||0),0);
 
@@ -12888,20 +13163,27 @@ function renderCodDelivPage() {
   // Filter for current tab
   let list = allCOD.map((o,ri)=>({o,i:(S.orders||[]).indexOf(o)})).filter(({o})=>{
     if(tab==='ForUpdate') return o.status==='Update';
-    if(tab==='Delivered') return o.status==='Delivered';
+    if(tab==='Delivered') return o.status==='Delivered' && !_isAllOiOrder(o);
     if(tab==='Cancelled') return o.status==='Cancelled';
     return false;
   });
   if(df) list=list.filter(({o})=>{
-    const d=(tab==='Delivered')?(o.dateDelivered||o.date):o.date;
-    return d===df;
+    if(tab==='Delivered') {
+      // Match on delivery date OR encode date — user may search by either
+      return (o.dateDelivered||o.date)===df || o.date===df;
+    }
+    return o.date===df;
   });
   if(q) list=list.filter(({o,i})=>[o.name,o.contact,onum(i)].join(' ').toLowerCase().includes(q));
 
   if(!list.length){
     const emptyLabel = tab==='ForUpdate'?'For Update':tab;
-    contentEl.innerHTML=`<div class="card"><div style="text-align:center;color:var(--muted);padding:40px;">No ${emptyLabel} COD orders found.</div></div>`;
-    return;
+    // For Cancelled tab: don't return early — may still have partial-cancel OI items to show
+    if(tab !== 'Cancelled') {
+      contentEl.innerHTML=`<div class="card"><div style="text-align:center;color:var(--muted);padding:40px;">No ${emptyLabel} COD orders found.</div></div>`;
+      return;
+    }
+    contentEl.innerHTML=`<div class="card"><div style="text-align:center;color:var(--muted);padding:20px;">No fully-cancelled COD orders found.</div></div>`;
   }
 
   // Accordion rows — each collapsed by default, click to expand
@@ -13006,6 +13288,47 @@ function renderCodDelivPage() {
   }).join('');
 
   contentEl.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">${list.length} order${list.length!==1?'s':''} · Click row to expand</div>${rows}`;
+
+  // ── Partially-Cancelled Items section (Cancelled tab only) ─────────────────
+  // Shows OI items with status:'cancelled' from partially-cancelled Delivered orders
+  if(tab === 'Cancelled') {
+    const _cxOiItems = (S.otherItems||[]).filter(r =>
+      r.status === 'cancelled' && r.isVerified !== false
+    );
+    if(_cxOiItems.length) {
+      const _cxRows = _cxOiItems.map(r => {
+        const _qtyDisplay = r.grams > 0 ? `${r.grams}g` : `×${r.qty||1}`;
+        return `<tr>
+          <td style="color:var(--gold);font-weight:700;">${r.orderNum||'—'}</td>
+          <td>${r.customerName||'—'}</td>
+          <td><strong>${r.code||''}</strong> ${r.desc||''}</td>
+          <td style="color:var(--red);font-weight:600;">${_qtyDisplay}</td>
+          <td style="color:var(--muted);">${p(r.total||0)}</td>
+          <td style="color:var(--muted);font-size:10px;">${r.riderName||'—'}</td>
+          <td style="color:var(--muted);font-size:10px;">${r.date||'—'}</td>
+        </tr>`;
+      }).join('');
+      contentEl.innerHTML += `
+        <div class="card" style="margin-top:16px;border:1px solid var(--red);">
+          <div style="font-weight:700;color:var(--red);margin-bottom:8px;font-size:13px;">✖ Partially-Cancelled Items (${_cxOiItems.length})</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Items na partially cancelled sa Delivered orders — yung cancelled qty lang ang naka-list dito.</div>
+          <table style="width:100%;font-size:12px;border-collapse:collapse;">
+            <thead>
+              <tr style="color:var(--muted);font-size:10.5px;border-bottom:1px solid var(--navy-border);">
+                <th style="padding:4px 8px;text-align:left;">ORDER#</th>
+                <th style="padding:4px 8px;text-align:left;">CUSTOMER</th>
+                <th style="padding:4px 8px;text-align:left;">ITEM</th>
+                <th style="padding:4px 8px;text-align:left;">CX QTY</th>
+                <th style="padding:4px 8px;text-align:left;">AMOUNT</th>
+                <th style="padding:4px 8px;text-align:left;">RIDER</th>
+                <th style="padding:4px 8px;text-align:left;">DATE</th>
+              </tr>
+            </thead>
+            <tbody>${_cxRows}</tbody>
+          </table>
+        </div>`;
+    }
+  }
 
   } catch(e) { console.error('[GOE] renderCodDelivPage error:', e); }}
 
@@ -13250,6 +13573,7 @@ function renderEmsDelivery() {
           <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Drop-off</span><br><span style="color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">${o.dateOfDropoff||'—'}</span></div>
           ${o.dateDelivered?`<div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Delivered</span><br><span style="color:var(--green);">${o.dateDelivered}</span></div>`:''}
           <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Items</span><br>${itemList||'—'}</div>
+          ${emsDeliveryTab === 'ofd' ? `<div style="grid-column:1/-1;margin-top:6px;"><button class="btn btn-green btn-sm" onclick="markCourierDelivered(${i},'EMS')" style="font-weight:700;font-size:12px;">✅ Mark as Delivered</button></div>` : ''}
         </div>
       </div>
     </div>`;
@@ -13566,6 +13890,7 @@ function renderFedexDelivery() {
           <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Drop-off</span><br><span style="color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">${o.dateOfDropoff||'—'}</span></div>
           ${o.dateDelivered?`<div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Delivered</span><br><span style="color:var(--green);">${o.dateDelivered}</span></div>`:''}
           <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Items</span><br>${itemList||'—'}</div>
+          ${fedexDeliveryTab === 'ofd' ? `<div style="grid-column:1/-1;margin-top:6px;"><button class="btn btn-green btn-sm" onclick="markCourierDelivered(${i},'FedEx')" style="font-weight:700;font-size:12px;">✅ Mark as Delivered</button></div>` : ''}
         </div>
       </div>
     </div>`;
@@ -13977,6 +14302,12 @@ function renderMergeOrderCards() {
     if(!o) return '';
     return orderCard(o, idx, n, LABELS[n] || String(n+1), COLORS[n] || 'var(--muted)');
   }).join('');
+
+  // Ensure _mergeGroupIndices is always in sync with what's rendered
+  window._mergeGroupIndices = indices.slice();
+
+  updateMergePreview();
+  updateMergeAddressOptions();
 }
 
 function removeMergeCard(n) {
@@ -14001,18 +14332,60 @@ function removeMergeCard(n) {
   updateMergeAddressOptions();
 }
 
+function updateMergeAddressOptions() {
+  const indices = window._mergeGroupIndices || [_mergeIdxA, _mergeIdxB];
+  const LABELS = ['A','B','C','D','E','F'];
+
+  function buildOptions(elId, radioName, valueFn, displayFn) {
+    const el = document.getElementById(elId);
+    if(!el) return;
+    const rows = indices.map(function(idx, n) {
+      const o = S.orders[idx];
+      if(!o) return '';
+      const val = valueFn(o);
+      return '<label style="display:flex;align-items:flex-start;gap:8px;font-size:12px;cursor:pointer;padding:5px 8px;border-radius:5px;background:rgba(15,27,45,0.6);">'
+        + '<input type="radio" name="' + radioName + '" value="' + n + '" onchange="updateMergePreview()" style="margin-top:2px;accent-color:var(--gold);">'
+        + '<span><strong style="color:var(--gold);">🔘 USE ORDER ' + LABELS[n] + '</strong>'
+        + ' <span style="color:var(--muted);font-size:10px;">(' + onum(idx) + ')</span>'
+        + ' — <span style="color:var(--white);">' + displayFn(o, val) + '</span></span></label>';
+    });
+    rows.push('<label style="display:flex;align-items:flex-start;gap:8px;font-size:12px;cursor:pointer;padding:5px 8px;border-radius:5px;background:rgba(15,27,45,0.6);">'
+      + '<input type="radio" name="' + radioName + '" value="custom" onchange="updateMergePreview()" style="margin-top:2px;accent-color:var(--gold);">'
+      + '<span><strong style="color:var(--muted);">🔘 CUSTOM</strong>'
+      + ' <input type="text" id="' + elId + '-custom" placeholder="i-type ang custom value..." '
+      + 'style="width:200px;font-size:11px;padding:2px 6px;margin-left:6px;border-radius:4px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);" '
+      + 'oninput="updateMergePreview()"></span></label>');
+    el.innerHTML = rows.join('');
+  }
+
+  // 📍 ADDRESS
+  buildOptions('merge-address-options', 'merge-address',
+    function(o){ return [o.address, o.city, o.landmark].filter(Boolean).join(', ') || '—'; },
+    function(o, v){ return v; });
+
+  // 📞 CP NUMBER
+  buildOptions('merge-cp-options', 'merge-cp',
+    function(o){ return o.contact || '—'; },
+    function(o, v){ return v; });
+
+  // 💰 SF
+  buildOptions('merge-sf-options', 'merge-sf-choice',
+    function(o){ return o.shipping || 0; },
+    function(o, v){ return p(v); });
+}
+
 function updateMergePreview() {
   const indices = window._mergeGroupIndices || [_mergeIdxA, _mergeIdxB];
   const orders  = indices.map(i => S.orders[i]).filter(Boolean);
   if(orders.length < 2) return;
 
   // SF decision across all orders
-  const sfChoice = document.querySelector('input[name="merge-sf"]:checked')?.value || 'higher';
+  const sfChoice = document.querySelector('input[name="merge-sf-choice"]:checked')?.value;
   let mergedSF;
   const allSF = orders.map(o => o.shipping||0);
-  if(sfChoice === 'higher') mergedSF = Math.max(...allSF);
-  else if(sfChoice === 'lower') mergedSF = Math.min(...allSF);
-  else mergedSF = parseFloat(document.getElementById('merge-sf-custom')?.value)||0;
+  if(!sfChoice) mergedSF = 0;
+  else if(!isNaN(parseInt(sfChoice))) mergedSF = allSF[parseInt(sfChoice)] || 0;
+  else mergedSF = parseFloat(document.getElementById('merge-sf-options-custom')?.value)||0;
 
   // Merged items from ALL orders
   const mergedItems = orders.flatMap(o => o.items||[]);
@@ -14078,13 +14451,17 @@ function confirmMerge() {
     return;
   }
 
-  // SF decision
-  const sfChoice = document.querySelector('input[name="merge-sf"]:checked')?.value || 'higher';
+  // ── Validate all 3 required selections (MUST be at top — used below) ───────
+  const _addrPick = document.querySelector('input[name="merge-address"]:checked')?.value;
+  const _cpPick   = document.querySelector('input[name="merge-cp"]:checked')?.value;
+  const _sfPick   = document.querySelector('input[name="merge-sf-choice"]:checked')?.value;
+  if(!_addrPick) { toast('⚠️ Pumili ng Delivery Address bago mag-merge!'); return; }
+  if(!_cpPick)   { toast('⚠️ Pumili ng Contact Number bago mag-merge!'); return; }
+  if(!_sfPick)   { toast('⚠️ Pumili ng Shipping Fee bago mag-merge!'); return; }
   let mergedSF;
   const allSF = allOrders.map(o=>o.shipping||0);
-  if(sfChoice === 'higher') mergedSF = Math.max(...allSF);
-  else if(sfChoice === 'lower') mergedSF = Math.min(...allSF);
-  else mergedSF = parseFloat(document.getElementById('merge-sf-custom')?.value)||0;
+  if(!isNaN(parseInt(_sfPick))) mergedSF = allSF[parseInt(_sfPick)] || 0;
+  else mergedSF = parseFloat(document.getElementById('merge-sf-options-custom')?.value)||0;
 
   const mergedItems     = allOrders.flatMap(o => o.items||[]);
   const mergedItemsTotal= mergedItems.reduce((s,it) => s+(it.total||0), 0);
@@ -14099,13 +14476,27 @@ function confirmMerge() {
   const contactList    = [...new Set(allOrders.map(o=>(o.contact||'').trim()).filter(Boolean))];
   const contactDisplay = contactList.join(' / ');
 
-  // Surviving order = lowest index; absorbed = all others (remove highest-index first)
-  const _addrN = parseInt(document.querySelector('input[name="merge-address"]:checked')?.value||'0');
-  const _addrSrc = S.orders[allIndices[_addrN]] || allOrders[0];
-  const chosenAddress  = _addrSrc.address  || '';
-  const chosenCity     = _addrSrc.city     || '';
-  const chosenLandmark = _addrSrc.landmark || '';
+  // Resolve SF (validated above via _sfPick)
+  let chosenAddress = '', chosenCity = '', chosenLandmark = '';
+  if(_addrPick === 'custom') {
+    chosenAddress = (document.getElementById('merge-address-options-custom')?.value||'').trim();
+  } else {
+    const _addrSrc = S.orders[allIndices[parseInt(_addrPick)]] || allOrders[0];
+    chosenAddress  = _addrSrc.address  || '';
+    chosenCity     = _addrSrc.city     || '';
+    chosenLandmark = _addrSrc.landmark || '';
+  }
 
+  // Resolve contact number
+  let chosenContact = '';
+  if(_cpPick === 'custom') {
+    chosenContact = (document.getElementById('merge-cp-options-custom')?.value||'').trim();
+  } else {
+    const _cpSrc = S.orders[allIndices[parseInt(_cpPick)]] || allOrders[0];
+    chosenContact = _cpSrc.contact || '';
+  }
+
+  // Surviving order = lowest index; absorbed = all others (remove highest-index first)
   const keepIdx     = allIndices[0];
   const removeIdxs  = allIndices.slice(1).reverse(); // remove highest first to preserve indices
   const oKeep       = S.orders[keepIdx];
@@ -14118,7 +14509,7 @@ function confirmMerge() {
     survivingOrderNum: onum(keepIdx),
     absorbedOrderNums: removeIdxs.map(i => onum(i)),
     customerNames, customerDisplay,
-    contact: oKeep.contact||'',
+    contact: chosenContact||oKeep.contact||'',
     date: oKeep.date,
     adminList, adminDisplay,
     mergedSF, mergedGrandTotal,
