@@ -3092,6 +3092,8 @@ let currentRole = null;
 
 // ============ UTILS ============
 const p=n=>{const v=parseFloat(n||0);return '₱'+(isNaN(v)?0:v).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});};
+// Always show only the first contact number (strips joined numbers from old merges)
+const _c = (contact) => (contact||'—').split('/')[0].trim() || '—';
 const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 // MM/DD/YYYY display format for rider dashboard date input
 const todayMDY=()=>{const d=new Date();return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`;};
@@ -3473,7 +3475,7 @@ function openEditOrder(i){
   }
   document.getElementById('encode-title').textContent='Edit Order '+onum(i);
   document.getElementById('enc-name').value=o.name;
-  document.getElementById('enc-contact').value=o.contact;
+  document.getElementById('enc-contact').value=(o.contact||'').split('/')[0].trim();
   const bcEl=document.getElementById('enc-backup-contact'); if(bcEl) bcEl.value=o.backupContact||'';
   // Clear CP validation error display
   const cpErr=document.getElementById('enc-contact-err'); if(cpErr) cpErr.textContent='';
@@ -4183,7 +4185,7 @@ function renderChecker(){
           rows += `<tr style="${rowStyle}">
             <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
             <td style="font-weight:500;">${o.name}</td>
-            <td style="font-size:11px;">${o.contact||'—'}</td>
+            <td style="font-size:11px;">${_c(o.contact)}</td>
             <td>${o.date}</td>
             <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
             <td>
@@ -5185,7 +5187,7 @@ function renderDailyParcels(){
     return `<tr onclick="openDailyDetail(${i})" style="cursor:pointer;" title="Click to view order details">
       <td style="color:var(--gold);">${onum(i)}</td>
       <td style="font-weight:500;">${o.name}</td>
-      <td>${o.contact}</td>
+      <td>${_c(o.contact)}</td>
       <td>${o.city||'—'}</td>
       <td>${o.admin||'—'}</td>
       <td>${o.date}</td>
@@ -5302,7 +5304,7 @@ function renderUpdateOrders() {
         <span style="font-family:var(--fh);font-size:14px;color:var(--gold);font-weight:700;">${onum(o.idx)}</span>
         <span class="status return" style="font-size:10px;">🔄 For Update</span>
         <span style="font-size:12px;font-weight:600;">${o.name}</span>
-        <span style="font-size:11.5px;color:var(--muted);">📞 ${o.contact||'—'}</span>
+        <span style="font-size:11.5px;color:var(--muted);">📞 ${_c(o.contact)}</span>
         <span style="font-size:11.5px;color:var(--muted);">📍 ${o.city||o.address||'—'}${o.landmark?' — '+o.landmark:''}</span>
         <span style="font-size:11.5px;color:var(--muted);">📅 ${o.date}</span>
         <span style="font-size:11.5px;color:var(--muted);">👤 ${o.admin||'—'}</span>
@@ -5388,7 +5390,7 @@ function renderCancelledItems() {
     return `<tr>
     <td style="color:var(--gold);font-weight:600;">${onum(oi)}</td>
     <td style="font-weight:500;">${o.name}</td>
-    <td style="font-size:11px;">${o.contact||'—'}</td>
+    <td style="font-size:11px;">${_c(o.contact)}</td>
     <td style="color:var(--blue);">🏍️ ${o.assignedRider||'—'}</td>
     <td>${o.date}</td>
     <td style="font-family:monospace;font-size:11px;color:var(--gold);">${it.code||'—'}</td>
@@ -5438,7 +5440,7 @@ function openReturnLogModal(orderNum='', itemIdx=null) {
         if(itemRemark) document.getElementById('ret-reason').value = itemRemark;
         if(o.assignedRider) document.getElementById('ret-received-by').value = o.assignedRider;
         // Auto-fill notes with order context
-        document.getElementById('ret-notes').value = `Order: ${orderNum} | Customer: ${o.name} | ${o.contact||''}${o.assignedRider?' | Rider: '+o.assignedRider:''}`;
+        document.getElementById('ret-notes').value = `Order: ${orderNum} | Customer: ${o.name} | ${_c(o.contact)}${o.assignedRider?' | Rider: '+o.assignedRider:''}`;
       }
     }
   }
@@ -5458,7 +5460,7 @@ function previewReturnOrder() {
   prev.innerHTML=`
     <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;margin-bottom:6px;">
       <strong style="color:var(--gold);">${numInput}</strong>
-      <span>👤 ${o.name}</span><span>📞 ${o.contact||'—'}</span>
+      <span>👤 ${o.name}</span><span>📞 ${_c(o.contact)}</span>
       <span>📍 ${o.city||o.address||'—'}</span><span>📅 ${o.date}</span>
       <span>🏍️ ${o.assignedRider||'—'}</span>
       <span class="status ${sclass(o.status)}">${o.status}</span>
@@ -5774,7 +5776,7 @@ function renderSorting() {
           <div>
             <div class="sort-card-order">${onum(o.idx)}</div>
             <div class="sort-card-name">${o.name}</div>
-            <div class="sort-card-city">📍 ${o.city||o.address||'—'} &nbsp;📞 ${o.contact||'—'}</div>
+            <div class="sort-card-city">📍 ${o.city||o.address||'—'} &nbsp;📞 ${_c(o.contact)}</div>
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
             <span class="status ${sclass(o.status)} sort-card-status">${o.status}</span>
@@ -6029,7 +6031,7 @@ function renderDailySales(){
     </div>
     <div class="card" style="margin-top:13px;"><div class="card-header"><span class="card-title">All Parcels Encoded on ${d}</span></div>
       <div class="table-wrap"><table><thead><tr><th>Parcel #</th><th>Buyer</th><th>CP</th><th>City</th><th>Admin</th><th>Method</th><th>SF</th><th>Parcel Amt</th><th>Grand Total</th><th>Status</th></tr></thead>
-        <tbody>${dayO.length?S.orders.map((o,i)=>{if(o.date!==d)return '';return `<tr><td style="color:var(--gold);">Parcel #${i+1}</td><td style="font-weight:500;">${o.name}</td><td>${o.contact}</td><td>${o.city||'—'}</td><td>${o.admin}</td><td><span style="font-size:10px;">${o.paymentMethod||'COD'}</span></td><td>${p(o.shipping)}</td><td>${p(o.itemsTotal)}</td><td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td><td><span class="status ${sclass(o.status)}">${o.status}</span></td></tr>`;}).join(''):'<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:20px;">No orders on this date</td></tr>'}</tbody>
+        <tbody>${dayO.length?S.orders.map((o,i)=>{if(o.date!==d)return '';return `<tr><td style="color:var(--gold);">Parcel #${i+1}</td><td style="font-weight:500;">${o.name}</td><td>${_c(o.contact)}</td><td>${o.city||'—'}</td><td>${o.admin}</td><td><span style="font-size:10px;">${o.paymentMethod||'COD'}</span></td><td>${p(o.shipping)}</td><td>${p(o.itemsTotal)}</td><td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td><td><span class="status ${sclass(o.status)}">${o.status}</span></td></tr>`;}).join(''):'<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:20px;">No orders on this date</td></tr>'}</tbody>
       </table></div>
     </div>`;
 }
@@ -6065,7 +6067,7 @@ function printDailySales(){
     <div class="print-section-title">Admin Daily Incentives</div>
     <table class="print-table"><thead><tr><th>Admin</th><th>Parcels Delivered</th><th>Incentive</th></tr></thead><tbody>${Object.entries(adminDel).map(([a,c])=>`<tr><td style="font-weight:600;">${a}</td><td>${c}</td><td style="color:#27ae60;font-weight:700;">${p(c*25)}</td></tr>`).join('')}<tr style="background:#fff8e8;font-weight:700;"><td>TOTAL</td><td>${del.length}</td><td>${p(del.length*25)}</td></tr></tbody></table>
     <div class="print-section-title">All Parcels</div>
-    <table class="print-table"><thead><tr><th>#</th><th>Buyer</th><th>CP</th><th>City</th><th>Admin</th><th>SF</th><th>Parcel Amt</th><th>Grand Total</th><th>Status</th></tr></thead><tbody>${S.orders.map((o,i)=>{if(o.date!==d)return '';return `<tr><td>${i+1}</td><td style="font-weight:600;">${o.name}</td><td>${o.contact}</td><td>${o.city||o.address}</td><td>${o.admin}</td><td>${p(o.shipping)}</td><td>${p(o.itemsTotal)}</td><td style="font-weight:700;">${p(o.grandTotal)}</td><td>${o.status}</td></tr>`;}).join('')}<tr style="background:#fff8e8;font-weight:700;"><td colspan="6">TOTALS</td><td>${p(dayO.reduce((s,o)=>s+o.itemsTotal,0))}</td><td>${p(dayO.reduce((s,o)=>s+(o.grandTotal||0),0))}</td><td></td></tr></tbody></table>
+    <table class="print-table"><thead><tr><th>#</th><th>Buyer</th><th>CP</th><th>City</th><th>Admin</th><th>SF</th><th>Parcel Amt</th><th>Grand Total</th><th>Status</th></tr></thead><tbody>${S.orders.map((o,i)=>{if(o.date!==d)return '';return `<tr><td>${i+1}</td><td style="font-weight:600;">${o.name}</td><td>${_c(o.contact)}</td><td>${o.city||o.address}</td><td>${o.admin}</td><td>${p(o.shipping)}</td><td>${p(o.itemsTotal)}</td><td style="font-weight:700;">${p(o.grandTotal)}</td><td>${o.status}</td></tr>`;}).join('')}<tr style="background:#fff8e8;font-weight:700;"><td colspan="6">TOTALS</td><td>${p(dayO.reduce((s,o)=>s+o.itemsTotal,0))}</td><td>${p(dayO.reduce((s,o)=>s+(o.grandTotal||0),0))}</td><td></td></tr></tbody></table>
   </div>`;
   const _win = window.open('','_blank','width=900,height=700,menubar=yes,toolbar=yes');
   if(!_win){ toast('⚠️ Popup blocked! Allow popups then retry.'); return; }
@@ -7254,7 +7256,7 @@ function renderCourierDashboard(){
                  ${searchFiltered.map(o=>`<tr>
                    <td style="color:var(--gold);font-weight:700;">${onum(o.idx)}</td>
                    <td style="white-space:nowrap;">${o.date}</td>
-                   <td style="font-weight:500;">${o.name}<br><span style="color:var(--muted);font-size:9px;">${o.contact||''}</span></td>
+                   <td style="font-weight:500;">${o.name}<br><span style="color:var(--muted);font-size:9px;">${_c(o.contact)}</span></td>
                    ${isOwner?`<td style="font-size:10.5px;">${o.admin||'—'}</td>`:''}
                    <td style="font-size:10px;color:${curCourier==='COD'?'var(--gold)':'var(--blue)'}">${curCourier==='COD'?(curPayTab==='Cancelled'?(o.cancelReason||'—'):o.status):(o.trackingNumber||'—')}</td>
                    <td>${p(o.itemsTotal||0)}</td>
@@ -7383,7 +7385,7 @@ function printAdminSheet(){
     </div>
     <table style="width:100%;border-collapse:collapse;font-size:10.5px;">
       <thead><tr style="background:#f5edd8;"><th style="padding:5px 6px;border:1px solid #d4b870;text-align:left;color:#7a5c1e;">Order #</th><th style="padding:5px 6px;border:1px solid #d4b870;color:#7a5c1e;">Customer</th><th style="padding:5px 6px;border:1px solid #d4b870;color:#7a5c1e;">CP</th><th style="padding:5px 6px;border:1px solid #d4b870;color:#7a5c1e;">City</th><th style="padding:5px 6px;border:1px solid #d4b870;color:#7a5c1e;">Date</th><th style="padding:5px 6px;border:1px solid #d4b870;color:#7a5c1e;">SF</th><th style="padding:5px 6px;border:1px solid #d4b870;color:#7a5c1e;">Total</th><th style="padding:5px 6px;border:1px solid #d4b870;color:#7a5c1e;">Status</th></tr></thead>
-      <tbody>${adminOrders.map((o,i)=>`<tr style="${i%2?'background:#fafafa':''}"><td style="padding:5px 6px;border:1px solid #eee;font-weight:700;">${onum(o.idx)}</td><td style="padding:5px 6px;border:1px solid #eee;">${o.name}</td><td style="padding:5px 6px;border:1px solid #eee;">${o.contact}</td><td style="padding:5px 6px;border:1px solid #eee;">${o.city||'—'}</td><td style="padding:5px 6px;border:1px solid #eee;">${o.date}</td><td style="padding:5px 6px;border:1px solid #eee;">${p(o.shipping)}</td><td style="padding:5px 6px;border:1px solid #eee;font-weight:700;">${p(o.grandTotal)}</td><td style="padding:5px 6px;border:1px solid #eee;">${o.status}</td></tr>`).join('')}
+      <tbody>${adminOrders.map((o,i)=>`<tr style="${i%2?'background:#fafafa':''}"><td style="padding:5px 6px;border:1px solid #eee;font-weight:700;">${onum(o.idx)}</td><td style="padding:5px 6px;border:1px solid #eee;">${o.name}</td><td style="padding:5px 6px;border:1px solid #eee;">${_c(o.contact)}</td><td style="padding:5px 6px;border:1px solid #eee;">${o.city||'—'}</td><td style="padding:5px 6px;border:1px solid #eee;">${o.date}</td><td style="padding:5px 6px;border:1px solid #eee;">${p(o.shipping)}</td><td style="padding:5px 6px;border:1px solid #eee;font-weight:700;">${p(o.grandTotal)}</td><td style="padding:5px 6px;border:1px solid #eee;">${o.status}</td></tr>`).join('')}
       <tr style="background:#fff8e8;font-weight:700;"><td colspan="6" style="padding:5px 6px;border:1px solid #d4b870;">TOTALS</td><td style="padding:5px 6px;border:1px solid #d4b870;">${p(adminOrders.reduce((s,o)=>s+(o.grandTotal||0),0))}</td><td style="padding:5px 6px;border:1px solid #d4b870;"></td></tr>
       </tbody>
     </table>
@@ -9049,7 +9051,7 @@ function renderRiderParcels() {
     return `${_discBanner}<tr style="background:rgba(201,168,76,0.03);">
       <td style="color:var(--gold);font-weight:600;">${onum(o.idx)}</td>
       <td style="font-weight:500;">${o.name}</td>
-      <td>${o.contact}</td>
+      <td>${_c(o.contact)}</td>
       <td style="font-size:10.5px;max-width:170px;">${o.address||'—'}${o.city?'<br><span style="color:var(--muted);font-size:9px;">📍 '+o.city+'</span>':''}${o.landmark?'<br><span style="color:var(--muted);font-size:9px;">🏠 '+o.landmark+'</span>':''}</td>
       <td>${o.date}</td>
       <td style="font-weight:600;">
@@ -9585,7 +9587,7 @@ async function saveOrder() {
   // All fields required
   if(!name) { toast('⚠️ Customer Name required'); document.getElementById('enc-name').focus(); return; }
   if(!contact) { toast('⚠️ CP Number required'); document.getElementById('enc-contact').focus(); return; }
-  if(contact.length !== 11) {
+  if(contact.length !== 11 && !_editIdxVal) {
     toast(`⚠️ CP Number dapat exactly 11 digits! Nilagay mo: ${contact.length} digit${contact.length!==1?'s':''}`);
     document.getElementById('enc-contact').focus(); return;
   }
@@ -9731,14 +9733,25 @@ async function saveOrder() {
     // ── Inventory adjustment on EDIT ─────────────────────────────
     // Only touch inventory if checker already verified this order.
     // Unverified edits never affected stock — nothing to restore or deduct.
-    // Filter rider-cancelled items on restore (already restored by riderItemStatus).
+    // If items are identical (info-only edit), skip restore+deduct entirely.
     const hadDeducted = _invDeducted(orig);
     if(hadDeducted) {
-      // Restore ALL items from original order (rider cancels no longer auto-restore)
-      if((orig.items||[]).length > 0) {
-        _restoreOrderItems(orig.items, today(), 'Edit restore – '+name, orig._id||'orig');
+      // Compare old vs new items — skip inventory touch if items unchanged
+      const _itemSig = (its) => JSON.stringify((its||[]).map(it=>({
+        code:(it.code||'').toUpperCase(), grams:parseFloat(it.grams||0),
+        qty:parseFloat(it.qty||0), total:parseFloat(it.total||0)
+      })));
+      const _itemsChanged = _itemSig(orig.items) !== _itemSig(items);
+      if(_itemsChanged) {
+        // Items changed — restore old, deduct new
+        if((orig.items||[]).length > 0) {
+          _restoreOrderItems(orig.items, today(), 'Edit restore – '+name, (orig._id||'orig')+'_restore_'+Date.now());
+        }
+        o.inventoryDeducted = _deductOrderItems(items, today(), 'Edit deduct – '+name+' ('+admin+')', (o._id||String(editOrderIdx))+'_edit_'+Date.now());
+      } else {
+        // Info-only edit — items unchanged, no inventory movement needed
+        o.inventoryDeducted = true;
       }
-      o.inventoryDeducted = _deductOrderItems(items, today(), 'Edit deduct – '+name+' ('+admin+')', (o._id||String(editOrderIdx))+'_edit');
     } else {
       o.inventoryDeducted = false;
     }
@@ -11147,7 +11160,7 @@ function renderRemitPage() {
               <td style="padding:6px 8px;color:var(--gold);font-size:13px;font-weight:700;text-align:left;word-break:break-all;">${onum(o.oi)}</td>
               <td style="padding:6px 8px;text-align:left;word-break:break-word;">
                 <div style="font-weight:600;font-size:13px;">${o.name}</div>
-                <div style="color:var(--muted);font-size:11px;margin-top:1px;">${o.contact||''}</div>
+                <div style="color:var(--muted);font-size:11px;margin-top:1px;">${_c(o.contact)}</div>
               </td>
               <td style="padding:6px 8px;text-align:left;">${renderOrderItems(o)}</td>
               <td style="padding:6px 8px;text-align:right;color:var(--blue);white-space:nowrap;">${p(o.shipping||0)}</td>
@@ -11663,7 +11676,7 @@ function showIncentiveDetail(oi) {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
       <div>
         <div style="font-weight:700;font-size:16px;color:var(--gold);">${o.name}</div>
-        <div style="font-size:11px;color:var(--muted);">${onum(oi)} &nbsp;|&nbsp; ${o.date} &nbsp;|&nbsp; ${o.admin||'—'} &nbsp;|&nbsp; ${o.contact||'—'}</div>
+        <div style="font-size:11px;color:var(--muted);">${onum(oi)} &nbsp;|&nbsp; ${o.date} &nbsp;|&nbsp; ${o.admin||'—'} &nbsp;|&nbsp; ${_c(o.contact)}</div>
       </div>
       <button onclick="document.getElementById('_incentive-detail-overlay').remove()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:4px 8px;">✕</button>
     </div>
@@ -12513,7 +12526,7 @@ function renderOrderMgmt() {
     const trackNum = o.trackingNumber || '—';
     return `<tr>
       <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
-      <td style="font-weight:500;">${o.name}<br><span style="color:var(--muted);font-size:11px;">${o.contact||''}</span></td>
+      <td style="font-weight:500;">${o.name}<br><span style="color:var(--muted);font-size:11px;">${_c(o.contact)}</span></td>
       <td style="font-family:monospace;font-size:11px;color:var(--blue);">${trackNum}</td>
       <td style="font-size:11px;">${o.admin||'—'}</td>
       <td>${o.date}</td>
@@ -12749,7 +12762,7 @@ function openDailyDetail(orderIdx) {
       <div style="background:var(--navy);border-radius:8px;padding:10px 14px;flex:1;min-width:180px;">
         <div style="font-size:13px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;">Customer</div>
         <div style="font-weight:700;">${o.name}</div>
-        <div style="color:var(--muted);">${o.contact||'—'}${o.backupContact?' / '+o.backupContact:''}</div>
+        <div style="color:var(--muted);">${_c(o.contact)}${o.backupContact?' / '+o.backupContact:''}</div>
         <div style="font-size:13px;margin-top:4px;">${o.address||'—'}${o.landmark?' — '+o.landmark:''}</div>
       </div>
       <div style="background:var(--navy);border-radius:8px;padding:10px 14px;flex:1;min-width:180px;">
@@ -12929,7 +12942,7 @@ function renderLbcDelivery() {
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <span style="color:var(--gold);font-weight:700;">${onum(i)}</span>
           <span style="font-weight:600;">${o.name}</span>
-          <span style="color:var(--muted);font-size:11px;">${o.contact||''}</span>
+          <span style="color:var(--muted);font-size:11px;">${_c(o.contact)}</span>
           <span style="font-size:11px;">${o.date}</span>
           <span style="color:var(--green);font-weight:700;">${p(o.grandTotal)}</span>
           <span style="font-size:13px;font-weight:700;color:${statusColor};padding:2px 8px;background:rgba(255,255,255,0.05);border-radius:4px;">${lst}</span>
@@ -12941,7 +12954,7 @@ function renderLbcDelivery() {
       </div>
       <div id="${safeId}" style="display:none;padding:0 14px 14px;border-top:1px solid var(--navy-border);margin-top:4px;" onclick="event.stopPropagation()">
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:11.5px;margin-top:10px;">
-          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Customer</span><br><strong>${o.name}</strong><br><span style="color:var(--muted);font-size:13px;">${o.contact||'—'}</span></div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Customer</span><br><strong>${o.name}</strong><br><span style="color:var(--muted);font-size:13px;">${_c(o.contact)}</span></div>
           <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Address</span><br>${o.address||'—'}${o.landmark?'<br><span style="color:var(--muted);font-size:13px;">🏠 '+o.landmark+'</span>':''}</div>
           <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Admin / Method</span><br>${o.admin||'—'} · <span style="color:var(--blue);">${o.paymentMethod}</span></div>
           <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Tracking #</span><br><span style="font-family:monospace;color:var(--blue);">${tn}</span></div>
@@ -13251,7 +13264,7 @@ function renderCodDelivPage() {
           <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
             <span style="color:var(--gold);font-weight:700;">${onum(i)}</span>
             <span style="font-weight:600;">${o.name}</span>
-            <span style="color:var(--muted);font-size:11px;">${o.contact||''}</span>
+            <span style="color:var(--muted);font-size:11px;">${_c(o.contact)}</span>
             <span style="font-size:11px;">${dateCol}</span>
             <span style="color:var(--green);font-weight:700;">${p(o.grandTotal)}</span>
             <span style="font-size:13px;font-weight:700;color:${statusColor};padding:2px 8px;background:rgba(255,255,255,0.05);border-radius:4px;">${o.status}</span>
@@ -13597,7 +13610,7 @@ function renderEmsDelivery() {
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <span style="color:var(--gold);font-weight:700;">${onum(i)}</span>
           <span style="font-weight:600;">${o.name}</span>
-          <span style="color:var(--muted);font-size:11px;">${o.contact||''}</span>
+          <span style="color:var(--muted);font-size:11px;">${_c(o.contact)}</span>
           <span style="font-size:11px;">${o.date}</span>
           <span style="color:var(--green);font-weight:700;">${p(o.grandTotal)}</span>
           <span style="font-size:13px;font-weight:700;color:${statusColor};padding:2px 8px;background:rgba(255,255,255,0.05);border-radius:4px;">✈️ ${lst}</span>
@@ -13608,7 +13621,7 @@ function renderEmsDelivery() {
       </div>
       <div id="${safeId}" style="display:none;padding:0 14px 14px;border-top:1px solid var(--navy-border);margin-top:4px;" onclick="event.stopPropagation()">
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:11.5px;margin-top:10px;">
-          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Customer</span><br><strong>${o.name}</strong><br><span style="color:var(--muted);font-size:13px;">${o.contact||'—'}</span></div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Customer</span><br><strong>${o.name}</strong><br><span style="color:var(--muted);font-size:13px;">${_c(o.contact)}</span></div>
           <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Address</span><br>${o.address||'—'}${o.landmark?'<br><span style="color:var(--muted);font-size:13px;">🏠 '+o.landmark+'</span>':''}</div>
           <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Admin</span><br>${o.admin||'—'}</div>
           <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Tracking #</span><br><span style="font-family:monospace;color:var(--blue);">${tn}</span></div>
@@ -13651,7 +13664,7 @@ function checkerCancelOrder(orderIdx) {
   document.getElementById('checker-cancel-reason-err').textContent = '';
   document.getElementById('checker-cancel-order-info').innerHTML = `
     <div style="font-weight:700;color:var(--gold);">${onum(orderIdx)} — ${o.name}</div>
-    <div style="color:var(--muted);font-size:11px;">${o.contact||'—'} | ${o.paymentMethod||'COD'} | ${o.date}</div>
+    <div style="color:var(--muted);font-size:11px;">${_c(o.contact)} | ${o.paymentMethod||'COD'} | ${o.date}</div>
     <div style="font-size:11px;margin-top:4px;">Items: ${(o.items||[]).map(it=>it.code+' '+it.desc).join(', ')}</div>
     <div style="font-size:11px;color:var(--green);margin-top:2px;">Total: ${p(o.grandTotal)}</div>`;
   openModal('modal-checker-cancel');
@@ -13914,7 +13927,7 @@ function renderFedexDelivery() {
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <span style="color:var(--gold);font-weight:700;">${onum(i)}</span>
           <span style="font-weight:600;">${o.name}</span>
-          <span style="color:var(--muted);font-size:11px;">${o.contact||''}</span>
+          <span style="color:var(--muted);font-size:11px;">${_c(o.contact)}</span>
           <span style="font-size:11px;">${o.date}</span>
           <span style="color:var(--green);font-weight:700;">${p(o.grandTotal)}</span>
           <span style="font-size:13px;font-weight:700;color:${statusColor};padding:2px 8px;background:rgba(255,255,255,0.05);border-radius:4px;">📦 ${lst}</span>
@@ -13925,7 +13938,7 @@ function renderFedexDelivery() {
       </div>
       <div id="${safeId}" style="display:none;padding:0 14px 14px;border-top:1px solid var(--navy-border);margin-top:4px;" onclick="event.stopPropagation()">
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:11.5px;margin-top:10px;">
-          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Customer</span><br><strong>${o.name}</strong><br><span style="color:var(--muted);font-size:13px;">${o.contact||'—'}</span></div>
+          <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Customer</span><br><strong>${o.name}</strong><br><span style="color:var(--muted);font-size:13px;">${_c(o.contact)}</span></div>
           <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Address</span><br>${o.address||'—'}${o.landmark?'<br><span style="color:var(--muted);font-size:13px;">🏠 '+o.landmark+'</span>':''}</div>
           <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Admin</span><br>${o.admin||'—'}</div>
           <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Tracking #</span><br><span style="font-family:monospace;color:var(--blue);">${tn}</span></div>
@@ -14077,7 +14090,7 @@ function renderCheckerForUpdate() {
 
     return `<tr style="background:rgba(224,138,48,0.05);">
       <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
-      <td style="font-weight:500;">${o.name}<br><span style="font-size:13px;color:var(--muted);">${o.contact||'—'}</span></td>
+      <td style="font-weight:500;">${o.name}<br><span style="font-size:13px;color:var(--muted);">${_c(o.contact)}</span></td>
       <td style="font-size:13px;">${o.address||'—'}${o.landmark?'<br>🏠 '+o.landmark:''}</td>
       <td style="font-size:11px;color:var(--blue);">🏍️ ${o.assignedRider||'Unassigned'}</td>
       <td style="font-size:11px;">${o.admin||'—'}</td>
