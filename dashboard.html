@@ -4044,7 +4044,11 @@ function renderChecker(){
       codAdminGroups[adm].push({o,i});
     });
     // ── Duplicate detection (fuzzy name, same contact, or same address + date) ──
-    const dupSets = detectDuplicates(list);
+    // Exclude already-verified orders — they are settled, no need to merge
+    const _unverifiedList = list.filter(({o}) =>
+      o.checkerStatus !== 'Verified' && o.verificationStatus !== 'Verified'
+    );
+    const dupSets = detectDuplicates(_unverifiedList);
     window._checkerDupSets = dupSets; // expose globally so verifyOrder can check
 
     // Filter out groups where ALL orders have been dismissed via X button
@@ -7924,13 +7928,47 @@ function renderDash(){
     return true;
   }).reduce((s,e)=>s+parseFloat(e.amount||0),0);
   const _dateLabel = _dfFrom||_dfTo ? `${_dfFromRaw||'—'} → ${_dfToRaw||'—'}` : 'All time';
+
+  // ── Net Profit (from P&L logic) ──
+  const _dashFrom = _dfFrom || '2000-01-01';
+  const _dashTo   = _dfTo   || '2099-12-31';
+  // COD delivered in range
+  const _dashCodDel = allOrders.filter(o=>{
+    if(!o||o.status!=='Delivered'||(o.paymentMethod||'COD')!=='COD') return false;
+    const d=(o.dateDelivered||o.date||'').slice(0,10), e=(o.date||'').slice(0,10);
+    return (d>=_dashFrom&&d<=_dashTo)||(e>=_dashFrom&&e<=_dashTo);
+  });
+  // Courier verified in range
+  const _dashCourierVer = allOrders.filter(o=>o&&
+    (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx') &&
+    (o.checkerStatus==='Verified'||o.verificationStatus==='Verified') &&
+    o.status!=='Cancelled'&&o.status!=='RTO' &&
+    (()=>{const d=(o.dateDelivered||o.dateOfPayment||o.date||'').slice(0,10);return d>=_dashFrom&&d<=_dashTo;})());
+  const _dashIncome = [..._dashCodDel,..._dashCourierVer];
+  // OI-prefix exclusion helper
+  function _dashOiTotal(o){return(o.items||[]).reduce((s,it)=>{const c=(it.code||'').toUpperCase().trim();return(typeof _getOiPrefix==='function'&&_getOiPrefix(c))?s+(it.total||0):s;},0);}
+  const _dashItemsSales = _dashIncome.reduce((s,o)=>s+(o.itemsTotal||0)-_dashOiTotal(o),0);
+  const _dashSF10 = Math.round((S.remitLog||[]).filter(e=>{const d=e.date||'';return d>=_dashFrom&&d<=_dashTo;}).reduce((s,e)=>s+(e.sf10||0),0)*100)/100;
+  // Other Items profit & sales total
+  const _dashOiAll = (S.otherItems||[]).filter(r=>{const d=r.date||'';return r.status==='remitted'&&d>=_dashFrom&&d<=_dashTo;});
+  const _dashOiSales = _dashOiAll.reduce((s,r)=>s+(r.total||0),0);
+  const _dashOiProfit = _dashOiAll.reduce((s,r)=>s+((r.total||0)-(r.cost||0)),0);
+  const _dashTotalSales = _dashItemsSales + _dashSF10 + _dashOiSales;
+  // COGS from inventory capital
+  function _dashCOGS(it){if(!it||!it.code)return 0;const inv=(S.inventory||[]).find(p=>p.code&&p.code.toUpperCase()===it.code.toUpperCase());if(inv)return inv.itemType==='fixprice'?(inv.capitalPerUnit||0)*(it.qty||1):(inv.capitalPerGram||0)*(it.grams||it.qty||0);if(it.capitalPerGram)return it.capitalPerGram*(it.grams||it.qty||0);if(it.capitalPerUnit)return it.capitalPerUnit*(it.qty||1);return 0;}
+  const _dashTotalCOGS = _dashIncome.reduce((s,o)=>{const iS=o.itemStatuses||{},iCQ=o.itemCancelQty||{};return s+(o.items||[]).reduce((is,it,ii)=>{if(iS[ii]==='Cancelled'||iS[ii]==='Update')return is;const fc=_dashCOGS(it),cxQ=iCQ[ii]||0;if(cxQ>0){const tot=it.grams||it.qty||1;return is+fc*Math.max(0,(tot-cxQ)/tot);}return is+fc;},0);},0);
+  const _dashOpEx = (S.expenses||[]).filter(e=>{const d=e.date||'';return d>=_dashFrom&&d<=_dashTo;}).reduce((s,e)=>s+parseFloat(e.amount||0),0);
+  const _dashNetProfit = _dashTotalSales - _dashTotalCOGS - _dashOpEx;
+
   document.getElementById('dash-stats').innerHTML=`
     <div class="stat-card gold"><div class="stat-label">Total Orders</div><div class="stat-value">${total}</div><div class="stat-sub">${_dateLabel}</div></div>
     <div class="stat-card green"><div class="stat-label">Revenue</div><div class="stat-value">${p(revenue)}</div><div class="stat-sub">Delivered</div></div>
+    <div class="stat-card ${_dashNetProfit>=0?'green':'red'}"><div class="stat-label">Net Profit (P&L)</div><div class="stat-value" style="font-size:15px;">${_dashNetProfit>=0?'':'−'}${p(Math.abs(_dashNetProfit))}</div><div class="stat-sub">${_dateLabel}</div></div>
+    <div class="stat-card purple"><div class="stat-label">Other Items Profit</div><div class="stat-value" style="font-size:15px;">${p(_dashOiProfit)}</div><div class="stat-sub">OI Sales: ${p(_dashOiSales)}</div></div>
     <div class="stat-card blue"><div class="stat-label">Delivered</div><div class="stat-value">${del}</div><div class="stat-sub">of ${total}</div></div>
     <div class="stat-card orange"><div class="stat-label">Today</div><div class="stat-value">${todayO}</div><div class="stat-sub">Orders encoded</div></div>
     <div class="stat-card red"><div class="stat-label">Pending Verify</div><div class="stat-value">${pending}</div><div class="stat-sub">Checker queue</div></div>
-    <div class="stat-card purple"><div class="stat-label">Expenses</div><div class="stat-value">${p(expTotal)}</div><div class="stat-sub">${_dateLabel}</div></div>`;
+    <div class="stat-card gold"><div class="stat-label">Expenses</div><div class="stat-value">${p(expTotal)}</div><div class="stat-sub">${_dateLabel}</div></div>`;
   const statuses=['Preparing','Ready','Out for Delivery','Delivered','RTO','Cancelled','Update'];
   document.getElementById('dash-status').innerHTML=statuses.map(s=>{
     const cnt=orders.filter(o=>o.status===s).length,pct=total?Math.round(cnt/total*100):0;
@@ -14231,7 +14269,9 @@ function openMergeModal() {
   const codOrders = (S.orders||[]).map((o,i)=>o?({o,i}):null).filter(Boolean)
     .filter(({o}) =>
       (o.paymentMethod||'COD') === 'COD' &&
-      !['Cancelled','RTO','Delivered'].includes(o.status)
+      !['Cancelled','RTO','Delivered'].includes(o.status) &&
+      o.checkerStatus !== 'Verified' &&
+      o.verificationStatus !== 'Verified'
     );
   // Cap each group at 3 — merge at most 3 orders at a time
   _mergeDupSets = detectDuplicates(codOrders); // no size limit — show all matches
