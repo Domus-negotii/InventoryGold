@@ -4047,13 +4047,19 @@ function renderChecker(){
     const dupSets = detectDuplicates(list);
     window._checkerDupSets = dupSets; // expose globally so verifyOrder can check
 
+    // Filter out groups where ALL orders have been dismissed via X button
+    const _dismissed = window._mergeGroupDismissed || new Set();
+    const visibleDupSets = dupSets.filter(group =>
+      group.some(item => !_dismissed.has(onum(item.i)))
+    );
+
     // Show duplicate alert banner
     const dupBanner = document.getElementById('checker-dup-banner');
     if(dupBanner) {
-      if(dupSets.length > 0) {
-        const names = dupSets.map(g => g[0].o.name).join(', ');
+      if(visibleDupSets.length > 0) {
+        const names = visibleDupSets.map(g => g[0].o.name).join(', ');
         dupBanner.innerHTML = `<div style="background:rgba(224,138,48,0.15);border:1.5px solid var(--orange);border-radius:8px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-          <div><span style="color:var(--orange);font-weight:700;">⚠️ ${dupSets.length} Possible Duplicate Order(s) Detected!</span>
+          <div><span style="color:var(--orange);font-weight:700;">⚠️ ${visibleDupSets.length} Possible Duplicate Order(s) Detected!</span>
           <div style="font-size:11px;color:var(--muted);margin-top:2px;">Similar name / contact / address on same date: <strong>${names}</strong></div></div>
           ${checkerTab === 'COD' ? '<button class="btn btn-orange btn-sm" onclick="openMergeModal()">🔀 Review &amp; Merge</button>' : '<span style="font-size:11px;color:var(--muted);">ℹ️ Merge: COD orders only.</span>'}
         </div>`;
@@ -14318,11 +14324,10 @@ function removeMergeCard(n) {
   // Remove the card — if only 1 remains, close modal (nothing to merge)
   window._mergeGroupIndices = indices.filter((_,i) => i !== n);
   if(window._mergeGroupIndices.length < 2) {
-    // Add the removed order to dismissal set so verify stays unblocked
-    // even after renderChecker() re-runs detectDuplicates() and rebuilds _checkerDupSets
+    // Dismiss ALL orders in the group (both removed and remaining)
+    // so the duplicate banner disappears and the remaining order can be verified
     if(!window._mergeGroupDismissed) window._mergeGroupDismissed = new Set();
-    const _removedOrderNum = onum(indices[n]);
-    window._mergeGroupDismissed.add(_removedOrderNum);
+    indices.forEach(idx => window._mergeGroupDismissed.add(onum(idx)));
     closeModal('modal-merge-orders');
     toast('✅ Order removed from merge group — verify is now unblocked.');
     try { renderChecker(); } catch(e) {}
