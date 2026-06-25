@@ -9569,7 +9569,14 @@ async function saveOrder() {
   const contact = document.getElementById('enc-contact').value.replace(/\D/g,'');
   const backupContact = (document.getElementById('enc-backup-contact')?.value||'').replace(/\D/g,'');
   const address = document.getElementById('enc-address').value.trim();
-  const admin = document.getElementById('enc-admin').value.trim();
+  const _editIdxVal = document.getElementById('enc-edit-idx').value;
+  let admin = document.getElementById('enc-admin').value.trim();
+  // Edit mode: if admin field is empty (e.g. merged order with composite admin like "ZEN / ANGIE"
+  // that doesn't match any dropdown option), fall back to the saved order's admin value
+  if(!admin && _editIdxVal !== '') {
+    const _editedOrder = S.orders[parseInt(_editIdxVal)];
+    if(_editedOrder && _editedOrder.admin) admin = _editedOrder.admin;
+  }
   const date = document.getElementById('enc-date').value;
   if(!date) { toast('⚠️ Date is required. Please enter the date of purchase.'); document.getElementById('enc-date').focus(); return; }
   const shipping = document.getElementById('enc-shipping').value;
@@ -9587,7 +9594,7 @@ async function saveOrder() {
     document.getElementById('enc-backup-contact').focus(); return;
   }
   if(!address) { toast('⚠️ Complete Address required'); document.getElementById('enc-address').focus(); return; }
-  if(!admin && !document.getElementById('enc-edit-idx').value) { toast('⚠️ Admin Name required'); return; }
+  if(!admin && !_editIdxVal) { toast('⚠️ Admin Name required'); return; }
   if(shipping === '' || shipping === null) { toast('⚠️ Shipping Fee required (0 kung libre)'); document.getElementById('enc-shipping').focus(); return; }
 
   const items = getItems('enc-items-tbody');
@@ -14512,6 +14519,9 @@ function confirmMerge() {
     return;
   }
 
+  // Display order = matches radio values 0,1,2 (Order A, B, C as shown in modal)
+  const _displayIndices = (window._mergeGroupIndices || allIndices);
+
   // ── Validate all 3 required selections (MUST be at top — used below) ───────
   const _addrPick = document.querySelector('input[name="merge-address"]:checked')?.value;
   const _cpPick   = document.querySelector('input[name="merge-cp"]:checked')?.value;
@@ -14519,9 +14529,9 @@ function confirmMerge() {
   if(!_addrPick) { toast('⚠️ Pumili ng Delivery Address bago mag-merge!'); return; }
   if(!_cpPick)   { toast('⚠️ Pumili ng Contact Number bago mag-merge!'); return; }
   if(!_sfPick)   { toast('⚠️ Pumili ng Shipping Fee bago mag-merge!'); return; }
+
   let mergedSF;
-  const allSF = allOrders.map(o=>o.shipping||0);
-  if(!isNaN(parseInt(_sfPick))) mergedSF = allSF[parseInt(_sfPick)] || 0;
+  if(!isNaN(parseInt(_sfPick))) mergedSF = (S.orders[_displayIndices[parseInt(_sfPick)]]?.shipping || 0);
   else mergedSF = parseFloat(document.getElementById('merge-sf-options-custom')?.value)||0;
 
   const mergedItems     = allOrders.flatMap(o => o.items||[]);
@@ -14530,30 +14540,28 @@ function confirmMerge() {
 
   const adminList    = [...new Set(allOrders.map(o=>o.admin||'').filter(Boolean))];
   const adminDisplay = adminList.join(' / ');
-  // Customer names — unique, joined with /  (JUAN / PEDRO / LUNA)
-  const customerNames   = [...new Set(allOrders.map(o=>(o.name||'').trim()).filter(Boolean))];
-  const customerDisplay = customerNames.join(' / ');
-  // Contact numbers — unique, joined with /  (same=show once, diff=show all)
-  const contactList    = [...new Set(allOrders.map(o=>(o.contact||'').trim()).filter(Boolean))];
-  const contactDisplay = contactList.join(' / ');
+  // Customer names — unique, joined with / (JUAN / PEDRO); same name = show once
+  const customerNames   = [...new Set(allOrders.map(o=>(o.name||'').trim().split('/').map(n=>n.trim())).flat().filter(Boolean))];
+  const customerDisplay = [...new Set(customerNames)].join(' / ');
 
-  // Resolve SF (validated above via _sfPick)
+  // Resolve address — use display order so radio 0=Order A, 1=Order B
   let chosenAddress = '', chosenCity = '', chosenLandmark = '';
   if(_addrPick === 'custom') {
     chosenAddress = (document.getElementById('merge-address-options-custom')?.value||'').trim();
   } else {
-    const _addrSrc = S.orders[allIndices[parseInt(_addrPick)]] || allOrders[0];
+    const _addrSrc = S.orders[_displayIndices[parseInt(_addrPick)]] || allOrders[0];
     chosenAddress  = _addrSrc.address  || '';
     chosenCity     = _addrSrc.city     || '';
     chosenLandmark = _addrSrc.landmark || '';
   }
 
-  // Resolve contact number — always single number, strip any old joined values
+  // Resolve contact number — exact same logic as updateMergePreview's contactDisplay
   let chosenContact = '';
   if(_cpPick === 'custom') {
     chosenContact = (document.getElementById('merge-cp-options-custom')?.value||'').trim();
   } else {
-    const _cpSrc = S.orders[allIndices[parseInt(_cpPick)]] || allOrders[0];
+    const _cpIdx2 = parseInt(_cpPick);
+    const _cpSrc = S.orders[_displayIndices[_cpIdx2]] || allOrders[_cpIdx2] || allOrders[0];
     chosenContact = (_cpSrc.contact || '').split('/')[0].trim();
   }
 
