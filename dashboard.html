@@ -14307,8 +14307,7 @@ function selectMergeSet(gi) {
   _mergeIdxB = group[1].i;
   window._mergeGroupIndices = group.map(item => item.i); // all indices for N-order merge
   renderMergeSetSelector();
-  renderMergeOrderCards();
-  updateMergePreview();
+  renderMergeOrderCards(); // internally calls updateMergeAddressOptions + updateMergePreview
 }
 
 function renderMergeOrderCards() {
@@ -14355,8 +14354,7 @@ function renderMergeOrderCards() {
   // Ensure _mergeGroupIndices is always in sync with what's rendered
   window._mergeGroupIndices = indices.slice();
 
-  updateMergePreview();
-  updateMergeAddressOptions();
+  updateMergeAddressOptions(); // build radios + auto-select first BEFORE preview reads them
 }
 
 function removeMergeCard(n) {
@@ -14375,9 +14373,7 @@ function removeMergeCard(n) {
   }
   _mergeIdxA = window._mergeGroupIndices[0];
   _mergeIdxB = window._mergeGroupIndices[1];
-  renderMergeOrderCards();
-  updateMergePreview();
-  updateMergeAddressOptions();
+  renderMergeOrderCards(); // internally calls updateMergeAddressOptions + updateMergePreview
 }
 
 function updateMergeAddressOptions() {
