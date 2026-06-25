@@ -14333,7 +14333,7 @@ function renderMergeOrderCards() {
         ${xBtn}
       </div>
       <div style="font-weight:700;font-size:13px;">${onum(idx)} — ${o.name}</div>
-      <div style="font-size:11px;color:var(--muted);">${o.contact||'—'} | ${o.date}</div>
+      <div style="font-size:11px;color:var(--muted);">${(o.contact||'—').split('/')[0].trim()||'—'} | ${o.date}</div>
       <div style="font-size:11px;margin-top:4px;color:var(--blue);">👤 Admin: <strong>${o.admin||'—'}</strong></div>
       <div style="margin-top:6px;">${itemsHtml}</div>
       <div style="margin-top:6px;display:flex;justify-content:space-between;font-size:11.5px;">
@@ -14409,7 +14409,7 @@ function updateMergeAddressOptions() {
 
   // 📞 CP NUMBER
   buildOptions('merge-cp-options', 'merge-cp',
-    function(o){ return o.contact || '—'; },
+    function(o){ return (o.contact || '—').split('/')[0].trim() || '—'; },
     function(o, v){ return v; });
 
   // 💰 SF
