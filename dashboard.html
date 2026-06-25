@@ -3662,7 +3662,7 @@ function renderMyOrders() {
   const rowOf = ({o,i}) => `<tr>
     <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
     <td style="font-weight:500;">${o.name}</td>
-    <td>${o.contact||'—'}</td>
+    <td>${(o.contact||'—').split('/')[0].trim()||'—'}</td>
     <td style="font-size:10.5px;max-width:150px;">${o.address||'—'}</td>
     <td style="font-size:10.5px;">${o.landmark||'—'}</td>
     <td>${o.date}</td>
@@ -3798,7 +3798,7 @@ function renderOrders() {
   tbody.innerHTML = list.length ? list.map(({o,i}) => `<tr>
     <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
     <td style="font-weight:500;">${o.name}</td>
-    <td>${o.contact||'—'}</td>
+    <td>${(o.contact||'—').split('/')[0].trim()||'—'}</td>
     <td style="font-size:10.5px;max-width:140px;">${o.address||'—'}</td>
     <td style="font-size:10.5px;">${o.landmark||'—'}</td>
     <td>${o.date}</td>
@@ -3874,7 +3874,7 @@ function printOwnerAdminSheet() {
     </div>
     <table><thead><tr><th>Order #</th><th>Customer</th><th>CP#</th><th>Address</th><th>Date</th><th>Admin</th><th>Method</th><th>SF</th><th>Total</th><th>Status</th></tr></thead>
     <tbody>${list.map(o=>`<tr>
-      <td style="font-weight:700;">${onum(o.idx)}</td><td>${o.name}</td><td>${o.contact||'—'}</td>
+      <td style="font-weight:700;">${onum(o.idx)}</td><td>${o.name}</td><td>${(o.contact||'—').split('/')[0].trim()||'—'}</td>
       <td>${o.address||'—'}</td><td>${o.date}</td><td>${o.admin}</td><td>${o.paymentMethod||'COD'}</td>
       <td>${p(o.shipping)}</td><td style="font-weight:700;">${p(o.grandTotal)}</td><td>${o.status}</td>
     </tr>`).join('')}
@@ -4103,7 +4103,7 @@ function renderChecker(){
           codRows += `<tr style="${rowStyle}">
             <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
             <td style="font-weight:500;">${o.name}${o.mergedFrom?`<span style="font-size:9px;background:rgba(201,168,76,0.2);color:var(--gold);padding:1px 5px;border-radius:4px;margin-left:5px;">🔀 Merged</span>`:''}</td>
-            <td style="font-size:11px;">${o.contact||'—'}</td>
+            <td style="font-size:11px;">${(o.contact||'—').split('/')[0].trim()||'—'}</td>
             <td>${o.date}</td>
             <td>${p(o.itemsTotal)}</td><td>${p(o.shipping)}</td>
             <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
@@ -9598,7 +9598,7 @@ async function saveOrder() {
     document.getElementById('enc-backup-contact').focus(); return;
   }
   if(!address) { toast('⚠️ Complete Address required'); document.getElementById('enc-address').focus(); return; }
-  if(!admin) { toast('⚠️ Admin Name required'); return; }
+  if(!admin && !document.getElementById('enc-edit-idx').value) { toast('⚠️ Admin Name required'); return; }
   if(shipping === '' || shipping === null) { toast('⚠️ Shipping Fee required (0 kung libre)'); document.getElementById('enc-shipping').focus(); return; }
 
   const items = getItems('enc-items-tbody');
