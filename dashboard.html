@@ -14420,6 +14420,13 @@ function updateMergeAddressOptions() {
   buildOptions('merge-sf-options', 'merge-sf-choice',
     function(o){ return o.shipping || 0; },
     function(o, v){ return p(v); });
+
+  // Auto-select first radio for all 3 groups — preview always shows a single value, never joined
+  ['merge-address', 'merge-cp', 'merge-sf-choice'].forEach(function(name) {
+    const first = document.querySelector('input[name="' + name + '"]');
+    if(first && !document.querySelector('input[name="' + name + '"]:checked')) first.checked = true;
+  });
+  updateMergePreview();
 }
 
 function updateMergePreview() {
@@ -14449,13 +14456,12 @@ function updateMergePreview() {
   const customerNames = [...new Set(orders.map(o=>(o.name||'').trim()).filter(Boolean))];
   const customerDisplay = customerNames.join(' / ');
 
-  // Contact: use ONLY the selected radio option
+  // Contact: use ONLY the selected radio option — always show one number
   const _cpPickVal = document.querySelector('input[name="merge-cp"]:checked')?.value;
   let contactDisplay;
   if(!_cpPickVal) {
-    // nothing selected yet — show all as hint
-    const allContacts = [...new Set(orders.map(o=>(o.contact||'').trim()).filter(Boolean))];
-    contactDisplay = allContacts.join(' / ');
+    // fallback: show first order's contact only (never join multiple)
+    contactDisplay = orders[0]?.contact || '—';
   } else if(_cpPickVal === 'custom') {
     contactDisplay = document.getElementById('merge-cp-options-custom')?.value || '—';
   } else {
