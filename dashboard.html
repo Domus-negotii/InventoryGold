@@ -3403,9 +3403,9 @@ window.calcEnc = function() {
   document.getElementById('enc-sf-disp').textContent = p(sf);
   document.getElementById('enc-items-disp').textContent = p(iT);
   document.getElementById('enc-grand-disp').textContent = p(grandTotal);
-  // GRAND TOTAL = SF + Items Total (shown in encode form for reference)
+  // GRAND TOTAL = SF + Items Total - Global Discount (shown in encode form for reference)
   const grandTotalDisp = document.getElementById('enc-grand-total-disp');
-  if(grandTotalDisp) grandTotalDisp.textContent = p(Math.round((iT + sf) * 100) / 100);
+  if(grandTotalDisp) grandTotalDisp.textContent = p(Math.round(grandTotal * 100) / 100);
 };
 
 // Enter key → next field in encode modal
