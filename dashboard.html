@@ -14763,157 +14763,265 @@ function _addressFuzzyMatch(a, b) {
   return matchCount / shorter.length >= 0.75;
 }
 function detectDuplicates(orders) {
-  // ═══ MERGE DETECTION RULES — change requires test of all 3 cases: ══
-  // Match if: (same house# AND same city) OR (same phone number)
-  // Cancelled/RTO/Delivered excluded in openMergeModal before this runs.
-  // MERGE DETECTION — based on House Number + City only.
-  // Two orders match if they share the SAME house/lot number AND the SAME city.
-  // Name, phone, street, and barangay are intentionally ignored.
-  // Cancelled/RTO/Delivered orders are excluded before this function is called.
-  const n = orders.length;
-  const parent = orders.map((_,i)=>i);
-  function find(x){ return parent[x]===x?x:(parent[x]=find(parent[x])); }
-  function union(x,y){ parent[find(x)]=find(y); }
+  // ═══════════════════════════════════════════════════════════════════════
+  // MERGE DETECTION — 3 RULES (all require city agreement for Rules 2 & 3)
+  //
+  // RULE 1 — Same Phone:
+  //   phoneI === phoneJ  (city irrelevant)
+  //
+  // RULE 2 — Same House# + Same City:
+  //   houseI === houseJ (must be a specific/unique house identifier)
+  //   cityI  === cityJ  (both non-blank and equal)
+  //
+  // RULE 3 — Same Street/Brgy/Subd + Same City:
+  //   address shares ≥1 real distinctive location word (≥4 chars, non-generic)
+  //   cityI === cityJ (both non-blank and equal, OR one is blank/unknown)
+  //
+  // ABSOLUTE BLOCK — Different named City/Province:
+  //   if cityI && cityJ && cityI !== cityJ → NEVER merge (applies to Rules 2 & 3)
+  //   Rule 1 (phone) is exempt from city block per business rule.
+  //
+  // GROUPING — union-find on direct matches:
+  //   A↔B + B↔C → A+B+C in one group (transitive via shared member)
+  //   No spurious connections — every pair must have at least one direct match
+  // ═══════════════════════════════════════════════════════════════════════
 
-    // ── ADDRESS NORMALIZER ────────────────────────────────────────────────────
-  // Strips house/unit/lot numbers so we can compare street+barangay+subdivision.
-  // Example: "B2 L22 Daisy Street Vergonville Subdivision" → "daisy street vergonville subdivision"
-  // Example: "Unit 3 Rose Ave Greenpark Subd" → "rose ave greenpark subd"
-  function _stripHouseNum(addr) {
-    return (addr||'')
+  // ── Guard: empty/invalid input ──────────────────────────────────────────
+  if (!Array.isArray(orders) || orders.length < 2) return [];
+
+  // ── Normalizers ─────────────────────────────────────────────────────────
+
+  function _safe(val) { return (val == null ? '' : String(val)).trim(); }
+
+  // City: lowercase, strip accents, strip generic suffixes (City/Municipality/Province)
+  function _normCity(val) {
+    return _safe(val)
+      .toLowerCase()
+      .replace(/[àáâãäå]/g,'a').replace(/[èéêë]/g,'e')
+      .replace(/[ìíîï]/g,'i').replace(/[òóôõö]/g,'o')
+      .replace(/[ùúûü]/g,'u').replace(/ñ/g,'n').replace(/ç/g,'c')
+      .replace(/[^a-z0-9\s]/g,' ')
+      .replace(/\b(city|cities|municipality|municipalities|province|prov|metro)\b/g,' ')
+      .replace(/\s+/g,' ')
+      .trim();
+  }
+
+  // Phone: digits only, strip +63/63 country code and leading 0
+  // "09111111111", "0911-111-1111", "+63 911 111 1111" → all "9111111111"
+  function _normPhone(val) {
+    let d = _safe(val).replace(/\D/g, '');
+    if (d.startsWith('63') && d.length > 10) d = d.slice(2);
+    if (d.startsWith('0')  && d.length > 9)  d = d.slice(1);
+    // Must be exactly 9-10 digits (PH mobile without leading 0)
+    return (d.length >= 9 && d.length <= 10) ? d : '';
+  }
+
+  // House number: extract a normalized identifier
+  // Returns a typed key: "b2l5" (block/lot), "l5" (lot only),
+  //                      "u3" (unit/apt), or plain digits for long numbers
+  function _extractHouseNum(addr) {
+    const s = _safe(addr).toLowerCase().replace(/[#,|]/g,' ').replace(/\s+/g,' ');
+
+    // "Block 2 Lot 5" / "Blk 2 Lot 5" / "Blk2 Lot5"
+    const blkLot = s.match(/\b(?:blk?|block)\s*(\d+)\s+(?:lot|l)\s*(\d+)/i);
+    if (blkLot) return 'b' + blkLot[1] + 'l' + blkLot[2];
+
+    // "Lot 5 Block 2"
+    const lotBlk = s.match(/\blot\s*(\d+)\s+(?:blk?|block)\s*(\d+)/i);
+    if (lotBlk) return 'b' + lotBlk[2] + 'l' + lotBlk[1];
+
+    // Short form "B2 L5" or "B2L5"
+    const shortBL = s.match(/\bb(\d+)\s*l(\d+)\b/i);
+    if (shortBL) return 'b' + shortBL[1] + 'l' + shortBL[2];
+
+    // "Lot 5" alone
+    const lotOnly = s.match(/\blot\s*(\d+)/i);
+    if (lotOnly) return 'l' + lotOnly[1];
+
+    // "Unit 3", "Apt 3", "Room 3", "No. 3", "No 3"
+    const unit = s.match(/\b(?:unit|apt|apartment|room|rm|no\.?|num\.?|floor|fl)\s*(\d+)/i);
+    if (unit) return 'u' + unit[1];
+
+    // Leading number at start of address
+    const leading = s.match(/^(\d+)\b/);
+    if (leading) return leading[1];
+
+    // Any number (last resort)
+    const any = s.match(/\b(\d+)\b/);
+    return any ? any[1] : '';
+  }
+
+  // A house number is "specific" (meaningful for merge) if it is:
+  //   - A block+lot combo: b2l5, b12l22 (always unique enough)
+  //   - A lot-only: l5, l22 (reasonably unique)
+  //   - A unit/apt prefix: u3, u12 (reasonably unique)
+  //   - A pure number with 4+ digits: 1234, 10234 (street numbers this long are rare)
+  // REJECTED: plain 1–3 digit numbers (123, 45, 7) — too common, too many false matches
+  function _isSpecificHouse(h) {
+    if (!h || h.length < 2) return false;
+    if (/^[bul]\d/.test(h)) return true;   // block/lot/unit prefixed
+    return /^\d{4,}$/.test(h);              // 4+ digit pure number
+  }
+
+  // Neighbourhood string: strip house/block numbers, keep street+brgy+subd words
+  function _normNeighbourhood(addr) {
+    return _safe(addr)
       .toLowerCase()
       .replace(/[#,|\-]/g, ' ')
-      // Remove house/lot/unit/block/blk/bldg prefixes with numbers
+      // Remove labelled numbers: "Lot 5", "Blk 2", "Unit 3", "No. 7" etc.
       .replace(/\b(house|unit|lot|blk|block|bldg|building|room|rm|floor|fl|apt|apartment|no\.?|num\.?)\s*[\d]+[a-z]*/gi, ' ')
-      // Remove standalone numbers (house numbers like "123", "B2", "L22")
+      // Remove standalone alphanumeric tokens (B2, L22, 123, etc.)
       .replace(/\b[a-z]?\d+[a-z]?\b/gi, ' ')
-      // Normalize spaces
       .replace(/\s+/g, ' ')
       .trim();
   }
 
-  function _extractHouseNum(addr) {
-    const s = (addr||'').replace(/[#,|]/g,' ').trim();
-    const anyNum = s.match(/(\d+)/);
-    if(anyNum) return anyNum[1];
-    const lot = s.match(/(?:lot|no\.?)\s*(\d+)/i);
-    if(lot) return lot[1];
-    return '';
+  // Generic words that should NEVER count as a distinctive location identifier.
+  // A shared word only qualifies if it is ≥4 chars AND not in this set.
+  const _GENERIC = new Set([
+    // address structure words
+    'street','avenue','road','drive','lane','blvd','boulevard',
+    'subdivision','subd','village','phase','purok','sitio',
+    'brgy','barangay','city','municipality','province',
+    'block','lot','unit','house','bldg','building','zone','area',
+    'extension','ext','corner','cor','along','near','beside',
+    // Filipino/Spanish short words common in addresses
+    'san','sta','sto','santo','santa','dos','tres','uno','ito',
+    'new','old','north','south','east','west','ang','mga','para',
+    'upper','lower','inner','outer','the','and','de','del','des',
+    'la','las','los','le','el','sur','por',
+    // PH cities/provinces/regions that bleed into address strings
+    'pinas','manila','quezon','makati','pasig','taguig','paranaque',
+    'caloocan','malabon','navotas','valenzuela','marikina','pasay',
+    'muntinlupa','mandaluyong','pateros','bulacan','cavite','laguna',
+    'rizal','batangas','pampanga','cebu','davao','iloilo','metro',
+    'isabela','cagayan','ilocos','pangasinan','zambales','bataan',
+    'tarlac','nueva','ecija','aurora','palawan','samar','leyte',
+    'bohol','negros','aklan','capiz','antique','guimaras','bicol',
+    'albay','sorsogon','camarines','masbate','romblon','mindoro',
+    'palawan','zamboanga','misamis','bukidnon','lanao','cotabato',
+    'sultan','kudarat','sarangani','davao','surigao','agusan',
+  ]);
+
+  // Two neighbourhood strings match if they share ≥1 word that is:
+  //   - At least 4 characters long
+  //   - Not in the generic/city word list
+  //   - Not just a random sequence of consonants (basic vowel check)
+  function _sameNeighbourhood(a, b, cityWordsSet) {
+    if (!a || !b) return false;
+    if (a === b && a.length > 5) return true;
+
+    const allGeneric = cityWordsSet
+      ? new Set([..._GENERIC, ...cityWordsSet])
+      : _GENERIC;
+
+    function _isReal(w) {
+      // Must be ≥4 chars, not generic
+      if (w.length < 4 || allGeneric.has(w)) return false;
+      // Must contain at least one vowel — filters out random consonant strings
+      // like "qwe", "rty", "asd", "fgh", "zxc", "vbn"
+      return /[aeiou]/.test(w);
+    }
+
+    const wordsA = new Set(a.split(/\s+/).filter(_isReal));
+    if (wordsA.size === 0) return false;
+    return b.split(/\s+/).some(w => _isReal(w) && wordsA.has(w));
   }
 
-  function _extractCity(addr) {
-    const s = (addr||'').toLowerCase();
-    const m = s.match(/\b([a-z]+)\s+(?:city|municipality)\b/);
-    if(m) return m[1];
-    const words = s.replace(/[^a-z\s]/g,' ').trim().split(/\s+/).filter(w=>w.length>2);
-    return words[words.length-1] || '';
-  }
+  // ── Direct match check ──────────────────────────────────────────────────
+  function _directMatch(oi, oj) {
+    // Null-guard both orders
+    if (!oi || !oj) return false;
 
-  // Street signature: stripped address with short words (< 3 chars) removed
-  // Must be >= 4 chars meaningful to avoid false positives on short addresses
-  function _streetSig(addr) {
-    const stripped = _stripHouseNum(addr);
-    const words = stripped.split(/\s+/).filter(w => w.length >= 3);
-    return words.join(' ');
-  }
+    const cityI = _normCity(oi.city);
+    const cityJ = _normCity(oj.city);
 
-  // Check if two street signatures share >= 2 significant words
-  // "daisy street vergonville" vs "daisy street vergonville" → match ✅
-  // "daisy street" vs "rose street" → 1 shared word (street) → no match ✅
-  function _streetMatch(sigA, sigB) {
-    if(!sigA || !sigB || sigA.length < 6 || sigB.length < 6) return false;
-    // Generic words that appear in almost all addresses — not distinctive enough alone
-    const _generic = new Set(['street','avenue','road','drive','lane','blvd','boulevard',
-      'subdivision','subd','village','phase','purok','brgy','barangay','city','municipality',
-      'san','sta','santo','santa','dos','tres','new','old','north','south','east','west',
-      'upper','lower','inner','outer','the','and','ext','extension']);
-    const _toDistinct = sig => sig.split(/\s+/).filter(w => w.length >= 4 && !_generic.has(w));
-    const wordsA = new Set(_toDistinct(sigA));
-    const wordsB = _toDistinct(sigB);
-    // Must share at least 2 distinctive words (e.g. "vergonville" + "daisy")
-    // OR share 1 very unique word (subdivision/village name >= 7 chars)
-    const shared = wordsB.filter(w => wordsA.has(w));
-    if(shared.length >= 2) return true;
-    if(shared.length === 1 && shared[0].length >= 7) return true; // unique subd/village name
+    // ── RULE 1: Same phone ───────────────────────────────────────────────
+    // No city requirement — same number = same person regardless of address.
+    const phoneI = _normPhone(oi.contact);
+    const phoneJ = _normPhone(oj.contact);
+    if (phoneI && phoneJ && phoneI === phoneJ) return true;
+
+    // ── CITY BLOCK (Rules 2 & 3 only) ───────────────────────────────────
+    // If BOTH cities are known and they differ → address rules cannot fire.
+    if (cityI && cityJ && cityI !== cityJ) return false;
+
+    // City agreement: same (both known+equal) OR unknown (one/both blank)
+    const sameCity    = !!(cityI && cityJ && cityI === cityJ);
+    const cityUnknown = !cityI || !cityJ;
+    if (!sameCity && !cityUnknown) return false;
+
+    // ── Address extraction ───────────────────────────────────────────────
+    const houseI = _extractHouseNum(oi.address);
+    const houseJ = _extractHouseNum(oj.address);
+    const neighI = _normNeighbourhood(oi.address);
+    const neighJ = _normNeighbourhood(oj.address);
+
+    // City words excluded from neighbourhood match to prevent city name false-matches
+    const _cityWords = new Set(
+      [cityI, cityJ].join(' ').split(/\s+/).filter(w => w.length >= 3)
+    );
+
+    // ── RULE 2: Same specific house# — requires CONFIRMED same city ────────
+    // cityUnknown is NOT allowed here: a house number match across unknown cities
+    // risks chaining orders from different cities via blank-city orders.
+    const sameHouse = !!(
+      sameCity &&
+      houseI && houseJ &&
+      houseI === houseJ &&
+      _isSpecificHouse(houseI) &&
+      _isSpecificHouse(houseJ)
+    );
+    if (sameHouse) return true;
+
+    // ── RULE 3: Same neighbourhood — confirmed OR unknown city ───────────
+    // Neighbourhood match is safer for unknown city (street/subd names are more specific).
+    if (_sameNeighbourhood(neighI, neighJ, _cityWords)) return true;
+
     return false;
   }
 
-  for(let i=0;i<n;i++){
-    const oi     = orders[i].o;
-    const fullAddrI = ((oi.address||'')+' '+(oi.city||'')).toLowerCase().trim();
-    const houseI  = _extractHouseNum(oi.address);
-    // Use the explicit city field first (most reliable); fall back to address parser only if blank
-    const _rawCityI = (oi.city||'').toLowerCase().trim();
-    const cityI   = _rawCityI || _extractCity(fullAddrI);
-    const sigI    = _streetSig(oi.address); // address only (without city) for street sig
-    const phoneI  = _normContact(oi.contact);
-    for(let j=i+1;j<n;j++){
-      const oj     = orders[j].o;
-      const fullAddrJ = ((oj.address||'')+' '+(oj.city||'')).toLowerCase().trim();
-      const houseJ  = _extractHouseNum(oj.address);
-      // Use the explicit city field first (most reliable); fall back to address parser only if blank
-      const _rawCityJ = (oj.city||'').toLowerCase().trim();
-      const cityJ   = _rawCityJ || _extractCity(fullAddrJ);
-      const sigJ    = _streetSig(oj.address); // address only (without city) for street sig
-      const phoneJ  = _normContact(oj.contact);
+  // ── Build pairwise match matrix ──────────────────────────────────────────
+  const n = orders.length;
+  const matches = orders.map(() => new Set());
 
-      // CITY GUARD: if both orders have a city field and they differ -> NEVER a duplicate
-      // Kahit magkapareho ang house#, street, brgy, subd -- kung iba ang city, hindi duplicate.
-      const bothHaveCity = _rawCityI && _rawCityJ;
-      const cityMismatch = bothHaveCity && _rawCityI !== _rawCityJ;
-      if(cityMismatch) continue; // skip -- different cities, cannot be same delivery address
-
-      // Rule 1: Same phone number -> definite duplicate
-      const phoneMatch = phoneI && phoneJ && phoneI===phoneJ;
-
-      // Rule 2: Same house number + same city -> duplicate
-      const sameHouseCity = houseI && houseJ && cityI && cityJ && houseI===houseJ && cityI===cityJ;
-
-      // Rule 3: Same street/barangay/subdivision + same city
-      // Even if house numbers differ -- same street in same city = potential duplicate
-      const sameStreetCity = cityI && cityJ && cityI===cityJ && _streetMatch(sigI, sigJ);
-
-      if(phoneMatch || sameHouseCity || sameStreetCity) union(i,j);
+  for (let i = 0; i < n; i++) {
+    if (!orders[i] || !orders[i].o) continue;
+    for (let j = i + 1; j < n; j++) {
+      if (!orders[j] || !orders[j].o) continue;
+      if (_directMatch(orders[i].o, orders[j].o)) {
+        matches[i].add(j);
+        matches[j].add(i);
+      }
     }
   }
-  // Group by root — no size limit
-  const groups = {};
-  orders.forEach((item,i)=>{ const r=find(i); if(!groups[r])groups[r]=[]; groups[r].push(item); });
 
-  // ── CITY CONSISTENCY FILTER ──────────────────────────────────────────────
-  // After union-find, a group may contain orders from different cities if they
-  // were chained through a shared phone (A-phone-B, B-address-C).
-  // Split each group so that only orders with the SAME city stay together.
-  // Orders with no city field are allowed to stay in the group (city unknown).
-  const safeGroups = [];
-  Object.values(groups).filter(g => g.length > 1).forEach(group => {
-    // Bucket by normalized city value; blank city goes into a wildcard bucket
-    const cityBuckets = {};
-    group.forEach(item => {
-      const c = (item.o.city||'').toLowerCase().trim() || '__NOCITY__';
-      if(!cityBuckets[c]) cityBuckets[c] = [];
-      cityBuckets[c].push(item);
-    });
-    const cityKeys = Object.keys(cityBuckets);
-    // If only one city bucket (or only no-city), keep the group as-is
-    if(cityKeys.length === 1) {
-      if(group.length > 1) safeGroups.push(group);
-      return;
-    }
-    // Multiple city buckets — merge the __NOCITY__ bucket into each named city bucket,
-    // then emit each named city bucket as its own group (if >= 2 orders)
-    const noCityItems = cityBuckets['__NOCITY__'] || [];
-    const namedKeys = cityKeys.filter(k => k !== '__NOCITY__');
-    namedKeys.forEach(key => {
-      const combined = [...cityBuckets[key], ...noCityItems];
-      if(combined.length > 1) safeGroups.push(combined);
-    });
-    // If only no-city orders remain and there are 2+, keep them together
-    if(!namedKeys.length && noCityItems.length > 1) safeGroups.push(noCityItems);
+  // ── Union-find grouping ──────────────────────────────────────────────────
+  // Orders connected by any chain of direct matches end up in the same group.
+  const parent = Array.from({length: n}, (_, i) => i);
+  function find(x) { return parent[x] === x ? x : (parent[x] = find(parent[x])); }
+  function union(x, y) { parent[find(x)] = find(y); }
+
+  for (let i = 0; i < n; i++) {
+    for (const j of matches[i]) union(i, j);
+  }
+
+  // ── Collect groups ────────────────────────────────────────────────────────
+  const buckets = {};
+  for (let i = 0; i < n; i++) {
+    if (matches[i].size === 0) continue;
+    const root = find(i);
+    if (!buckets[root]) buckets[root] = [];
+    buckets[root].push(i);
+  }
+
+  const groups = [];
+  Object.values(buckets).forEach(bucket => {
+    if (bucket.length > 1) groups.push(bucket.map(idx => orders[idx]));
   });
-  return safeGroups;
-}
 
+  return groups;
+}
 function openMergeModal() {
   // Only include active COD orders — exclude Cancelled, RTO, Delivered (they are settled).
   // Cancelled orders must NEVER appear in merge detection.
