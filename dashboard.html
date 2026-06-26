@@ -4877,8 +4877,9 @@ function updateVerifStatus(orderIdx, status) {
   }
   save(); renderChecker();
   toast(`✅ Verification: ${status}${status==='Verified'?' — Inventory deducted.':' — Inventory restored.'}`);
-  // Refresh ALL inventory tabs immediately — both Products list and Stock Ledger
+  // Refresh ALL inventory tabs + Other Items immediately
   _refreshInvAllTabs();
+  try { renderOtherItemsPage(); } catch(e) {}
 }
 
 function assignRiderFromChecker(orderIdx, riderName) {
@@ -4990,8 +4991,9 @@ function verifyOrder(i){
     : '✅ Order verified! Inventory deducted. Rider can now pick-up.';
   toast(_toastMsg);
   renderChecker();
-  // Refresh ALL inventory tabs immediately — both Products list and Stock Ledger
+  // Refresh ALL inventory tabs + Other Items immediately
   _refreshInvAllTabs();
+  try { renderOtherItemsPage(); } catch(e) {}
 }
 function unverifyOrder(i){
   // GUARD: null-check order exists before any inventory/status mutation
@@ -6822,6 +6824,10 @@ function _reapplyOiVerifiedState() {
 
 function _refreshInvAllTabs() {
   try { renderInv(invTab); } catch(e) {}
+  // Also refresh Other Items page if currently active
+  if(_activePage === 'otheritems') {
+    try { renderOtherItemsPage(); } catch(e) {}
+  }
 }
 
 function renderInv(tab){
@@ -12885,6 +12891,7 @@ function startAutoRefresh(){
         toast('🔄 System was cleared by Owner. Data wiped on this device.');
         try { renderPage(_activePage); } catch(e) {}
         try { _reapplyOiVerifiedState(); } catch(e) {}
+        if(_activePage === 'otheritems') { try { renderOtherItemsPage(); } catch(e) {} }
         return;
       }
 
@@ -15812,6 +15819,7 @@ document.addEventListener('visibilitychange', async ()=>{
 
     try{ renderPage(_activePage); }catch(e){}
     try{ _reapplyOiVerifiedState(); }catch(e){}
+    if(_activePage === 'otheritems'){ try{ renderOtherItemsPage(); }catch(e){} }
     if(currentRole==='rider') try{renderRiderParcels();}catch(e){}
   } catch(e){ if(!e.message?.includes('fetch') && !e.message?.includes('Network')) console.warn('[GCE] Visibility sync error:',e.message); }
 });
