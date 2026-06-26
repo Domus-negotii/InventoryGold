@@ -4288,12 +4288,12 @@ function renderChecker(){
     o.checkerStatus === 'Pending' &&
     !['Cancelled','RTO','Delivered','Out for Delivery','Update'].includes(o.status)
   ).length;
-  // Update COD-OP tab badge
+  // Update COD-OP tab badge — same style as COD/LBC/EMS/FedEx (no color change, just count)
   const _codOpBtnEl = document.querySelector('#checker-tabs [data-tab="COD-OP"]');
   if(_codOpBtnEl) {
     _codOpBtnEl.textContent = '📱 COD-OP' + (_pendingCODOP > 0 ? ' ('+_pendingCODOP+')' : '');
-    _codOpBtnEl.style.background = _pendingCODOP > 0 ? 'var(--red)' : '';
-    _codOpBtnEl.style.color = _pendingCODOP > 0 ? '#fff' : '';
+    _codOpBtnEl.style.background = '';
+    _codOpBtnEl.style.color = '';
   }
   const _pendingCourier = _safeO.filter(o =>
     (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx') &&
@@ -4376,7 +4376,7 @@ function renderChecker(){
   const dupBanner = document.getElementById('checker-dup-banner');
   if(dupBanner && !isCOD && !isCODOP) { dupBanner.innerHTML = ''; dupBanner.style.display = 'none'; }
 
-  if(isCOD) {
+  if(isCOD || isCODOP) {
     const riderOpts = '<option value="">-- Assign Rider --</option>' + S.riders.map(r=>{
       const locs = r.locations && r.locations.length ? r.locations : (r.location ? [r.location] : []);
       return `<option value="${r.name}">${r.name} (${locs.join(', ')||'—'})</option>`;
@@ -4420,7 +4420,7 @@ function renderChecker(){
       }
     }
     // Always hide banner when on LBC/EMS/FedEx tabs
-    if(!isCOD && dupBanner) { dupBanner.innerHTML = ''; dupBanner.style.display = 'none'; }
+    if(!isCOD && !isCODOP && dupBanner) { dupBanner.innerHTML = ''; dupBanner.style.display = 'none'; }
 
     if(!list.length) {
       document.getElementById('checker-tbody').innerHTML =
@@ -14842,25 +14842,35 @@ function detectDuplicates(orders) {
     const oi     = orders[i].o;
     const fullAddrI = ((oi.address||'')+' '+(oi.city||'')).toLowerCase().trim();
     const houseI  = _extractHouseNum(oi.address);
-    const cityI   = _extractCity(fullAddrI);
-    const sigI    = _streetSig(fullAddrI);
+    // Use the explicit city field first (most reliable); fall back to address parser only if blank
+    const _rawCityI = (oi.city||'').toLowerCase().trim();
+    const cityI   = _rawCityI || _extractCity(fullAddrI);
+    const sigI    = _streetSig(oi.address); // address only (without city) for street sig
     const phoneI  = _normContact(oi.contact);
     for(let j=i+1;j<n;j++){
       const oj     = orders[j].o;
       const fullAddrJ = ((oj.address||'')+' '+(oj.city||'')).toLowerCase().trim();
       const houseJ  = _extractHouseNum(oj.address);
-      const cityJ   = _extractCity(fullAddrJ);
-      const sigJ    = _streetSig(fullAddrJ);
+      // Use the explicit city field first (most reliable); fall back to address parser only if blank
+      const _rawCityJ = (oj.city||'').toLowerCase().trim();
+      const cityJ   = _rawCityJ || _extractCity(fullAddrJ);
+      const sigJ    = _streetSig(oj.address); // address only (without city) for street sig
       const phoneJ  = _normContact(oj.contact);
 
-      // Rule 1: Same phone number → definite duplicate
+      // CITY GUARD: if both orders have a city field and they differ -> NEVER a duplicate
+      // Kahit magkapareho ang house#, street, brgy, subd -- kung iba ang city, hindi duplicate.
+      const bothHaveCity = _rawCityI && _rawCityJ;
+      const cityMismatch = bothHaveCity && _rawCityI !== _rawCityJ;
+      if(cityMismatch) continue; // skip -- different cities, cannot be same delivery address
+
+      // Rule 1: Same phone number -> definite duplicate
       const phoneMatch = phoneI && phoneJ && phoneI===phoneJ;
 
-      // Rule 2: Same house number + same city → duplicate
+      // Rule 2: Same house number + same city -> duplicate
       const sameHouseCity = houseI && houseJ && cityI && cityJ && houseI===houseJ && cityI===cityJ;
 
-      // Rule 3 (NEW): Same street/barangay/subdivision + same city
-      // Even if house numbers differ — same street in same city = potential duplicate
+      // Rule 3: Same street/barangay/subdivision + same city
+      // Even if house numbers differ -- same street in same city = potential duplicate
       const sameStreetCity = cityI && cityJ && cityI===cityJ && _streetMatch(sigI, sigJ);
 
       if(phoneMatch || sameHouseCity || sameStreetCity) union(i,j);
@@ -14869,7 +14879,39 @@ function detectDuplicates(orders) {
   // Group by root — no size limit
   const groups = {};
   orders.forEach((item,i)=>{ const r=find(i); if(!groups[r])groups[r]=[]; groups[r].push(item); });
-  return Object.values(groups).filter(g=>g.length>1);
+
+  // ── CITY CONSISTENCY FILTER ──────────────────────────────────────────────
+  // After union-find, a group may contain orders from different cities if they
+  // were chained through a shared phone (A-phone-B, B-address-C).
+  // Split each group so that only orders with the SAME city stay together.
+  // Orders with no city field are allowed to stay in the group (city unknown).
+  const safeGroups = [];
+  Object.values(groups).filter(g => g.length > 1).forEach(group => {
+    // Bucket by normalized city value; blank city goes into a wildcard bucket
+    const cityBuckets = {};
+    group.forEach(item => {
+      const c = (item.o.city||'').toLowerCase().trim() || '__NOCITY__';
+      if(!cityBuckets[c]) cityBuckets[c] = [];
+      cityBuckets[c].push(item);
+    });
+    const cityKeys = Object.keys(cityBuckets);
+    // If only one city bucket (or only no-city), keep the group as-is
+    if(cityKeys.length === 1) {
+      if(group.length > 1) safeGroups.push(group);
+      return;
+    }
+    // Multiple city buckets — merge the __NOCITY__ bucket into each named city bucket,
+    // then emit each named city bucket as its own group (if >= 2 orders)
+    const noCityItems = cityBuckets['__NOCITY__'] || [];
+    const namedKeys = cityKeys.filter(k => k !== '__NOCITY__');
+    namedKeys.forEach(key => {
+      const combined = [...cityBuckets[key], ...noCityItems];
+      if(combined.length > 1) safeGroups.push(combined);
+    });
+    // If only no-city orders remain and there are 2+, keep them together
+    if(!namedKeys.length && noCityItems.length > 1) safeGroups.push(noCityItems);
+  });
+  return safeGroups;
 }
 
 function openMergeModal() {
