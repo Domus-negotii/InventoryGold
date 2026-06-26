@@ -5380,12 +5380,24 @@ function confirmReDeliver(orderIdx) {
   S.orders[orderIdx].status = 'Preparing';
   S.orders[orderIdx].riderRemarks = '';
   S.orders[orderIdx].checkerCancelledDirect = false;
+  // ── Sync OI entries: update date to match new rescheduled delivery date ──
+  // So Other Items Products shows the correct (rescheduled) date.
+  if(S.otherItems && S.otherItems.length) {
+    const _reNum = onum(orderIdx);
+    const _reId  = S.orders[orderIdx]?._id || '';
+    S.otherItems.forEach(r => {
+      if(r.orderNum === _reNum || (_reId && r.orderId === _reId)) {
+        r.date = chosenDate;
+      }
+    });
+  }
   save();
   toast('🔁 Re-scheduled for ' + chosenDate + '. Status → Preparing.');
   renderCheckerForUpdate(); refreshUpdateBadge();
   if(returnTab==='update') renderUpdateOrders();
   else renderCancelledItems();
   renderReturns();
+  try { renderOtherItemsPage(); } catch(e) {}
   if(currentRole==='owner') renderDash();
 }
 
@@ -5432,6 +5444,19 @@ function resolveUpdate(orderIdx, newStatus) {
     }
     S.orders[orderIdx].status = newStatus;
     S.orders[orderIdx].checkerCancelledDirect = true;
+    // ── Cancel OI entries for this order (remove from Other Items Products) ──
+    if(S.otherItems && S.otherItems.length) {
+      const _cancelNum = onum(orderIdx);
+      const _cancelId  = o._id || '';
+      S.otherItems.forEach(r => {
+        if(r.orderNum === _cancelNum || (_cancelId && r.orderId === _cancelId)) {
+          if(r.status === 'product') {
+            r.status = 'cancelled';
+            r.isVerified = false;
+          }
+        }
+      });
+    }
     save();
     toast(restored ? '❌ Order Cancelled — inventory restored automatically.' : '❌ Order Cancelled.');
   }
@@ -5441,6 +5466,7 @@ function resolveUpdate(orderIdx, newStatus) {
   if(returnTab==='update') renderUpdateOrders();
   else renderCancelledItems();
   renderReturns();
+  try { renderOtherItemsPage(); } catch(e) {}
   if(currentRole==='owner') renderDash();
 }
 
@@ -6374,7 +6400,7 @@ function renderDailySales(){
       <div class="stat-card gold"><div class="stat-label">Encoded (${d})</div><div class="stat-value">${dayO.length}</div></div>
       <div class="stat-card green"><div class="stat-label">Sales Recognized</div><div class="stat-value">${del.length}</div></div>
       <div class="stat-card red"><div class="stat-label">Cancel/Return</div><div class="stat-value">${dayO.filter(o=>['Cancelled','RTO','Update'].includes(o.status)).length}</div></div>
-      <div class="stat-card blue"><div class="stat-label">Total Remit</div><div class="stat-value">${p(overallWithOi)}</div></div>
+      <div class="stat-card blue"><div class="stat-label">Total Remit</div><div class="stat-value">${p(overall)}</div></div>
     </div>
     <div class="two-col">
       <div class="card"><div class="card-header"><span class="card-title">Remit Summary</span></div>
@@ -6384,7 +6410,7 @@ function renderDailySales(){
         <div class="info-row"><span style="color:var(--muted);">FedEx</span><strong>${p(fedexRemit)}</strong></div>
         <div class="info-row"><span style="color:var(--muted);">COD - Online Payment</span><strong>${p(codOnlineRemit)}</strong></div>
         <div class="info-row"><span style="color:var(--gold);">Other Items Sales</span><strong style="color:var(--gold);">${p(oiRemit)}</strong></div>
-        <div class="info-row" style="border-bottom:none;font-size:14px;"><strong>OVERALL</strong><strong style="color:var(--green);">${p(overallWithOi)}</strong></div>
+        <div class="info-row" style="border-bottom:none;font-size:14px;"><strong>OVERALL</strong><strong style="color:var(--green);">${p(overall)}</strong></div>
       </div>
       <div class="card"><div class="card-header"><span class="card-title">Admin Incentives (₱25/parcel)</span></div>
         <table style="width:100%;border-collapse:collapse;font-size:12px;">
@@ -8059,7 +8085,11 @@ function renderPnl(){
     const encodeDate = (o.date || '').slice(0,10);
     const inRange = (d) => d >= from && d <= to;
     if(!inRange(delivDate) && !inRange(encodeDate)) return false;
-    return true; // COD income recognized on delivery — no remittance gate for P&L
+    // ── Remittance gate: only count if rider has officially remitted ──
+    // Matches rider+date key against confirmed Remitted entries in remitLog
+    const _rKey = (o.assignedRider||'') + '|' + (o.dateDelivered||o.date||'').slice(0,10);
+    const _rKeyEnc = (o.assignedRider||'') + '|' + encodeDate;
+    return _remittedKeys.has(_rKey) || _remittedKeys.has(_rKeyEnc);
   });
   // Courier PnL income: Checker marked Verified (checkerStatus OR verificationStatus)
   // Date: use dateDelivered → dateOfPayment → date (whichever is set)
@@ -8089,10 +8119,32 @@ function renderPnl(){
   // TOTAL SALES = Item Sales (excluding OI-prefix items) + (Remitted SF x 10%)
   // Effective items total per order: exclude fully/partially cancelled item amounts
   // This ensures PnL matches Daily Sales actual collected amounts
-  // _pnlEffective: grandTotal already reflects cancelled/update deductions from rider.
-  // Use it directly — don't re-subtract items again.
-  const _pnlEffective = (o) => o.itemsTotal || 0; // items only — grandTotal includes SF which is excluded from PnL
-  const totalItemsSales = incomeOrders.reduce((s,o)=>s+_pnlEffective(o)-_oiPrefixTotal(o),0);
+  // Compute Item Sales from scratch — only count items that are IN inventory (not OI-prefix, not non-inventory).
+  // This ensures Item Sales = only inventory products actually sold and remitted.
+  // Cancelled items and For Update items are excluded per itemStatuses.
+  const _invCodes = new Set((S.inventory||[]).map(iv=>(iv.code||'').toUpperCase().trim()).filter(Boolean));
+  function _inventoryItemsTotal(o) {
+    const iS  = o.itemStatuses  || {};
+    const iCQ = o.itemCancelQty || {};
+    return (o.items||[]).reduce((s, it, ii) => {
+      const _code = (it.code||'').toUpperCase().trim();
+      // Skip: cancelled items, For Update items, OI-prefix items, not-in-inventory items
+      if(iS[ii] === 'Cancelled' || iS[ii] === 'Update') return s;
+      const _isOI = typeof _getOiPrefix === 'function' && _getOiPrefix(_code);
+      if(_isOI) return s; // OI-prefix items tracked separately in Other Items
+      if(!_invCodes.has(_code)) return s; // not in inventory — skip
+      // Partial cancel: reduce proportionally
+      const _total = it.total || 0;
+      const cxQty = iCQ[ii] || 0;
+      if(cxQty > 0) {
+        const totalQty = it.grams > 0 ? it.grams : (it.qty || 1);
+        const remainRatio = Math.max(0, (totalQty - cxQty) / totalQty);
+        return s + Math.round(_total * remainRatio * 100) / 100;
+      }
+      return s + _total;
+    }, 0);
+  }
+  const totalItemsSales = incomeOrders.reduce((s,o) => s + _inventoryItemsTotal(o), 0);
   const totalDiscountsAll = incomeOrders.reduce((s,o)=>s+(parseFloat(o.totalDiscount)||0),0);
   // SF 10% Company revenue = sum of sf10 from ALL remit log entries in date range
   // Uses same logic as Riders Remit "Total Company Cut" card (grandAllSF10)
@@ -8110,7 +8162,19 @@ function renderPnl(){
     return _d >= from && _d <= to;
   }).reduce((s,r) => s + (r.total||0), 0);
 
-  const totalSales = Math.round((totalItemsSales + sfRevenue10pct + oiSalesRevenue) * 100) / 100; // Items + 10% SF + OI Sales
+  // OI: only profit (not full sales) feeds into Gross Profit — capital is off-book
+  const oiProfit = Math.round((S.otherItems||[]).filter(r => {
+    if(r.status !== 'remitted') return false;
+    const _d = r.date || '';
+    return _d >= from && _d <= to;
+  }).reduce((s,r) => {
+    const _isGrams = r.grams > 0;
+    const _qty = _isGrams ? r.grams : (r.qty||1);
+    const _capPerUnit = (r.capitalPerUnit!=null) ? r.capitalPerUnit : Math.max(0,(r.pergram||0)-(r.profitPerUnit||0));
+    const _totalCapital = Math.round(_qty*_capPerUnit*100)/100;
+    return s + Math.round(((r.total||0)-_totalCapital)*100)/100;
+  }, 0) * 100) / 100;
+  const totalSales = Math.round((totalItemsSales + sfRevenue10pct) * 100) / 100; // Items + 10% SF (OI handled separately via profit)
   // TOTAL COST = cost of goods sold (pergram × grams or pergram × qty for each item)
   // ── COGS helper: look up capital/cost price from inventory by product code ──
   // order items store the SELLING price (pergram / fixPrice), NOT the cost price.
@@ -8158,7 +8222,7 @@ function renderPnl(){
       return is + fullCOGS;
     }, 0);
   }, 0);
-  const grossProfit = totalSales - totalCOGS;
+  const grossProfit = totalSales - totalCOGS + oiProfit; // + OI profit (off-book, capital excluded)
 
   // === OPERATING EXPENSES by standard categories ===
   const STD_CATS = ['Ads','Salaries','Incentives','Baog','Bills','Supplies','Tax','Benefits','Others'];
@@ -8208,9 +8272,9 @@ function renderPnl(){
     </div>
     ${sH('REVENUE')}
     ${row('TOTAL SALES = Items + SF 10% (Remit)',p(totalSales),'var(--green)',false,true)}
-    ${row('  ↳ Item Sales',p(totalItemsSales),'var(--green)',true)}
+    ${row('  ↳ Item Sales (Remitted)',p(totalItemsSales),'var(--green)',true)}
     ${row('  ↳ SF 10% Company (from Rider Remit)','+ '+p(sfRevenue10pct),'var(--gold)',true)}
-    ${oiSalesRevenue>0?row('  ↳ Other Items Sales (non-inventory)','+ '+p(oiSalesRevenue),'var(--gold)',true):''}
+    ${oiProfit>0?row('  ↳ Other Items Profit (off-book)','+ '+p(oiProfit),'var(--gold)',true):''}
     ${(()=>{const _codOnline=courierVerified.filter(o=>o.paymentMethod==='COD - Online Payment');const _codOnlineTotal=_codOnline.reduce((s,o)=>s+(o.grandTotal||0),0);return _codOnline.length>0?row('  ↳ COD - Online Payment ('+_codOnline.length+' orders)','+ '+p(_codOnlineTotal),'var(--gold)',true):'';})()}
     ${totalDiscountsAll>0?row('  ↳ Discounts Given','('+p(totalDiscountsAll)+')','var(--orange)',true):''}
     ${row('TOTAL COST (COGS: Cost/g×g or Cost/pc×qty)',totalCOGS?'('+p(totalCOGS)+')':'₱0.00','var(--red)',false,true)}
@@ -9656,10 +9720,9 @@ function riderUpdateStatus(orderIdx, newStatus) {
   if(storedStatus === 'Cancelled') {
     _syncOiPrefixStatus(orderIdx, 'cancelled'); // Cancelled → Other Items Cancelled tab
   }
-  if(storedStatus === 'Delivered') {
-    // Move Checker-verified OI items (non-inventory + prefix) to Sales on delivery
-    _syncOtherItemStatus(onum(orderIdx), 'remitted');
-  }
+  // NOTE: OI items do NOT auto-move to Sales on Delivered.
+  // They only move to Sales when the Remitter explicitly saves a Remit entry as 'Remitted'.
+  // This ensures Sales tab only shows actually remitted (collected) items.
   save();
   if(storedStatus === 'Update') {
     toast('🔔 Marked For Update — routed to COD Delivery monitor.');
@@ -9688,8 +9751,9 @@ function riderOiItemStatus(orderIdx, itemIdx, newStatus) {
   o.oiItemStatus[itemIdx] = newStatus;
   // Sync to S.otherItems
   const _oNum = onum(orderIdx);
-  if(newStatus === 'Delivered') _syncOiPrefixStatus(orderIdx, 'remitted');
-  else if(newStatus === 'Cancelled') _syncOiPrefixStatus(orderIdx, 'cancelled');
+  // NOTE: OI items do NOT auto-move to Sales when rider marks individual item Delivered.
+  // Only move to Sales when Remitter saves as Remitted.
+  if(newStatus === 'Cancelled') _syncOiPrefixStatus(orderIdx, 'cancelled');
   save();
   renderRiderParcels();
 }
@@ -12404,26 +12468,13 @@ function renderOtherItemsPage() {
   // ═══════════════════════════════════════════════════════════════════════════
   // ═══ STATUS RULE — STRICT, DO NOT ADD AUTO-HEALING ════════════════════════
   // 'product'   → _captureOtherItems on Checker Verify (ONLY entry point)
-  // 'remitted'  → _syncOiPrefixStatus('remitted') on Delivered
+  // 'remitted'  → _syncOtherItemStatus('remitted') ONLY when Remitter saves as Remitted
   // 'cancelled' → _syncOiPrefixStatus('cancelled') on Cancelled
   // Status NEVER inferred from order.status on render — that caused wrong-tab bugs.
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // ── Auto-heal: move 'product' OI items to 'remitted' if order is already Delivered ──
-  // This handles items that were Delivered before the Delivered→remitted sync was added.
-  let _oiHealed = false;
-  (S.otherItems||[]).forEach(r => {
-    if(r.status !== 'product' || r.isVerified === false) return;
-    const _ord = (S.orders||[]).find(o => o && onum((S.orders||[]).indexOf(o)) === r.orderNum);
-    if(_ord && _ord.status === 'Delivered') {
-      const _iS = (_ord.itemStatuses||{})[r.itemIdx];
-      if(_iS !== 'Update' && _iS !== 'For Update') {
-        r.status = 'remitted';
-        _oiHealed = true;
-      }
-    }
-  });
-  if(_oiHealed) save();
+  // NOTE: Auto-heal removed — items only move to 'remitted' when Remitter saves as Remitted.
+  // 'Delivered' status alone does NOT move items to Sales tab.
 
   const items = (S.otherItems||[]).filter(r => {
     if(r.status !== _oiTab) return false;
@@ -14090,9 +14141,17 @@ function saveCodForUpdateDispatch(orderIdx, safeId) {
   o.updateReason='';
   o.dispatchedAt=new Date().toISOString();
   o.dispatchedBy=(currentUser&&currentUser.name)||'';
+  // Sync OI entries date to new scheduled delivery date
+  if(S.otherItems&&S.otherItems.length){
+    var _reNum=onum(orderIdx),_reId=o._id||'';
+    S.otherItems.forEach(function(r){
+      if(r.orderNum===_reNum||(_reId&&r.orderId===_reId))r.date=delivDate;
+    });
+  }
   save();
   toast('\u2705 Schedule set to '+delivDate+'. Status → Preparing (sorter will assign to rider).');
   setTimeout(function(){try{renderCodDelivPage();}catch(e){}},120);
+  try{renderOtherItemsPage();}catch(e){}
   if(_activePage==='ordermgmt')    try{renderOrderMgmt();}catch(e){}
   if(_activePage==='riderdash')    try{renderRiderParcels();}catch(e){}
   if(_activePage==='dailyparcels') try{renderDailyParcels();}catch(e){}
