@@ -14916,11 +14916,20 @@ function detectDuplicates(orders) {
       : _GENERIC;
 
     function _isReal(w) {
-      // Must be ≥4 chars, not generic
       if (w.length < 4 || allGeneric.has(w)) return false;
-      // Must contain at least one vowel — filters out random consonant strings
-      // like "qwe", "rty", "asd", "fgh", "zxc", "vbn"
-      return /[aeiou]/.test(w);
+      const vow = (w.match(/[aeiou]/g) || []).length;
+      // Must have at least 2 vowels (real location words nearly always do)
+      if (vow < 2) return false;
+      // Vowel ratio: at least 25% of the word must be vowels
+      // filters: "asddd" (1/5=20%), "nalksngalkg" (2/11=18%)
+      if (vow / w.length < 0.25) return false;
+      // No 4+ consecutive consonants — filters random strings like "skgn", "ngks"
+      if (/[^aeiou]{4,}/.test(w)) return false;
+      // No 3+ of the same letter in a row — filters "qweee", "asddd", "zxccc"
+      if (/(.){2,}/.test(w)) return false;
+      // No repeating 2-4 char chunks at start — filters "asgkasgkans" (asgk×2)
+      if (w.length >= 6 && /^(.{2,4})/.test(w)) return false;
+      return true;
     }
 
     const wordsA = new Set(a.split(/\s+/).filter(_isReal));
@@ -14974,9 +14983,10 @@ function detectDuplicates(orders) {
     );
     if (sameHouse) return true;
 
-    // ── RULE 3: Same neighbourhood — confirmed OR unknown city ───────────
-    // Neighbourhood match is safer for unknown city (street/subd names are more specific).
-    if (_sameNeighbourhood(neighI, neighJ, _cityWords)) return true;
+    // ── RULE 3: Same neighbourhood — requires CONFIRMED same city ──────────
+    // Different city/province = NEVER merge on neighbourhood, even if street/brgy/subd match.
+    // cityUnknown is NOT sufficient — neighbourhood match needs confirmed sameCity.
+    if (sameCity && _sameNeighbourhood(neighI, neighJ, _cityWords)) return true;
 
     return false;
   }
@@ -15119,21 +15129,32 @@ function renderMergeOrderCards() {
 
 function removeMergeCard(n) {
   const indices = window._mergeGroupIndices || [_mergeIdxA, _mergeIdxB];
-  // Remove the card — if only 1 remains, close modal (nothing to merge)
+
+  // ── Always dismiss the removed order immediately ─────────────────────────
+  // Kapag pinindot ang X button, ang order na iyon ay pwede nang i-verify —
+  // hindi na kailangang mag-merge o antayin ang iba.
+  if(!window._mergeGroupDismissed) window._mergeGroupDismissed = new Set();
+  const removedIdx = indices[n];
+  if(removedIdx !== undefined) window._mergeGroupDismissed.add(onum(removedIdx));
+
+  // Remove the card from the group
   window._mergeGroupIndices = indices.filter((_,i) => i !== n);
+
   if(window._mergeGroupIndices.length < 2) {
-    // Dismiss ALL orders in the group (both removed and remaining)
-    // so the duplicate banner disappears and the remaining order can be verified
-    if(!window._mergeGroupDismissed) window._mergeGroupDismissed = new Set();
+    // Only 0 or 1 card remains — nothing left to merge.
+    // Dismiss ALL remaining orders too so they can all be verified freely.
     indices.forEach(idx => window._mergeGroupDismissed.add(onum(idx)));
     closeModal('modal-merge-orders');
-    toast('✅ Order removed from merge group — verify is now unblocked.');
+    toast('✅ Inalis sa merge group — pwede na i-verify ang order.');
     try { renderChecker(); } catch(e) {}
     return;
   }
+
+  // 2+ cards remain — continue showing modal with the updated set
   _mergeIdxA = window._mergeGroupIndices[0];
   _mergeIdxB = window._mergeGroupIndices[1];
   renderMergeOrderCards(); // internally calls updateMergeAddressOptions + updateMergePreview
+  try { renderChecker(); } catch(e) {} // refresh banner + verify buttons
 }
 
 function updateMergeAddressOptions() {
