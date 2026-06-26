@@ -8236,7 +8236,7 @@ function renderPnl(){
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">EMS Verified</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='EMS').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='EMS').reduce((s,o)=>s+(o.grandTotal||0),0))}</span></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">FedEx Verified</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='FedEx').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='FedEx').reduce((s,o)=>s+(o.grandTotal||0),0))}</span></div>
       ${(()=>{
-        const _oiSalesItems=(S.otherItems||[]).filter(r=>(r.status==='remitted'||r.status==='product')&&r.isVerified!==false&&r.date>=from&&r.date<=to);
+        const _oiSalesItems=(S.otherItems||[]).filter(r=>r.status==='remitted'&&r.isVerified!==false&&r.date>=from&&r.date<=to);
         const _oiCount=_oiSalesItems.length;
         const _oiTotal=Math.round(_oiSalesItems.reduce((s,r)=>s+(r.total||0),0)*100)/100;
         const _oiProfit=Math.round(_oiSalesItems.reduce((s,r)=>{
@@ -8379,9 +8379,11 @@ function renderDash(){
   // Use SAME profit formula as Other Items Sales tab:
   // Total Profit = Items Total - Total Capital
   // Total Capital = QTY × capitalPerUnit (user-editable, defaults to pricePerUnit - defaultProfit)
+  // OI dashboard: ONLY 'remitted' items (rider has delivered & remitted)
+  // 'product' items are verified but not yet remitted — exclude from dashboard stats
   const _dashOiAll = (S.otherItems||[]).filter(r=>{
     const d=r.date||'';
-    return (r.status==='remitted'||r.status==='product') && r.isVerified!==false && d>=_dashFrom&&d<=_dashTo;
+    return r.status==='remitted' && r.isVerified!==false && d>=_dashFrom&&d<=_dashTo;
   });
   const _dashOiSales = _dashOiAll.reduce((s,r)=>s+(r.total||0),0);
   const _dashOiProfit = _dashOiAll.reduce((s,r)=>{
@@ -11549,9 +11551,18 @@ function openCashbondFromRemit() {
   }, 100);
 }
 
+// Tracks which rider sections are currently expanded — persists across re-renders
+if(!window._remitExpandedRiders) window._remitExpandedRiders = new Set();
+
 function renderRemitPage() {
   try {
   const el = document.getElementById('remit-page-content'); if(!el) return;
+  // Capture which rider sections are currently expanded before re-render
+  if(!window._remitExpandedRiders) window._remitExpandedRiders = new Set();
+  document.querySelectorAll('[id^="remit_rider_"]').forEach(div => {
+    if(div.style.display !== 'none') window._remitExpandedRiders.add(div.id);
+    else window._remitExpandedRiders.delete(div.id);
+  });
   const df = mdy2ymd((document.getElementById('remit-page-date')?.value||'').trim());
   // Build filteredLog WITH real S.remitLog indices (don't use indexOf - fails after Firebase round-trip)
   const _remitAll = S.remitLog||[];
@@ -11953,6 +11964,15 @@ function renderRemitPage() {
       </div>
     </div>`;
   }).join('');
+  // Restore previously expanded rider sections after re-render
+  if(window._remitExpandedRiders && window._remitExpandedRiders.size > 0) {
+    window._remitExpandedRiders.forEach(safeId => {
+      const div   = document.getElementById(safeId);
+      const arrow = document.getElementById(safeId + '_arrow');
+      if(div) { div.style.display = 'block'; }
+      if(arrow) arrow.textContent = '▼';
+    });
+  }
   } catch(e) { console.error('[GOE] renderRemitPage error:', e); }
 }
 function toggleRemitRider(safeId) {
@@ -11960,8 +11980,12 @@ function toggleRemitRider(safeId) {
   const arrow = document.getElementById(safeId + '_arrow');
   if(!el) return;
   const isHidden = el.style.display === 'none';
-  el.style.display    = isHidden ? 'block' : 'none';
+  el.style.display = isHidden ? 'block' : 'none';
   if(arrow) arrow.textContent = isHidden ? '▼' : '▶';
+  // Persist expanded state so re-renders (SAR, filters) don't auto-collapse
+  if(!window._remitExpandedRiders) window._remitExpandedRiders = new Set();
+  if(isHidden) window._remitExpandedRiders.add(safeId);
+  else window._remitExpandedRiders.delete(safeId);
 }
 
 function delRemit(i) {
