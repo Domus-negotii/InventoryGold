@@ -4481,6 +4481,7 @@ function renderChecker(){
                   :`<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`)}
               <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
               ${!isLocked?`<button class="btn btn-red btn-sm" onclick="checkerCancelOrder(${i})" title="Cancel this order">✕ Cancel</button>`:''}
+              ${isCODOP && o.status==='Cancelled' ? `<button class="btn btn-red btn-sm" onclick="checkerDeleteCodOp(${i})" title="Permanently delete COD-OP cancelled order">🗑️ Delete</button>` : ''}
               ${currentRole==='owner'?`<button class="btn btn-red btn-sm" onclick="ownerDeleteOrder(${i})" title="CEO: Permanent Delete">🗑️ Delete</button>`:''}
             </td>
           </tr>`;
@@ -8166,6 +8167,10 @@ function renderPnl(){
   // OI Profit: use r.profit stored at capture time (computed by _captureOtherItems)
   // r.profit = total - capital = actual profit per entry
   // Fall back to total - (qty × capitalPerUnit) if r.profit not set
+  // COD-OP total (verified courier orders with COD - Online Payment)
+  const _codOpOrders = courierVerified.filter(o => o.paymentMethod === 'COD - Online Payment');
+  const codOpTotal = Math.round(_codOpOrders.reduce((s,o) => s + (o.grandTotal||0), 0) * 100) / 100;
+
   const oiProfit = Math.round((S.otherItems||[]).filter(r => {
     if(r.status !== 'remitted') return false;
     const _d = r.date || '';
@@ -8229,7 +8234,8 @@ function renderPnl(){
       return is + fullCOGS;
     }, 0);
   }, 0);
-  const grossProfit = totalSales - totalCOGS + oiProfit; // + OI profit (off-book, capital excluded)
+  const itemsProfit  = totalItemsSales - totalCOGS;  // pure inventory: sales - COGS
+  const grossProfit  = itemsProfit + sfRevenue10pct + oiProfit + codOpTotal; // full gross
 
   // === OPERATING EXPENSES by standard categories ===
   const STD_CATS = ['Ads','Salaries','Incentives','Baog','Bills','Supplies','Tax','Benefits','Others'];
@@ -8278,14 +8284,18 @@ function renderPnl(){
       <span style="font-size:11px;color:var(--muted);">${label}</span>
     </div>
     ${sH('REVENUE')}
-    ${row('TOTAL SALES = Items + SF 10% (Remit)',p(totalSales+oiProfit),'var(--green)',false,true)}
+    ${row('TOTAL SALES = Items (Remit)',p(totalItemsSales),'var(--green)',false,true)}
     ${row('  ↳ Item Sales (Remitted)',p(totalItemsSales),'var(--green)',true)}
-    ${row('  ↳ SF 10% Company (from Rider Remit)','+ '+p(sfRevenue10pct),'var(--gold)',true)}
-    ${oiProfit>0?row('  ↳ Other Items Profit (off-book)','+ '+p(oiProfit),'var(--gold)',true):''}
-    ${(()=>{const _codOnline=courierVerified.filter(o=>o.paymentMethod==='COD - Online Payment');const _codOnlineTotal=_codOnline.reduce((s,o)=>s+(o.grandTotal||0),0);return _codOnline.length>0?row('  ↳ COD - Online Payment ('+_codOnline.length+' orders)','+ '+p(_codOnlineTotal),'var(--gold)',true):'';})()}
     ${totalDiscountsAll>0?row('  ↳ Discounts Given','('+p(totalDiscountsAll)+')','var(--orange)',true):''}
+    ${div}
     ${row('TOTAL COST (COGS: Cost/g×g or Cost/pc×qty)',totalCOGS?'('+p(totalCOGS)+')':'₱0.00','var(--red)',false,true)}
-    ${row('GROSS PROFIT',p(grossProfit),grossProfit>=0?'var(--green)':'var(--red)',false,true)}
+    ${div}
+    ${row('TOTAL PROFIT = Total Sales − Total Cost',p(itemsProfit),itemsProfit>=0?'var(--green)':'var(--red)',false,true)}
+    ${sfRevenue10pct>0?row('  ↳ SF 10% Company (from Rider Remit)','+ '+p(sfRevenue10pct),'var(--gold)',true):''}
+    ${oiProfit>0?row('  ↳ Other Items Profit (off-book)','+ '+p(oiProfit),'var(--gold)',true):''}
+    ${codOpTotal>0?row('  ↳ COD - Online Payment ('+_codOpOrders.length+' orders)','+ '+p(codOpTotal),'var(--gold)',true):''}
+    ${div}
+    ${row('GROSS PROFIT = Total Profit + SF10% + OI Profit + COD-OP',p(grossProfit),grossProfit>=0?'var(--green)':'var(--red)',false,true)}
     ${div}
     ${sH('OPERATING EXPENSES')}
     ${STD_CATS.map(cat=>row(cat,(catMap[cat]?'('+p(catMap[cat])+')':'₱0.00'),catMap[cat]?'var(--red)':'var(--muted)',true)).join('')}
@@ -8425,54 +8435,78 @@ function renderDash(){
   }).reduce((s,e)=>s+parseFloat(e.amount||0),0);
   const _dateLabel = _dfFrom||_dfTo ? `${_dfFromRaw||'—'} → ${_dfToRaw||'—'}` : 'All time';
 
-  // ── Net Profit (from P&L logic) ──
+  // ── Net Profit — exact same logic as P&L Report ──────────────────────────
   const _dashFrom = _dfFrom || '2000-01-01';
   const _dashTo   = _dfTo   || '2099-12-31';
-  // COD delivered in range
+
+  // Build remitted keys (same as P&L)
+  const _dashRemittedKeys = new Set(
+    (S.remitLog||[]).filter(e=>e.remitStatus==='Remitted')
+      .map(e=>(e.riderName||'')+'|'+(e.date||''))
+  );
+  // COD: only remitted orders (same gate as P&L)
   const _dashCodDel = allOrders.filter(o=>{
     if(!o||o.status!=='Delivered'||(o.paymentMethod||'COD')!=='COD') return false;
-    const d=(o.dateDelivered||o.date||'').slice(0,10), e=(o.date||'').slice(0,10);
-    return (d>=_dashFrom&&d<=_dashTo)||(e>=_dashFrom&&e<=_dashTo);
+    const delivDate=(o.dateDelivered||o.date||'').slice(0,10);
+    const encDate=(o.date||'').slice(0,10);
+    const inRange=d=>d>=_dashFrom&&d<=_dashTo;
+    if(!inRange(delivDate)&&!inRange(encDate)) return false;
+    const rKey=(o.assignedRider||'')+'|'+delivDate;
+    const rKeyEnc=(o.assignedRider||'')+'|'+encDate;
+    return _dashRemittedKeys.has(rKey)||_dashRemittedKeys.has(rKeyEnc);
   });
-  // Courier verified in range
+  // Courier verified (same as P&L)
   const _dashCourierVer = allOrders.filter(o=>o&&
-    (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx'||o.paymentMethod==='COD - Online Payment') &&
-    (o.checkerStatus==='Verified'||o.verificationStatus==='Verified') &&
-    o.status!=='Cancelled'&&o.status!=='RTO' &&
+    (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx'||o.paymentMethod==='COD - Online Payment')&&
+    (o.checkerStatus==='Verified'||o.verificationStatus==='Verified')&&
+    o.status!=='Cancelled'&&o.status!=='RTO'&&
     (()=>{const d=(o.dateDelivered||o.dateOfPayment||o.date||'').slice(0,10);return d>=_dashFrom&&d<=_dashTo;})());
-  const _dashIncome = [..._dashCodDel,..._dashCourierVer];
-  // OI-prefix exclusion helper
-  function _dashOiTotal(o){return(o.items||[]).reduce((s,it)=>{const c=(it.code||'').toUpperCase().trim();return(typeof _getOiPrefix==='function'&&_getOiPrefix(c))?s+(it.total||0):s;},0);}
-  const _dashItemsSales = _dashIncome.reduce((s,o)=>s+(o.itemsTotal||0)-_dashOiTotal(o),0);
-  const _dashSF10 = Math.round((S.remitLog||[]).filter(e=>{const d=e.date||'';return d>=_dashFrom&&d<=_dashTo;}).reduce((s,e)=>s+(e.sf10||0),0)*100)/100;
-  // Other Items profit & sales total
-  // OI: include 'product' (verified, pending remit) AND 'remitted' — exclude cancelled
-  // Use SAME profit formula as Other Items Sales tab:
-  // Total Profit = Items Total - Total Capital
-  // Total Capital = QTY × capitalPerUnit (user-editable, defaults to pricePerUnit - defaultProfit)
-  // OI dashboard: ONLY 'remitted' items (rider has delivered & remitted)
-  // 'product' items are verified but not yet remitted — exclude from dashboard stats
-  const _dashOiAll = (S.otherItems||[]).filter(r=>{
-    const d=r.date||'';
-    return r.status==='remitted' && r.isVerified!==false && d>=_dashFrom&&d<=_dashTo;
-  });
-  const _dashOiSales = _dashOiAll.reduce((s,r)=>s+(r.total||0),0);
-  const _dashOiProfit = _dashOiAll.reduce((s,r)=>{
-    const _isGrams = r.grams > 0;
-    const _qty = _isGrams ? r.grams : (r.qty||1);
-    const _pricePerUnit = _isGrams ? (r.pergram||0) : (r.qty>0?Math.round((r.total||0)/(r.qty)*100)/100:(r.total||0));
-    const _defaultProfit = r.profitPerUnit||0;
-    const _capPerUnit = (r.capitalPerUnit!=null) ? r.capitalPerUnit : Math.max(0,_pricePerUnit-_defaultProfit);
-    const _totalCapital = Math.round(_qty*_capPerUnit*100)/100;
-    const _totalProfit = Math.round(((r.total||0)-_totalCapital)*100)/100;
-    return s+_totalProfit;
-  },0);
-  const _dashTotalSales = _dashItemsSales + _dashSF10 + _dashOiSales;
-  // COGS from inventory capital
+  const _dashIncome=[..._dashCodDel,..._dashCourierVer];
+
+  // Item Sales: inventory items only (same as P&L _inventoryItemsTotal)
+  const _dashInvCodes=new Set((S.inventory||[]).map(iv=>(iv.code||'').toUpperCase().trim()).filter(Boolean));
+  function _dashInvItemsTotal(o){
+    const iS=o.itemStatuses||{},iCQ=o.itemCancelQty||{};
+    return (o.items||[]).reduce((s,it,ii)=>{
+      const _code=(it.code||'').toUpperCase().trim();
+      if(iS[ii]==='Cancelled'||iS[ii]==='Update') return s;
+      const _isOI=typeof _getOiPrefix==='function'&&_getOiPrefix(_code);
+      if(_isOI) return s;
+      if(!_dashInvCodes.has(_code)) return s;
+      const cxQ=iCQ[ii]||0;
+      if(cxQ>0){const tot=it.grams||it.qty||1;return s+Math.round((it.total||0)*Math.max(0,(tot-cxQ)/tot)*100)/100;}
+      return s+(it.total||0);
+    },0);
+  }
+  const _dashItemsSales=Math.round(_dashIncome.reduce((s,o)=>s+_dashInvItemsTotal(o),0)*100)/100;
+
+  // SF 10% (same as P&L)
+  const _dashSF10=Math.round((S.remitLog||[]).filter(e=>{const d=e.date||'';return d>=_dashFrom&&d<=_dashTo;}).reduce((s,e)=>s+(e.sf10||0),0)*100)/100;
+
+  // OI Profit: use stored r.profit (same as P&L)
+  const _dashOiProfit=Math.round((S.otherItems||[]).filter(r=>{
+    return r.status==='remitted'&&r.isVerified!==false&&(r.date||'')>=_dashFrom&&(r.date||'')<=_dashTo;
+  }).reduce((s,r)=>s+(r.profit!=null?r.profit:0),0)*100)/100;
+  const _dashOiSales=Math.round((S.otherItems||[]).filter(r=>{
+    return r.status==='remitted'&&r.isVerified!==false&&(r.date||'')>=_dashFrom&&(r.date||'')<=_dashTo;
+  }).reduce((s,r)=>s+(r.total||0),0)*100)/100;
+
+  // COD-OP total (same as P&L)
+  const _dashCodOpTotal=Math.round(_dashCourierVer.filter(o=>o.paymentMethod==='COD - Online Payment').reduce((s,o)=>s+(o.grandTotal||0),0)*100)/100;
+
+  // COGS — inventory items only, exclude cancelled/update (same as P&L)
   function _dashCOGS(it){if(!it||!it.code)return 0;const inv=(S.inventory||[]).find(p=>p.code&&p.code.toUpperCase()===it.code.toUpperCase());if(inv)return inv.itemType==='fixprice'?(inv.capitalPerUnit||0)*(it.qty||1):(inv.capitalPerGram||0)*(it.grams||it.qty||0);if(it.capitalPerGram)return it.capitalPerGram*(it.grams||it.qty||0);if(it.capitalPerUnit)return it.capitalPerUnit*(it.qty||1);return 0;}
-  const _dashTotalCOGS = _dashIncome.reduce((s,o)=>{const iS=o.itemStatuses||{},iCQ=o.itemCancelQty||{};return s+(o.items||[]).reduce((is,it,ii)=>{if(iS[ii]==='Cancelled'||iS[ii]==='Update')return is;const fc=_dashCOGS(it),cxQ=iCQ[ii]||0;if(cxQ>0){const tot=it.grams||it.qty||1;return is+fc*Math.max(0,(tot-cxQ)/tot);}return is+fc;},0);},0);
-  const _dashOpEx = (S.expenses||[]).filter(e=>{const d=e.date||'';return d>=_dashFrom&&d<=_dashTo;}).reduce((s,e)=>s+parseFloat(e.amount||0),0);
-  const _dashNetProfit = _dashTotalSales - _dashTotalCOGS - _dashOpEx;
+  const _dashTotalCOGS=Math.round(_dashIncome.reduce((s,o)=>{const iS=o.itemStatuses||{},iCQ=o.itemCancelQty||{};return s+(o.items||[]).reduce((is,it,ii)=>{if(iS[ii]==='Cancelled'||iS[ii]==='Update')return is;const fc=_dashCOGS(it),cxQ=iCQ[ii]||0;if(cxQ>0){const tot=it.grams||it.qty||1;return is+fc*Math.max(0,(tot-cxQ)/tot);}return is+fc;},0);},0)*100)/100;
+
+  // Gross Profit = itemsProfit + SF10 + OI Profit + COD-OP (same as P&L)
+  const _dashItemsProfit=_dashItemsSales-_dashTotalCOGS;
+  const _dashGrossProfit=_dashItemsProfit+_dashSF10+_dashOiProfit+_dashCodOpTotal;
+
+  // Operating expenses
+  const _dashOpEx=(S.expenses||[]).filter(e=>{const d=e.date||'';return d>=_dashFrom&&d<=_dashTo;}).reduce((s,e)=>s+parseFloat(e.amount||0),0);
+
+  // Net Profit = Gross Profit - OpEx (exact match with P&L)
+  const _dashNetProfit=_dashGrossProfit-_dashOpEx;
 
   document.getElementById('dash-stats').innerHTML=`
     <div class="stat-card gold"><div class="stat-label">Total Orders</div><div class="stat-value">${total}</div><div class="stat-sub">${_dateLabel}</div></div>
@@ -8857,6 +8891,32 @@ async function changePassword(){
 
 // Delete a single order permanently (CEO only)
 // Does NOT touch inventory — stock was already managed by checker flow
+// Checker-level permanent delete for COD-OP cancelled orders
+function checkerDeleteCodOp(i) {
+  const o = S.orders[i];
+  if(!o) return;
+  if(o.paymentMethod !== 'COD - Online Payment') { toast('⚠️ This is only for COD-OP orders.'); return; }
+  if(o.status !== 'Cancelled') { toast('⚠️ Pwede lang i-delete ang Cancelled na COD-OP orders.'); return; }
+  if(!confirm(`PERMANENTLY DELETE?\n\n${onum(i)} — ${o.name}\n${o.paymentMethod}\n\nMatatanggal na ito forever. OK?`)) return;
+  if(!S.deletedOrders) S.deletedOrders = [];
+  S.deletedOrders.push({
+    cancelledAt: new Date().toISOString(),
+    cancelledBy: currentUser?.name || 'Checker',
+    reason: 'Permanent delete (COD-OP) by Checker',
+    orderNum: onum(i), name: o.name, contact: o.contact||'',
+    address: o.address||'', city: o.city||'', admin: o.admin||'',
+    date: o.date, paymentMethod: o.paymentMethod,
+    grandTotal: o.grandTotal||0, items: o.items||[],
+    status: o.status
+  });
+  S.orders.splice(i, 1);
+  window._lastKnownWriteTs = 0; // force SAR pickup on all devices
+  save();
+  toast('🗑️ COD-OP order permanently deleted.');
+  try { renderChecker(); } catch(e) {}
+  try { initOrdersPage(); } catch(e) {}
+}
+
 function ownerDeleteOrder(i) {
   if(currentRole !== 'owner') { toast('🔒 CEO only.'); return; }
   const o = S.orders[i];
@@ -8876,10 +8936,13 @@ function ownerDeleteOrder(i) {
     status: o.status
   });
   S.orders.splice(i, 1);
+  // Force _lastWrite bump so all other devices detect the change via SAR immediately
+  window._lastKnownWriteTs = 0;
   save(); toast('🗑️ Order deleted permanently by CEO.');
   try { renderChecker(); } catch(e) {}
   try { renderReturns(); } catch(e) {}
-  try { renderOrders(); } catch(e) {}
+  try { initOrdersPage(); } catch(e) {}
+  try { renderDash(); } catch(e) {}
 }
 
 // Clear ALL transactions — CEO only, for fresh start before operations
@@ -10407,6 +10470,8 @@ async function saveOrder() {
     S.orders.push(o);
     toast('✅ Order saved! Inventory will be deducted upon Checker verification.');
   }
+  // Force _lastWrite bump so all other devices detect COD-OP edits via SAR immediately
+  window._lastKnownWriteTs = 0;
   await save(); closeModal('modal-encode');
   const _wasCourierEdit = (_editSource === 'courier-dashboard');
   _editSource = '';
@@ -14518,10 +14583,13 @@ function confirmCheckerCancel() {
   S.orders[orderIdx].cancelledBy = currentUser?.name || 'Checker';
   S.orders[orderIdx].cancelledAt = new Date().toISOString();
   S.orders[orderIdx].inventoryRestored = true; // block future double-restore
+  // Force SAR pickup on all devices
+  window._lastKnownWriteTs = 0;
   save();
   closeModal('modal-checker-cancel');
   toast(`❌ Order cancelled${restored ? ' & inventory restored' : ''}. Reason: ${reason}`);
   renderChecker();
+  try { initOrdersPage(); } catch(e) {}
   if(currentRole==='owner') renderDash();
 }
 
