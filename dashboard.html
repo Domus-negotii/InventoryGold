@@ -10321,6 +10321,11 @@ async function saveOrder() {
       o.inventoryDeducted = false; // Will be re-deducted when checker re-verifies
     }
     S.orders[+editIdx] = o;
+    // ── If order is Verified, re-capture OtherItems so new/changed items appear in Products ──
+    if((o.checkerStatus||'Pending') === 'Verified') {
+      try { _captureOtherItems(+editIdx); } catch(e) {}
+      try { renderOtherItemsPage(); } catch(e) {}
+    }
     const wasRto = orig.lbcStatus === 'RTO';
     toast(wasRto ? '✅ Order updated & ready for re-dispatch!' : hadDeducted ? '✅ Order updated! Inventory adjusted.' : '✅ Order updated!');
   } else {
