@@ -526,6 +526,88 @@ select.form-control{cursor:pointer;}
 <!-- Firebase Compat SDK (works without ES modules) -->
 <!-- Firebase: No SDK needed — uses REST API directly -->
 <script>
+// ══════════════════════════════════════════════════════════════════════════════
+// UPGRADE PROTECTION MANIFEST v1.0
+// Before ANY future code change, the developer MUST read and respect these rules.
+// Violating these barriers = introducing bugs that affect real business data.
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │  RULE 1 — PAYMENT METHOD ROUTING                                        │
+// │  ALWAYS use helpers — NEVER hardcode payment method strings.            │
+// │  ✅ _isCodFlow(o)     → COD + COD Online (checker/rider/remit flow)     │
+// │  ✅ _isCourierFlow(o) → LBC/EMS/FedEx only (tracking/fully paid flow)  │
+// │  ✅ _effectiveTab(pm) → maps any pm to its checker tab                  │
+// │  ✅ _ALL_METHODS       → all valid payment method strings               │
+// │  ❌ NEVER: o.paymentMethod === 'COD'  (misses COD Online)              │
+// │  ❌ NEVER: ['LBC','EMS','FedEx'].includes(pm)  (misses future methods) │
+// └─────────────────────────────────────────────────────────────────────────┘
+//
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │  RULE 2 — REMIT MATH                                                    │
+// │  ALL remit computations MUST use _computeRemit(delivered, benefits).   │
+// │  NEVER duplicate the math inline in any function.                       │
+// │  _computeRemit → _remitItemsTotal → _remitOrderSF → 2dp rounding      │
+// │  What user SEES = what gets SAVED = what REPORTS show. Always.         │
+// └─────────────────────────────────────────────────────────────────────────┘
+//
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │  RULE 3 — INVENTORY MUTATIONS                                           │
+// │  All deductions → _deductOrderItems() ONLY                             │
+// │  All restores   → _restoreOrderItems() ONLY                            │
+// │  Both pass through _INV_BARRIER for idempotency.                       │
+// │  NEVER modify S.inventory directly from any other function.            │
+// └─────────────────────────────────────────────────────────────────────────┘
+//
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │  RULE 4 — MERGE LOGIC                                                   │
+// │  confirmMerge() ALWAYS uses _displayIndices (never sorted allIndices). │
+// │  Radio value 0 = Order A as shown, 1 = Order B as shown.              │
+// │  Contact = single number only: .split('/')[0].trim()                   │
+// │  paymentMethod of merged order = _mergedPayMethod (honors COD Online)  │
+// └─────────────────────────────────────────────────────────────────────────┘
+//
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │  RULE 5 — DUPLICATE BANNER                                              │
+// │  ONLY shows on COD tab (includes COD Online).                          │
+// │  ALWAYS cleared at start of renderChecker() before isCOD check.       │
+// │  LBC/EMS/FedEx tabs NEVER show the banner.                             │
+// └─────────────────────────────────────────────────────────────────────────┘
+//
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │  RULE 6 — REMIT VISIBILITY                                              │
+// │  Orders appear in remit ONLY if: Verified + Ready/OFD/Delivered/etc.  │
+// │  Orders disappear from rider ONLY after Remitted batch covers them.    │
+// │  Use orderIds array (not createdAt) for precise order-level matching.  │
+// └─────────────────────────────────────────────────────────────────────────┘
+//
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │  RULE 7 — EDIT FORM STATE                                               │
+// │  openEditOrder() MUST reset all optional fields first (_pmtGrpReset). │
+// │  Field visibility MUST use the targeted _editIsLbc2/_editIsCodOnline2 │
+// │  approach — NEVER call onPaymentMethodChange() (has side effects).     │
+// └─────────────────────────────────────────────────────────────────────────┘
+//
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │  RULE 8 — CONTACT DISPLAY                                               │
+// │  ALWAYS use _c(o.contact) for display — strips joined numbers.         │
+// │  ALWAYS use .split('/')[0].trim() before saving contact to Firebase.   │
+// └─────────────────────────────────────────────────────────────────────────┘
+//
+// ══════════════════════════════════════════════════════════════════════════════
+// HOW TO ADD A NEW PAYMENT METHOD (e.g. "GCash Direct"):
+//   1. Add to _COD_METHODS or _LBC_METHODS (or new set if different flow)
+//   2. Add to _ALL_METHODS
+//   3. Add option to enc-payment-method dropdown HTML
+//   4. Add to onPaymentMethodChange() visibility logic
+//   5. Add to saveOrder paymentStatus logic
+//   6. Add to renderMyOrders methodOrder + methodLabels + methodColors
+//   7. Add to Daily Sales Record remit summary rows
+//   8. Add to P&L courierVerified or codDelivered filter
+//   9. Run the security audit script to verify all 73+ checks pass
+// ══════════════════════════════════════════════════════════════════════════════
+
+
 // ═══════════════════════════════════════════════════════════════
 // FIREBASE SYNC ENGINE — optimized for 30+ devices
 // ═══════════════════════════════════════════════════════════════
@@ -4267,6 +4349,10 @@ function renderChecker(){
     return true;
   });
 
+  // ── Always clear dup banner first — re-show only if COD tab has duplicates ──
+  const dupBanner = document.getElementById('checker-dup-banner');
+  if(dupBanner && !isCOD) { dupBanner.innerHTML = ''; dupBanner.style.display = 'none'; }
+
   if(isCOD) {
     const riderOpts = '<option value="">-- Assign Rider --</option>' + S.riders.map(r=>{
       const locs = r.locations && r.locations.length ? r.locations : (r.location ? [r.location] : []);
@@ -4295,8 +4381,9 @@ function renderChecker(){
 
     // Show duplicate alert banner
     const dupBanner = document.getElementById('checker-dup-banner');
+    // Duplicate banner: COD tab only — LBC/EMS/FedEx have different workflows
     if(dupBanner) {
-      if(visibleDupSets.length > 0) {
+      if(visibleDupSets.length > 0 && isCOD) {
         const names = visibleDupSets.map(g => g[0].o.name).join(', ');
         dupBanner.innerHTML = `<div style="background:rgba(224,138,48,0.15);border:1.5px solid var(--orange);border-radius:8px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
           <div><span style="color:var(--orange);font-weight:700;">⚠️ ${visibleDupSets.length} Possible Duplicate Order(s) Detected!</span>
@@ -4309,6 +4396,8 @@ function renderChecker(){
         dupBanner.style.display = 'none';
       }
     }
+    // Always hide banner when on LBC/EMS/FedEx tabs
+    if(!isCOD && dupBanner) { dupBanner.innerHTML = ''; dupBanner.style.display = 'none'; }
 
     if(!list.length) {
       document.getElementById('checker-tbody').innerHTML =
@@ -8075,6 +8164,24 @@ function renderPnl(){
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">LBC Verified</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='LBC').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='LBC').reduce((s,o)=>s+(o.grandTotal||0),0))}</span></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">EMS Verified</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='EMS').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='EMS').reduce((s,o)=>s+(o.grandTotal||0),0))}</span></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">FedEx Verified</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='FedEx').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='FedEx').reduce((s,o)=>s+(o.grandTotal||0),0))}</span></div>
+      ${(()=>{
+        const _oiSalesItems=(S.otherItems||[]).filter(r=>(r.status==='remitted'||r.status==='product')&&r.isVerified!==false&&r.date>=from&&r.date<=to);
+        const _oiCount=_oiSalesItems.length;
+        const _oiTotal=Math.round(_oiSalesItems.reduce((s,r)=>s+(r.total||0),0)*100)/100;
+        const _oiProfit=Math.round(_oiSalesItems.reduce((s,r)=>{
+          const _isGrams=r.grams>0,_qty=_isGrams?r.grams:(r.qty||1);
+          const _pu=_isGrams?(r.pergram||0):(r.qty>0?Math.round((r.total||0)/(r.qty)*100)/100:(r.total||0));
+          const _capPu=(r.capitalPerUnit!=null)?r.capitalPerUnit:Math.max(0,_pu-(r.profitPerUnit||0));
+          return s+Math.round(((r.total||0)-_qty*_capPu)*100)/100;
+        },0)*100)/100;
+        if(_oiCount===0) return '';
+        return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;">'
+          +'<span style="color:var(--muted);">Other Items</span>'
+          +'<span><strong>'+_oiCount+' item'+((_oiCount!==1)?'s':'')+'</strong>'
+          +' — '+p(_oiTotal)
+          +' <span style="font-size:10px;color:var(--green);margin-left:6px;">(Profit: '+p(_oiProfit)+')</span>'
+          +'</span></div>';
+      })()}
       <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;font-weight:700;"><span>Total Parcels</span><span style="color:var(--green);">${incomeOrders.length}</span></div>
     </div>
     <div class="card" style="margin-top:13px;">
@@ -10675,6 +10782,109 @@ function openRemitModal(editIdx=null) {
   openModal('modal-remit');
 }
 
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CANONICAL REMIT MATH ENGINE — SINGLE SOURCE OF TRUTH
+// ALL remit computations (populateRemitParcels, saveRemit, recalcRemitNet,
+// renderRemitPage) MUST use these functions. Never duplicate this math.
+// Discrepancies between display and saved values = bugs. Use only these.
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Computes the effective COD items total for one order.
+ * Excludes: Cancelled, Update, For Update item statuses.
+ * Handles partial cancels using per-item cancel qty.
+ * Uses decimal-safe rounding to prevent float accumulation.
+ */
+function _remitItemsTotal(o) {
+  if(!o || o.status==='Cancelled' || o.status==='RTO') return 0;
+  const _iS  = o.itemStatuses  || {};
+  const _iCQ = o.itemCancelQty || {};
+  let total = 0;
+  (o.items||[]).forEach((it, ii) => {
+    if(_iS[ii]==='Cancelled' || _iS[ii]==='Update' || _iS[ii]==='For Update') return;
+    const cxQty = parseFloat(_iCQ[ii]) || 0;
+    const tQty  = parseFloat(it.grams || it.qty || 1);
+    const ppu   = (it.total||0) / Math.max(1, tQty);
+    if(cxQty > 0) {
+      total += Math.max(0, (it.total||0) - ppu * cxQty);
+    } else {
+      total += (it.total||0);
+    }
+  });
+  return Math.round(total * 100) / 100; // 2dp precision
+}
+
+/**
+ * Computes the SF to include for one delivered order.
+ * SF excluded if ALL items in that order are cancelled.
+ */
+function _remitOrderSF(o) {
+  if(!o || o.status==='Cancelled' || o.status==='RTO') return 0;
+  const _iS  = o.itemStatuses || {};
+  const total = (o.items||[]).length;
+  const cx    = Object.values(_iS).filter(v => v==='Cancelled').length;
+  return total > cx ? Math.round((o.shipping||0) * 100) / 100 : 0;
+}
+
+/**
+ * Master remit computation — pass an array of DELIVERED orders.
+ * Returns all figures needed for display AND save. Single source of truth.
+ * @param {Array} delivered   - orders with status==='Delivered'
+ * @param {number} manualBenefits - benefits deduction typed by remitter
+ * @returns {Object} all remit figures
+ */
+function _computeRemit(delivered, manualBenefits) {
+  manualBenefits = Math.round((parseFloat(manualBenefits)||0) * 100) / 100;
+
+  // COD Subtotal: sum of effective items for all delivered orders
+  const codSubtotal = Math.round(
+    delivered.reduce((s, o) => s + _remitItemsTotal(o), 0) * 100
+  ) / 100;
+
+  // Delivered SF: sum of SF for orders that have at least one non-cancelled item
+  const deliveredSF = Math.round(
+    delivered.reduce((s, o) => s + _remitOrderSF(o), 0) * 100
+  ) / 100;
+
+  const sf10       = Math.round(deliveredSF * 0.10 * 100) / 100;
+  const sfRider90  = Math.round(deliveredSF * 0.90 * 100) / 100;
+  const cashbond   = 100;
+  const parcelFee  = delivered.length * 10;
+
+  // Rider's Net SF = 90% of SF - cashbond - parcel fees - benefits (floor 0)
+  const netSF      = Math.max(0, Math.round(
+    (sfRider90 - cashbond - parcelFee - manualBenefits) * 100
+  ) / 100);
+
+  // Net to Remit = (Items + SF) - Rider's Net SF portion
+  // ═══ FORMULA LOCK: DO NOT MODIFY ═══════════════════════════════════════════
+  // Rider collects: items total + full SF from customer
+  // Company keeps: Rider's Net SF (90% of SF minus deductions)
+  // Rider remits:  (items + SF) - netSF
+  // ═══════════════════════════════════════════════════════════════════════════
+  const grossTotal = Math.round((codSubtotal + deliveredSF) * 100) / 100;
+  const netTotal   = Math.max(0, Math.round((grossTotal - netSF) * 100) / 100);
+
+  return {
+    codSubtotal,   // Items only (net of partial cancels)
+    deliveredSF,   // SF of delivered parcels
+    sf10,          // 10% company SF cut
+    sfRider90,     // 90% rider portion
+    cashbond,      // Fixed ₱100 deduction
+    parcelFee,     // ₱10 per delivered parcel
+    manualBenefits,// Benefits typed by remitter
+    netSF,         // Rider's net SF (what rider keeps from SF)
+    grossTotal,    // codSubtotal + deliveredSF (what rider collected)
+    netTotal,      // What rider actually remits to company
+    deliveredCount: delivered.length,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// END CANONICAL REMIT MATH ENGINE
+// ══════════════════════════════════════════════════════════════════════════════
+
 function populateRemitParcels() {
   const idx = document.getElementById('remit-rider').value;
   if(idx === '') {
@@ -10718,43 +10928,17 @@ function populateRemitParcels() {
     });
   const delivered = myOrders.filter(o=>o.status==='Delivered');
   const cancelled = myOrders.filter(o=>['Cancelled','RTO','Update'].includes(o.status));
-  // Use DELIVERED-only SF for accurate deduction calculation
-  const deliveredSF = delivered.reduce((s,o)=>{const _iS=o.itemStatuses||{};const _t=(o.items||[]).length;const _cx=Object.values(_iS).filter(v=>v==='Cancelled').length;return s+(_t>_cx?(o.shipping||0):0);},0);
+  // ── CANONICAL MATH ENGINE — single source of truth ──────────────────────
+  const manualBenefits_pp = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
+  const _cm = _computeRemit(delivered, manualBenefits_pp);
+  const { codSubtotal, deliveredSF, sf10, sfRider90, cashbond, parcelFee, netSF, netTotal } = _cm;
   const totalSF = myOrders.reduce((s,o)=>s+(o.shipping||0),0); // gross SF display
-  const sf10 = deliveredSF * 0.10;           // 10% of delivered SF → company
-  const sfRider90 = deliveredSF * 0.90;      // 90% of delivered SF → rider keeps
-  const cashbond = 100;
-  // ₱10 per delivered parcel fee
-  const parcelFee = delivered.length * 10;
-  // Benefits: always default to 0.00 — remitter manually types if needed
-  const _logBenefits = (S.benefitsLog||[])
-    .filter(b => b.person === rider.name)
-    .reduce((s,b) => s + (parseFloat(b.other)||0) + (parseFloat(b.sss)||0) +
-      (parseFloat(b.philhealth)||0) + (parseFloat(b.pagibig)||0), 0);
+  // Benefits displayed separately; manualBenefits_pp already used in _computeRemit
   // Do NOT pre-fill — leave at 0.00 for new entries
-  const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
-  // Subtotal = sum of grandTotal (items + SF) from Delivered orders
-  // Subtotal = actual collected amount per delivered order (net of cancelled items)
-  // ═══ MODAL GUARD: recompute items + net=(items+SF)-netSF (matches saveRemit) ═
-  // Recompute items from item rows — same logic as rider dashboard activeItemsTotal
-  // avoids stale grandTotal from partial cancel / For Update transitions
-  const _prpEffective = (o) => {
-    if(o.status==='Cancelled'||o.status==='RTO') return 0;
-    let _t=0; const _iS=o.itemStatuses||{},_iCQ=o.itemCancelQty||{};
-    (o.items||[]).forEach((it,ii)=>{
-      if(_iS[ii]==='Cancelled'||_iS[ii]==='Update'||_iS[ii]==='For Update') return;
-      const cxQty=_iCQ[ii]||0,tQty=it.grams||it.qty||1,ppu=(it.total||0)/Math.max(1,tQty);
-      _t+=cxQty>0?Math.max(0,(it.total||0)-ppu*cxQty):(it.total||0);
-    }); return _t;
-  };
-  const codSubtotal = delivered.reduce((s,o) => s + _prpEffective(o), 0);
   const sfNetRider = sfRider90; // kept for dataset compatibility
-  // Rider's Net SF = All SF minus ALL deductions
-  // Rider's Net SF = SF90% minus SF-based deductions only (NOT benefits)
-  const netSF = Math.max(0, sfRider90 - cashbond - parcelFee - manualBenefits);
   // ═══ MODAL FORMULA GUARD ══════════════════════════════════════════════════
   // NET TO REMIT = (items + SF) − Rider's Net SF (benefits inside netSF)
-  const netTotal = Math.max(0, (codSubtotal + deliveredSF) - netSF); // matches rider dashboard
+  // netTotal provided by _computeRemit via _cm destructuring above
 
   // Build parcel rows — shows whole-order cancels AND per-item partial cancels
   const rows = myOrders.map((o,pi)=>{
@@ -10939,37 +11123,10 @@ function recalcRemitNet() {
   // Recompute fresh from S.orders (same as populateRemitParcels)
   const delivered = (S.orders||[]).filter(o => o && o.assignedRider === rider.name && o.date === date && o.status === 'Delivered');
 
-  // COD Subtotal — items only, excluding Cancelled/Update/For Update items
-  const codSubtotal = delivered.reduce((s,o) => {
-    let _t = 0;
-    const _iS = o.itemStatuses||{}, _iCQ = o.itemCancelQty||{};
-    (o.items||[]).forEach((it,ii) => {
-      if(_iS[ii]==='Cancelled'||_iS[ii]==='Update'||_iS[ii]==='For Update') return;
-      const cxQty=_iCQ[ii]||0, tQty=it.grams||it.qty||1, ppu=(it.total||0)/Math.max(1,tQty);
-      _t += cxQty>0 ? Math.max(0,(it.total||0)-ppu*cxQty) : (it.total||0);
-    });
-    return s + _t;
-  }, 0);
-
-  // Delivered SF — skip orders where all items cancelled
-  const deliveredSF = delivered.reduce((s,o) => {
-    const _iS = o.itemStatuses||{};
-    const _t = (o.items||[]).length;
-    const _cx = Object.values(_iS).filter(v=>v==='Cancelled').length;
-    return s + (_t > _cx ? (o.shipping||0) : 0);
-  }, 0);
-
-  const sfRider90 = deliveredSF * 0.90;
-  const cashbond  = 100;
-  const parcelFee = delivered.length * 10;
-
-  // Benefits: input value (pre-filled from S.benefitsLog or manual)
-  // Benefits: use exactly what's typed — 0 means 0 (no fallback to log)
+  // ── CANONICAL MATH ENGINE — guaranteed match with save ─────────────────────
   const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
-
-  // Net SF and Net Total
-  const netSF    = Math.max(0, sfRider90 - cashbond - parcelFee - manualBenefits);
-  const netTotal = Math.max(0, (codSubtotal + deliveredSF) - netSF);
+  const _cm_recalc = _computeRemit(delivered, manualBenefits);
+  const { codSubtotal, deliveredSF, sfRider90, cashbond, parcelFee, netSF, netTotal } = _cm_recalc;
 
   // Update displays
   const sfShareEl = document.getElementById('remit-sf-rider-share');
@@ -11118,30 +11275,9 @@ function saveRemit() {
   // ═══ SAVE REMIT GUARD: recompute from items + net=(items+SF)-netSF ═════════
   // _remitEffective: recompute items directly (same as rider dashboard activeItemsTotal)
   // avoids stale grandTotal from partial cancel / For Update transitions
-  const _remitEffective = (o) => {
-    if(o.status==='Cancelled'||o.status==='RTO') return 0;
-    let _t=0; const _iS=o.itemStatuses||{},_iCQ=o.itemCancelQty||{};
-    (o.items||[]).forEach((it,ii)=>{
-      if(_iS[ii]==='Cancelled'||_iS[ii]==='Update'||_iS[ii]==='For Update') return;
-      const cxQty=_iCQ[ii]||0,tQty=it.grams||it.qty||1,ppu=(it.total||0)/Math.max(1,tQty);
-      _t+=cxQty>0?Math.max(0,(it.total||0)-ppu*cxQty):(it.total||0);
-    }); return _t;
-  };
-  const deliveredSF = delivered.reduce((s,o)=>{const _iS=o.itemStatuses||{};const _t=(o.items||[]).length;const _cx=Object.values(_iS).filter(v=>v==='Cancelled').length;return s+(_t>_cx?(o.shipping||0):0);},0);
-  const codSubtotal = delivered.reduce((s,o)=>s+_remitEffective(o),0);
-  const sf10        = deliveredSF * 0.10;
-  const sfRider90   = deliveredSF * 0.90;
-  const cashbond    = 100;
-  const parcelFee   = delivered.length * 10;
-  const netSF       = Math.max(0, sfRider90 - cashbond - parcelFee - manualBenefits);
-  // Net to Remit = COD items collected + total SF collected
-  // ═══ NET TO REMIT FORMULA — LOCKED ═══════════════════════════════════════
-  // RULE: Net = COD items (grandTotal already net of cancels) + SF collected
-  // BARRIER: Do NOT subtract cashbond/parcelFee/rider SF — display-only figures
-  // BARRIER: _remitEffective trusts grandTotal directly (no re-subtraction)
-  // MATCHES: populateRemitParcels and renderRemitPage _liveNet formulas
-  // NET TO REMIT = (items + SF) − Rider's Net SF → matches rider dashboard exactly
-  const netTotal    = Math.max(0, (codSubtotal + deliveredSF) - netSF); // LOCKED — matches rider dashboard
+  // ── CANONICAL MATH ENGINE — guaranteed match with display ──────────────────
+  const _cm_save = _computeRemit(delivered, manualBenefits);
+  const { codSubtotal, deliveredSF, sf10, sfRider90, cashbond, parcelFee, netSF, netTotal } = _cm_save;
 
   const entry = {
     _id: _uuid(), // required for SAR _id-based merge to prevent race condition wipe
@@ -11362,22 +11498,12 @@ function renderRemitPage() {
     if(e.remitStatus === 'Remitted') {
       return s + (e.netTotal||e.codSubtotal||e.netEarn||0);
     }
-    // Remitting: live-compute to include current benefits
+    // Remitting: live-compute via canonical math engine
     const _rN = e.riderName || '';
     const _rDel = (S.orders||[]).filter(o=>o&&o.assignedRider===_rN&&o.date===e.date&&o.status==='Delivered');
-    const _rSub = _rDel.reduce((ss,o)=>{
-      let _t=0; const _iS=o.itemStatuses||{},_iCQ=o.itemCancelQty||{};
-      (o.items||[]).forEach((it,ii)=>{
-        if(_iS[ii]==='Cancelled'||_iS[ii]==='Update'||_iS[ii]==='For Update') return;
-        const cxQty=_iCQ[ii]||0,tQty=it.grams||it.qty||1,ppu=(it.total||0)/Math.max(1,tQty);
-        _t+=cxQty>0?Math.max(0,(it.total||0)-ppu*cxQty):(it.total||0);
-      }); return ss+_t;
-    },0);
-    const _rSF = _rDel.reduce((ss,o)=>{const _iS=o.itemStatuses||{};const _t=(o.items||[]).length;const _cx=Object.values(_iS).filter(v=>v==='Cancelled').length;return ss+(_t>_cx?(o.shipping||0):0);},0);
-    const _rSF90 = _rSF * 0.90;
-    const _rBen = e.manualBenefits > 0 ? e.manualBenefits : (S.benefitsLog||[]).filter(b=>b.person===_rN).reduce((ss,b)=>ss+(parseFloat(b.other)||0)+(parseFloat(b.sss)||0)+(parseFloat(b.philhealth)||0)+(parseFloat(b.pagibig)||0),0);
-    const _rNetSF = Math.max(0, _rSF90 - 100 - _rDel.length * 10 - _rBen);
-    return s + Math.max(0, (_rSub + _rSF) - _rNetSF);
+    const _rBen = e.manualBenefits > 0 ? e.manualBenefits : 0;
+    const _rCm = _computeRemit(_rDel, _rBen);
+    return s + _rCm.netTotal;
   }, 0);
   // ═══ GLOBAL SUBTOTAL GUARD: codSubtotal+totalSF = full collection amount ═══════
   const grandAllSub  = filteredLog.reduce((s,e)=>s+(e.codSubtotal||0)+(e.totalSF||0),0); // items+SF
@@ -11414,27 +11540,11 @@ function renderRemitPage() {
       if(e.remitStatus === 'Remitted') {
         return { sub: (e.codSubtotal||0) + (e.totalSF||0), net: e.netTotal||e.codSubtotal||0 };
       }
+      // ── CANONICAL MATH ENGINE — per-entry live compute ─────────────────────
       const _eDel = (S.orders||[]).filter(o=>o&&o.assignedRider===riderName&&o.date===e.date&&o.status==='Delivered');
-      // Recompute items from item rows (same as rider dashboard)
-      const _eSub = _eDel.reduce((s,o)=>{
-        let _t=0; const _iS=o.itemStatuses||{},_iCQ=o.itemCancelQty||{};
-        (o.items||[]).forEach((it,ii)=>{
-          if(_iS[ii]==='Cancelled'||_iS[ii]==='Update'||_iS[ii]==='For Update') return;
-          const cxQty=_iCQ[ii]||0,tQty=it.grams||it.qty||1,ppu=(it.total||0)/Math.max(1,tQty);
-          _t+=cxQty>0?Math.max(0,(it.total||0)-ppu*cxQty):(it.total||0);
-        }); return s+_t;
-      },0);
-      const _eSF    = _eDel.reduce((s,o)=>{const _iS=o.itemStatuses||{};const _t=(o.items||[]).length;const _cx=Object.values(_iS).filter(v=>v==='Cancelled').length;return s+(_t>_cx?(o.shipping||0):0);},0);
-      const _eSF90  = _eSF * 0.90;
-      // Benefits: use saved e.manualBenefits if present, else fall back to S.benefitsLog
-      const _eBenefits = e.manualBenefits > 0 ? e.manualBenefits : (S.benefitsLog||[])
-        .filter(b => b.person === riderName)
-        .reduce((s,b) => s + (parseFloat(b.other)||0) + (parseFloat(b.sss)||0) +
-          (parseFloat(b.philhealth)||0) + (parseFloat(b.pagibig)||0), 0);
-      const _eNetSF = Math.max(0, _eSF90 - 100 - _eDel.length * 10 - _eBenefits);
-      const _eNet   = Math.max(0, (_eSub + _eSF) - _eNetSF);
-      // ═══ ENTRY AMOUNTS: sub=items+SF (COD SUBTOTAL col), net=sub-netSF (NET TO REMIT) ═
-      return { sub: _eSub + _eSF, net: _eNet }; // sub = items+SF for COD SUBTOTAL column
+      const _eBen = e.manualBenefits > 0 ? e.manualBenefits : 0;
+      const _eCm  = _computeRemit(_eDel, _eBen);
+      return { sub: _eCm.grossTotal, net: _eCm.netTotal };
     });
     const grandSubtotal = _entryAmounts.reduce((s,a)=>s+a.sub,0);
     const _allSF        = entries.reduce((s,e)=>s+(e.totalSF||0),0);
@@ -14672,7 +14782,7 @@ function openMergeModal() {
   // Also cap each duplicate group at 3 orders maximum.
   const codOrders = (S.orders||[]).map((o,i)=>o?({o,i}):null).filter(Boolean)
     .filter(({o}) =>
-      (o.paymentMethod||'COD') === 'COD' &&
+      _isCodFlow(o) &&   // COD + COD Online only — never LBC/EMS/FedEx
       !['Cancelled','RTO','Delivered'].includes(o.status) &&
       o.checkerStatus !== 'Verified' &&
       o.verificationStatus !== 'Verified'
@@ -15014,6 +15124,24 @@ function confirmMerge() {
     window._mergeRestoredOrders.add(_absNum);
   });
 
+  // ── Resolve paymentMethod for merged order ────────────────────
+  // Rule: if any order is COD Online → merged order is COD Online
+  // (payment was already made online, honor that designation)
+  // If all are plain COD → stays COD
+  const _mergedPayMethod = allOrders.some(o => o.paymentMethod === 'COD - Online Payment')
+    ? 'COD - Online Payment'
+    : (oKeep.paymentMethod || 'COD');
+
+  // Merge payments (reference nos) from all orders
+  const _mergedPayments = allOrders.flatMap(o => o.payments||[]).filter(p => p.refno || p.amount);
+
+  // Merge paymentStatus: highest wins (Fully Paid > Partial > No Payment/COD)
+  const _pmtRank = {'Fully Paid':3,'Partial':2,'COD - Online':1,'COD':0,'No Payment':0};
+  const _mergedPayStatus = allOrders.reduce((best, o) => {
+    const rank = _pmtRank[o.paymentStatus||'COD'] || 0;
+    return rank > (_pmtRank[best]||0) ? (o.paymentStatus||'COD') : best;
+  }, oKeep.paymentStatus||'COD');
+
   // ── Apply merged data to surviving order ──────────────────────
   S.orders[keepIdx] = {
     ...oKeep,
@@ -15026,6 +15154,10 @@ function confirmMerge() {
     grandTotal: mergedGrandTotal,
     admin: adminDisplay,
     adminList,
+    paymentMethod: _mergedPayMethod,
+    payments: _mergedPayments.length ? _mergedPayments : (oKeep.payments||[]),
+    paymentStatus: _mergedPayStatus,
+    lbcStatus: '',  // COD merge — no LBC flow
     _id: oKeep._id || ('o_merge_'+Date.now()),
     createdAt: oKeep.createdAt,
     encodedBy: oKeep.encodedBy,
