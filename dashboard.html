@@ -15201,7 +15201,7 @@ function updateMergePreview() {
   else mergedSF = parseFloat(document.getElementById('merge-sf-options-custom')?.value)||0;
 
   // Merged items from ALL orders
-  const mergedItems = orders.flatMap(o => o.items||[]);
+  const mergedItems = orders.flatMap(o => o.items||[]); // preview: flat list, all rows from all orders
   const mergedItemsTotal = mergedItems.reduce((s,it) => s + (it.total||0), 0);
   const mergedGrandTotal = mergedItemsTotal + mergedSF;
 
@@ -15320,7 +15320,35 @@ function confirmMerge() {
   }
 
   // ── Build merged data ──────────────────────────────────────────
-  const mergedItems      = allOrders.flatMap(o => o.items||[]);
+  // Collect all items from all orders as separate rows (no combining).
+  // Remap per-item tracking fields (itemStatuses, itemCancelQty, itemRemarks,
+  // oiItemQty, oiItemStatus, itemInventoryRestored) using offset indices
+  // so each order's items land at the correct position in the merged flat array.
+  const mergedItems = [];
+  const mergedItemStatuses         = {};
+  const mergedItemCancelQty        = {};
+  const mergedItemRemarks          = {};
+  const mergedOiItemQty            = {};
+  const mergedOiItemStatus         = {};
+  const mergedItemInventoryRestored = {};
+
+  let _offset = 0;
+  allOrders.forEach(o => {
+    const items = o.items || [];
+    items.forEach((it, localIdx) => {
+      const globalIdx = _offset + localIdx;
+      mergedItems.push(it);
+      // Remap per-item tracking with offset
+      if(o.itemStatuses          && o.itemStatuses[localIdx]          !== undefined) mergedItemStatuses[globalIdx]          = o.itemStatuses[localIdx];
+      if(o.itemCancelQty         && o.itemCancelQty[localIdx]         !== undefined) mergedItemCancelQty[globalIdx]         = o.itemCancelQty[localIdx];
+      if(o.itemRemarks           && o.itemRemarks[localIdx]           !== undefined) mergedItemRemarks[globalIdx]           = o.itemRemarks[localIdx];
+      if(o.oiItemQty             && o.oiItemQty[localIdx]             !== undefined) mergedOiItemQty[globalIdx]             = o.oiItemQty[localIdx];
+      if(o.oiItemStatus          && o.oiItemStatus[localIdx]          !== undefined) mergedOiItemStatus[globalIdx]          = o.oiItemStatus[localIdx];
+      if(o.itemInventoryRestored && o.itemInventoryRestored[localIdx] !== undefined) mergedItemInventoryRestored[globalIdx] = o.itemInventoryRestored[localIdx];
+    });
+    _offset += items.length;
+  });
+
   const mergedItemsTotal = mergedItems.reduce((s,it) => s+(it.total||0), 0);
   const mergedGrandTotal = mergedItemsTotal + mergedSF;
 
@@ -15414,7 +15442,14 @@ function confirmMerge() {
     mergedAt: new Date().toISOString(),
     checkerStatus: 'Pending',
     verificationStatus: 'Not Verified',
-    inventoryDeducted: false
+    inventoryDeducted: false,
+    // Per-item tracking remapped with correct offset indices
+    itemStatuses:          mergedItemStatuses,
+    itemCancelQty:         mergedItemCancelQty,
+    itemRemarks:           mergedItemRemarks,
+    oiItemQty:             mergedOiItemQty,
+    oiItemStatus:          mergedOiItemStatus,
+    itemInventoryRestored: mergedItemInventoryRestored,
   };
 
   // ── Remove absorbed orders (highest index first to preserve lower) ──
