@@ -2502,7 +2502,7 @@ function _showRulesHint() {
       <div class="form-group" id="enc-address-group"><label>Complete Address *</label>
         <textarea class="form-control enc-tab" id="enc-address" placeholder="House/Unit, Barangay, City, Province" rows="1"
           onkeydown="encNextField(event,this)"
-          oninput="autoAssignRider();this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+          oninput="autoAssignRider();_autofillCityFromAddress();this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
       </div>
       <input type="hidden" id="enc-city" value="">
       <div class="form-group" id="enc-landmark-group"><label>Landmark / Pakuha sa</label><input class="form-control enc-tab" id="enc-landmark" placeholder="Near church, beside sari-sari..." onkeydown="encNextField(event,this)"></div>
@@ -9008,6 +9008,38 @@ function onRiderSelect() {
 // ============================================================
 // AUTO-ASSIGN RIDER BASED ON CITY / ADDRESS DETECTION
 // ============================================================
+// ── Auto-fill city from address field ─────────────────────────────────────
+// Scans the typed address for known city/municipality names and fills enc-city.
+// This ensures o.city is always populated so merge detection works correctly.
+function _autofillCityFromAddress() {
+  const addr = (document.getElementById('enc-address')?.value || '').toLowerCase();
+  if(!addr) return;
+  // Known PH cities/municipalities — extend as needed
+  const _knownCities = [
+    'Las Pinas','Makati','Manila','Quezon City','Pasig','Taguig','Paranaque',
+    'Caloocan','Malabon','Navotas','Valenzuela','Marikina','Pasay','Muntinlupa',
+    'Mandaluyong','Pateros','San Juan','Marikina','Novaliches',
+    'Bulacan','Malolos','Meycauayan','Marilao','Bocaue','Guiguinto',
+    'Cavite','Bacoor','Imus','Dasmariñas','General Trias','Tagaytay',
+    'Laguna','San Pedro','Binan','Sta Rosa','Calamba','Los Baños',
+    'Rizal','Antipolo','Cainta','Taytay','Angono','Binangonan',
+    'Batangas','Lipa','Sto Tomas','Tanauan','Bauan',
+    'Pampanga','San Fernando','Angeles','Mabalacat',
+    'Cebu','Davao','Iloilo','Bacolod','Cagayan de Oro',
+  ];
+  const _encCity = document.getElementById('enc-city');
+  if(!_encCity) return;
+  for(const city of _knownCities) {
+    const normalized = city.toLowerCase()
+      .replace(/ñ/g,'n').replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
+    if(addr.includes(normalized)) {
+      _encCity.value = city;
+      return;
+    }
+  }
+  // If no match found, leave as-is (don't clear manually-set city)
+}
+
 function autoAssignRider() {
   const address = (document.getElementById('enc-address')?.value || '').toLowerCase().trim();
   const method = document.getElementById('enc-payment-method')?.value || 'COD';
@@ -10115,7 +10147,7 @@ async function saveOrder() {
   }
   const o = {
     name, contact, backupContact, address,
-    city: document.getElementById('enc-city').value,
+    city: (document.getElementById('enc-city').value || (_autofillCityFromAddress(), document.getElementById('enc-city').value) || ''),
     landmark: document.getElementById('enc-landmark').value,
     date: date || today(),
     admin, assignedRider, paymentMethod,
@@ -14766,8 +14798,8 @@ function detectDuplicates(orders) {
   // ═══════════════════════════════════════════════════════════════════════
   // MERGE DETECTION — 3 RULES (all require city agreement for Rules 2 & 3)
   //
-  // RULE 1 — Same Phone:
-  //   phoneI === phoneJ  (city irrelevant)
+  // RULE 1 — Same Phone + Same City (or city unknown):
+  //   phoneI === phoneJ AND city not confirmed different
   //
   // RULE 2 — Same House# + Same City:
   //   houseI === houseJ (must be a specific/unique house identifier)
@@ -14918,16 +14950,14 @@ function detectDuplicates(orders) {
     function _isReal(w) {
       if (w.length < 4 || allGeneric.has(w)) return false;
       const vow = (w.match(/[aeiou]/g) || []).length;
-      // Must have at least 2 vowels (real location words nearly always do)
+      // Must have at least 2 vowels — real location words nearly always do
       if (vow < 2) return false;
       // Vowel ratio: at least 25% of the word must be vowels
-      // filters: "asddd" (1/5=20%), "nalksngalkg" (2/11=18%)
+      // Filters: "asddd" (1/5=20%), "nalksngalkg" (2/11=18%), "zxccc" (0/5=0%)
       if (vow / w.length < 0.25) return false;
-      // No 4+ consecutive consonants — filters random strings like "skgn", "ngks"
+      // No 4+ consecutive consonants — filters "skgns", "ngksl", "zxccc"
       if (/[^aeiou]{4,}/.test(w)) return false;
-      // No 3+ of the same letter in a row — filters "qweee", "asddd", "zxccc"
-      if (/(.){2,}/.test(w)) return false;
-      // No repeating 2-4 char chunks at start — filters "asgkasgkans" (asgk×2)
+      // No repeating 2-4 char chunks — filters "asgkasgkans", "aksngaksng"
       if (w.length >= 6 && /^(.{2,4})/.test(w)) return false;
       return true;
     }
@@ -14942,18 +14972,20 @@ function detectDuplicates(orders) {
     // Null-guard both orders
     if (!oi || !oj) return false;
 
+
     const cityI = _normCity(oi.city);
     const cityJ = _normCity(oj.city);
 
-    // ── RULE 1: Same phone ───────────────────────────────────────────────
-    // No city requirement — same number = same person regardless of address.
+    // ── ABSOLUTE CITY BLOCK — applies to ALL rules including phone ──────────
+    // If BOTH cities are known and they differ → NEVER merge, no exceptions.
+    // Different city/province = different delivery location = not a duplicate.
+    if (cityI && cityJ && cityI !== cityJ) return false;
+
+    // ── RULE 1: Same phone + same city (or city unknown) ─────────────────
+    // Same number but different confirmed city = different customer branch → block.
     const phoneI = _normPhone(oi.contact);
     const phoneJ = _normPhone(oj.contact);
     if (phoneI && phoneJ && phoneI === phoneJ) return true;
-
-    // ── CITY BLOCK (Rules 2 & 3 only) ───────────────────────────────────
-    // If BOTH cities are known and they differ → address rules cannot fire.
-    if (cityI && cityJ && cityI !== cityJ) return false;
 
     // City agreement: same (both known+equal) OR unknown (one/both blank)
     const sameCity    = !!(cityI && cityJ && cityI === cityJ);
@@ -14971,9 +15003,72 @@ function detectDuplicates(orders) {
       [cityI, cityJ].join(' ').split(/\s+/).filter(w => w.length >= 3)
     );
 
-    // ── RULE 2: Same specific house# — requires CONFIRMED same city ────────
-    // cityUnknown is NOT allowed here: a house number match across unknown cities
-    // risks chaining orders from different cities via blank-city orders.
+    // ── City inference: if one side has blank city but the known city's name
+    // appears in that order's address, treat as same city.
+    // e.g. BILLY city='' address='QWEEE ASDDD LAS PINAS' + HAHA city='Las Pinas'
+    // → 'las pinas' found in BILLY's address → inferred same city ✅
+    let effectiveSameCity = sameCity;
+    if(!effectiveSameCity && cityUnknown) {
+      if(!cityI && !cityJ) {
+        // Both blank — cannot determine mismatch, allow address-based rules
+        effectiveSameCity = true;
+      } else {
+        // One has city, other is blank — check if city name appears in blank-side address
+        const _knownCity = cityI || cityJ;
+        const _blankAddr = (!cityI ? oi.address : oj.address) || '';
+        const _blankNorm = _normCity(_blankAddr);
+        // Check 1: full city string in address ('las pinas' in 'daisy st las pinas')
+        if(_knownCity && _blankNorm.includes(_knownCity)) {
+          effectiveSameCity = true;
+        }
+        // Check 2: any distinctive word (≥4 chars) from the city name in blank-side address
+        // e.g. city='Las Pinas' → 'pinas' (5 chars) in address → match
+        // e.g. city='Bulacan' → 'bulacan' (7 chars) in address → match  
+        if(!effectiveSameCity) {
+          const _cityWordArr = _knownCity.split(/\s+/).filter(w => w.length >= 4);
+          if(_cityWordArr.some(w => _blankNorm.includes(w))) effectiveSameCity = true;
+        }
+      }
+    }
+
+    // ── City compatibility for Rules 2 & 3 ────────────────────────────────────
+    // "cityCompat" = cities are compatible for address-based matching:
+    //   ✅ Both known and same (sameCity)
+    //   ✅ Both blank (truly unknown — cannot confirm conflict)
+    //   ✅ One blank, one known, AND the blank-side address contains NO other known city name
+    //      (meaning the blank-city order's address doesn't declare a conflicting city)
+    //   ❌ One blank, one known, AND blank-side address explicitly mentions a DIFFERENT city
+    let cityCompat = sameCity;
+    if(!cityCompat && cityUnknown) {
+      if(!cityI && !cityJ) {
+        cityCompat = true; // both blank — no conflict possible
+      } else {
+        // One known, one blank — check if blank-side address mentions a DIFFERENT city
+        const _knownCity = cityI || cityJ;
+        const _blankAddr = _normCity((!cityI ? oi.address : oj.address) || '');
+        // If effectiveSameCity already inferred a match, use that
+        if(effectiveSameCity) {
+          cityCompat = true;
+        } else {
+          // Check if the blank-side address explicitly contains a DIFFERENT known city
+          // by checking if any OTHER city name (not the known city) appears in it
+          const _otherCities = ['bulacan','cavite','laguna','rizal','batangas','pampanga',
+            'cebu','davao','iloilo','quezon','marikina','taguig','paranaque','pasig',
+            'makati','manila','caloocan','malabon','muntinlupa','mandaluyong','pasay',
+            'navotas','valenzuela','pateros','antipolo','cainta','taytay'];
+          const _knownNorm = _knownCity.split(/\s+/).filter(w=>w.length>=4);
+          // If blank-side address contains a city word that is NOT the known city → conflict
+          const _hasConflict = _otherCities.some(c =>
+            c !== _knownCity && !_knownNorm.some(w=>c.includes(w)||w.includes(c)) && _blankAddr.includes(c)
+          );
+          cityCompat = !_hasConflict; // allow if no conflicting city found in blank-side address
+        }
+      }
+    }
+
+    // ── RULE 2: Same specific house# — STRICT sameCity required ────────────
+    // House number alone is too weak — must have confirmed same city (both non-blank + equal).
+    // cityCompat (blank-city bypass) is NOT allowed here to prevent cross-city false chains.
     const sameHouse = !!(
       sameCity &&
       houseI && houseJ &&
@@ -14983,10 +15078,8 @@ function detectDuplicates(orders) {
     );
     if (sameHouse) return true;
 
-    // ── RULE 3: Same neighbourhood — requires CONFIRMED same city ──────────
-    // Different city/province = NEVER merge on neighbourhood, even if street/brgy/subd match.
-    // cityUnknown is NOT sufficient — neighbourhood match needs confirmed sameCity.
-    if (sameCity && _sameNeighbourhood(neighI, neighJ, _cityWords)) return true;
+    // ── RULE 3: Same neighbourhood ────────────────────────────────────────────
+    if (cityCompat && _sameNeighbourhood(neighI, neighJ, _cityWords)) return true;
 
     return false;
   }
@@ -15033,9 +15126,13 @@ function detectDuplicates(orders) {
   return groups;
 }
 function openMergeModal() {
+  // Clear dismissal set on every fresh open — so previously X'd orders
+  // are re-evaluated and can appear in the correct merge group.
+  // This ensures no order is permanently hidden from merge due to a prior dismiss.
+  if(window._mergeGroupDismissed) window._mergeGroupDismissed.clear();
+
   // Only include active COD orders — exclude Cancelled, RTO, Delivered (they are settled).
   // Cancelled orders must NEVER appear in merge detection.
-  // Also cap each duplicate group at 3 orders maximum.
   const codOrders = (S.orders||[]).map((o,i)=>o?({o,i}):null).filter(Boolean)
     .filter(({o}) =>
       _isCodFlow(o) &&   // COD + COD Online only — never LBC/EMS/FedEx
@@ -15043,8 +15140,7 @@ function openMergeModal() {
       o.checkerStatus !== 'Verified' &&
       o.verificationStatus !== 'Verified'
     );
-  // Cap each group at 3 — merge at most 3 orders at a time
-  _mergeDupSets = detectDuplicates(codOrders); // no size limit — show all matches
+  _mergeDupSets = detectDuplicates(codOrders);
 
   if(!_mergeDupSets.length) { toast('⚠️ Walang duplicate orders na nadetect.'); return; }
 
