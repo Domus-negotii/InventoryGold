@@ -11572,6 +11572,14 @@ function renderRemitPage() {
       ? _entryRemittedEntries.map(e=>e.remittedAt).sort().pop()
       : null;
     const _hasUnremittedEntry = entries.some(e=>e.remitStatus!=='Remitted');
+    // Build set of all order IDs belonging to ANY remitted entry for this rider
+    const _allRemittedOrderIds  = new Set();
+    const _allRemittedOrderNums = new Set();
+    _entryRemittedEntries.forEach(r => {
+      (r.orderIds  ||[]).forEach(id  => _allRemittedOrderIds.add(id));
+      (r.orderNums ||[]).forEach(num => _allRemittedOrderNums.add(num));
+    });
+
     const riderOrders = (S.orders||[]).map((o,oi)=>({...o,oi}))
       .filter(o => {
         if(o.assignedRider !== riderName) return false;
@@ -11579,16 +11587,30 @@ function renderRemitPage() {
         if(o.date !== entries[0]?.date && !df) {
           if(!entries.some(e=>e.date===o.date)) return false;
         }
-        // If there are Remitted entries AND an active Remitting entry:
-        // only show orders that were created AFTER the last remittedAt (new batch)
-        if(_lastRemittedAt && _hasUnremittedEntry) {
-          const _orderCreated = o.createdAt || o.date;
-          if(_orderCreated < _lastRemittedAt) return false; // belongs to previous remit
+
+        const _ordId  = o._id  || onum(o.oi);
+        const _ordNum = onum(o.oi);
+
+        // If this order is in a Remitted batch — always include it (for history display)
+        const _inRemittedBatch =
+          _allRemittedOrderIds.has(_ordId)  ||
+          _allRemittedOrderIds.has(_ordNum) ||
+          _allRemittedOrderNums.has(_ordNum);
+
+        if(_inRemittedBatch) return true; // always show remitted orders regardless of status
+
+        // For active (non-remitted) orders: apply normal guards
+        if(_hasUnremittedEntry) {
+          // Legacy: if no orderIds stored, use createdAt to exclude already-remitted orders
+          if(_lastRemittedAt && !_allRemittedOrderIds.size) {
+            const _orderCreated = o.createdAt || o.date;
+            if(_orderCreated < _lastRemittedAt) return false;
+          }
+          // GUARD: exclude unverified — checker must verify first
+          if((o.checkerStatus||'Pending') !== 'Verified') return false;
+          // GUARD: exclude Preparing — not yet dispatched
+          if(o.status === 'Preparing') return false;
         }
-        // GUARD: exclude unverified orders — not yet processed by checker
-        if((o.checkerStatus||'Pending') !== 'Verified') return false;
-        // GUARD: exclude Preparing orders — not yet dispatched to rider
-        if(o.status === 'Preparing') return false;
         return true;
       });
 
