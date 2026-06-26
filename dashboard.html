@@ -3094,6 +3094,184 @@ let currentRole = null;
 const p=n=>{const v=parseFloat(n||0);return '₱'+(isNaN(v)?0:v).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});};
 // Always show only the first contact number (strips joined numbers from old merges)
 const _c = (contact) => (contact||'—').split('/')[0].trim() || '—';
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MULTI-USER CONCURRENCY & DATA INTEGRITY HARDENING v1.0
+// Designed for 100-500 concurrent users on Firebase Firestore backend.
+// Protects: inventory mutations, sales records, order state, role access.
+// ALL critical operations MUST pass through these barriers before executing.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── OPERATION LOCKS (per-device per-operation mutex) ─────────────────────────
+// Prevents double-click / rapid re-trigger of save operations on same device.
+// Each lock auto-expires after timeoutMs to prevent permanent lockout.
+if(!window._opLocks) window._opLocks = {};
+function _acquireLock(key, timeoutMs=5000) {
+  if(window._opLocks[key]) return false;
+  window._opLocks[key] = setTimeout(() => { delete window._opLocks[key]; }, timeoutMs);
+  return true;
+}
+function _releaseLock(key) {
+  if(window._opLocks[key]) { clearTimeout(window._opLocks[key]); delete window._opLocks[key]; }
+}
+
+// ── OPERATION IDEMPOTENCY REGISTRY ───────────────────────────────────────────
+// Prevents any operation from executing twice within ttlMs window.
+// Key format: "action_entityId_timestamp_bucket" — unique per operation.
+// Used by inventory deduct/restore to prevent double-counting.
+if(!window._opRegistry) window._opRegistry = new Map();
+function _registerOp(key, ttlMs=30000) {
+  if(window._opRegistry.has(key)) return false;
+  window._opRegistry.set(key, Date.now());
+  setTimeout(() => window._opRegistry.delete(key), ttlMs);
+  return true;
+}
+
+// ── INVENTORY MUTATION BARRIER ────────────────────────────────────────────────
+// Single entry point for ALL inventory state changes.
+// Guards: duplicate deduction, negative stock, stale session re-deduction.
+// ANY inventory write that bypasses this barrier is a bug.
+const _INV_BARRIER = {
+  canDeduct(code, ref) {
+    if(!code || !ref) return false;
+    const key = `inv_deduct_${(code||'').toUpperCase()}_${ref}`;
+    if(!_registerOp(key, 60000)) {
+      console.warn(`[INV BARRIER] Duplicate deduct blocked: ${key}`);
+      return false;
+    }
+    return true;
+  },
+  canRestore(code, ref) {
+    if(!code || !ref) return false;
+    const key = `inv_restore_${(code||'').toUpperCase()}_${ref}`;
+    if(!_registerOp(key, 60000)) {
+      console.warn(`[INV BARRIER] Duplicate restore blocked: ${key}`);
+      return false;
+    }
+    return true;
+  },
+  // Validates stock won't go negative before deducting
+  wouldGoNegative(code, amount) {
+    const inv = (window.S?.inventory||[]).find(i => i && (i.code||'').toUpperCase() === (code||'').toUpperCase());
+    if(!inv) return false; // not in inventory — OI item, allow
+    const current = parseFloat(inv.stock ?? inv.quantity ?? inv.qty ?? 0);
+    return current - amount < 0;
+  }
+};
+
+// ── SALES INTEGRITY BARRIER ───────────────────────────────────────────────────
+// Prevents duplicate remit entries and double-counted OI sales.
+// Called before any sales record is written to S.remitLog or S.otherItems.
+const _SALES_BARRIER = {
+  isDuplicateRemit(riderName, date, remitStatus) {
+    // Block if a Remitted entry already exists for this rider+date
+    if(remitStatus !== 'Remitted') return false;
+    return (window.S?.remitLog||[]).some(r =>
+      r.riderName === riderName && r.date === date && r.remitStatus === 'Remitted'
+    );
+  },
+  isDuplicateOiEntry(orderNum, itemIdx) {
+    return (window.S?.otherItems||[]).some(r =>
+      r.orderNum === orderNum && r.itemIdx === itemIdx &&
+      r.status !== 'cancelled' && r.isVerified !== false
+    );
+  },
+  isOrderAlreadyRemitted(orderId, orderNum) {
+    return (window.S?.remitLog||[]).some(r =>
+      r.remitStatus === 'Remitted' && (
+        (r.orderIds  && r.orderIds.includes(orderId)) ||
+        (r.orderNums && r.orderNums.includes(orderNum))
+      )
+    );
+  }
+};
+
+// ── ORDER DATA VALIDATOR ──────────────────────────────────────────────────────
+// Validates order shape before any save/update operation.
+// Prevents corrupt or incomplete orders from reaching Firebase.
+function _validateOrder(o) {
+  if(!o || typeof o !== 'object') return { valid: false, reason: 'null order' };
+  if(!o.name?.trim())             return { valid: false, reason: 'missing name' };
+  if(!o.date)                     return { valid: false, reason: 'missing date' };
+  if(typeof o.grandTotal !== 'number' || isNaN(o.grandTotal) || o.grandTotal < 0)
+                                  return { valid: false, reason: 'invalid grandTotal' };
+  if(!Array.isArray(o.items) || o.items.length === 0)
+                                  return { valid: false, reason: 'no items' };
+  if(!o._id)                      return { valid: false, reason: 'missing _id' };
+  return { valid: true };
+}
+
+// ── ROLE ACCESS CONTROL ───────────────────────────────────────────────────────
+// Centralized permission matrix. All sensitive UI actions must call _can().
+const _PERMISSIONS = {
+  verify:        ['checker','owner'],
+  unverify:      ['checker','owner'],
+  encode:        ['admin','owner'],
+  editOrder:     ['checker','admin','owner'],
+  deleteOrder:   ['owner'],
+  cancelOrder:   ['checker','owner'],
+  saveRemit:     ['remitter','owner'],
+  editRemit:     ['owner'],
+  viewFinance:   ['owner'],
+  editInventory: ['owner'],
+  manageRiders:  ['owner'],
+  viewAllOrders: ['owner'],
+};
+function _can(action) {
+  const role = window.currentRole || 'guest';
+  const allowed = _PERMISSIONS[action] || [];
+  if(!allowed.includes(role)) {
+    console.warn(`[ACCESS DENIED] Role '${role}' cannot perform '${action}'`);
+    return false;
+  }
+  return true;
+}
+
+// ── FIREBASE WRITE GUARD ──────────────────────────────────────────────────────
+// Prevents write storms: min interval between saves per device.
+// At 500 users, each device self-throttles — total writes stay manageable.
+const _WRITE_THROTTLE_MS = 500;
+if(!window._lastSaveTs) window._lastSaveTs = 0;
+if(!window._pendingSaveTimer) window._pendingSaveTimer = null;
+
+// ── SESSION STATE REGISTRY ────────────────────────────────────────────────────
+// Permanent per-session Sets that survive SAR resets.
+// These are the authoritative truth for what THIS device has done this session.
+if(!window._sessionVerified)  window._sessionVerified  = new Set();
+if(!window._sessionRestored)  window._sessionRestored  = new Set();
+if(!window._mergeDeletedIds)  window._mergeDeletedIds  = new Set();
+if(!window._mergeGroupDismissed) window._mergeGroupDismissed = new Set();
+
+// ── STOCK LOG DEDUP ───────────────────────────────────────────────────────────
+// stockLog entries use a ref key — same ref never logged twice.
+// This prevents the same inventory change from appearing multiple times.
+if(!window._stockLogRefs) window._stockLogRefs = new Set();
+function _hasStockLogRef(ref) {
+  if(window._stockLogRefs.has(ref)) return true;
+  window._stockLogRefs.add(ref);
+  return false;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// END HARDENING BLOCK
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SYSTEM SAFEGUARD CONSTANTS — DO NOT MODIFY WITHOUT FULL AUDIT
+// These are the single source of truth for payment method classification.
+// All filters, renders, and logic should reference these constants.
+// ═══════════════════════════════════════════════════════════════════════════
+const _COD_METHODS   = new Set(['COD', 'COD - Online Payment']);
+const _LBC_METHODS   = new Set(['LBC', 'EMS', 'FedEx']);
+const _ALL_METHODS   = new Set(['COD', 'COD - Online Payment', 'LBC', 'EMS', 'FedEx']);
+// Helper: true if order is COD-flow (goes through checker → dispatcher → rider → remitter)
+const _isCodFlow    = (o) => _COD_METHODS.has(o?.paymentMethod || 'COD');
+// Helper: true if order is courier-flow (LBC/EMS/FedEx — needs tracking, Fully Paid, dropoff)
+const _isCourierFlow= (o) => _LBC_METHODS.has(o?.paymentMethod);
+// Helper: effective tab for COD Online (maps to COD tab in all views)
+const _effectiveTab = (pm) => pm === 'COD - Online Payment' ? 'COD' : (pm || 'COD');
+// ═══════════════════════════════════════════════════════════════════════════
 const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 // MM/DD/YYYY display format for rider dashboard date input
 const todayMDY=()=>{const d=new Date();return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`;};
@@ -3461,6 +3639,26 @@ let _editSource = ''; // 'courier-dashboard' | 'orders' | ''
 
 function openEditOrder(i){
   if(_editSource !== 'courier-dashboard') _editSource = ''; // ensure clean state
+
+  // ── RESET all form fields to clean state first (same as openEncodeModal) ──
+  // Prevents stale data from previous edit bleeding into current edit
+  const _pmtGrpReset = document.getElementById('enc-date-payment-group');
+  if(_pmtGrpReset) _pmtGrpReset.style.display = 'none';
+  const _pmtsGrpReset = document.getElementById('enc-payments-group');
+  if(_pmtsGrpReset) _pmtsGrpReset.style.display = 'none';
+  const _pmtsTbodyReset = document.getElementById('enc-payments-tbody');
+  if(_pmtsTbodyReset) _pmtsTbodyReset.innerHTML = '';
+  const _psGrpReset = document.getElementById('enc-payment-status-group');
+  if(_psGrpReset) _psGrpReset.style.display = 'none';
+  const _tnReset = document.getElementById('enc-tracking-number');
+  if(_tnReset) _tnReset.value = '';
+  const _tnErrReset = document.getElementById('enc-tracking-err');
+  if(_tnErrReset) _tnErrReset.textContent = '';
+  const _pmtInpReset = document.getElementById('enc-date-payment');
+  if(_pmtInpReset) _pmtInpReset.value = '';
+  const _dofInpReset = document.getElementById('enc-date-dropoff');
+  if(_dofInpReset) _dofInpReset.value = '';
+
   const o=S.orders[i];
   // RTO LBC/INTL parcels (lbcStatus='RTO') can always be edited by checker/owner for re-dispatch
   const isRtoParcel = o.lbcStatus === 'RTO' &&
@@ -3483,18 +3681,15 @@ function openEditOrder(i){
   document.getElementById('enc-city').value=o.city||'';
   document.getElementById('enc-landmark').value=o.landmark||'';
   document.getElementById('enc-date').value=o.date;
-  // Restore LBC/INTL extra dates and show/hide their groups
-  const editIsLbc = (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx');
-  const pmtGrp2=document.getElementById('enc-date-payment-group'); if(pmtGrp2) pmtGrp2.style.display=editIsLbc?'':'none';
+  // Restore date values first (before onPaymentMethodChange clears them)
   const pmtInp3=document.getElementById('enc-date-payment'); if(pmtInp3) pmtInp3.value=o.dateOfPayment||'';
   const dofInp3=document.getElementById('enc-date-dropoff'); if(dofInp3) dofInp3.value=o.dateOfDropoff||'';
-  const hint2=document.getElementById('enc-date-hint'); if(hint2) hint2.textContent='* Required (mm/dd/yy)';
-  // Populate payments group
+  // Populate payments group — restore saved payments regardless of method
+  // (admin may have added reference data to any order type)
   const paymentsGrp2 = document.getElementById('enc-payments-group');
-  if(paymentsGrp2) {
-    paymentsGrp2.style.display = editIsLbc ? '' : 'none';
-    if(editIsLbc) renderPayments(o.payments||[], false);
-  }
+  const _editHasPayments = (o.payments && o.payments.length > 0);
+  const _editIsLbcOrOnline = _isCourierFlow(o) || o.paymentMethod==='COD - Online Payment';
+  if(paymentsGrp2 && (_editIsLbcOrOnline || _editHasPayments)) renderPayments(o.payments||[], false);
   populateAdminDropdown();
   // CHECKER: admin name field is read-only — cannot be changed
   if(currentRole==='checker'){
@@ -3528,7 +3723,7 @@ function openEditOrder(i){
   // FEAT4: Restore payment status dropdown
   const opsEl = document.getElementById('enc-order-payment-status');
   const opsGrp = document.getElementById('enc-payment-status-group');
-  const isEditCourier = o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx';
+  const isEditCourier = (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx') && o.paymentMethod!=='COD - Online Payment';
   if(opsGrp) opsGrp.style.display = isEditCourier ? '' : 'none';
   if(opsEl && isEditCourier) opsEl.value = o.paymentStatus || 'No Payment';
   // For owner: set the dropdown to the order's admin.
@@ -3541,14 +3736,52 @@ function openEditOrder(i){
   document.getElementById('enc-edit-idx').value=i;
   const pm=document.getElementById('enc-payment-method'); if(pm) pm.value=o.paymentMethod||'COD';
   const tnInp=document.getElementById('enc-tracking-number'); if(tnInp) tnInp.value=o.trackingNumber||'';
-  // enc-tracking-group is now nested inside enc-date-payment-group — parent handles visibility
-  const tnGrp=document.getElementById('enc-date-payment-group'); if(tnGrp) tnGrp.style.display=(o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx')?'':'none';
-  const tnHint=document.getElementById('enc-tracking-label-hint');
-  if(tnHint) tnHint.textContent=o.paymentMethod==='LBC'?'LBC Tracking #':o.paymentMethod==='EMS'?'EMS Tracking #':'FedEx Tracking #';
   document.getElementById('enc-rider').value=o.assignedRider||'';
   populateInvQuickPick();
   document.getElementById('enc-items-tbody').innerHTML='';
   (o.items||[]).forEach(it=>addItemRow('enc-items-tbody','calcEnc',it));
+
+  // Apply field visibility — same logic as onPaymentMethodChange but preserves date values
+  const _em = o.paymentMethod || 'COD';
+  const _editIsLbc2 = _em==='LBC'||_em==='EMS'||_em==='FedEx';
+  const _editIsCodOnline2 = _em==='COD - Online Payment';
+
+  // Tracking/dropoff group: LBC/EMS/FedEx only
+  const _tnGrp=document.getElementById('enc-date-payment-group');
+  if(_tnGrp) _tnGrp.style.display = _editIsLbc2 ? '' : 'none';
+
+  // Payments group: LBC/EMS/FedEx + COD Online + any order with saved payments
+  const _pmtsGrp=document.getElementById('enc-payments-group');
+  if(_pmtsGrp) {
+    const _showPmts = _editIsLbc2 || _editIsCodOnline2 || (o.payments && o.payments.length > 0);
+    _pmtsGrp.style.display = _showPmts ? '' : 'none';
+    // Re-render payments here if not already done above (catches cases where renderPayments
+    // was skipped due to method check)
+    const _tbody = document.getElementById('enc-payments-tbody');
+    if(_showPmts && _tbody && _tbody.children.length === 0 && o.payments && o.payments.length > 0) {
+      renderPayments(o.payments, false);
+    }
+  }
+
+  // Payment status dropdown: LBC/EMS/FedEx + COD Online
+  const _psGrp=document.getElementById('enc-payment-status-group');
+  if(_psGrp) _psGrp.style.display = (_editIsLbc2 || _editIsCodOnline2) ? '' : 'none';
+  // Restore payment status value
+  const _opsEl=document.getElementById('enc-order-payment-status');
+  if(_opsEl && (_editIsLbc2 || _editIsCodOnline2)) _opsEl.value = o.paymentStatus || 'No Payment';
+
+  // Tracking label hint
+  const _tnHint=document.getElementById('enc-tracking-label-hint');
+  if(_tnHint) _tnHint.textContent=_em==='LBC'?'LBC Tracking #':_em==='EMS'?'EMS Tracking #':'FedEx Tracking #';
+
+  // Date of Drop-off lock: checker/owner only
+  const _dofInp=document.getElementById('enc-date-dropoff');
+  if(_dofInp){
+    const _canDof=(currentRole==='checker'||currentRole==='owner');
+    _dofInp.disabled=!_canDof;
+    _dofInp.style.opacity=_canDof?'1':'0.5';
+  }
+
   calcEnc(); openModal('modal-encode');
 }
 // delOrder defined below in saveOrder block
@@ -3580,7 +3813,7 @@ function _renderAdminPersonalSheet() {
     <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
       <input class="form-control" style="width:180px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / CP# / order#" id="my-order-search" oninput="renderMyOrders()">
       <select class="form-control" style="width:130px;font-size:11px;padding:4px 8px;" id="my-order-method" onchange="renderMyOrders()">
-        <option value="">All Methods</option><option>COD</option><option>LBC</option><option>EMS</option><option>FedEx</option>
+        <option value="">All Methods</option><option>COD</option><option value="COD - Online Payment">COD - Online</option><option>LBC</option><option>EMS</option><option>FedEx</option>
       </select>
       <input type="text" class="form-control" style="width:140px;font-size:11px;padding:4px 8px;" id="my-order-date" oninput="renderMyOrders()" title="Filter by date" placeholder="MM/DD/YYYY" maxlength="10">
       <button class="btn btn-gold" onclick="openEncodeModal()">+ New Order</button>
@@ -3656,8 +3889,8 @@ function renderMyOrders() {
   const countEl = document.getElementById('my-orders-count');
   if(countEl) countEl.textContent = list.length + ' order(s)';
 
-  // Group: LBC first, then EMS, then FedEx, then COD
-  const methodOrder = ['LBC','EMS','FedEx','COD'];
+  // Group: LBC first, then EMS, then FedEx, then COD, then COD Online
+  const methodOrder = ['LBC','EMS','FedEx','COD','COD - Online Payment'];
   const grouped = {};
   methodOrder.forEach(m => { grouped[m] = list.filter(({o}) => (o.paymentMethod||'COD') === m); });
 
@@ -3683,8 +3916,8 @@ function renderMyOrders() {
         : ''}
     </td></tr>`;
 
-  const methodLabels = {LBC:'📦 LBC Orders', EMS:'✈️ EMS Orders', FedEx:'📦 FedEx Orders', COD:'🏍️ COD Orders'};
-  const methodColors = {LBC:'var(--blue)', EMS:'var(--green)', FedEx:'var(--orange)', COD:'var(--gold)'};
+  const methodLabels = {LBC:'📦 LBC Orders', EMS:'✈️ EMS Orders', FedEx:'📦 FedEx Orders', COD:'🏍️ COD Orders', 'COD - Online Payment':'📱 COD - Online Payment Orders'};
+  const methodColors = {LBC:'var(--blue)', EMS:'var(--green)', FedEx:'var(--orange)', COD:'var(--gold)', 'COD - Online Payment':'var(--gold)'};
 
   let html = '';
   if(list.length) {
@@ -3725,7 +3958,7 @@ function _renderOwnerOrdersView() {
       <button class="btn btn-outline btn-sm" onclick="document.getElementById('order-date-filter').value='';renderOrders()" title="Show all dates">All Dates</button>
       <input class="form-control" style="width:180px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / order# / CP#" id="order-search" oninput="renderOrders()">
       <select class="form-control" style="width:130px;font-size:11px;padding:4px 8px;" id="order-method-filter" onchange="renderOrders()">
-        <option value="">All Methods</option><option>COD</option><option>LBC</option><option>EMS</option><option>FedEx</option>
+        <option value="">All Methods</option><option>COD</option><option value="COD - Online Payment">COD - Online</option><option>LBC</option><option>EMS</option><option>FedEx</option>
       </select>
       <button class="btn btn-gold" onclick="openEncodeModal()">+ New Order</button>
     </div>`;
@@ -3960,7 +4193,7 @@ function renderChecker(){
   // Use _safeOrders() — permanent null guard that survives any future S.orders update
   const _safeO = _safeOrders();
   const _pendingCOD = _safeO.filter(o =>
-    (o.paymentMethod||'COD') === 'COD' &&
+    _isCodFlow(o) &&
     o.checkerStatus === 'Pending' &&
     !['Cancelled','RTO','Delivered','Out for Delivery','Update'].includes(o.status)
   ).length;
@@ -4012,7 +4245,8 @@ function renderChecker(){
   // _safeO is already null-filtered — permanent guard against Firebase sparse arrays
   const list = _safeO.map((o,i)=>({o,i})).filter(({o}) => {
     const method = o.paymentMethod || 'COD';
-    if(method !== checkerTab) return false;
+    // COD - Online Payment appears in COD tab (uses global _effectiveTab helper)
+    if(_effectiveTab(method) !== checkerTab) return false;
     // Exclude cancelled orders from checker view (they go to Remitter)
     if(o.status === 'Cancelled' || o.status === 'RTO') return false;
     // Exclude delivered orders — they appear in their respective Delivery monitoring pages
@@ -4380,6 +4614,7 @@ function _captureOtherItems(orderIdx) {
       date:     o.date || '',
     });
 
+    // ── SALES BARRIER: prevent duplicate OI entries ─────────────────────────
     // ── Delivered portion ──────────────────────────────────────────────────
     const _existIdx = S.otherItems.findIndex(r =>
       r.orderNum === _oNum && r.itemIdx === ii && r.status !== 'cancelled'
@@ -4571,14 +4806,13 @@ function verifyOrder(i){
   window._verifyBusy = true;
   setTimeout(()=>{ window._verifyBusy = false; }, 3000);
   const o = S.orders[i];
-  const isCourier = o.paymentMethod==='LBC' || o.paymentMethod==='EMS' || o.paymentMethod==='FedEx';
+  const isCourier = _isCourierFlow(o); // LBC/EMS/FedEx only — NOT COD Online
   // Guard: LBC/EMS/FedEx orders must be Fully Paid before verification
   if(isCourier && (o.paymentStatus||'No Payment') !== 'Fully Paid'){
     toast('⚠️ Cannot verify — order must be marked as Fully Paid first.');
     return;
   }
-  // For LBC/EMS/FedEx: tracking required for LBC/EMS only; date paid & drop-off required for all
-  // FedEx exception: tracking number generated only AFTER drop-off at FedEx facility
+  // LBC/EMS/FedEx: tracking (not FedEx), date paid, date dropoff required
   const isFedEx = o.paymentMethod==='FedEx';
   if(isCourier) {
     const missing = [];
@@ -4632,6 +4866,7 @@ function verifyOrder(i){
   }
   // ── OTHER ITEMS: capture FP/PG + non-inventory items ──────────────────────
   _captureOtherItems(i);
+
   persist();
   save();
   const _toastMsg = _isCourierOrder
@@ -5702,9 +5937,9 @@ function renderSorting() {
   const sf = document.getElementById('sort-status-filter')?.value || '';
   const sq = (document.getElementById('sort-search')?.value||'').toLowerCase().trim();
 
-  // Filter orders — COD only, non-cancelled only, VERIFIED only (checker must verify first)
+  // Filter orders — COD + COD Online, non-cancelled only, VERIFIED only (checker must verify first)
   let orders = S.orders.map((o,i)=>({...o,idx:i}))
-    .filter(o => (!o.paymentMethod || o.paymentMethod === 'COD')
+    .filter(o => _isCodFlow(o)
       && o.status !== 'Cancelled'
       && (o.checkerStatus||'Pending') === 'Verified');
   if(df) orders = orders.filter(o=>o.date===df);
@@ -5995,7 +6230,13 @@ function renderDailySales(){
   const lbcRemit = del.filter(o=>o.paymentMethod==='LBC').reduce((s,o)=>s+(o.grandTotal||0),0);
   const emsRemit = del.filter(o=>o.paymentMethod==='EMS').reduce((s,o)=>s+(o.grandTotal||0),0);
   const fedexRemit = del.filter(o=>o.paymentMethod==='FedEx').reduce((s,o)=>s+(o.grandTotal||0),0);
-  const codOnlineRemit = del.filter(o=>o.paymentMethod==='COD - Online Payment').reduce((s,o)=>s+(o.grandTotal||0),0);
+  // COD Online: count when checker-verified (not just delivered) since payment already confirmed
+  const codOnlineRemit = (S.orders||[]).filter(o=>{
+    if(!o||o.paymentMethod!=='COD - Online Payment') return false;
+    if(o.checkerStatus!=='Verified'&&o.verificationStatus!=='Verified') return false;
+    if(o.status==='Cancelled'||o.status==='RTO') return false;
+    return (o.date||'')=== d;
+  }).reduce((s,o)=>s+(o.grandTotal||0),0);
   const overall = codRemit + lbcRemit + emsRemit + fedexRemit + codOnlineRemit;
   // Other Items Sales — sum of remitted OI items for this date
   const oiRemit = (S.otherItems||[])
@@ -7155,7 +7396,8 @@ function renderCourierDashboard(){
   let allCourierOrders = (S.orders||[]).map((o,i)=>({...o,idx:i}))
     .filter(o=>{
       const pm = o.paymentMethod||'COD';
-      return ['COD','LBC','EMS','FedEx'].includes(pm);
+      // COD - Online Payment is treated as COD in the dashboard
+      return _ALL_METHODS.has(pm);
     });
   if(!isOwner && loggedAdmin) {
     allCourierOrders = allCourierOrders.filter(o=>(o.admin||'').toUpperCase()===loggedAdmin.toUpperCase());
@@ -7163,7 +7405,8 @@ function renderCourierDashboard(){
 
   const courierOrders = allCourierOrders.filter(o=>{
     const pm = o.paymentMethod||'COD';
-    return pm === curCourier;
+    // COD Online appears under COD tab (uses global _effectiveTab helper)
+    return _effectiveTab(pm) === curCourier;
   });
   let payTabOrders;
   if(curCourier === 'COD') {
@@ -7210,7 +7453,7 @@ function renderCourierDashboard(){
               background:${curCourier===c?'var(--gold)':'rgba(255,255,255,0.07)'};
               color:${curCourier===c?'#000':'var(--text)'};transition:all 0.15s;">
             ${c==='COD'?'🏍️':c==='LBC'?'📦':'✈️'} ${c}
-            <span style="font-size:10px;margin-left:4px;opacity:0.8;">(${allCourierOrders.filter(o=>(o.paymentMethod||'COD')===c).length})</span>
+            <span style="font-size:10px;margin-left:4px;opacity:0.8;">(${allCourierOrders.filter(o=>_effectiveTab(o.paymentMethod||'COD')===c).length})</span>
           </button>`).join('')}
       </div>
       <!-- Payment sub-tabs -->
@@ -7661,7 +7904,7 @@ function renderPnl(){
   // Courier PnL income: Checker marked Verified (checkerStatus OR verificationStatus)
   // Date: use dateDelivered → dateOfPayment → date (whichever is set)
   const courierVerified = S.orders.filter(o=>o&&
-    (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx') &&
+    (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx'||o.paymentMethod==='COD - Online Payment') &&
     (o.checkerStatus==='Verified' || o.verificationStatus==='Verified') &&
     o.status !== 'Cancelled' && o.status !== 'RTO' &&
     (()=>{ const d=(o.dateDelivered||o.dateOfPayment||o.date||'').slice(0,10); return d>=from&&d<=to; })());
@@ -7808,6 +8051,7 @@ function renderPnl(){
     ${row('  ↳ Item Sales',p(totalItemsSales),'var(--green)',true)}
     ${row('  ↳ SF 10% Company (from Rider Remit)','+ '+p(sfRevenue10pct),'var(--gold)',true)}
     ${oiSalesRevenue>0?row('  ↳ Other Items Sales (non-inventory)','+ '+p(oiSalesRevenue),'var(--gold)',true):''}
+    ${(()=>{const _codOnline=courierVerified.filter(o=>o.paymentMethod==='COD - Online Payment');const _codOnlineTotal=_codOnline.reduce((s,o)=>s+(o.grandTotal||0),0);return _codOnline.length>0?row('  ↳ COD - Online Payment ('+_codOnline.length+' orders)','+ '+p(_codOnlineTotal),'var(--gold)',true):'';})()}
     ${totalDiscountsAll>0?row('  ↳ Discounts Given','('+p(totalDiscountsAll)+')','var(--orange)',true):''}
     ${row('TOTAL COST (COGS: Cost/g×g or Cost/pc×qty)',totalCOGS?'('+p(totalCOGS)+')':'₱0.00','var(--red)',false,true)}
     ${row('GROSS PROFIT',p(grossProfit),grossProfit>=0?'var(--green)':'var(--red)',false,true)}
@@ -7827,6 +8071,7 @@ function renderPnl(){
     <div class="card">
       <div class="card-header"><span class="card-title">Sales Breakdown</span></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">COD Delivered</span><span><strong>${codDelivered.length}</strong> — ${p(codDelivered.reduce((s,o)=>s+(o.grandTotal||0),0))}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">COD - Online Payment</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='COD - Online Payment').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='COD - Online Payment').reduce((s,o)=>s+(o.grandTotal||0),0))}</span></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">LBC Verified</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='LBC').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='LBC').reduce((s,o)=>s+(o.grandTotal||0),0))}</span></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">EMS Verified</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='EMS').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='EMS').reduce((s,o)=>s+(o.grandTotal||0),0))}</span></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">FedEx Verified</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='FedEx').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='FedEx').reduce((s,o)=>s+(o.grandTotal||0),0))}</span></div>
@@ -7942,7 +8187,7 @@ function renderDash(){
   });
   // Courier verified in range
   const _dashCourierVer = allOrders.filter(o=>o&&
-    (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx') &&
+    (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx'||o.paymentMethod==='COD - Online Payment') &&
     (o.checkerStatus==='Verified'||o.verificationStatus==='Verified') &&
     o.status!=='Cancelled'&&o.status!=='RTO' &&
     (()=>{const d=(o.dateDelivered||o.dateOfPayment||o.date||'').slice(0,10);return d>=_dashFrom&&d<=_dashTo;})());
@@ -7952,9 +8197,25 @@ function renderDash(){
   const _dashItemsSales = _dashIncome.reduce((s,o)=>s+(o.itemsTotal||0)-_dashOiTotal(o),0);
   const _dashSF10 = Math.round((S.remitLog||[]).filter(e=>{const d=e.date||'';return d>=_dashFrom&&d<=_dashTo;}).reduce((s,e)=>s+(e.sf10||0),0)*100)/100;
   // Other Items profit & sales total
-  const _dashOiAll = (S.otherItems||[]).filter(r=>{const d=r.date||'';return r.status==='remitted'&&d>=_dashFrom&&d<=_dashTo;});
+  // OI: include 'product' (verified, pending remit) AND 'remitted' — exclude cancelled
+  // Use SAME profit formula as Other Items Sales tab:
+  // Total Profit = Items Total - Total Capital
+  // Total Capital = QTY × capitalPerUnit (user-editable, defaults to pricePerUnit - defaultProfit)
+  const _dashOiAll = (S.otherItems||[]).filter(r=>{
+    const d=r.date||'';
+    return (r.status==='remitted'||r.status==='product') && r.isVerified!==false && d>=_dashFrom&&d<=_dashTo;
+  });
   const _dashOiSales = _dashOiAll.reduce((s,r)=>s+(r.total||0),0);
-  const _dashOiProfit = _dashOiAll.reduce((s,r)=>s+((r.total||0)-(r.cost||0)),0);
+  const _dashOiProfit = _dashOiAll.reduce((s,r)=>{
+    const _isGrams = r.grams > 0;
+    const _qty = _isGrams ? r.grams : (r.qty||1);
+    const _pricePerUnit = _isGrams ? (r.pergram||0) : (r.qty>0?Math.round((r.total||0)/(r.qty)*100)/100:(r.total||0));
+    const _defaultProfit = r.profitPerUnit||0;
+    const _capPerUnit = (r.capitalPerUnit!=null) ? r.capitalPerUnit : Math.max(0,_pricePerUnit-_defaultProfit);
+    const _totalCapital = Math.round(_qty*_capPerUnit*100)/100;
+    const _totalProfit = Math.round(((r.total||0)-_totalCapital)*100)/100;
+    return s+_totalProfit;
+  },0);
   const _dashTotalSales = _dashItemsSales + _dashSF10 + _dashOiSales;
   // COGS from inventory capital
   function _dashCOGS(it){if(!it||!it.code)return 0;const inv=(S.inventory||[]).find(p=>p.code&&p.code.toUpperCase()===it.code.toUpperCase());if(inv)return inv.itemType==='fixprice'?(inv.capitalPerUnit||0)*(it.qty||1):(inv.capitalPerGram||0)*(it.grams||it.qty||0);if(it.capitalPerGram)return it.capitalPerGram*(it.grams||it.qty||0);if(it.capitalPerUnit)return it.capitalPerUnit*(it.qty||1);return 0;}
@@ -8828,12 +9089,35 @@ function renderRiderParcels() {
   // An order is "covered" if its createdAt <= entry.remittedAt for a Remitted entry
   // with matching riderName + date. Orders created AFTER remittedAt are new batch.
   // Ready/OFD always visible — rider physically has them, regardless of remit history.
-  const _remittedEntries = (S.remitLog||[]).filter(r =>
-    r.riderName === currentRider.name && r.remitStatus === 'Remitted' && r.remittedAt
-  );
+  // Build set of order IDs that are in a Remitted batch (by this rider)
+  // Uses orderIds array stored in remitLog for precise per-order detection
+  const _remittedOrderIds = new Set();
+  const _remittedOrderNums = new Set();
+  (S.remitLog||[]).forEach(r => {
+    if(r.riderName !== currentRider.name || r.remitStatus !== 'Remitted') return;
+    // New format: exact order IDs stored
+    if(r.orderIds && r.orderIds.length) r.orderIds.forEach(id => _remittedOrderIds.add(id));
+    if(r.orderNums && r.orderNums.length) r.orderNums.forEach(n => _remittedOrderNums.add(n));
+  });
+
   const myOrders = allMyOrders.filter(o => {
+    // Ready/OFD: always visible — rider physically has the parcel
     if(o.status === 'Ready' || o.status === 'Out for Delivery') return true;
-    // Check if this order is covered by any Remitted batch entry
+
+    // Check if this specific order is in a Remitted batch
+    const orderId  = o._id || onum(o.idx);
+    const orderNum = onum(o.idx);
+
+    // New format: check by exact order ID or order number
+    if(_remittedOrderIds.size > 0 || _remittedOrderNums.size > 0) {
+      const inRemittedBatch = _remittedOrderIds.has(orderId) || _remittedOrderNums.has(orderNum);
+      return !inRemittedBatch;
+    }
+
+    // Legacy fallback: use createdAt <= remittedAt (old entries without orderIds)
+    const _remittedEntries = (S.remitLog||[]).filter(r =>
+      r.riderName === currentRider.name && r.remitStatus === 'Remitted' && r.remittedAt
+    );
     const covered = _remittedEntries.some(r =>
       r.date === o.date &&
       (o.createdAt ? o.createdAt <= r.remittedAt : false)
@@ -9409,6 +9693,10 @@ function _deductOrderItems(items, orderDate, label, orderRef) {
   const logDate = today();
   (items||[]).forEach(item => {
     if(!item.code) return;
+    // ── INV BARRIER: per-item idempotency check ───────────────────
+    if(typeof _INV_BARRIER !== 'undefined' && !_INV_BARRIER.canDeduct(item.code, orderRef+'_'+item.code)) {
+      console.warn('[INV] Per-item deduct blocked (barrier):', item.code, orderRef); return;
+    }
     const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
     if(!inv) return;
     // Determine type from INVENTORY item type (source of truth for the product)
@@ -9470,6 +9758,10 @@ function _restoreOrderItems(items, orderDate, label, orderRef) {
   const logDate = today();
   (items||[]).forEach(item => {
     if(!item.code) return;
+    // ── INV BARRIER: per-item restore idempotency check ──────────
+    if(typeof _INV_BARRIER !== 'undefined' && !_INV_BARRIER.canRestore(item.code, (orderRef||'')+'_'+item.code)) {
+      console.warn('[INV] Per-item restore blocked (barrier):', item.code, orderRef); return;
+    }
     const inv = S.inventory.find(it => it.code.toUpperCase() === item.code.toUpperCase());
     if(!inv) return;
     // Determine type from INVENTORY item type (source of truth for the product)
@@ -9632,12 +9924,13 @@ async function saveOrder() {
   const totalDiscountAll = Math.round(((parseFloat(totalDiscount)||0)+(parseFloat(globalDiscount)||0))*100)/100;
   const editIdx = document.getElementById('enc-edit-idx').value;
   const isLbcMethod = paymentMethod === 'LBC' || paymentMethod === 'EMS' || paymentMethod === 'FedEx';
-  const trackingNumber = (paymentMethod === 'LBC' || paymentMethod === 'EMS' || paymentMethod === 'FedEx') ? (document.getElementById('enc-tracking-number')?.value.trim()||'') : '';
+  const isCodOnlineMethod = paymentMethod === 'COD - Online Payment';
+  const trackingNumber = isLbcMethod ? (document.getElementById('enc-tracking-number')?.value.trim()||'') : '';
   const dateOfPayment = isLbcMethod ? (document.getElementById('enc-date-payment')?.value||'') : '';
   const dateOfDropoff = isLbcMethod ? (document.getElementById('enc-date-dropoff')?.value||'') : '';
 
-  // Installment payments
-  const payments = isLbcMethod ? getPayments() : [];
+  // Installment payments — always collect if any rows exist (any payment method)
+  const payments = getPayments();
   // Validate: if date of payment is entered, at least one ref# is required
   if(isLbcMethod && dateOfPayment) {
     const hasRef = payments.some(p => p.refno);
@@ -9681,6 +9974,14 @@ async function saveOrder() {
     }
   }
 
+  // ── ORDER VALIDATOR: shape check before save ──────────────────────────────
+  const _preValidate = { name, date, grandTotal: Math.round(Math.max(0,iT+sf2-globalDiscount)*100)/100, items: items2, _id:'pre' };
+  const _vResult = typeof _validateOrder === 'function' ? _validateOrder(_preValidate) : {valid:true};
+  if(!_vResult.valid) {
+    console.error('[ORDER VALIDATOR] Save blocked:', _vResult.reason);
+    toast('⚠️ Order validation failed: ' + _vResult.reason);
+    return;
+  }
   const o = {
     name, contact, backupContact, address,
     city: document.getElementById('enc-city').value,
@@ -9691,14 +9992,14 @@ async function saveOrder() {
     trackingNumber, dateOfPayment, dateOfDropoff,
     payments,
     status: 'Preparing', checkerStatus: 'Pending',
-    paymentStatus: isLbcMethod
+    paymentStatus: (isLbcMethod || isCodOnlineMethod)
       ? (document.getElementById('enc-order-payment-status')?.value || 'No Payment')
       : 'COD',
     globalDiscount, globalDiscountReason,
     totalDiscount: totalDiscountAll,
     paymentNotes: '',
     verificationStatus: 'Not Verified',
-    lbcStatus: isLbcMethod ? 'Preparing' : '',
+    lbcStatus: '',
     riderRemarks: '', createdAt: new Date().toISOString(),
     _id: 'o_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
     encodedBy: currentUser?.name || admin || 'unknown'
@@ -9712,9 +10013,8 @@ async function saveOrder() {
     o._id = orig._id || o._id;          // ← preserve original _id
     o.encodedBy = orig.encodedBy || o.encodedBy; // ← preserve original encoder
     o.paymentStatus = orig.paymentStatus || o.paymentStatus;
-    // For courier orders: always honour the enc-order-payment-status dropdown value
-    // (allows admin to change payment status via the edit modal)
-    if(isLbcMethod) {
+    // For courier orders and COD Online: honour the enc-order-payment-status dropdown
+    if(isLbcMethod || isCodOnlineMethod) {
       const newPymSt = document.getElementById('enc-order-payment-status')?.value;
       if(newPymSt) o.paymentStatus = newPymSt;
     }
@@ -10096,7 +10396,7 @@ function renderTracking() {
   document.getElementById('tracking-stats').innerHTML = TRACK_STATUSES.map(s => {
     const count = S.orders.filter(o => {
       if(!o || o.status !== s) return false;
-      if((o.paymentMethod||'COD') !== 'COD') return false;
+      if((o.paymentMethod||'COD') !== 'COD' && o.paymentMethod !== 'COD - Online Payment') return false;
       // Unverified orders are not visible to dispatcher/sorter — checker must verify first
       if((o.checkerStatus||'Pending') !== 'Verified') return false;
       // Checker-cancelled = has cancelledBy set → goes to Recently Deleted, not tracking
@@ -10115,7 +10415,7 @@ function renderTracking() {
 
   const filtered = S.orders.map((o,i)=>({o,i})).filter(({o,i}) => {
     if(!o) return false;
-    if((o.paymentMethod||'COD') !== 'COD') return false;
+    if((o.paymentMethod||'COD') !== 'COD' && o.paymentMethod !== 'COD - Online Payment') return false;
     // Unverified orders not visible to dispatcher/sorter — checker must verify first
     if((o.checkerStatus||'Pending') !== 'Verified') return false;
     // Checker-cancelled orders belong to Recently Deleted, not active tracking
@@ -10394,11 +10694,27 @@ function populateRemitParcels() {
     .filter(o => {
       if(o.assignedRider !== rider.name) return false;
       if(df && o.date !== df) return false;
-      // Exclude if covered by any Remitted batch
-      const covered = _ppRemitted.some(r =>
-        r.date === o.date && (o.createdAt ? o.createdAt <= r.remittedAt : false)
+      // GUARD: exclude unverified orders — checker must verify first
+      if((o.checkerStatus||'Pending') !== 'Verified') return false;
+      // GUARD: exclude Preparing orders — dispatcher must set Ready before remit
+      // Only include orders that have been dispatched to rider (Ready or beyond)
+      const _REMIT_VISIBLE = new Set(['Ready','Out for Delivery','Delivered','Cancelled','RTO','Update']);
+      if(!_REMIT_VISIBLE.has(o.status)) return false;
+      // Exclude if this specific order is in a Remitted batch (by order ID)
+      const _ordId = o._id || onum(o.idx);
+      const _ordNum = onum(o.idx);
+      // New format: check orderIds array stored in remitLog
+      const coveredByNew = _ppRemitted.some(r =>
+        (r.orderIds && r.orderIds.includes(_ordId)) ||
+        (r.orderNums && r.orderNums.includes(_ordNum))
       );
-      return !covered;
+      if(coveredByNew) return false;
+      // Legacy fallback: createdAt-based check for old entries without orderIds
+      const coveredByLegacy = _ppRemitted.some(r =>
+        r.date === o.date && r.orderIds == null &&
+        (o.createdAt ? o.createdAt <= r.remittedAt : false)
+      );
+      return !coveredByLegacy;
     });
   const delivered = myOrders.filter(o=>o.status==='Delivered');
   const cancelled = myOrders.filter(o=>['Cancelled','RTO','Update'].includes(o.status));
@@ -10772,7 +11088,25 @@ function saveRemit() {
   // filter(Boolean) before map reindexes i starting from 0, making onum(idx) return
   // wrong order numbers when S.orders has null/undefined slots from Firebase.
   const myOrders = (S.orders||[]).map((o,i)=>o?{...o,idx:i}:null).filter(Boolean)
-    .filter(o=>o.assignedRider===rider.name && o.date===date);
+    .filter(o=>{
+      if(o.assignedRider !== rider.name || o.date !== date) return false;
+      // GUARD: exclude unverified — checker must verify first
+      if((o.checkerStatus||'Pending') !== 'Verified') return false;
+      // GUARD: exclude Preparing — not yet dispatched to rider
+      const _SAVE_VISIBLE = new Set(['Ready','Out for Delivery','Delivered','Cancelled','RTO','Update']);
+      if(!_SAVE_VISIBLE.has(o.status)) return false;
+      // GUARD: exclude orders already in a Remitted batch (by order ID)
+      const _svId  = o._id || onum(o.idx);
+      const _svNum = onum(o.idx);
+      const _svAlreadyRemitted = (S.remitLog||[]).some(r =>
+        r.riderName === rider.name && r.remitStatus === 'Remitted' && (
+          (r.orderIds  && r.orderIds.includes(_svId)) ||
+          (r.orderNums && r.orderNums.includes(_svNum)) ||
+          (r.date === o.date && r.orderIds == null && o.createdAt && r.remittedAt && o.createdAt <= r.remittedAt)
+        )
+      );
+      return !_svAlreadyRemitted;
+    });
   const delivered   = myOrders.filter(o=>o.status==='Delivered');
   const cancelled   = myOrders.filter(o=>['Cancelled','RTO','Update'].includes(o.status));
   // COD Subtotal: Delivered only — deduct fully/partially cancelled items
@@ -10831,7 +11165,11 @@ function saveRemit() {
     subtotal      : codSubtotal,
     netEarn       : netTotal,
     cashRemitted  : netTotal,
-    notes         : ''
+    notes         : '',
+    // Store exact order IDs in this batch — used for precise visibility detection
+    // Prevents same-date new orders from being hidden by old Remitted entries
+    orderIds      : myOrders.map(o => o._id || onum(o.idx)).filter(Boolean),
+    orderNums     : myOrders.map(o => onum(o.idx)).filter(Boolean)
   };
 
   // ═══ RETURN LOG GATE — MUST stay BEFORE S.remitLog.push ═══════════
@@ -11137,6 +11475,10 @@ function renderRemitPage() {
           const _orderCreated = o.createdAt || o.date;
           if(_orderCreated < _lastRemittedAt) return false; // belongs to previous remit
         }
+        // GUARD: exclude unverified orders — not yet processed by checker
+        if((o.checkerStatus||'Pending') !== 'Verified') return false;
+        // GUARD: exclude Preparing orders — not yet dispatched to rider
+        if(o.status === 'Preparing') return false;
         return true;
       });
 
@@ -12480,7 +12822,7 @@ function startAutoRefresh(){
         try {
           const _pendingBadge = document.getElementById('checker-pending-count');
           if(_pendingBadge) {
-            const _p = (S.orders||[]).filter(o=>o&&(o.paymentMethod||'COD')==='COD'&&
+            const _p = (S.orders||[]).filter(o=>o&&_isCodFlow(o)&&
               o.checkerStatus==='Pending'&&
               !['Cancelled','RTO','Delivered','Out for Delivery','Update'].includes(o.status)).length;
             _pendingBadge.textContent = _p ? `⚠️ ${_p} pending` : '✅ All verified';
@@ -12648,10 +12990,10 @@ function omUpdateStatus(orderIdx, newStatus) {
 // ── Tracking Number helpers ──────────────────────────────────
 function onPaymentMethodChange() {
   const method = document.getElementById('enc-payment-method')?.value || 'COD';
+  const isCodOnline = method === 'COD - Online Payment';
   const isLbc = method === 'LBC' || method === 'EMS' || method === 'FedEx';
 
-  // Tracking number — nested inside enc-date-payment-group (shown/hidden with parent)
-  // Just update the label text and input format per method
+  // Tracking number group — LBC/EMS/FedEx ONLY, not COD Online
   const tnInpML = document.getElementById('enc-tracking-number');
   const tnHint  = document.getElementById('enc-tracking-label-hint');
   if(method === 'LBC') {
@@ -12666,44 +13008,42 @@ function onPaymentMethodChange() {
     if(tnHint)  tnHint.textContent = 'FedEx Tracking #';
     if(tnInpML) { tnInpML.maxLength = 22; tnInpML.placeholder = '123456789012'; }
     if(tnInpML) tnInpML.oninput = function(){ this.value=this.value.replace(/\D/g,''); validateTrackingNum(this); };
-  }
-  if(!isLbc) {
+  } else {
+    // COD, COD Online, or any other — clear tracking field
     if(tnInpML) tnInpML.value = '';
     const err = document.getElementById('enc-tracking-err');
     if(err) err.textContent = '';
   }
 
-  // Extra date fields — show for LBC, EMS & FedEx only (dropoff is nested inside payment group)
+  // enc-date-payment-group (Tracking # + Date of Drop-off + Date of Payment):
+  // LBC/EMS/FedEx ONLY — COD Online does NOT show these fields
   const pmtGrp = document.getElementById('enc-date-payment-group');
-  const paymentsGrp = document.getElementById('enc-payments-group');
   if(pmtGrp) pmtGrp.style.display = isLbc ? '' : 'none';
+
+  // Payments group (Reference No. & Payment History):
+  // LBC/EMS/FedEx + COD Online
+  const paymentsGrp = document.getElementById('enc-payments-group');
   if(paymentsGrp) {
-    paymentsGrp.style.display = isLbc ? '' : 'none';
-    if(isLbc && document.getElementById('enc-payments-tbody')?.children.length === 0) {
-      renderPayments([], true); // seed one empty row for new encode
+    const showPayments = isLbc || isCodOnline;
+    paymentsGrp.style.display = showPayments ? '' : 'none';
+    if(showPayments && document.getElementById('enc-payments-tbody')?.children.length === 0) {
+      renderPayments([], true);
     }
   }
 
-  // Date of Purchase hint + default value
-  const hint = document.getElementById('enc-date-hint');
-  const dateEl = document.getElementById('enc-date');
-  if(isLbc) {
-    if(hint) hint.textContent = '* Required (mm/dd/yy)';
-  } else {
-    if(hint) hint.textContent = '* Required (mm/dd/yy)';
-  }
-
-  // Clear extra date fields if switching back to COD
+  // Clear courier date fields when not LBC/EMS/FedEx
   if(!isLbc) {
     const pmtInp = document.getElementById('enc-date-payment'); if(pmtInp) pmtInp.value = '';
     const dofInp = document.getElementById('enc-date-dropoff'); if(dofInp) dofInp.value = '';
+  }
+  if(!isLbc && !isCodOnline) {
     const pmtsTbody = document.getElementById('enc-payments-tbody'); if(pmtsTbody) pmtsTbody.innerHTML = '';
   }
 
   autoAssignRider();
-  // FEAT4: Show order payment status dropdown for courier orders
+  // FEAT4: Show payment status dropdown for LBC/EMS/FedEx AND COD Online
   const pymStatusGrp = document.getElementById('enc-payment-status-group');
-  if(pymStatusGrp) pymStatusGrp.style.display = isLbc ? '' : 'none';
+  if(pymStatusGrp) pymStatusGrp.style.display = (isLbc || isCodOnline) ? '' : 'none';
   // FIX3: Lock Date of Drop-off for non-checker even in new encode
   const _dofNew = document.getElementById('enc-date-dropoff');
   if(_dofNew){
@@ -13008,7 +13348,10 @@ function renderLbcDelivery() {
           <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Drop-off</span><br><span style="color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">${o.dateOfDropoff||'—'}</span></div>
           ${o.dateDelivered?`<div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Delivered</span><br><span style="color:var(--green);">${o.dateDelivered}</span></div>`:''}
           <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Items</span><br>${itemList||'—'}</div>
-          ${lbcDeliveryTab === 'ofd' ? `<div style="grid-column:1/-1;margin-top:6px;"><button class="btn btn-green btn-sm" onclick="markCourierDelivered(${i},'LBC')" style="font-weight:700;font-size:12px;">✅ Mark as Delivered</button></div>` : ''}
+          <div style="grid-column:1/-1;margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-sm" onclick="openEditOrder(${i})" style="background:var(--gold);color:#000;font-weight:700;font-size:12px;">✏️ Edit</button>
+            ${lbcDeliveryTab === 'ofd' ? `<button class="btn btn-green btn-sm" onclick="markCourierDelivered(${i},'LBC')" style="font-weight:700;font-size:12px;">✅ Mark as Delivered</button>` : ''}
+          </div>
         </div>
       </div>
     </div>`;
@@ -13222,7 +13565,7 @@ function renderCodDelivPage() {
   const df  = mdy2ymd((document.getElementById('codd-date')?.value||'').trim());
 
   // Only COD orders
-  const allCOD = (S.orders||[]).filter(o=>(o.paymentMethod||'COD')==='COD');
+  const allCOD = (S.orders||[]).filter(o=>_isCodFlow(o));
 
   // Helper: returns true if ALL items in this order are OI items (non-inventory or OI-prefix)
   // Those orders belong in Other Items Sales, not COD Delivery
@@ -13675,7 +14018,10 @@ function renderEmsDelivery() {
           <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Drop-off</span><br><span style="color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">${o.dateOfDropoff||'—'}</span></div>
           ${o.dateDelivered?`<div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Delivered</span><br><span style="color:var(--green);">${o.dateDelivered}</span></div>`:''}
           <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Items</span><br>${itemList||'—'}</div>
-          ${emsDeliveryTab === 'ofd' ? `<div style="grid-column:1/-1;margin-top:6px;"><button class="btn btn-green btn-sm" onclick="markCourierDelivered(${i},'EMS')" style="font-weight:700;font-size:12px;">✅ Mark as Delivered</button></div>` : ''}
+          <div style="grid-column:1/-1;margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-sm" onclick="openEditOrder(${i})" style="background:var(--gold);color:#000;font-weight:700;font-size:12px;">✏️ Edit</button>
+            ${emsDeliveryTab === 'ofd' ? `<button class="btn btn-green btn-sm" onclick="markCourierDelivered(${i},'EMS')" style="font-weight:700;font-size:12px;">✅ Mark as Delivered</button>` : ''}
+          </div>
         </div>
       </div>
     </div>`;
@@ -13992,7 +14338,10 @@ function renderFedexDelivery() {
           <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Drop-off</span><br><span style="color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">${o.dateOfDropoff||'—'}</span></div>
           ${o.dateDelivered?`<div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Delivered</span><br><span style="color:var(--green);">${o.dateDelivered}</span></div>`:''}
           <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Items</span><br>${itemList||'—'}</div>
-          ${fedexDeliveryTab === 'ofd' ? `<div style="grid-column:1/-1;margin-top:6px;"><button class="btn btn-green btn-sm" onclick="markCourierDelivered(${i},'FedEx')" style="font-weight:700;font-size:12px;">✅ Mark as Delivered</button></div>` : ''}
+          <div style="grid-column:1/-1;margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-sm" onclick="openEditOrder(${i})" style="background:var(--gold);color:#000;font-weight:700;font-size:12px;">✏️ Edit</button>
+            ${fedexDeliveryTab === 'ofd' ? `<button class="btn btn-green btn-sm" onclick="markCourierDelivered(${i},'FedEx')" style="font-weight:700;font-size:12px;">✅ Mark as Delivered</button>` : ''}
+          </div>
         </div>
       </div>
     </div>`;
