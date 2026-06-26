@@ -12891,7 +12891,6 @@ function startAutoRefresh(){
         toast('🔄 System was cleared by Owner. Data wiped on this device.');
         try { renderPage(_activePage); } catch(e) {}
         try { _reapplyOiVerifiedState(); } catch(e) {}
-        if(_activePage === 'otheritems') { try { renderOtherItemsPage(); } catch(e) {} }
         return;
       }
 
@@ -13072,8 +13071,14 @@ function startAutoRefresh(){
         emsdelivery:()=>renderEmsDelivery?.(),
         fedexdelivery:()=>renderFedexDelivery?.(),
         coddelivery:()=>{ if(typeof renderCodDelivPage==='function') renderCodDelivPage(); },
+        otheritems:()=>renderOtherItemsPage?.(),
       };
       try { renderMap[_activePage]?.(); } catch(e){}
+      // Always re-apply OI verified state after every SAR — ensures verify/unverify
+      // from another device appears immediately on this device regardless of active page
+      try { _reapplyOiVerifiedState(); } catch(e){}
+      // Always re-render Other Items if it's the active page (real-time updates)
+      if(_activePage === 'otheritems') { try { renderOtherItemsPage(); } catch(e) {} }
       if(currentRole==='rider') try{renderRiderParcels();}catch(e){}
       // Safety net: if checker page is active and new orders arrived, always re-render
       // even if renderMap already called it (idempotent, fast, prevents stuck UI)
