@@ -15140,7 +15140,7 @@ function updateMergeAddressOptions() {
   const indices = window._mergeGroupIndices || [_mergeIdxA, _mergeIdxB];
   const LABELS = ['A','B','C','D','E','F'];
 
-  function buildOptions(elId, radioName, valueFn, displayFn) {
+  function buildOptions(elId, radioName, valueFn, displayFn, extraAttrs) {
     const el = document.getElementById(elId);
     if(!el) return;
     const rows = indices.map(function(idx, n) {
@@ -15157,6 +15157,7 @@ function updateMergeAddressOptions() {
       + '<input type="radio" name="' + radioName + '" value="custom" onchange="updateMergePreview()" style="margin-top:2px;accent-color:var(--gold);">'
       + '<span><strong style="color:var(--muted);">🔘 CUSTOM</strong>'
       + ' <input type="text" id="' + elId + '-custom" placeholder="i-type ang custom value..." '
+      + (extraAttrs || '')
       + 'style="width:200px;font-size:11px;padding:2px 6px;margin-left:6px;border-radius:4px;border:1px solid var(--navy-border);background:var(--navy);color:var(--white);" '
       + 'oninput="updateMergePreview()"></span></label>');
     el.innerHTML = rows.join('');
@@ -15167,10 +15168,11 @@ function updateMergeAddressOptions() {
     function(o){ return [o.address, o.city, o.landmark].filter(Boolean).join(', ') || '—'; },
     function(o, v){ return v; });
 
-  // 📞 CP NUMBER
+  // 📞 CP NUMBER — custom input limited to 11 digits (PH mobile format)
   buildOptions('merge-cp-options', 'merge-cp',
     function(o){ return (o.contact || '—').split('/')[0].trim() || '—'; },
-    function(o, v){ return v; });
+    function(o, v){ return v; },
+    'maxlength="11" inputmode="numeric" pattern="[0-9]*" ');
 
   // 💰 SF
   buildOptions('merge-sf-options', 'merge-sf-choice',
