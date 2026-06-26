@@ -4704,6 +4704,7 @@ function _captureOtherItems(orderIdx) {
     const _baseEntry = (qtyOverride, gramsOverride, totalOverride, statusVal) => ({
       _id:      'oi_' + Date.now() + '_' + ii + '_' + Math.random().toString(36).slice(2,6),
       orderNum:     _oNum,
+      orderId:      o._id || '',
       orderIdx:     orderIdx,
       itemIdx:      ii,
       customerName: o.name || '',
@@ -4867,8 +4868,11 @@ function updateVerifStatus(orderIdx, status) {
   } else if(status !== 'Verified' && S.otherItems && S.otherItems.length) {
     // Un-verify: set isVerified:false → hidden from all tabs
     const _uvNum = onum(orderIdx);
+    const _uvId  = (S.orders[orderIdx]?._id) || '';
     S.otherItems.forEach(r => {
-      if(r.orderNum === _uvNum) r.isVerified = false;
+      if(r.orderNum === _uvNum || (_uvId && r.orderId === _uvId)) {
+        r.isVerified = false;
+      }
     });
   }
   save(); renderChecker();
@@ -5062,13 +5066,18 @@ function unverifyOrder(i){
   // Re-verify will set isVerified:true again.
   if(S.otherItems && S.otherItems.length) {
     const _uNum = onum(i);
+    const _uId  = S.orders[i]?._id || '';
+    // Match by orderNum OR by order _id (handles index-shifted merged orders)
     S.otherItems.forEach(r => {
-      if(r.orderNum === _uNum) r.isVerified = false;
+      if(r.orderNum === _uNum || (_uId && r.orderId === _uId)) {
+        r.isVerified = false;
+      }
     });
   }
   save(); toast('↩ Set back to Pending. Inventory restored.'); renderChecker();
-  // Refresh ALL inventory tabs immediately — both Products list and Stock Ledger
+  // Refresh ALL inventory tabs + Other Items immediately
   _refreshInvAllTabs();
+  try { renderOtherItemsPage(); } catch(e) {}
 }
 
 // ============ INVOICE ============
@@ -6779,6 +6788,38 @@ const _invSearch = { q:'', type:'', lowStock:false, siQ:'', soQ:'', ledQ:'' };
 // _restoreOrderItems. This just re-renders the current visible tab so the
 // user sees the change without switching pages.
 // When user clicks the Ledger tab, switchInvTab('ledger') reads fresh S.stockLog.
+// ── Preserve isVerified=false after Firebase sync ─────────────────────────
+// Firebase sync can overwrite local isVerified=false with stale true values.
+// This function re-applies isVerified=false for orders that are currently
+// unverified (checkerStatus !== 'Verified'), so Other Items stays hidden.
+function _reapplyOiVerifiedState() {
+  if(!S.otherItems || !S.otherItems.length) return;
+  // Build set of unverified order numbers
+  const _unverifiedNums = new Set();
+  const _unverifiedIds  = new Set();
+  (S.orders||[]).forEach((o,i) => {
+    if(!o) return;
+    if((o.checkerStatus||'Pending') !== 'Verified') {
+      _unverifiedNums.add(onum(i));
+      if(o._id) _unverifiedIds.add(o._id);
+    }
+  });
+  let changed = false;
+  S.otherItems.forEach(r => {
+    const shouldBeHidden =
+      _unverifiedNums.has(r.orderNum) ||
+      (r.orderId && _unverifiedIds.has(r.orderId));
+    if(shouldBeHidden && r.isVerified !== false) {
+      r.isVerified = false;
+      changed = true;
+    }
+  });
+  // Re-render Other Items page if visible
+  if(changed) {
+    try { renderOtherItemsPage(); } catch(e) {}
+  }
+}
+
 function _refreshInvAllTabs() {
   try { renderInv(invTab); } catch(e) {}
 }
@@ -8650,6 +8691,7 @@ function manualRefresh() {
         }
       });
       persist();
+      try { _reapplyOiVerifiedState(); } catch(e) {}
       try{ const rp=document.querySelector('.page.active')?.id?.replace('page-',''); if(rp) renderPage(rp); }catch(e){}
       toast('✅ Refreshed from server!');
     }
@@ -12351,8 +12393,11 @@ function renderOtherItemsPage() {
   const items = (S.otherItems||[]).filter(r => {
     if(r.status !== _oiTab) return false;
     // isVerified gate: items with isVerified:false are hidden from ALL tabs
-    // (backward compat: entries without the field are treated as verified)
     if(r.isVerified === false) return false;
+    // Live checker gate: hide if the order is currently unverified
+    // This catches stale isVerified:true entries from Firebase
+    const _liveOrder = (S.orders||[]).find((o,i) => o && onum(i) === r.orderNum);
+    if(_liveOrder && (_liveOrder.checkerStatus||'Pending') !== 'Verified') return false;
     if(_dfFrom && r.date < _dfFrom) return false;
     if(_dfTo   && r.date > _dfTo)   return false;
     return true;
@@ -12574,6 +12619,22 @@ async function initApp(){
 
         if(syncEl){ syncEl.style.color='var(--green)'; syncEl.textContent='☁ Online'; }
         toast('☁ Loaded from Firebase!');
+        // ── Fix stale isVerified:true on otherItems for unverified orders ──────
+        // On load, correct any otherItems that belong to unverified orders.
+        // This fixes entries that were written to Firebase before the fix was deployed.
+        // If any were corrected, save back to Firebase so all devices get the fix.
+        try {
+          let _oiFixed = false;
+          (S.otherItems||[]).forEach(r => {
+            if(r.isVerified === false) return; // already hidden, skip
+            const _ord = (S.orders||[]).find((o,i) => o && onum(i) === r.orderNum);
+            if(_ord && (_ord.checkerStatus||'Pending') !== 'Verified') {
+              r.isVerified = false;
+              _oiFixed = true;
+            }
+          });
+          if(_oiFixed) { setTimeout(()=>{ try{ save(); }catch(e){} }, 500); }
+        } catch(e) {}
         // Reconcile inventory against stockLog so Products page matches Stock Ledger
   
       } else {
@@ -12823,6 +12884,7 @@ function startAutoRefresh(){
         S.lastGlobalClear = remoteClear;
         toast('🔄 System was cleared by Owner. Data wiped on this device.');
         try { renderPage(_activePage); } catch(e) {}
+        try { _reapplyOiVerifiedState(); } catch(e) {}
         return;
       }
 
@@ -12895,11 +12957,14 @@ function startAutoRefresh(){
           if(key === 'otherItems') {
             return {
               ...e,                          // Firebase base (all fields)
-              // Local overrides for user-edited fields only:
+              // Local overrides for user-edited fields:
               capitalPerUnit: loc.capitalPerUnit !== undefined ? loc.capitalPerUnit : e.capitalPerUnit,
               profit:         loc.profit         !== undefined ? loc.profit         : e.profit,
               // status: Firebase wins (other device may have moved it)
               status: e.status || loc.status,
+              // isVerified: local wins — unverify sets false locally, must not be overwritten
+              // by a stale Firebase read before the write confirms.
+              isVerified: loc.isVerified === false ? false : e.isVerified,
             };
           }
           // For remitLog/stockLog/etc: local wins (preserves edits in-flight)
@@ -15746,6 +15811,7 @@ document.addEventListener('visibilitychange', async ()=>{
     if(!S.govSettings) S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
 
     try{ renderPage(_activePage); }catch(e){}
+    try{ _reapplyOiVerifiedState(); }catch(e){}
     if(currentRole==='rider') try{renderRiderParcels();}catch(e){}
   } catch(e){ if(!e.message?.includes('fetch') && !e.message?.includes('Network')) console.warn('[GCE] Visibility sync error:',e.message); }
 });
