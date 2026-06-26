@@ -8163,16 +8163,23 @@ function renderPnl(){
   }).reduce((s,r) => s + (r.total||0), 0);
 
   // OI: only profit (not full sales) feeds into Gross Profit — capital is off-book
+  // OI Profit: use r.profit stored at capture time (computed by _captureOtherItems)
+  // r.profit = total - capital = actual profit per entry
+  // Fall back to total - (qty × capitalPerUnit) if r.profit not set
   const oiProfit = Math.round((S.otherItems||[]).filter(r => {
     if(r.status !== 'remitted') return false;
     const _d = r.date || '';
     return _d >= from && _d <= to;
   }).reduce((s,r) => {
+    // Use stored profit field if available (set by _captureOtherItems)
+    if(r.profit != null && r.profit !== undefined) return s + (r.profit||0);
+    // Fallback: compute from capital
     const _isGrams = r.grams > 0;
     const _qty = _isGrams ? r.grams : (r.qty||1);
-    const _capPerUnit = (r.capitalPerUnit!=null) ? r.capitalPerUnit : Math.max(0,(r.pergram||0)-(r.profitPerUnit||0));
-    const _totalCapital = Math.round(_qty*_capPerUnit*100)/100;
-    return s + Math.round(((r.total||0)-_totalCapital)*100)/100;
+    const _capPerUnit = (r.capitalPerUnit!=null) ? r.capitalPerUnit
+      : Math.max(0, (r.pergram||0) - (r.profitPerUnit||0));
+    const _totalCapital = Math.round(_qty * _capPerUnit * 100) / 100;
+    return s + Math.round(((r.total||0) - _totalCapital) * 100) / 100;
   }, 0) * 100) / 100;
   const totalSales = Math.round((totalItemsSales + sfRevenue10pct) * 100) / 100; // Items + 10% SF (OI handled separately via profit)
   // TOTAL COST = cost of goods sold (pergram × grams or pergram × qty for each item)
@@ -8271,7 +8278,7 @@ function renderPnl(){
       <span style="font-size:11px;color:var(--muted);">${label}</span>
     </div>
     ${sH('REVENUE')}
-    ${row('TOTAL SALES = Items + SF 10% (Remit)',p(totalSales),'var(--green)',false,true)}
+    ${row('TOTAL SALES = Items + SF 10% (Remit)',p(totalSales+oiProfit),'var(--green)',false,true)}
     ${row('  ↳ Item Sales (Remitted)',p(totalItemsSales),'var(--green)',true)}
     ${row('  ↳ SF 10% Company (from Rider Remit)','+ '+p(sfRevenue10pct),'var(--gold)',true)}
     ${oiProfit>0?row('  ↳ Other Items Profit (off-book)','+ '+p(oiProfit),'var(--gold)',true):''}
