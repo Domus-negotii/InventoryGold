@@ -1469,6 +1469,7 @@ function _showRulesHint() {
     <!-- Shipping method tabs -->
     <div class="section-tabs no-print" style="margin-bottom:13px;" id="checker-tabs">
       <button class="tab-btn active" data-tab="COD" onclick="setCheckerTab('COD')">🏍️ COD</button>
+      <button class="tab-btn" data-tab="COD-OP" onclick="setCheckerTab('COD-OP')">📱 COD-OP</button>
       <button class="tab-btn" data-tab="LBC" onclick="setCheckerTab('LBC')">📦 LBC</button>
       <button class="tab-btn" data-tab="EMS" onclick="setCheckerTab('EMS')">✈️ EMS</button>
       <button class="tab-btn" data-tab="FedEx" onclick="setCheckerTab('FedEx')">📦 FedEx</button>
@@ -3347,6 +3348,8 @@ function _hasStockLogRef(ref) {
 const _COD_METHODS   = new Set(['COD', 'COD - Online Payment']);
 const _LBC_METHODS   = new Set(['LBC', 'EMS', 'FedEx']);
 const _ALL_METHODS   = new Set(['COD', 'COD - Online Payment', 'LBC', 'EMS', 'FedEx']);
+// Tab name constants
+const _COD_OP_TAB = 'COD-OP'; // COD Online Payment checker/courier tab name
 // Helper: true if order is COD-flow (goes through checker → dispatcher → rider → remitter)
 const _isCodFlow    = (o) => _COD_METHODS.has(o?.paymentMethod || 'COD');
 // Helper: true if order is courier-flow (LBC/EMS/FedEx — needs tracking, Fully Paid, dropoff)
@@ -4226,7 +4229,7 @@ function setCheckerTab(tab) {
   document.querySelectorAll('#checker-tabs .tab-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.tab === tab);
   });
-  const labels = {COD:'🏍️ COD – Checker Queue', LBC:'📦 LBC – Checker Queue', EMS:'✈️ EMS – Checker Queue', FedEx:'📦 FedEx – Checker Queue', UPDATE:'🔔 For Update – COD Parcels', DELETED:'🗑️ Recently Deleted / Cancelled'};
+  const labels = {COD:'🏍️ COD – Checker Queue', 'COD-OP':'📱 COD-OP – Online Payment Queue', LBC:'📦 LBC – Checker Queue', EMS:'✈️ EMS – Checker Queue', FedEx:'📦 FedEx – Checker Queue', UPDATE:'🔔 For Update – COD Parcels', DELETED:'🗑️ Recently Deleted / Cancelled'};
   // Show/hide the right panel
   const tableArea = document.getElementById('checker-table-area');
   const updatePanel = document.getElementById('checker-update-panel');
@@ -4239,6 +4242,7 @@ function setCheckerTab(tab) {
   if(tab === 'UPDATE') { renderCheckerForUpdate(); return; }
   // No secondary lock — checker accesses LBC/EMS/FedEx directly
   const isLbc = tab === 'LBC' || tab === 'EMS' || tab === 'FedEx';
+  const isCodOp = tab === 'COD-OP';
   document.getElementById('checker-table-area').style.display = '';
   document.getElementById('checker-cod-table').style.display = isLbc ? 'none' : '';
   document.getElementById('checker-lbc-table').style.display = isLbc ? '' : 'none';
@@ -4275,10 +4279,22 @@ function renderChecker(){
   // Use _safeOrders() — permanent null guard that survives any future S.orders update
   const _safeO = _safeOrders();
   const _pendingCOD = _safeO.filter(o =>
-    _isCodFlow(o) &&
+    (o.paymentMethod||'COD') === 'COD' &&
     o.checkerStatus === 'Pending' &&
     !['Cancelled','RTO','Delivered','Out for Delivery','Update'].includes(o.status)
   ).length;
+  const _pendingCODOP = _safeO.filter(o =>
+    o.paymentMethod === 'COD - Online Payment' &&
+    o.checkerStatus === 'Pending' &&
+    !['Cancelled','RTO','Delivered','Out for Delivery','Update'].includes(o.status)
+  ).length;
+  // Update COD-OP tab badge
+  const _codOpBtnEl = document.querySelector('#checker-tabs [data-tab="COD-OP"]');
+  if(_codOpBtnEl) {
+    _codOpBtnEl.textContent = '📱 COD-OP' + (_pendingCODOP > 0 ? ' ('+_pendingCODOP+')' : '');
+    _codOpBtnEl.style.background = _pendingCODOP > 0 ? 'var(--red)' : '';
+    _codOpBtnEl.style.color = _pendingCODOP > 0 ? '#fff' : '';
+  }
   const _pendingCourier = _safeO.filter(o =>
     (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx') &&
     (o.paymentStatus||'No Payment') === 'Fully Paid' &&
@@ -4314,6 +4330,7 @@ function renderChecker(){
     }
   });
   const isCOD = checkerTab === 'COD';
+  const isCODOP = checkerTab === 'COD-OP';
   const isLbc = checkerTab === 'LBC' || checkerTab === 'EMS' || checkerTab === 'FedEx';
 
   const _isCourierTab = checkerTab==='LBC'||checkerTab==='EMS'||checkerTab==='FedEx';
@@ -4327,8 +4344,14 @@ function renderChecker(){
   // _safeO is already null-filtered — permanent guard against Firebase sparse arrays
   const list = _safeO.map((o,i)=>({o,i})).filter(({o}) => {
     const method = o.paymentMethod || 'COD';
-    // COD - Online Payment appears in COD tab (uses global _effectiveTab helper)
-    if(_effectiveTab(method) !== checkerTab) return false;
+    // Route orders to correct tab:
+    // COD-OP tab → COD Online Payment only
+    // COD tab    → plain COD only
+    // LBC/EMS/FedEx → their own tabs
+    let _targetTab;
+    if(method === 'COD - Online Payment') _targetTab = 'COD-OP';
+    else _targetTab = method || 'COD';
+    if(_targetTab !== checkerTab) return false;
     // Exclude cancelled orders from checker view (they go to Remitter)
     if(o.status === 'Cancelled' || o.status === 'RTO') return false;
     // Exclude delivered orders — they appear in their respective Delivery monitoring pages
@@ -4351,7 +4374,7 @@ function renderChecker(){
 
   // ── Always clear dup banner first — re-show only if COD tab has duplicates ──
   const dupBanner = document.getElementById('checker-dup-banner');
-  if(dupBanner && !isCOD) { dupBanner.innerHTML = ''; dupBanner.style.display = 'none'; }
+  if(dupBanner && !isCOD && !isCODOP) { dupBanner.innerHTML = ''; dupBanner.style.display = 'none'; }
 
   if(isCOD) {
     const riderOpts = '<option value="">-- Assign Rider --</option>' + S.riders.map(r=>{
@@ -4383,7 +4406,7 @@ function renderChecker(){
     const dupBanner = document.getElementById('checker-dup-banner');
     // Duplicate banner: COD tab only — LBC/EMS/FedEx have different workflows
     if(dupBanner) {
-      if(visibleDupSets.length > 0 && isCOD) {
+      if(visibleDupSets.length > 0 && (isCOD || isCODOP)) {
         const names = visibleDupSets.map(g => g[0].o.name).join(', ');
         dupBanner.innerHTML = `<div style="background:rgba(224,138,48,0.15);border:1.5px solid var(--orange);border-radius:8px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
           <div><span style="color:var(--orange);font-weight:700;">⚠️ ${visibleDupSets.length} Possible Duplicate Order(s) Detected!</span>
@@ -7456,7 +7479,7 @@ function renderCourierDashboard(){
     return;
   }
 
-  const COURIER_TABS = ['COD','LBC','EMS','FedEx'];
+  const COURIER_TABS = ['COD','COD-OP','LBC','EMS','FedEx'];
 
   // ── State vars must be defined BEFORE PAYMENT_TABS (which uses curCourier) ──
   const curCourier = window._cdCourierTab || 'COD';
@@ -7494,8 +7517,9 @@ function renderCourierDashboard(){
 
   const courierOrders = allCourierOrders.filter(o=>{
     const pm = o.paymentMethod||'COD';
-    // COD Online appears under COD tab (uses global _effectiveTab helper)
-    return _effectiveTab(pm) === curCourier;
+    // COD-OP tab shows COD Online, COD tab shows plain COD
+    const _pmTab = pm === 'COD - Online Payment' ? 'COD-OP' : (pm || 'COD');
+    return _pmTab === curCourier;
   });
   let payTabOrders;
   if(curCourier === 'COD') {
@@ -7542,7 +7566,7 @@ function renderCourierDashboard(){
               background:${curCourier===c?'var(--gold)':'rgba(255,255,255,0.07)'};
               color:${curCourier===c?'#000':'var(--text)'};transition:all 0.15s;">
             ${c==='COD'?'🏍️':c==='LBC'?'📦':'✈️'} ${c}
-            <span style="font-size:10px;margin-left:4px;opacity:0.8;">(${allCourierOrders.filter(o=>_effectiveTab(o.paymentMethod||'COD')===c).length})</span>
+            <span style="font-size:10px;margin-left:4px;opacity:0.8;">(${allCourierOrders.filter(o=>{const _pm=o.paymentMethod||'COD'; const _t=_pm==='COD - Online Payment'?'COD-OP':_pm; return _t===c;}).length})</span>
           </button>`).join('')}
       </div>
       <!-- Payment sub-tabs -->
@@ -14751,9 +14775,24 @@ function detectDuplicates(orders) {
   function find(x){ return parent[x]===x?x:(parent[x]=find(parent[x])); }
   function union(x,y){ parent[find(x)]=find(y); }
 
+    // ── ADDRESS NORMALIZER ────────────────────────────────────────────────────
+  // Strips house/unit/lot numbers so we can compare street+barangay+subdivision.
+  // Example: "B2 L22 Daisy Street Vergonville Subdivision" → "daisy street vergonville subdivision"
+  // Example: "Unit 3 Rose Ave Greenpark Subd" → "rose ave greenpark subd"
+  function _stripHouseNum(addr) {
+    return (addr||'')
+      .toLowerCase()
+      .replace(/[#,|\-]/g, ' ')
+      // Remove house/lot/unit/block/blk/bldg prefixes with numbers
+      .replace(/\b(house|unit|lot|blk|block|bldg|building|room|rm|floor|fl|apt|apartment|no\.?|num\.?)\s*[\d]+[a-z]*/gi, ' ')
+      // Remove standalone numbers (house numbers like "123", "B2", "L22")
+      .replace(/\b[a-z]?\d+[a-z]?\b/gi, ' ')
+      // Normalize spaces
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   function _extractHouseNum(addr) {
-    // Extract house/lot number — first number sequence in address.
-    // Strips | and # prefixes (admin names, symbols) before searching.
     const s = (addr||'').replace(/[#,|]/g,' ').trim();
     const anyNum = s.match(/(\d+)/);
     if(anyNum) return anyNum[1];
@@ -14763,33 +14802,68 @@ function detectDuplicates(orders) {
   }
 
   function _extractCity(addr) {
-    // Extract the city — the single word immediately before "City" or "Municipality".
-    // "1234 San Juan Bano Arayat City"  → "arayat"
-    // "1234 SJB Arayat City"            → "arayat"
-    // "Las Pinas City"                  → "pinas"  (last word of multi-word city)
-    // "Bulacan" (no City suffix)        → "bulacan" (last word of address)
     const s = (addr||'').toLowerCase();
     const m = s.match(/\b([a-z]+)\s+(?:city|municipality)\b/);
     if(m) return m[1];
-    // Fallback: last word of address
     const words = s.replace(/[^a-z\s]/g,' ').trim().split(/\s+/).filter(w=>w.length>2);
     return words[words.length-1] || '';
   }
 
+  // Street signature: stripped address with short words (< 3 chars) removed
+  // Must be >= 4 chars meaningful to avoid false positives on short addresses
+  function _streetSig(addr) {
+    const stripped = _stripHouseNum(addr);
+    const words = stripped.split(/\s+/).filter(w => w.length >= 3);
+    return words.join(' ');
+  }
+
+  // Check if two street signatures share >= 2 significant words
+  // "daisy street vergonville" vs "daisy street vergonville" → match ✅
+  // "daisy street" vs "rose street" → 1 shared word (street) → no match ✅
+  function _streetMatch(sigA, sigB) {
+    if(!sigA || !sigB || sigA.length < 6 || sigB.length < 6) return false;
+    // Generic words that appear in almost all addresses — not distinctive enough alone
+    const _generic = new Set(['street','avenue','road','drive','lane','blvd','boulevard',
+      'subdivision','subd','village','phase','purok','brgy','barangay','city','municipality',
+      'san','sta','santo','santa','dos','tres','new','old','north','south','east','west',
+      'upper','lower','inner','outer','the','and','ext','extension']);
+    const _toDistinct = sig => sig.split(/\s+/).filter(w => w.length >= 4 && !_generic.has(w));
+    const wordsA = new Set(_toDistinct(sigA));
+    const wordsB = _toDistinct(sigB);
+    // Must share at least 2 distinctive words (e.g. "vergonville" + "daisy")
+    // OR share 1 very unique word (subdivision/village name >= 7 chars)
+    const shared = wordsB.filter(w => wordsA.has(w));
+    if(shared.length >= 2) return true;
+    if(shared.length === 1 && shared[0].length >= 7) return true; // unique subd/village name
+    return false;
+  }
+
   for(let i=0;i<n;i++){
-    const oi    = orders[i].o;
-    const houseI = _extractHouseNum(oi.address);
-    const cityI  = _extractCity(oi.address);
-    const phoneI = _normContact(oi.contact);
+    const oi     = orders[i].o;
+    const fullAddrI = ((oi.address||'')+' '+(oi.city||'')).toLowerCase().trim();
+    const houseI  = _extractHouseNum(oi.address);
+    const cityI   = _extractCity(fullAddrI);
+    const sigI    = _streetSig(fullAddrI);
+    const phoneI  = _normContact(oi.contact);
     for(let j=i+1;j<n;j++){
       const oj     = orders[j].o;
-      const houseJ = _extractHouseNum(oj.address);
-      const cityJ  = _extractCity(oj.address);
-      const phoneJ = _normContact(oj.contact);
-      // Match if: (same house number AND same city) OR (same phone number)
-      const addrMatch  = houseI && houseJ && cityI && cityJ && houseI===houseJ && cityI===cityJ;
+      const fullAddrJ = ((oj.address||'')+' '+(oj.city||'')).toLowerCase().trim();
+      const houseJ  = _extractHouseNum(oj.address);
+      const cityJ   = _extractCity(fullAddrJ);
+      const sigJ    = _streetSig(fullAddrJ);
+      const phoneJ  = _normContact(oj.contact);
+
+      // Rule 1: Same phone number → definite duplicate
       const phoneMatch = phoneI && phoneJ && phoneI===phoneJ;
-      if(addrMatch || phoneMatch) union(i,j);
+
+      // Rule 2: Same house number + same city → duplicate
+      const sameHouseCity = houseI && houseJ && cityI && cityJ && houseI===houseJ && cityI===cityJ;
+
+      // Rule 3 (NEW): Same street/barangay/subdivision + same city
+      // Even if house numbers differ — same street in same city = potential duplicate
+      const sameStreetCity = cityI && cityJ && cityI===cityJ && _streetMatch(sigI, sigJ);
+
+      if(phoneMatch || sameHouseCity || sameStreetCity) union(i,j);
     }
   }
   // Group by root — no size limit
