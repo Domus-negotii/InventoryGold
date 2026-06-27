@@ -2092,7 +2092,7 @@ function _showRulesHint() {
       <div class="table-wrap">
         <table><thead><tr>
           <th>Order #</th><th>Customer</th><th>CP #</th><th>Address / City</th><th>Date</th>
-          <th>Amount</th><th>Status</th><th>Update Status</th><th>Remarks</th>
+          <th>SF</th><th>Amount</th><th>Status</th><th>Update Status</th><th>Remarks</th>
         </tr></thead>
         <tbody id="rider-parcels-tbody"></tbody>
         </table>
@@ -5445,19 +5445,8 @@ function resolveUpdate(orderIdx, newStatus) {
     }
     S.orders[orderIdx].status = newStatus;
     S.orders[orderIdx].checkerCancelledDirect = true;
-    // ── Cancel OI entries for this order (remove from Other Items Products) ──
-    if(S.otherItems && S.otherItems.length) {
-      const _cancelNum = onum(orderIdx);
-      const _cancelId  = o._id || '';
-      S.otherItems.forEach(r => {
-        if(r.orderNum === _cancelNum || (_cancelId && r.orderId === _cancelId)) {
-          if(r.status === 'product') {
-            r.status = 'cancelled';
-            r.isVerified = false;
-          }
-        }
-      });
-    }
+    // ── Cancel ALL OI entries for this order ─────────────────────────────────
+    _cancelAllOiForOrder(onum(orderIdx), o._id||'');
     save();
     toast(restored ? '❌ Order Cancelled — inventory restored automatically.' : '❌ Order Cancelled.');
   }
@@ -5660,8 +5649,35 @@ function renderReturns() {
 function renderUpdateOrders() {
   const df = mdy2ymd((document.getElementById('ret-update-date')?.value||'').trim());
   const el = document.getElementById('ret-update-orders-content'); if(!el) return;
+
+  // ── Remitter visibility rule for For Update orders ─────────────────────────
+  // For Remittance (no remit entry yet) → HIDDEN
+  // Remitting (remit entry exists but NOT yet 'Remitted') → VISIBLE ✅
+  // Remitted (remitStatus='Remitted') → HIDDEN
+  // Build sets of riders+dates that are currently "Remitting" (entry exists but not Remitted)
+  const _remittingKeys  = new Set(); // rider|date combos actively being remitted
+  const _remittedKeys   = new Set(); // rider|date combos already Remitted
+  (S.remitLog||[]).forEach(e => {
+    if(!e) return;
+    const key = (e.riderName||'') + '|' + (e.date||'');
+    if(!key || key === '|') return; // skip malformed entries
+    if(e.remitStatus === 'Remitted') _remittedKeys.add(key);
+    else _remittingKeys.add(key); // Pending / in-progress
+  });
+
   const rows = S.orders.map((o,i)=>({...o,idx:i}))
-    .filter(o=>o.status==='Update' && (!df||o.date===df));
+    .filter(o => {
+      if(o.status !== 'Update') return false;
+      if(df && o.date !== df) return false;
+      // Remitter role: apply visibility rule
+      if(currentRole === 'remitter') {
+        const key = (o.assignedRider||'') + '|' + (o.date||'');
+        // Only show when rider is actively Remitting (entry exists but not yet Remitted)
+        if(!_remittingKeys.has(key)) return false; // no remit entry yet (For Remittance) OR already Remitted
+        if(_remittedKeys.has(key)) return false;   // already Remitted → hide
+      }
+      return true;
+    });
 
   if(!rows.length){
     el.innerHTML=`<p style="color:var(--muted);padding:24px;text-align:center;">Walang "For Update" orders${df?' para sa petsang ito':''}.</p>`;
@@ -5670,15 +5686,31 @@ function renderUpdateOrders() {
 
   el.innerHTML = rows.map(o=>{
     const iS  = o.itemStatuses||{};
+    const iCQ = o.itemCancelQty||{};
     const iR  = o.itemRemarks||{};
+    // Recompute items total from item rows (o.itemsTotal may be stale=0 for Update orders)
+    const _liveItemsTotal = (o.items||[]).reduce((s,it,ii)=>{
+      if(!it) return s;
+      if(iS[ii]==='Cancelled') return s;
+      const cxQty=iCQ[ii]||0;
+      if(cxQty>0){
+        const tQty=Math.max(1,it.grams||it.qty||1);
+        return s+Math.round((it.total||0)*Math.max(0,(tQty-cxQty)/tQty)*100)/100;
+      }
+      return s+(it.total||0);
+    },0);
+    const _liveGrandTotal = Math.round((_liveItemsTotal+(o.shipping||0))*100)/100;
     const itemRows = (o.items||[]).map((it,ii)=>{
       const st      = iS[ii]||'Pending';
       const stColor = st==='Cancelled'?'var(--red)':st==='Delivered'?'var(--green)':'var(--muted)';
+      const cxQty=iCQ[ii]||0;
+      const tQty=Math.max(1,it.grams||it.qty||1);
+      const liveTotal=cxQty>0?Math.round((it.total||0)*Math.max(0,(tQty-cxQty)/tQty)*100)/100:(it.total||0);
       return `<tr>
         <td style="font-family:monospace;font-size:11px;color:var(--gold);font-weight:700;">${it.code||'—'}</td>
         <td style="font-size:11.5px;">${it.desc||'—'}</td>
         <td style="text-align:center;">${it.grams>0?`${it.grams}g`:` ×${it.qty||1}`}</td>
-        <td style="color:var(--green);font-weight:700;text-align:right;">${p(it.total)}</td>
+        <td style="color:${st==='Cancelled'?'var(--red)':'var(--green)'};font-weight:700;text-align:right;">${st==='Cancelled'?`<s style="color:var(--muted);">${p(it.total)}</s>`:p(liveTotal)}</td>
         <td><span class="status ${st==='Cancelled'?'cancelled':st==='Delivered'?'delivered':'transit'}" style="font-size:9px;">${st}</span></td>
         <td style="font-size:10px;color:var(--orange);">${iR[ii]||'—'}</td>
       </tr>`;
@@ -5706,8 +5738,9 @@ function renderUpdateOrders() {
         </table></div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;flex-wrap:wrap;gap:8px;">
           <div style="display:flex;gap:16px;font-size:12px;">
-            <span>Total: <strong style="color:var(--gold);">${p(o.grandTotal)}</strong></span>
-            <span>SF: ${p(o.shipping)}</span>
+            <span>Items: <strong style="color:var(--gold);">${p(_liveItemsTotal)}</strong></span>
+            <span>SF: ${p(o.shipping||0)}</span>
+            <span>Grand Total: <strong style="color:var(--green);">${p(_liveGrandTotal)}</strong></span>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
             ${currentRole==='remitter'
@@ -6822,31 +6855,10 @@ const _invSearch = { q:'', type:'', lowStock:false, siQ:'', soQ:'', ledQ:'' };
 // This function re-applies isVerified=false for orders that are currently
 // unverified (checkerStatus !== 'Verified'), so Other Items stays hidden.
 function _reapplyOiVerifiedState() {
-  if(!S.otherItems || !S.otherItems.length) return;
-  // Build set of unverified order numbers
-  const _unverifiedNums = new Set();
-  const _unverifiedIds  = new Set();
-  (S.orders||[]).forEach((o,i) => {
-    if(!o) return;
-    if((o.checkerStatus||'Pending') !== 'Verified') {
-      _unverifiedNums.add(onum(i));
-      if(o._id) _unverifiedIds.add(o._id);
-    }
-  });
-  let changed = false;
-  S.otherItems.forEach(r => {
-    const shouldBeHidden =
-      _unverifiedNums.has(r.orderNum) ||
-      (r.orderId && _unverifiedIds.has(r.orderId));
-    if(shouldBeHidden && r.isVerified !== false) {
-      r.isVerified = false;
-      changed = true;
-    }
-  });
-  // Re-render Other Items page if visible
-  if(changed) {
-    try { renderOtherItemsPage(); } catch(e) {}
-  }
+  // No longer hides based on checkerStatus — Products tab now shows all OI items
+  // until remitted regardless of order status (For Update, Delivered, Cancelled, etc.)
+  // This function is kept as a no-op to avoid breaking callers.
+  // Actual visibility is controlled by renderOtherItemsPage filter logic.
 }
 
 function _refreshInvAllTabs() {
@@ -8125,9 +8137,11 @@ function renderPnl(){
   // Cancelled items and For Update items are excluded per itemStatuses.
   const _invCodes = new Set((S.inventory||[]).map(iv=>(iv.code||'').toUpperCase().trim()).filter(Boolean));
   function _inventoryItemsTotal(o) {
+    if(!o) return 0;
     const iS  = o.itemStatuses  || {};
     const iCQ = o.itemCancelQty || {};
     return (o.items||[]).reduce((s, it, ii) => {
+      if(!it) return s; // null guard
       const _code = (it.code||'').toUpperCase().trim();
       // Skip: cancelled items, For Update items, OI-prefix items, not-in-inventory items
       if(iS[ii] === 'Cancelled' || iS[ii] === 'Update') return s;
@@ -8436,6 +8450,8 @@ function renderDash(){
   const _dateLabel = _dfFrom||_dfTo ? `${_dfFromRaw||'—'} → ${_dfToRaw||'—'}` : 'All time';
 
   // ── Net Profit — exact same logic as P&L Report ──────────────────────────
+  let _dashNetProfit = 0, _dashOiProfit = 0, _dashOiSales = 0; // safe defaults
+  try {
   const _dashFrom = _dfFrom || '2000-01-01';
   const _dashTo   = _dfTo   || '2099-12-31';
 
@@ -8507,6 +8523,7 @@ function renderDash(){
 
   // Net Profit = Gross Profit - OpEx (exact match with P&L)
   const _dashNetProfit=_dashGrossProfit-_dashOpEx;
+  } catch(_dashErr) { console.error('[GOE] Dashboard P&L calc error:', _dashErr); }
 
   document.getElementById('dash-stats').innerHTML=`
     <div class="stat-card gold"><div class="stat-label">Total Orders</div><div class="stat-value">${total}</div><div class="stat-sub">${_dateLabel}</div></div>
@@ -8893,6 +8910,8 @@ async function changePassword(){
 // Does NOT touch inventory — stock was already managed by checker flow
 // Checker-level permanent delete for COD-OP cancelled orders
 function checkerDeleteCodOp(i) {
+  try {
+  if(i == null || i === undefined) return;
   const o = S.orders[i];
   if(!o) return;
   if(o.paymentMethod !== 'COD - Online Payment') { toast('⚠️ This is only for COD-OP orders.'); return; }
@@ -8915,6 +8934,7 @@ function checkerDeleteCodOp(i) {
   toast('🗑️ COD-OP order permanently deleted.');
   try { renderChecker(); } catch(e) {}
   try { initOrdersPage(); } catch(e) {}
+  } catch(e) { console.error('[GOE] checkerDeleteCodOp error:', e); }
 }
 
 function ownerDeleteOrder(i) {
@@ -9196,6 +9216,7 @@ function onRiderSelect() {
 // Scans the typed address for known city/municipality names and fills enc-city.
 // This ensures o.city is always populated so merge detection works correctly.
 function _autofillCityFromAddress() {
+  try {
   const addr = (document.getElementById('enc-address')?.value || '').toLowerCase();
   if(!addr) return;
   // Known PH cities/municipalities — extend as needed
@@ -9222,6 +9243,7 @@ function _autofillCityFromAddress() {
     }
   }
   // If no match found, leave as-is (don't clear manually-set city)
+  } catch(e) { console.error('[GOE] _autofillCityFromAddress error:', e); }
 }
 
 function autoAssignRider() {
@@ -9604,10 +9626,16 @@ function renderRiderParcels() {
       const totalQty = isGramsItem ? it.grams : (it.qty||1);
       const remainQty = totalQty - cancelledQty;
 
+      // Compute actual amount rider collected for this item (after partial cancel)
+      const _ppu = totalQty > 0 ? (it.total||0) / totalQty : 0;
+      const _activeTotal = cancelledQty > 0
+        ? Math.round(Math.max(0, (it.total||0) - _ppu * cancelledQty) * 100) / 100
+        : (it.total||0);
+
       const valDisplay = isCancelledItem
         ? `<span style="text-decoration:line-through;color:var(--muted);font-size:10px;">${p(it.total)}</span><br><span style="color:var(--red);font-size:9.5px;font-weight:700;">FULLY CANCELLED</span>`
         : cancelledQty > 0
-        ? `<span style="color:var(--orange);font-weight:600;">${p(it.total)}</span><br><span style="font-size:9.5px;color:var(--orange);">${cancelledQty}${isGramsItem?'g':' pc'} cancelled</span>`
+        ? `<span style="color:var(--orange);font-weight:600;">${p(_activeTotal)}</span><br><span style="font-size:9.5px;color:var(--muted);"><s>${p(it.total)}</s> − ${cancelledQty}${isGramsItem?'g':' pc'} cancelled</span>`
         : `<span style="color:var(--gold);font-weight:600;">${p(it.total)}</span>`;
 
       const itemRemarks = o.itemRemarks || {};
@@ -9677,7 +9705,7 @@ function renderRiderParcels() {
     const _noteText = _hasNote ? o.globalDiscountReason.trim() : '';
     const _discAmt  = o.globalDiscount > 0 ? ` — <strong>-${p(o.globalDiscount)}</strong>` : '';
     const _discBanner = _hasNote
-      ? `<tr style="background:rgba(74,144,217,0.08);border-left:3px solid var(--blue);"><td colspan="8" style="padding:4px 12px;"><span style="font-size:9.5px;color:var(--blue);font-weight:600;">🏷️ Order Note / Promo:</span> <em style="font-size:9.5px;color:var(--white);">${_noteText}</em>${_discAmt}</td></tr>`
+      ? `<tr style="background:rgba(74,144,217,0.08);border-left:3px solid var(--blue);"><td colspan="9" style="padding:4px 12px;"><span style="font-size:9.5px;color:var(--blue);font-weight:600;">🏷️ Order Note / Promo:</span> <em style="font-size:9.5px;color:var(--white);">${_noteText}</em>${_discAmt}</td></tr>`
       : '';
     return `${_discBanner}<tr style="background:rgba(201,168,76,0.03);">
       <td style="color:var(--gold);font-weight:600;">${onum(o.idx)}</td>
@@ -9685,6 +9713,7 @@ function renderRiderParcels() {
       <td>${_c(o.contact)}</td>
       <td style="font-size:10.5px;max-width:170px;">${o.address||'—'}${o.city?'<br><span style="color:var(--muted);font-size:9px;">📍 '+o.city+'</span>':''}${o.landmark?'<br><span style="color:var(--muted);font-size:9px;">🏠 '+o.landmark+'</span>':''}</td>
       <td>${o.date}</td>
+      <td style="font-weight:600;color:var(--blue);">${p(o.shipping||0)}</td>
       <td style="font-weight:600;">
         ${hasCancelledItems
           ? `<span style="color:var(--gold);">${p(activeItemsTotal)}</span><br><span style="font-size:9.5px;color:var(--muted);">(${cancelledCount} item${cancelledCount>1?'s':''} cancelled)</span>`
@@ -9823,8 +9852,12 @@ function riderOiItemStatus(orderIdx, itemIdx, newStatus) {
   const _oNum = onum(orderIdx);
   // NOTE: OI items do NOT auto-move to Sales when rider marks individual item Delivered.
   // Only move to Sales when Remitter saves as Remitted.
-  if(newStatus === 'Cancelled') _syncOiPrefixStatus(orderIdx, 'cancelled');
+  if(newStatus === 'Cancelled') {
+    _syncOiPrefixStatus(orderIdx, 'cancelled');
+    _cancelAllOiForOrder(onum(orderIdx), S.orders[orderIdx]?._id||'');
+  }
   save();
+  try { renderOtherItemsPage(); } catch(e) {}
   renderRiderParcels();
 }
 
@@ -11403,6 +11436,22 @@ function calcRemit() { populateRemitParcels(); }
 // GUARD: once 'cancelled', never overwritten to 'remitted'.
 // REQUIRED call sites: _confirmDelivered, codDelivCancelOrder, riderUpdateStatus, riderItemStatus
 // ═══════════════════════════════════════════════════════════════════════════
+// Cancel ALL otherItems entries for an order (prefix + non-prefix)
+// Called whenever an order is cancelled so items disappear from Products tab
+function _cancelAllOiForOrder(orderNum, orderId) {
+  try {
+    if(!orderNum) return;
+    if(!S.otherItems || !S.otherItems.length) return;
+    S.otherItems.forEach(r => {
+      if(!r) return;
+      if(r.orderNum !== orderNum && !(orderId && r.orderId === orderId)) return;
+      if(r.status === 'remitted') return; // already in Sales — don't touch
+      r.status = 'cancelled';
+      r.isVerified = false;
+    });
+  } catch(e) { console.error('[GOE] _cancelAllOiForOrder error:', e); }
+}
+
 function _syncOiPrefixStatus(orderIdx, newStatus) {
   const _o = S.orders[orderIdx];
   if(!_o) return;
@@ -11443,6 +11492,7 @@ function _syncOiPrefixStatus(orderIdx, newStatus) {
 }
 
 function _syncOtherItemStatus(orderNum, newStatus) {
+  try {
   // ═══ _syncOtherItemStatus LIFECYCLE GUARD ══════════════════════════════════
   // ONLY called from saveRemit when remitStatus = 'Remitted'.
   // Rules: isVerified=false → skip | cancelled → never overwrite | only product→remitted.
@@ -11456,18 +11506,18 @@ function _syncOtherItemStatus(orderNum, newStatus) {
     if(r.isVerified === false) return; // unverified items stay hidden
     if(newStatus === 'remitted' && r.status === 'cancelled') return; // cancelled never becomes remitted
     if(newStatus === 'remitted' && r.status !== 'product') return;   // only product→remitted
-    // For Update orders: item not yet collected — do NOT move to Sales tab
     if(newStatus === 'remitted') {
-      const _ord = (S.orders||[]).find(o=>o && onum((S.orders||[]).indexOf(o))===orderNum);
-      if(_ord && (_ord.status === 'Update' || _ord.status === 'For Update')) return;
-      // Also check item-level For Update: if this specific item is For Update, skip Sales
-      if(_ord) {
-        const _itemStatus = (_ord.itemStatuses||{})[r.itemIdx];
-        if(_itemStatus === 'Update' || _itemStatus === 'For Update') return;
-      }
+      // RULE: Only move to Sales when order is Delivered AND rider remitted.
+      // For Update, Cancelled, RTO = rider didn't collect → stay in Products tab.
+      const _ord = (S.orders||[]).find(o => o && onum((S.orders||[]).indexOf(o)) === orderNum);
+      if(!_ord || _ord.status !== 'Delivered') return;
+      // Also skip if this specific item is still For Update
+      const _itemSt = (_ord.itemStatuses||{})[r.itemIdx];
+      if(_itemSt === 'Update' || _itemSt === 'For Update') return;
     }
     r.status = newStatus;
   });
+  } catch(e) { console.error('[GOE] _syncOtherItemStatus error:', e); }
 }
 
 function saveRemit() {
@@ -11665,6 +11715,8 @@ function saveRemit() {
   save();
   closeModal('modal-remit');
   renderRemitPage();
+  // Refresh For Update view — remit status change affects visibility for remitter
+  if(returnTab === 'update') try { renderUpdateOrders(); } catch(e) {}
   _releaseLock();
 }
 
@@ -12101,14 +12153,17 @@ function renderRemitPage() {
     </div>`;
   }).join('');
   // Restore previously expanded rider sections after re-render
-  if(window._remitExpandedRiders && window._remitExpandedRiders.size > 0) {
-    window._remitExpandedRiders.forEach(safeId => {
-      const div   = document.getElementById(safeId);
-      const arrow = document.getElementById(safeId + '_arrow');
-      if(div) { div.style.display = 'block'; }
-      if(arrow) arrow.textContent = '▼';
-    });
-  }
+  try {
+    if(window._remitExpandedRiders && window._remitExpandedRiders.size > 0) {
+      window._remitExpandedRiders.forEach(safeId => {
+        if(!safeId) return;
+        const div   = document.getElementById(safeId);
+        const arrow = document.getElementById(safeId + '_arrow');
+        if(div) { div.style.display = 'block'; }
+        if(arrow) arrow.textContent = '▼';
+      });
+    }
+  } catch(e) { console.error('[GOE] remit restore expanded error:', e); }
   } catch(e) { console.error('[GOE] renderRemitPage error:', e); }
 }
 function toggleRemitRider(safeId) {
@@ -12548,14 +12603,26 @@ function renderOtherItemsPage() {
   // NOTE: Auto-heal removed — items only move to 'remitted' when Remitter saves as Remitted.
   // 'Delivered' status alone does NOT move items to Sales tab.
 
+  // Build set of remitted order numbers (rider has officially remitted)
+  const _remittedOrderNums = new Set();
+  (S.remitLog||[]).forEach(r => {
+    if(r.remitStatus !== 'Remitted') return;
+    if(r.orderNums && r.orderNums.length) r.orderNums.forEach(n => _remittedOrderNums.add(n));
+    if(r.orderIds  && r.orderIds.length)  r.orderIds.forEach(id => _remittedOrderNums.add(id));
+  });
+
   const items = (S.otherItems||[]).filter(r => {
     if(r.status !== _oiTab) return false;
     // isVerified gate: items with isVerified:false are hidden from ALL tabs
     if(r.isVerified === false) return false;
-    // Live checker gate: hide if the order is currently unverified
-    // This catches stale isVerified:true entries from Firebase
-    const _liveOrder = (S.orders||[]).find((o,i) => o && onum(i) === r.orderNum);
-    if(_liveOrder && (_liveOrder.checkerStatus||'Pending') !== 'Verified') return false;
+    // Products tab: show ALL verified OI items where rider hasn't remitted yet.
+    // This includes: For Update, Delivered, Cancelled orders — basta hindi pa remitted.
+    // The ONLY exclusion is: already moved to Sales (status='remitted') or explicitly hidden.
+    if(_oiTab === 'product') {
+      // If rider already remitted this order → it should be in Sales tab (status='remitted')
+      // but as a safety net, also exclude from Products if order num is in remitted set
+      if(_remittedOrderNums.has(r.orderNum)) return false;
+    }
     if(_dfFrom && r.date < _dfFrom) return false;
     if(_dfTo   && r.date > _dfTo)   return false;
     return true;
@@ -12777,22 +12844,7 @@ async function initApp(){
 
         if(syncEl){ syncEl.style.color='var(--green)'; syncEl.textContent='☁ Online'; }
         toast('☁ Loaded from Firebase!');
-        // ── Fix stale isVerified:true on otherItems for unverified orders ──────
-        // On load, correct any otherItems that belong to unverified orders.
-        // This fixes entries that were written to Firebase before the fix was deployed.
-        // If any were corrected, save back to Firebase so all devices get the fix.
-        try {
-          let _oiFixed = false;
-          (S.otherItems||[]).forEach(r => {
-            if(r.isVerified === false) return; // already hidden, skip
-            const _ord = (S.orders||[]).find((o,i) => o && onum(i) === r.orderNum);
-            if(_ord && (_ord.checkerStatus||'Pending') !== 'Verified') {
-              r.isVerified = false;
-              _oiFixed = true;
-            }
-          });
-          if(_oiFixed) { setTimeout(()=>{ try{ save(); }catch(e){} }, 500); }
-        } catch(e) {}
+        // OI items are now always visible in Products until remitted — no cleanup needed.
         // Reconcile inventory against stockLog so Products page matches Stock Ledger
   
       } else {
@@ -14271,6 +14323,7 @@ function codDelivCancelOrder(orderIdx) {
     S.orders[orderIdx].cancelledBy     = (currentUser && currentUser.name) || 'Checker';
     S.orders[orderIdx].cancelledAt     = new Date().toISOString();
     S.orders[orderIdx].inventoryRestored = true; // flag: block any future double-restore
+    _cancelAllOiForOrder(onum(orderIdx), S.orders[orderIdx]?._id||'');
     _syncOiPrefixStatus(orderIdx, 'cancelled'); // prefixed items → Other Items Cancelled
 
     if(!S.deletedOrders) S.deletedOrders = [];
@@ -14294,6 +14347,7 @@ function codDelivCancelOrder(orderIdx) {
     // Release lock AFTER everything is done
     window._codCancelLock = false;
     renderCodDelivPage();
+    try { renderOtherItemsPage(); } catch(e) {}
     if(_activePage==='tracking') try{renderTracking();}catch(e){}
     if(currentRole==='owner') try{renderDash();}catch(e){}
   });
@@ -14583,6 +14637,8 @@ function confirmCheckerCancel() {
   S.orders[orderIdx].cancelledBy = currentUser?.name || 'Checker';
   S.orders[orderIdx].cancelledAt = new Date().toISOString();
   S.orders[orderIdx].inventoryRestored = true; // block future double-restore
+  // Cancel ALL OI entries — remove from Products tab
+  _cancelAllOiForOrder(onum(orderIdx), o._id||'');
   // Force SAR pickup on all devices
   window._lastKnownWriteTs = 0;
   save();
@@ -15038,8 +15094,8 @@ function detectDuplicates(orders) {
   // ═══════════════════════════════════════════════════════════════════════
   // MERGE DETECTION — 3 RULES (all require city agreement for Rules 2 & 3)
   //
-  // RULE 1 — Same Phone + Same City (or city unknown):
-  //   phoneI === phoneJ AND city not confirmed different
+  // RULE 1 — Same Phone (no city restriction):
+  //   phoneI === phoneJ → always merge regardless of address or city
   //
   // RULE 2 — Same House# + Same City:
   //   houseI === houseJ (must be a specific/unique house identifier)
@@ -15216,16 +15272,16 @@ function detectDuplicates(orders) {
     const cityI = _normCity(oi.city);
     const cityJ = _normCity(oj.city);
 
-    // ── ABSOLUTE CITY BLOCK — applies to ALL rules including phone ──────────
-    // If BOTH cities are known and they differ → NEVER merge, no exceptions.
-    // Different city/province = different delivery location = not a duplicate.
-    if (cityI && cityJ && cityI !== cityJ) return false;
-
-    // ── RULE 1: Same phone + same city (or city unknown) ─────────────────
-    // Same number but different confirmed city = different customer branch → block.
+    // ── RULE 1: Same phone → always merge (same person regardless of address/city) ──
+    // Same contact number = same customer even if address differs.
     const phoneI = _normPhone(oi.contact);
     const phoneJ = _normPhone(oj.contact);
     if (phoneI && phoneJ && phoneI === phoneJ) return true;
+
+    // ── CITY BLOCK (Rules 2 & 3 only) ────────────────────────────────────────
+    // If BOTH cities are known and differ → block address-based rules only.
+    // Phone already handled above — city block does NOT apply to Rule 1.
+    if (cityI && cityJ && cityI !== cityJ) return false;
 
     // City agreement: same (both known+equal) OR unknown (one/both blank)
     const sameCity    = !!(cityI && cityJ && cityI === cityJ);
