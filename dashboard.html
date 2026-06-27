@@ -3352,6 +3352,30 @@ const _ALL_METHODS   = new Set(['COD', 'COD - Online Payment', 'LBC', 'EMS', 'Fe
 const _COD_OP_TAB = 'COD-OP'; // COD Online Payment checker/courier tab name
 // Helper: true if order is COD-flow (goes through checker → dispatcher → rider → remitter)
 const _isCodFlow    = (o) => _COD_METHODS.has(o?.paymentMethod || 'COD');
+
+// ── Remit gate helper ──────────────────────────────────────────────────────
+// Returns true if a COD order has been officially Remitted by the rider.
+// Delivered status alone does NOT count — must be in a Remitted remitLog batch.
+// Used by Dashboard, Daily Sales, Calendar, COD Delivery, Admin Orders stats.
+function _isRemittedCodOrder(o) {
+  if(!o || o.status !== 'Delivered') return false;
+  if((o.paymentMethod||'COD') !== 'COD') return false;
+  const _riderName = o.assignedRider || '';
+  const _ordId  = o._id || '';
+  const _ordNum = typeof onum === 'function' ? onum((S.orders||[]).indexOf(o)) : '';
+  const _date   = o.date || '';
+  const _delivDate = (o.dateDelivered || o.date || '').slice(0,10);
+  return (S.remitLog||[]).some(r => {
+    if(!r || r.remitStatus !== 'Remitted') return false;
+    if(r.riderName !== _riderName) return false;
+    // Match by order ID (new format) first
+    if(r.orderIds && (_ordId ? r.orderIds.includes(_ordId) : false)) return true;
+    if(r.orderNums && (_ordNum ? r.orderNums.includes(_ordNum) : false)) return true;
+    // Legacy fallback: date match
+    if(r.date === _date || r.date === _delivDate) return true;
+    return false;
+  });
+}
 // Helper: true if order is courier-flow (LBC/EMS/FedEx — needs tracking, Fully Paid, dropoff)
 const _isCourierFlow= (o) => _LBC_METHODS.has(o?.paymentMethod);
 // Helper: effective tab for COD Online (maps to COD tab in all views)
@@ -3959,7 +3983,7 @@ function renderMyOrders() {
   });
 
   // Stats
-  const del = list.filter(({o})=>o.status==='Delivered');
+  const del = list.filter(({o})=>o.status==='Delivered'&&((o.paymentMethod||'COD')!=='COD'||_isRemittedCodOrder(o)));
   const statsEl = document.getElementById('my-orders-stats-inner');
   if(statsEl && loggedAdmin) {
     statsEl.innerHTML = `<div class="stats-grid" style="margin-bottom:13px;">
@@ -4104,7 +4128,7 @@ function renderOrders() {
   // Stats for selected admin
   const statsEl = document.getElementById('owner-orders-stats');
   if(statsEl) {
-    const del = list.filter(({o})=>o.status==='Delivered');
+    const del = list.filter(({o})=>o.status==='Delivered'&&((o.paymentMethod||'COD')!=='COD'||_isRemittedCodOrder(o)));
     statsEl.innerHTML = `<div class="stats-grid" style="margin-bottom:13px;">
       <div class="stat-card gold"><div class="stat-label">Orders</div><div class="stat-value">${list.length}</div></div>
       <div class="stat-card green"><div class="stat-label">Delivered</div><div class="stat-value">${del.length}</div></div>
@@ -4283,8 +4307,10 @@ function renderChecker(){
     o.checkerStatus === 'Pending' &&
     !['Cancelled','RTO','Delivered','Out for Delivery','Update'].includes(o.status)
   ).length;
+  // COD-OP checker badge: only count orders that admin has moved to In Progress
   const _pendingCODOP = _safeO.filter(o =>
     o.paymentMethod === 'COD - Online Payment' &&
+    o.codopInProgress === true &&
     o.checkerStatus === 'Pending' &&
     !['Cancelled','RTO','Delivered','Out for Delivery','Update'].includes(o.status)
   ).length;
@@ -4366,6 +4392,8 @@ function renderChecker(){
     if(_isCourierTab && _COURIER_DONE.has(o.lbcStatus||'')) return false;
     // LBC/EMS/FedEx: only show Fully Paid orders — admin sets payment status, not checker
     if(_isCourierTab && (o.paymentStatus||'No Payment') !== 'Fully Paid') return false;
+    // COD-OP checker: only show orders that admin has moved to In Progress
+    if(checkerTab === 'COD-OP' && !o.codopInProgress) return false;
     if(filt && o.checkerStatus !== filt) return false;
     if(df && o.date !== df) return false;
     if(q && !(o.name||'').toLowerCase().includes(q) && !(o.contact||'').toLowerCase().includes(q)) return false;
@@ -4424,7 +4452,13 @@ function renderChecker(){
 
     if(!list.length) {
       document.getElementById('checker-tbody').innerHTML =
-        _isCourierTab
+        isCODOP
+          ? `<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">
+               <div style="font-size:13px;margin-bottom:6px;">🔄 Walang <strong style="color:var(--purple);">In Progress</strong> orders sa COD-OP tab.</div>
+               <div style="font-size:11px;color:var(--muted);">Ang checker ay nagve-verify lang ng orders na <strong>In Progress</strong> na.<br>
+               Ang admin ang mag-mo-move ng order papunta sa <strong>In Progress</strong> bago ito lumabas dito.</div>
+             </td></tr>`
+          : _isCourierTab
           ? `<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">
                <div style="font-size:13px;margin-bottom:6px;">✅ Walang <strong style="color:var(--green);">Fully Paid</strong> orders sa ${checkerTab} tab.</div>
                <div style="font-size:11px;color:var(--muted);">Ang checker ay nagve-verify lang ng orders na <strong>Fully Paid</strong> na.<br>
@@ -5651,30 +5685,28 @@ function renderUpdateOrders() {
   const el = document.getElementById('ret-update-orders-content'); if(!el) return;
 
   // ── Remitter visibility rule for For Update orders ─────────────────────────
-  // For Remittance (no remit entry yet) → HIDDEN
+  // For Remittance (no remit entry yet) → HIDDEN (hindi pa nag-aAdd ng remit ang remitter)
   // Remitting (remit entry exists but NOT yet 'Remitted') → VISIBLE ✅
-  // Remitted (remitStatus='Remitted') → HIDDEN
-  // Build sets of riders+dates that are currently "Remitting" (entry exists but not Remitted)
-  const _remittingKeys  = new Set(); // rider|date combos actively being remitted
-  const _remittedKeys   = new Set(); // rider|date combos already Remitted
+  // Remitted (remitStatus='Remitted') → HIDDEN (moves to COD Delivery → For Update for reschedule)
+  const _remittingKeys  = new Set(); // rider|date combos na may remit entry pero hindi pa Remitted
+  const _remittedKeys   = new Set(); // rider|date combos na Remitted na
   (S.remitLog||[]).forEach(e => {
     if(!e) return;
     const key = (e.riderName||'') + '|' + (e.date||'');
-    if(!key || key === '|') return; // skip malformed entries
+    if(!key || key === '|') return;
     if(e.remitStatus === 'Remitted') _remittedKeys.add(key);
-    else _remittingKeys.add(key); // Pending / in-progress
+    else _remittingKeys.add(key); // For Remittance / Remitting — may entry na
   });
 
   const rows = S.orders.map((o,i)=>({...o,idx:i}))
     .filter(o => {
       if(o.status !== 'Update') return false;
       if(df && o.date !== df) return false;
-      // Remitter role: apply visibility rule
+      // Remitter role: visible ONLY kapag "Remitting" — may remit entry na pero hindi pa Remitted
       if(currentRole === 'remitter') {
         const key = (o.assignedRider||'') + '|' + (o.date||'');
-        // Only show when rider is actively Remitting (entry exists but not yet Remitted)
-        if(!_remittingKeys.has(key)) return false; // no remit entry yet (For Remittance) OR already Remitted
-        if(_remittedKeys.has(key)) return false;   // already Remitted → hide
+        if(!_remittingKeys.has(key)) return false; // walang remit entry pa → hidden
+        if(_remittedKeys.has(key)) return false;   // Remitted na → hidden, nasa COD Delivery na
       }
       return true;
     });
@@ -5744,7 +5776,7 @@ function renderUpdateOrders() {
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
             ${currentRole==='remitter'
-              ? `<span style="font-size:10.5px;color:var(--muted);padding:4px 8px;background:rgba(201,168,76,0.07);border-radius:6px;">🔒 View only — Checker manages this</span>
+              ? `<span style="font-size:10.5px;color:var(--orange);padding:4px 10px;background:rgba(224,138,48,0.1);border:1px solid rgba(224,138,48,0.35);border-radius:6px;font-weight:600;">⏳ Remitting — kasama sa remit ni ${o.assignedRider||'rider'}</span>
                  <button class="btn btn-outline btn-sm" onclick="openInvoice(${o.idx})">🖨️ Invoice</button>`
               : `<button class="btn btn-green btn-sm" onclick="openReDeliverPicker(${o.idx})">🔁 Re-Deliver</button>
                  <button class="btn btn-red btn-sm" onclick="resolveUpdate(${o.idx},'Cancelled')">✕ Cancel</button>
@@ -6375,12 +6407,15 @@ function renderDailySales(){
   const allO=S.orders;
   // COD: counted on dateDelivered (actual delivery date), falling back to encode date o.date
   // This ensures orders encoded on one day but delivered on another are counted correctly
+  // REMIT GATE: COD orders only appear in Daily Sales once the rider has been officially Remitted.
   const codDel = allO.filter(o=>{
     if(o.status!=='Delivered') return false;
     if((o.paymentMethod||'COD')!=='COD') return false;
     const delivDate = o.dateDelivered || o.date;
     // Match encode date OR delivery date — order encoded on 06/24 may be delivered on 06/25
     if(delivDate !== d && o.date !== d) return false;
+    // REMIT GATE: must be in a Remitted batch before reflecting in Daily Sales
+    if(!_isRemittedCodOrder(o)) return false;
     // Exclude all-OI orders — they're counted separately in Other Items Sales
     // An order is "all-OI" only if every item is BOTH not in inventory AND has OI prefix
     const _items = o.items||[];
@@ -7494,7 +7529,7 @@ function renderCalendar(){
     if(!o.date)return;
     if(!dateMap[o.date])dateMap[o.date]={orders:0,delivered:0,revenue:0,cancelled:0};
     dateMap[o.date].orders++;
-    if(o.status==='Delivered'){dateMap[o.date].delivered++;dateMap[o.date].revenue+=o.grandTotal;}
+    if(o.status==='Delivered'&&((o.paymentMethod||'COD')!=='COD'||_isRemittedCodOrder(o))){dateMap[o.date].delivered++;dateMap[o.date].revenue+=o.grandTotal;}
     if(['Cancelled','RTO','Update'].includes(o.status))dateMap[o.date].cancelled++;
   });
 
@@ -7580,7 +7615,13 @@ function renderCourierDashboard(){
     {key:'Delivered', label:'✅ Delivered',  color:'var(--green)'},
     {key:'Cancelled', label:'🚫 Cancelled',  color:'var(--red)'},
   ];
-  const PAYMENT_TABS = curCourier === 'COD' ? COD_TABS : [
+  const PAYMENT_TABS = curCourier === 'COD' ? COD_TABS : curCourier === 'COD-OP' ? [
+    {key:'No Payment',   label:'⏳ Unpaid',       color:'var(--red)'},
+    {key:'Partial',      label:'💳 Partial',      color:'var(--orange)'},
+    {key:'Fully Paid',   label:'✅ Fully Paid',   color:'var(--green)'},
+    {key:'In Progress',  label:'🔄 In Progress',  color:'var(--purple)'},
+    {key:'Delivered',    label:'📦 Delivered',    color:'var(--blue)'},
+  ] : [
     {key:'No Payment', label:'⏳ Unpaid',     color:'var(--red)'},
     {key:'Partial',    label:'💳 Partial',    color:'var(--orange)'},
     {key:'Fully Paid', label:'✅ Fully Paid', color:'var(--green)'},
@@ -7615,12 +7656,18 @@ function renderCourierDashboard(){
     else if(curPayTab === 'Cancelled')  payTabOrders = courierOrders.filter(o=>o.status==='Cancelled');
     else payTabOrders = courierOrders.filter(o=>!['Delivered','Cancelled','RTO'].includes(o.status));
   } else {
-    // LBC/EMS/FedEx: payment buckets (unchanged)
-    payTabOrders = curPayTab==='Delivered'
-      ? courierOrders.filter(o=>o.status==='Delivered')
-      : curPayTab==='Fully Paid'
-      ? courierOrders.filter(o=>(o.paymentStatus||'No Payment')==='Fully Paid'&&o.status!=='Delivered'&&o.status!=='Cancelled'&&o.status!=='RTO')
-      : courierOrders.filter(o=>(o.paymentStatus||'No Payment')===curPayTab&&o.status!=='Cancelled'&&o.status!=='RTO'&&o.status!=='Delivered');
+    // LBC/EMS/FedEx/COD-OP: payment buckets
+    if(curCourier === 'COD-OP' && curPayTab === 'In Progress') {
+      payTabOrders = courierOrders.filter(o=>o.codopInProgress===true&&o.status!=='Delivered'&&o.status!=='Cancelled'&&o.status!=='RTO');
+    } else {
+      payTabOrders = curPayTab==='Delivered'
+        ? courierOrders.filter(o=>o.status==='Delivered')
+        : curPayTab==='Fully Paid'
+        ? courierOrders.filter(o=>(o.paymentStatus||'No Payment')==='Fully Paid'&&o.status!=='Delivered'&&o.status!=='Cancelled'&&o.status!=='RTO'&&!o.codopInProgress)
+        : curPayTab==='Partial'
+        ? courierOrders.filter(o=>(o.paymentStatus||'No Payment')==='Partial'&&o.status!=='Cancelled'&&o.status!=='RTO'&&o.status!=='Delivered'&&!o.codopInProgress)
+        : courierOrders.filter(o=>(o.paymentStatus||'No Payment')===curPayTab&&o.status!=='Cancelled'&&o.status!=='RTO'&&o.status!=='Delivered');
+    }
   }
 
   // Apply global search filter
@@ -7665,8 +7712,12 @@ function renderCourierDashboard(){
             : 0
             : pt.key==='Delivered'
             ? courierOrders.filter(o=>o.status==='Delivered').length
+            : (curCourier==='COD-OP' && pt.key==='In Progress')
+            ? courierOrders.filter(o=>o.codopInProgress===true&&o.status!=='Delivered'&&o.status!=='Cancelled'&&o.status!=='RTO').length
             : pt.key==='Fully Paid'
-            ? courierOrders.filter(o=>(o.paymentStatus||'No Payment')==='Fully Paid'&&o.status!=='Delivered'&&o.status!=='Cancelled'&&o.status!=='RTO').length
+            ? courierOrders.filter(o=>(o.paymentStatus||'No Payment')==='Fully Paid'&&o.status!=='Delivered'&&o.status!=='Cancelled'&&o.status!=='RTO'&&!o.codopInProgress).length
+            : pt.key==='Partial'
+            ? courierOrders.filter(o=>(o.paymentStatus||'No Payment')==='Partial'&&o.status!=='Cancelled'&&o.status!=='RTO'&&o.status!=='Delivered'&&!o.codopInProgress).length
             : courierOrders.filter(o=>(o.paymentStatus||'No Payment')===pt.key&&o.status!=='Cancelled'&&o.status!=='RTO'&&o.status!=='Delivered').length;
           const isActive=curPayTab===pt.key;
           return `<button onclick="window._cdPayTab='${pt.key}';renderCourierDashboard();"
@@ -7691,7 +7742,7 @@ function renderCourierDashboard(){
                  <th>Order #</th><th>Date</th><th>Customer</th>
                  ${isOwner?'<th>Admin</th>':''}
                  <th>${curCourier==='COD'?(curPayTab==='Cancelled'?'Reason':'Status'):'Tracking #'}</th><th>Items Total</th><th>SF</th>
-                 ${curPayTab==='Partial'?'<th>Notes</th>':''}
+                 ${(curPayTab==='Partial'||curPayTab==='In Progress')?'<th>Notes</th>':''}
                  <th>Grand Total</th><th>Status</th><th>Verif</th><th>Actions</th>
                </tr></thead>
                <tbody>
@@ -7703,7 +7754,7 @@ function renderCourierDashboard(){
                    <td style="font-size:10px;color:${curCourier==='COD'?'var(--gold)':'var(--blue)'}">${curCourier==='COD'?(curPayTab==='Cancelled'?(o.cancelReason||'—'):o.status):(o.trackingNumber||'—')}</td>
                    <td>${p(o.itemsTotal||0)}</td>
                    <td>${p(o.shipping||0)}</td>
-                   ${curPayTab==='Partial'?`<td style="font-size:10px;color:var(--orange);">${o.paymentNotes||'—'}</td>`:''}
+                   ${(curPayTab==='Partial'||curPayTab==='In Progress')?`<td style="font-size:10px;color:var(--orange);">${o.paymentNotes||'—'}</td>`:''}
                    <td style="font-weight:700;color:var(--green);">${p(o.grandTotal||0)}</td>
                    <td><span class="status ${sclass(o.status)}" style="font-size:9px;">${o.status}</span></td>
                    <td style="font-size:10px;">
@@ -7711,7 +7762,7 @@ function renderCourierDashboard(){
                        ? '<span style="color:var(--green);font-weight:600;">✅</span>'
                        : '<span style="color:var(--muted);">⏳</span>'}
                    </td>
-                   <td style="display:flex;gap:4px;flex-wrap:nowrap;">
+                   <td style="display:flex;gap:4px;flex-wrap:nowrap;align-items:center;">
                      ${canEdit(o)
                        ? `<button class="btn btn-outline btn-sm" onclick="_editSource='courier-dashboard';openEditOrder(${o.idx})" title="Edit order">✏️</button>`
                        : '<span style="font-size:9px;color:var(--muted);">Locked</span>'}
@@ -7720,11 +7771,23 @@ function renderCourierDashboard(){
                        : (o.checkerStatus!=='Verified'&&o.status==='Preparing'
                            ? `<button class="btn btn-red btn-sm" onclick="delOrder(${o.idx})" title="Delete order">🗑️</button>`
                            : '')}
+                     ${(curCourier==='COD-OP' && (curPayTab==='Partial'||curPayTab==='Fully Paid') && !o.codopInProgress)
+                       ? `<button class="btn btn-sm" style="background:rgba(155,111,217,0.15);color:var(--purple);border:1px solid rgba(155,111,217,0.4);white-space:nowrap;" onclick="moveCodOpToInProgress(${o.idx})" title="Move to In Progress">🔄 In Progress</button>`
+                       : (curCourier==='COD-OP' && curPayTab==='In Progress'
+                           ? (() => {
+                               const _prev = o.codopPrevTab || o.paymentStatus || 'No Payment';
+                               const _btnLabel = _prev === 'Partial' ? '↩️ Return to Partial' : _prev === 'Fully Paid' ? '↩️ Return to Fully Paid' : '↩️ Return';
+                               const _btnColor = _prev === 'Partial' ? 'var(--orange)' : 'var(--green)';
+                               const _btnBorder = _prev === 'Partial' ? 'rgba(224,138,48,0.4)' : 'rgba(46,204,138,0.4)';
+                               const _btnBg = _prev === 'Partial' ? 'rgba(224,138,48,0.12)' : 'rgba(46,204,138,0.12)';
+                               return `<button class="btn btn-sm" style="color:${_btnColor};border:1px solid ${_btnBorder};background:${_btnBg};white-space:nowrap;font-size:10.5px;" onclick="moveCodOpFromInProgress(${o.idx},'${_prev}')" title="Return to ${_prev} tab">${_btnLabel}</button>`;
+                             })()
+                           : '')}
                    </td>
                  </tr>`).join('')}
                </tbody>
                <tfoot><tr style="background:rgba(201,168,76,0.08);font-weight:700;">
-                 <td colspan="${isOwner?(curPayTab==='Partial'?9:8):(curPayTab==='Partial'?8:7)}" style="color:var(--gold);">TOTAL (${searchFiltered.length})</td>
+                 <td colspan="${isOwner?((curPayTab==='Partial'||curPayTab==='In Progress')?9:8):((curPayTab==='Partial'||curPayTab==='In Progress')?8:7)}" style="color:var(--gold);">TOTAL (${searchFiltered.length})</td>
                  <td style="color:var(--green);">${p(searchFiltered.reduce((s,o)=>s+(o.grandTotal||0),0))}</td>
                  <td colspan="3"></td>
                </tfoot>
@@ -7732,6 +7795,35 @@ function renderCourierDashboard(){
         }
       </div>
     </div>`;
+}
+
+// ── COD-OP: Move order to In Progress tab ─────────────────────────────────
+function moveCodOpToInProgress(idx) {
+  const o = S.orders[idx];
+  if(!o) return;
+  if(o.paymentMethod !== 'COD - Online Payment') { toast('⚠️ This is only for COD-OP orders.'); return; }
+  // Store where this order came from so we can return it correctly
+  o.codopPrevTab = o.paymentStatus || 'No Payment';
+  o.codopInProgress = true;
+  save();
+  window._cdPayTab = 'In Progress';
+  renderCourierDashboard();
+  toast('🔄 Order moved to In Progress tab.');
+}
+
+// ── COD-OP: Move order back from In Progress to its original payment tab ─────
+function moveCodOpFromInProgress(idx, targetTab) {
+  const o = S.orders[idx];
+  if(!o) return;
+  // targetTab passed explicitly from button; fallback to stored codopPrevTab, then paymentStatus
+  const backTab = targetTab || o.codopPrevTab || o.paymentStatus || 'No Payment';
+  o.codopInProgress = false;
+  o.codopPrevTab = '';
+  save();
+  window._cdPayTab = backTab;
+  renderCourierDashboard();
+  const label = backTab === 'Partial' ? 'Partial' : backTab === 'Fully Paid' ? 'Fully Paid' : backTab;
+  toast('↩️ Order returned to ' + label + ' tab.');
 }
 
 function renderAdminSheets(){
@@ -7752,7 +7844,7 @@ function renderAdminSheets(){
     admins.forEach(a=>{
       if(!adminMap[a]) adminMap[a]={name:a,total:0,delivered:0,cancelled:0,revenue:0,incentive:0};
       adminMap[a].total+=share;
-      if(o.status==='Delivered'){adminMap[a].delivered+=share;adminMap[a].revenue+=o.grandTotal*share;}
+      if(o.status==='Delivered'&&((o.paymentMethod||'COD')!=='COD'||_isRemittedCodOrder(o))){adminMap[a].delivered+=share;adminMap[a].revenue+=o.grandTotal*share;}
       if(['Cancelled','RTO','Update'].includes(o.status)) adminMap[a].cancelled+=share;
       adminMap[a].incentive=adminMap[a].delivered*25;
     });
@@ -8438,8 +8530,17 @@ function renderDash(){
   }) : allOrders;
 
   const total=orders.length;
-  const del=orders.filter(o=>o.status==='Delivered').length;
-  const revenue=orders.filter(o=>o.status==='Delivered').reduce((s,o)=>s+(o.grandTotal||0),0);
+  // Delivered count and revenue: COD orders only count after Remitted. LBC/EMS/FedEx/COD-OP already gated by verification.
+  const del=orders.filter(o=>{
+    if(o.status!=='Delivered') return false;
+    if((o.paymentMethod||'COD')==='COD') return _isRemittedCodOrder(o);
+    return true; // non-COD gated by verificationStatus elsewhere
+  }).length;
+  const revenue=orders.filter(o=>{
+    if(o.status!=='Delivered') return false;
+    if((o.paymentMethod||'COD')==='COD') return _isRemittedCodOrder(o);
+    return true;
+  }).reduce((s,o)=>s+(o.grandTotal||0),0);
   const pending=allOrders.filter(o=>o.checkerStatus==='Pending').length; // always all-time
   const todayO=allOrders.filter(o=>o.date===today()).length; // always today
   const expTotal=(S.expenses||[]).filter(e => {
@@ -8541,7 +8642,7 @@ function renderDash(){
     return `<div style="margin-bottom:8px;"><div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px;"><span class="status ${sc}">${s}</span><span style="color:var(--muted);">${cnt} (${pct}%)</span></div><div style="background:var(--navy-border);border-radius:3px;height:4px;"><div style="background:var(--gold);width:${pct}%;height:4px;border-radius:3px;"></div></div></div>`;
   }).join('');
   const adminDel={};
-  orders.filter(o=>o.status==='Delivered').forEach(o=>{
+  orders.filter(o=>o.status==='Delivered' && ((o.paymentMethod||'COD')!=='COD' || _isRemittedCodOrder(o))).forEach(o=>{
     const admins = o.adminList && o.adminList.length > 0 ? o.adminList : (o.admin ? [o.admin] : []);
     const share = 1 / Math.max(1, admins.length);
     admins.forEach(a => { if(a) adminDel[a] = (adminDel[a]||0) + share; });
@@ -11315,7 +11416,12 @@ function populateRemitParcels() {
           : '—'}
       </td>
       <td style="font-size:10.5px;">${remitAmtDisplay}</td>
-      <td><span class="status ${sclass(o.status)}" style="font-size:9px;">${o.status}</span></td>
+      <td>
+        ${o.status === 'Update'
+          ? `<span class="status return" style="font-size:9px;white-space:nowrap;">🔄 For Update</span>`
+          : `<span class="status ${sclass(o.status)}" style="font-size:9px;">${o.status}</span>`
+        }
+      </td>
     </tr>`;
   }).join('');
 
@@ -14053,9 +14159,9 @@ function renderCodDelivPage() {
 
   // Stats
   const updateCount= allCOD.filter(o=>o.status==='Update').length;
-  const delivCount = allCOD.filter(o=>o.status==='Delivered' && !_isAllOiOrder(o)).length;
+  const delivCount = allCOD.filter(o=>o.status==='Delivered' && !_isAllOiOrder(o) && ((o.paymentMethod||'COD')!=='COD' || _isRemittedCodOrder(o))).length;
   const cancelCount= allCOD.filter(o=>o.status==='Cancelled').length;
-  const totalRev   = allCOD.filter(o=>o.status==='Delivered').reduce((s,o)=>s+(o.grandTotal||0),0);
+  const totalRev   = allCOD.filter(o=>o.status==='Delivered'&&((o.paymentMethod||'COD')!=='COD'||_isRemittedCodOrder(o))).reduce((s,o)=>s+(o.grandTotal||0),0);
 
   if(statsEl) statsEl.innerHTML = `
     <div class="stat-card blue" onclick="setCodDelivTab('ForUpdate')" style="cursor:pointer;">
@@ -14077,7 +14183,7 @@ function renderCodDelivPage() {
   // Filter for current tab
   let list = allCOD.map((o,ri)=>({o,i:(S.orders||[]).indexOf(o)})).filter(({o})=>{
     if(tab==='ForUpdate') return o.status==='Update';
-    if(tab==='Delivered') return o.status==='Delivered' && !_isAllOiOrder(o);
+    if(tab==='Delivered') return o.status==='Delivered' && !_isAllOiOrder(o) && ((o.paymentMethod||'COD')!=='COD' || _isRemittedCodOrder(o));
     if(tab==='Cancelled') return o.status==='Cancelled';
     return false;
   });
@@ -14157,9 +14263,11 @@ function renderCodDelivPage() {
                            padding:5px 14px;border-radius:6px;cursor:pointer;font-size:11.5px;font-weight:700;margin-left:auto;">
                     ❌ Cancel Order
                   </button>`
-                :`<span style="font-size:11px;color:var(--muted);font-style:italic;padding:5px 2px;">
-                    🔒 Actions locked — rider must be marked <strong style="color:var(--orange);">Remitted</strong> first.
-                  </span>`)
+                :`<div style="display:flex;align-items:center;gap:10px;padding:6px 12px;background:rgba(224,138,48,0.08);border:1px solid rgba(224,138,48,0.3);border-radius:7px;">
+                    <span style="font-size:13px;">🔒</span>
+                    <span style="font-size:11.5px;color:var(--orange);font-weight:600;">Naghihintay ng Remit</span>
+                    <span style="font-size:11px;color:var(--muted);">— I-Remit muna si <strong style="color:var(--white);">${o.assignedRider||'rider'}</strong> sa Riders Remit page para ma-unlock ang Schedule Delivery.</span>
+                  </div>`)
               // Req#2 & Req#3: Cancelled and Delivered tabs — no buttons at all
               :''}
           </div>
