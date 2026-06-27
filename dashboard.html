@@ -10455,6 +10455,22 @@ async function saveOrder() {
     }
   }
 
+  // ── COD-OP validation: Partial or Fully Paid requires at least one Ref# ──
+  if(isCodOnlineMethod && (_selectedPayStatus === 'Partial' || _selectedPayStatus === 'Fully Paid')) {
+    const hasRef = payments.some(p => p.refno && p.refno.trim() !== '');
+    if(!hasRef) {
+      const _label = _selectedPayStatus === 'Fully Paid' ? 'Fully Paid' : 'Partially Paid';
+      toast('⚠️ ' + _label + ': kailangan ng Reference Number. Mag-add ng kahit isang Ref. No. bago i-save.');
+      const _pg = document.getElementById('enc-payments-group');
+      if(_pg) {
+        _pg.style.display = '';
+        _pg.scrollIntoView({behavior:'smooth', block:'nearest'});
+        if(!document.querySelector('#enc-payments-tbody .enc-payment-row')) addPaymentRow();
+      }
+      return;
+    }
+  }
+
   // ── ORDER VALIDATOR: shape check before save ──────────────────────────────
   const _preValidate = { name, date, grandTotal: Math.round(Math.max(0,iT+sf2-globalDiscount)*100)/100, items: items2, _id:'pre' };
   const _vResult = typeof _validateOrder === 'function' ? _validateOrder(_preValidate) : {valid:true};
