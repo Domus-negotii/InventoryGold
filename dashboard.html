@@ -7763,14 +7763,14 @@ function renderCourierDashboard(){
                        : '<span style="color:var(--muted);">⏳</span>'}
                    </td>
                    <td style="display:flex;gap:4px;flex-wrap:nowrap;align-items:center;">
-                     ${canEdit(o)
+                     ${(curCourier==='COD-OP' && curPayTab==='In Progress') ? '' : (canEdit(o)
                        ? `<button class="btn btn-outline btn-sm" onclick="_editSource='courier-dashboard';openEditOrder(${o.idx})" title="Edit order">✏️</button>`
-                       : '<span style="font-size:9px;color:var(--muted);">Locked</span>'}
-                     ${isOwner
+                       : '<span style="font-size:9px;color:var(--muted);">Locked</span>')}
+                     ${(curCourier==='COD-OP' && curPayTab==='In Progress') ? '' : (isOwner
                        ? `<button class="btn btn-red btn-sm" onclick="delOrder(${o.idx})" title="Delete order">🗑️</button>`
                        : (o.checkerStatus!=='Verified'&&o.status==='Preparing'
                            ? `<button class="btn btn-red btn-sm" onclick="delOrder(${o.idx})" title="Delete order">🗑️</button>`
-                           : '')}
+                           : ''))}
                      ${(curCourier==='COD-OP' && (curPayTab==='Partial'||curPayTab==='Fully Paid') && !o.codopInProgress)
                        ? `<button class="btn btn-sm" style="background:rgba(155,111,217,0.15);color:var(--purple);border:1px solid rgba(155,111,217,0.4);white-space:nowrap;" onclick="moveCodOpToInProgress(${o.idx})" title="Move to In Progress">🔄 In Progress</button>`
                        : (curCourier==='COD-OP' && curPayTab==='In Progress'
