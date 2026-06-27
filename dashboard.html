@@ -4270,6 +4270,15 @@ function setCheckerTab(tab) {
   document.getElementById('checker-table-area').style.display = '';
   document.getElementById('checker-cod-table').style.display = isLbc ? 'none' : '';
   document.getElementById('checker-lbc-table').style.display = isLbc ? '' : 'none';
+  // Update COD table headers based on tab
+  const _codThead = document.querySelector('#checker-cod-table thead tr');
+  if(_codThead) {
+    if(isCodOp) {
+      _codThead.innerHTML = '<th>Order #</th><th>Customer</th><th>CP #</th><th>Date</th><th>Items Total</th><th>SF</th><th>Grand Total</th><th style="color:var(--blue);">💳 Payment</th><th style="color:var(--orange);">⚖️ Remaining Balance</th><th>Assign Rider</th><th>Checker Status</th><th>Print</th><th>Actions</th>';
+    } else {
+      _codThead.innerHTML = '<th>Order #</th><th>Customer</th><th>CP #</th><th>Date</th><th>Items Total</th><th>SF</th><th>Grand Total</th><th>Assign Rider</th><th>Checker Status</th><th>Print</th><th>Actions</th>';
+    }
+  }
   renderChecker();
   // Also refresh COD delivery monitor
   setTimeout(()=>{ try{ if(_activePage==='coddelivery') renderCodDelivPage(); }catch(e){} }, 50);
@@ -4453,7 +4462,7 @@ function renderChecker(){
     if(!list.length) {
       document.getElementById('checker-tbody').innerHTML =
         isCODOP
-          ? `<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:26px;">
+          ? `<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:26px;">
                <div style="font-size:13px;margin-bottom:6px;">🔄 Walang <strong style="color:var(--purple);">In Progress</strong> orders sa COD-OP tab.</div>
                <div style="font-size:11px;color:var(--muted);">Ang checker ay nagve-verify lang ng orders na <strong>In Progress</strong> na.<br>
                Ang admin ang mag-mo-move ng order papunta sa <strong>In Progress</strong> bago ito lumabas dito.</div>
@@ -4469,7 +4478,7 @@ function renderChecker(){
       let codRows = '';
       Object.keys(codAdminGroups).sort().forEach(adm => {
         codRows += `<tr style="background:rgba(201,168,76,0.08);">
-          <td colspan="11" style="padding:7px 12px;font-weight:700;font-size:11px;color:var(--gold);
+          <td colspan="${isCODOP?13:11}" style="padding:7px 12px;font-weight:700;font-size:11px;color:var(--gold);
             text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--navy-border);">
             👤 ${adm}
             <span style="color:var(--muted);font-weight:400;font-size:10px;margin-left:6px;">
@@ -4489,6 +4498,22 @@ function renderChecker(){
             <td>${o.date}</td>
             <td>${p(o.itemsTotal)}</td><td>${p(o.shipping)}</td>
             <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
+            ${isCODOP ? (() => {
+              const _pmts = o.payments || [];
+              const _totalPaid = Math.round(_pmts.reduce((s,pm)=>s+(parseFloat(pm.amount)||0),0)*100)/100;
+              const _remaining = Math.max(0, Math.round(((o.grandTotal||0) - _totalPaid)*100)/100);
+              const _refList = _pmts.map(pm=>`<div style="font-size:9.5px;color:var(--muted);">${pm.refno||'—'} ${pm.amount?'<span style=\'color:var(--blue);\'>'+p(pm.amount)+'</span>':''}</div>`).join('');
+              return `<td style="font-size:11px;">
+                ${_totalPaid > 0
+                  ? `<span style="color:var(--blue);font-weight:700;">${p(_totalPaid)}</span>${_refList}`
+                  : '<span style="color:var(--muted);font-size:10px;">—</span>'}
+              </td>
+              <td style="font-size:11px;font-weight:700;color:${_remaining===0?'var(--green)':_remaining<(o.grandTotal||0)?'var(--orange)':'var(--red)'};">
+                ${_remaining === 0
+                  ? '<span style="color:var(--green);">✅ Fully Paid</span>'
+                  : p(_remaining)}
+              </td>`;
+            })() : ''}
             <td>
               ${isLocked
                 ? '<div style="font-size:11px;color:var(--blue);padding:4px 8px;background:rgba(46,112,204,0.08);border:1px solid rgba(46,112,204,0.2);border-radius:6px;">\uD83D\uDD12 '+(o.assignedRider||'Unassigned')+'<div style=\"font-size:9px;color:var(--muted);margin-top:2px;\">Locked — '+(o.status==='Ready'?'Ready for Pick-up':o.status)+'</div></div>'
@@ -5623,7 +5648,24 @@ function setReturnTab(tab) {
 }
 
 function renderReturns() {
-  const updateOrders = S.orders.filter(o=>o&&o.status==='Update').length;
+  // ── Remitter visibility: build remitting/remitted keys (same logic as renderUpdateOrders/renderCancelledItems) ──
+  const _remittingKeysRR = new Set();
+  const _remittedKeysRR  = new Set();
+  (S.remitLog||[]).forEach(e => {
+    if(!e) return;
+    const key = (e.riderName||'') + '|' + (e.date||'');
+    if(!key || key === '|') return;
+    if(e.remitStatus === 'Remitted') _remittedKeysRR.add(key);
+    else _remittingKeysRR.add(key); // For Remittance / Remitting
+  });
+  const _isRemitterVisible = (o) => {
+    if(currentRole !== 'remitter') return true; // non-remitter: show all
+    const key = (o.assignedRider||'') + '|' + (o.date||'');
+    // Visible only if rider has a remit entry AND it's not yet Remitted (i.e. Remitting)
+    return _remittingKeysRR.has(key) && !_remittedKeysRR.has(key);
+  };
+
+  const updateOrders = S.orders.filter(o=>o&&o.status==='Update'&&_isRemitterVisible(o)).length;
 
   // Compute cancelled orders and items that still need action
   // (exclude checkerCancelledDirect — those were auto-restored, no manual log needed)
@@ -5636,6 +5678,8 @@ function renderReturns() {
     if(o.cancelledBy || o.checkerCancelledDirect) return;
     // Layer 2: in deletedOrders log (covers old records without flags)
     if(o.status==='Cancelled' && (S.deletedOrders||[]).some(d=>d.orderNum===onum(oi))) return;
+    // Layer 3: Remitter visibility — only count if rider is Remitting (not For Remittance, not Remitted)
+    if(!_isRemitterVisible(o)) return;
 
     const iS = o.itemStatuses||{}, iCQ = o.itemCancelQty||{};
     let orderHasPending = false;
@@ -9792,9 +9836,19 @@ function renderRiderParcels() {
               onblur="riderSaveItemRemark(${o.idx},${ii},this.value)">` : ''}
           </div>
         </td>
-        <td colspan="4" style="font-size:9.5px;color:${stColor};font-weight:700;">
-          ${isCancelledItem?'❌ All Cancelled':cancelledQty>0?`⚠️ ${cancelledQty}${isGramsItem?'g':' pc'} cancelled`:itemSt}
-          ${isCancelledItem?'<br><span style="font-size:9px;color:var(--orange);">(pending return log)</span>':''}
+        <td colspan="4" style="font-size:9.5px;font-weight:700;">
+          ${isCancelledItem
+            ? `<span style="display:inline-block;padding:2px 7px;border-radius:12px;background:rgba(224,85,85,0.15);color:var(--red);font-size:9px;font-weight:700;white-space:nowrap;">❌ Cancelled</span>
+               <div style="font-size:9px;color:var(--orange);margin-top:2px;">(pending return log)</div>`
+            : cancelledQty > 0
+              ? `<span style="display:inline-block;padding:2px 7px;border-radius:12px;background:rgba(224,138,48,0.15);color:var(--orange);font-size:9px;font-weight:700;white-space:nowrap;">⚠️ Partial Cancel</span>
+                 <div style="font-size:9px;color:var(--muted);margin-top:2px;">${cancelledQty}${isGramsItem?'g':' pc'} cancelled</div>`
+              : itemSt === 'Delivered'
+                ? `<span style="display:inline-block;padding:2px 7px;border-radius:12px;background:rgba(46,204,138,0.15);color:var(--green);font-size:9px;font-weight:700;white-space:nowrap;">✅ Delivered</span>`
+                : (itemSt === 'For Update' || itemSt === 'Update')
+                  ? `<span style="display:inline-block;padding:2px 7px;border-radius:12px;background:rgba(155,111,217,0.15);color:var(--purple);font-size:9px;font-weight:700;white-space:nowrap;">🔄 For Update</span>`
+                  : `<span style="display:inline-block;padding:2px 7px;border-radius:12px;background:rgba(138,149,168,0.15);color:var(--muted);font-size:9px;font-weight:700;white-space:nowrap;">⏳ ${itemSt}</span>`
+          }
         </td>
       </tr>`;
     }).join('');
@@ -11432,10 +11486,16 @@ function populateRemitParcels() {
           : '—'}
       </td>
       <td style="font-size:10.5px;">${remitAmtDisplay}</td>
-      <td>
+      <td style="white-space:nowrap;">
         ${o.status === 'Update'
-          ? `<span class="status return" style="font-size:9px;white-space:nowrap;">🔄 For Update</span>`
-          : `<span class="status ${sclass(o.status)}" style="font-size:9px;">${o.status}</span>`
+          ? `<span class="status return" style="font-size:9px;white-space:nowrap;font-weight:700;">🔄 For Update</span>`
+          : o.status === 'Cancelled'
+            ? `<span class="status cancelled" style="font-size:9px;white-space:nowrap;font-weight:700;">❌ Cancelled</span>`
+            : o.status === 'RTO'
+              ? `<span class="status cancelled" style="font-size:9px;white-space:nowrap;font-weight:700;">↩️ RTO</span>`
+              : o.status === 'Delivered'
+                ? `<span class="status delivered" style="font-size:9px;white-space:nowrap;font-weight:700;">✅ Delivered</span>`
+                : `<span class="status ${sclass(o.status)}" style="font-size:9px;white-space:nowrap;font-weight:700;">${o.status}</span>`
         }
       </td>
     </tr>`;
