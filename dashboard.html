@@ -2919,6 +2919,8 @@ function _showRulesHint() {
     <div style="background:var(--navy);border-radius:8px;padding:12px;font-size:12.5px;" id="remit-calc">
       <div class="info-row"><span style="color:var(--muted);">📦 Delivered SF (Gross)</span><span id="remit-gross-sf" style="color:var(--gold);font-weight:600;">₱0.00</span></div>
       <div class="info-row"><span style="color:var(--muted);">💰 Subtotal (Delivered + SF)</span><span id="remit-subtotal" style="color:var(--blue);font-weight:600;">₱0.00</span></div>
+      <div class="info-row" id="remit-cod-cash-row" style="display:none;"><span style="color:var(--muted);">　↳ 💵 COD (Cash collect)</span><span id="remit-cod-cash-amt" style="color:var(--text);font-size:11.5px;">₱0.00</span></div>
+      <div class="info-row" id="remit-cod-online-row" style="display:none;"><span style="color:var(--muted);">　↳ 💳 COD-OP (Online received)</span><span id="remit-cod-online-amt" style="color:var(--blue);font-size:11.5px;">₱0.00</span></div>
       <div class="info-row"><span style="color:var(--red);">Less: SF 10% (Company)</span><span id="remit-sf-10" style="color:var(--red);">-₱0.00</span></div>
       <div class="info-row"><span style="color:var(--red);">Less: Cashbond (₱100)</span><span id="remit-cashbond-display" style="color:var(--red);">-₱100.00</span></div>
       <div class="info-row"><span style="color:var(--red);">Less: Parcel Fee (₱10/parcel)</span><span id="remit-parcel-fee-display" style="color:var(--red);">-₱0.00</span></div>
@@ -4274,7 +4276,7 @@ function setCheckerTab(tab) {
   const _codThead = document.querySelector('#checker-cod-table thead tr');
   if(_codThead) {
     if(isCodOp) {
-      _codThead.innerHTML = '<th>Order #</th><th>Customer</th><th>CP #</th><th>Date</th><th>Items Total</th><th>SF</th><th>Grand Total</th><th style="color:var(--blue);">💳 Payment</th><th style="color:var(--orange);">⚖️ Remaining Balance</th><th>Assign Rider</th><th>Checker Status</th><th>Print</th><th>Actions</th>';
+      _codThead.innerHTML = '<th>Order #</th><th>Customer</th><th>CP #</th><th>Date</th><th>Items Total</th><th>SF</th><th>Grand Total</th><th style="color:var(--blue);">💳 Payment</th><th style="color:var(--orange);">⚖️ Remaining Balance</th><th style="color:var(--green);">📅 Deliver Date</th><th>Assign Rider</th><th>Checker Status</th><th>Print</th><th>Actions</th>';
     } else {
       _codThead.innerHTML = '<th>Order #</th><th>Customer</th><th>CP #</th><th>Date</th><th>Items Total</th><th>SF</th><th>Grand Total</th><th>Assign Rider</th><th>Checker Status</th><th>Print</th><th>Actions</th>';
     }
@@ -4316,10 +4318,9 @@ function renderChecker(){
     o.checkerStatus === 'Pending' &&
     !['Cancelled','RTO','Delivered','Out for Delivery','Update'].includes(o.status)
   ).length;
-  // COD-OP checker badge: only count orders that admin has moved to In Progress
+  // COD-OP checker badge: count all unverified COD-OP orders
   const _pendingCODOP = _safeO.filter(o =>
     o.paymentMethod === 'COD - Online Payment' &&
-    o.codopInProgress === true &&
     o.checkerStatus === 'Pending' &&
     !['Cancelled','RTO','Delivered','Out for Delivery','Update'].includes(o.status)
   ).length;
@@ -4401,8 +4402,8 @@ function renderChecker(){
     if(_isCourierTab && _COURIER_DONE.has(o.lbcStatus||'')) return false;
     // LBC/EMS/FedEx: only show Fully Paid orders — admin sets payment status, not checker
     if(_isCourierTab && (o.paymentStatus||'No Payment') !== 'Fully Paid') return false;
-    // COD-OP checker: only show orders that admin has moved to In Progress
-    if(checkerTab === 'COD-OP' && !o.codopInProgress) return false;
+    // COD-OP checker: show all unverified COD-OP orders (admin verifies then moves to In Progress)
+    // No codopInProgress gate — checker needs to verify before rider can pick up
     if(filt && o.checkerStatus !== filt) return false;
     if(df && o.date !== df) return false;
     if(q && !(o.name||'').toLowerCase().includes(q) && !(o.contact||'').toLowerCase().includes(q)) return false;
@@ -4462,7 +4463,7 @@ function renderChecker(){
     if(!list.length) {
       document.getElementById('checker-tbody').innerHTML =
         isCODOP
-          ? `<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:26px;">
+          ? `<tr><td colspan="14" style="text-align:center;color:var(--muted);padding:26px;">
                <div style="font-size:13px;margin-bottom:6px;">🔄 Walang <strong style="color:var(--purple);">In Progress</strong> orders sa COD-OP tab.</div>
                <div style="font-size:11px;color:var(--muted);">Ang checker ay nagve-verify lang ng orders na <strong>In Progress</strong> na.<br>
                Ang admin ang mag-mo-move ng order papunta sa <strong>In Progress</strong> bago ito lumabas dito.</div>
@@ -4478,7 +4479,7 @@ function renderChecker(){
       let codRows = '';
       Object.keys(codAdminGroups).sort().forEach(adm => {
         codRows += `<tr style="background:rgba(201,168,76,0.08);">
-          <td colspan="${isCODOP?13:11}" style="padding:7px 12px;font-weight:700;font-size:11px;color:var(--gold);
+          <td colspan="${isCODOP?14:11}" style="padding:7px 12px;font-weight:700;font-size:11px;color:var(--gold);
             text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--navy-border);">
             👤 ${adm}
             <span style="color:var(--muted);font-weight:400;font-size:10px;margin-left:6px;">
@@ -4514,6 +4515,14 @@ function renderChecker(){
                   : p(_remaining)}
               </td>`;
             })() : ''}
+            ${isCODOP ? `<td>
+              <input type="date" value="${o.codopDeliverDate||''}"
+                style="font-size:10.5px;padding:2px 5px;border:1px solid var(--navy-border);border-radius:5px;background:var(--navy-card);color:var(--text);width:130px;"
+                onchange="(function(el){S.orders[${i}].codopDeliverDate=el.value;save();toast('📅 Deliver date saved.');})(this)">
+              ${o.codopDeliverDate
+                ? '<div style="font-size:9px;color:var(--green);margin-top:2px;">✅ '+o.codopDeliverDate+'</div>'
+                : '<div style="font-size:9px;color:var(--muted);">Not set</div>'}
+            </td>` : ''}
             <td>
               ${isLocked
                 ? '<div style="font-size:11px;color:var(--blue);padding:4px 8px;background:rgba(46,112,204,0.08);border:1px solid rgba(46,112,204,0.2);border-radius:6px;">\uD83D\uDD12 '+(o.assignedRider||'Unassigned')+'<div style=\"font-size:9px;color:var(--muted);margin-top:2px;\">Locked — '+(o.status==='Ready'?'Ready for Pick-up':o.status)+'</div></div>'
@@ -4601,9 +4610,12 @@ function renderChecker(){
                     onchange="updatePaymentStatus(${i},this.value)">
                     ${PAYMENT_STATUSES.map(s=>`<option${pymSt===s?' selected':''}>${s}</option>`).join('')}
                   </select>
-                  ${pymSt==='Partial'?`<div style="margin-top:4px;"><input class="form-control"
-                    style="font-size:10px;padding:2px 5px;" placeholder="Payment notes..."
-                    value="${o.paymentNotes||''}" onblur="updatePaymentNotes(${i},this.value)"></div>`:''}
+                  <div style="margin-top:4px;">
+                    <input class="form-control"
+                      style="font-size:10px;padding:2px 5px;width:100%;" placeholder="💬 Note para sa rider (balance, instructions...)..."
+                      value="${o.paymentNotes||''}" onblur="updatePaymentNotes(${i},this.value)">
+                    ${o.paymentNotes?`<div style="font-size:9px;color:var(--orange);margin-top:2px;">📌 ${o.paymentNotes}</div>`:''}
+                  </div>
                   ${pymSt==='Fully Paid'?'<div style="font-size:9.5px;color:var(--green);margin-top:2px;">✅ Bayad na</div>':''}`
               }
             </td>
@@ -4664,7 +4676,7 @@ function renderChecker(){
 
 function updatePaymentStatus(orderIdx, status) {
   S.orders[orderIdx].paymentStatus = status;
-  if(status !== 'Partial') S.orders[orderIdx].paymentNotes = '';
+  // Keep paymentNotes across status changes — COD-OP note persists for rider/remitter
   // Partial payment → default to No Payment for verification (not ready to verify)
   if(status === 'Partial') {
     S.orders[orderIdx].verificationStatus = 'Not Verified';
@@ -4949,8 +4961,14 @@ function assignRiderFromChecker(orderIdx, riderName) {
   renderChecker();
 }
 function verifyOrder(i){
+  // CONCURRENCY LOCK: prevent double-click creating duplicate verify entries
+  if(window._verifyingOrder === i) { toast('⏳ Processing...'); return; }
+  window._verifyingOrder = i;
+  const _releaseVerifyLock = () => { if(window._verifyingOrder === i) window._verifyingOrder = null; };
   // GUARD: null-check order exists before any inventory/status mutation
-  if(!S.orders[i]) { console.warn('[GOE] verifyOrder: invalid index', i); return; }
+  if(!S.orders[i]) { console.warn('[GOE] verifyOrder: invalid index', i); _releaseVerifyLock(); return; }
+  // GUARD: already verified — prevent double-entry
+  if(S.orders[i].checkerStatus === 'Verified') { toast('⚠️ Verified na ang order na ito.'); _releaseVerifyLock(); return; }
   // GUARD: block verify if order is in a detected merge group
   // Checker must merge or dismiss the duplicate alert before verifying.
   // ═══ MERGE BLOCK BARRIER ══════════════════════════════════════════════════
@@ -4973,7 +4991,9 @@ function verifyOrder(i){
     const _inDupGroup = _dupSets.some(group =>
       group.some(item => onum(item.i) === _myOrderNum)
     );
-    if(_inDupGroup) {
+    const _isCodOpOrder = (S.orders[i]?.paymentMethod || '') === 'COD - Online Payment';
+    if(_inDupGroup && !_isCodOpOrder) {
+      // Merge guard applies to COD orders only — COD-OP can verify despite duplicate detection
       toast('⚠️ Hindi pwedeng i-verify — na-detect na DUPLICATE ang order na ito. I-MERGE muna o alisin sa merge group bago mag-verify.');
       return;
     }
@@ -5043,9 +5063,19 @@ function verifyOrder(i){
   }
   // ── OTHER ITEMS: capture FP/PG + non-inventory items ──────────────────────
   _captureOtherItems(i);
+  // LBC/EMS/FedEx: always Fully Paid → OI items go directly to Sales (remitted)
+  // COD-OP Fully Paid: no balance → OI items go directly to Sales
+  // COD-OP Partial/No Payment: has balance → OI stays in Products until remitted
+  const _verOrd = S.orders[i];
+  const _isCodOpVerify = _verOrd?.paymentMethod === 'COD - Online Payment';
+  const _isCodOpFullyPaid = _isCodOpVerify && (_verOrd?.paymentStatus === 'Fully Paid');
+  if(_isCourierOrder || _isCodOpFullyPaid) {
+    _syncOtherItemStatus(onum(i), 'remitted');
+  }
 
   persist();
   save();
+  _releaseVerifyLock();
   const _toastMsg = _isCourierOrder
     ? '✅ Order verified! Status: Preparing. Checker must set to Ready to Pick-up when parcel is ready.'
     : '✅ Order verified! Inventory deducted. Rider can now pick-up.';
@@ -5056,8 +5086,11 @@ function verifyOrder(i){
   try { renderOtherItemsPage(); } catch(e) {}
 }
 function unverifyOrder(i){
+  if(window['_lock_unverify_'+i]) { toast('⏳ Please wait...'); return; }
+  window['_lock_unverify_'+i] = true;
+  const _relUnverify = () => { window['_lock_unverify_'+i] = false; };
   // GUARD: null-check order exists before any inventory/status mutation
-  if(!S.orders[i]) { console.warn('[GOE] unverifyOrder: invalid index', i); return; }
+  if(!S.orders[i]) { console.warn('[GOE] unverifyOrder: invalid index', i); _relUnverify(); return; }
   // Guard: prevent double-click during in-progress save
   if(window._verifyBusy) { toast('⏳ Please wait...'); return; }
   window._verifyBusy = true;
@@ -5136,7 +5169,7 @@ function unverifyOrder(i){
       }
     });
   }
-  save(); toast('↩ Set back to Pending. Inventory restored.'); renderChecker();
+  save(); _relUnverify(); toast('↩ Set back to Pending. Inventory restored.'); renderChecker();
   // Refresh ALL inventory tabs + Other Items immediately
   _refreshInvAllTabs();
   try { renderOtherItemsPage(); } catch(e) {}
@@ -5431,15 +5464,19 @@ function openReDeliverPicker(orderIdx) {
 }
 
 function confirmReDeliver(orderIdx) {
+  if(window._lock_reDeliver) { toast('⏳ Please wait...'); return; }
+  window._lock_reDeliver = true;
+  const _relReDeliver = () => { window._lock_reDeliver = false; };
   const inp = document.getElementById('_redeliver-date');
   const chosenDate = inp?.value?.trim();
-  if(!chosenDate) { toast('⚠️ Pumili ng petsa para sa re-delivery.'); return; }
+  if(!chosenDate) { toast('⚠️ Pumili ng petsa para sa re-delivery.'); _relReDeliver(); return; }
   document.getElementById('_redeliver-overlay')?.remove();
   S.orders[orderIdx].date = chosenDate;
   S.orders[orderIdx].scheduledDelivery = chosenDate; // reflect in rider/COD views
   S.orders[orderIdx].status = 'Preparing';
   S.orders[orderIdx].riderRemarks = '';
   S.orders[orderIdx].checkerCancelledDirect = false;
+  S.orders[orderIdx].wasForUpdate = true; // flag: was rescheduled from For Update — keep in remit
   // ── Sync OI entries: update date to match new rescheduled delivery date ──
   // So Other Items Products shows the correct (rescheduled) date.
   if(S.otherItems && S.otherItems.length) {
@@ -5452,6 +5489,7 @@ function confirmReDeliver(orderIdx) {
     });
   }
   save();
+  _relReDeliver();
   toast('🔁 Re-scheduled for ' + chosenDate + '. Status → Preparing.');
   renderCheckerForUpdate(); refreshUpdateBadge();
   if(returnTab==='update') renderUpdateOrders();
@@ -5462,6 +5500,9 @@ function confirmReDeliver(orderIdx) {
 }
 
 function resolveUpdate(orderIdx, newStatus) {
+  if(window['_lock_resolve_'+orderIdx]) { toast('⏳ Please wait...'); return; }
+  window['_lock_resolve_'+orderIdx] = true;
+  setTimeout(()=>{ window['_lock_resolve_'+orderIdx]=false; }, 3000);
   const o = S.orders[orderIdx];
   if(!o) return;
 
@@ -5656,16 +5697,38 @@ function renderReturns() {
     const key = (e.riderName||'') + '|' + (e.date||'');
     if(!key || key === '|') return;
     if(e.remitStatus === 'Remitted') _remittedKeysRR.add(key);
-    else _remittingKeysRR.add(key); // For Remittance / Remitting
+    else if(e.remitStatus === 'Remitting') _remittingKeysRR.add(key); // ONLY 'Remitting' shows items
+    // 'For Remittance' → not added to either set → hidden
   });
   const _isRemitterVisible = (o) => {
     if(currentRole !== 'remitter') return true; // non-remitter: show all
     const key = (o.assignedRider||'') + '|' + (o.date||'');
-    // Visible only if rider has a remit entry AND it's not yet Remitted (i.e. Remitting)
+    // Visible ONLY when remitStatus === 'Remitting' (not For Remittance, not Remitted)
     return _remittingKeysRR.has(key) && !_remittedKeysRR.has(key);
   };
 
-  const updateOrders = S.orders.filter(o=>o&&o.status==='Update'&&_isRemitterVisible(o)).length;
+  const updateOrders = S.orders.filter(o=>{
+    if(!o) return false;
+    if(o.status==='Cancelled'||o.status==='Delivered'||o.status==='RTO') return false;
+    const _hasItemUpd = Object.values(o.itemStatuses||{}).some(st=>st==='Update');
+    if(!(o.status==='Update'||_hasItemUpd)) return false;
+    // Remitter: same direct check as renderUpdateOrders / renderCancelledItems
+    if(currentRole==='remitter') {
+      const _hasItemUpd2 = Object.values(o.itemStatuses||{}).some(st=>st==='Update');
+      const _remitting = o.assignedRider && (S.remitLog||[]).some(r=>
+        r.riderName===o.assignedRider &&
+        (_hasItemUpd2 ? true : r.date===o.date) &&
+        r.remitStatus==='Remitting'
+      );
+      const _remitted = o.assignedRider && (S.remitLog||[]).some(r=>
+        r.riderName===o.assignedRider &&
+        (_hasItemUpd2 ? true : r.date===o.date) &&
+        r.remitStatus==='Remitted'
+      );
+      return _remitting && !_remitted;
+    }
+    return true;
+  }).length;
 
   // Compute cancelled orders and items that still need action
   // (exclude checkerCancelledDirect — those were auto-restored, no manual log needed)
@@ -5728,29 +5791,31 @@ function renderUpdateOrders() {
   const df = mdy2ymd((document.getElementById('ret-update-date')?.value||'').trim());
   const el = document.getElementById('ret-update-orders-content'); if(!el) return;
 
-  // ── Remitter visibility rule for For Update orders ─────────────────────────
-  // For Remittance (no remit entry yet) → HIDDEN (hindi pa nag-aAdd ng remit ang remitter)
-  // Remitting (remit entry exists but NOT yet 'Remitted') → VISIBLE ✅
-  // Remitted (remitStatus='Remitted') → HIDDEN (moves to COD Delivery → For Update for reschedule)
-  const _remittingKeys  = new Set(); // rider|date combos na may remit entry pero hindi pa Remitted
-  const _remittedKeys   = new Set(); // rider|date combos na Remitted na
-  (S.remitLog||[]).forEach(e => {
-    if(!e) return;
-    const key = (e.riderName||'') + '|' + (e.date||'');
-    if(!key || key === '|') return;
-    if(e.remitStatus === 'Remitted') _remittedKeys.add(key);
-    else _remittingKeys.add(key); // For Remittance / Remitting — may entry na
-  });
-
   const rows = S.orders.map((o,i)=>({...o,idx:i}))
     .filter(o => {
-      if(o.status !== 'Update') return false;
+      // Include whole-order For Update (o.status === 'Update')
+      // AND orders with at least one item-level For Update (itemStatuses[ii] === 'Update')
+      const _hasItemUpdate = Object.values(o.itemStatuses||{}).some(st => st === 'Update');
+      const _isForUpdate = o.status === 'Update' || _hasItemUpdate;
+      if(!_isForUpdate) return false;
+      // Exclude fully cancelled/delivered orders
+      if(o.status === 'Cancelled' || o.status === 'Delivered' || o.status === 'RTO') return false;
       if(df && o.date !== df) return false;
-      // Remitter role: visible ONLY kapag "Remitting" — may remit entry na pero hindi pa Remitted
+      // Remitter role: visible ONLY kapag "Remitting" — hidden kapag For Remittance OR Remitted
+      // For item-level For Update: match any Remitting entry for this rider (date may differ)
       if(currentRole === 'remitter') {
-        const key = (o.assignedRider||'') + '|' + (o.date||'');
-        if(!_remittingKeys.has(key)) return false; // walang remit entry pa → hidden
-        if(_remittedKeys.has(key)) return false;   // Remitted na → hidden, nasa COD Delivery na
+        const _hasItemUpdate = Object.values(o.itemStatuses||{}).some(st => st === 'Update');
+        const _isRemitting = o.assignedRider && (S.remitLog||[]).some(r =>
+          r.riderName === o.assignedRider &&
+          (_hasItemUpdate ? true : r.date === o.date) &&
+          r.remitStatus === 'Remitting'
+        );
+        const _isRemitted = o.assignedRider && (S.remitLog||[]).some(r =>
+          r.riderName === o.assignedRider &&
+          (_hasItemUpdate ? true : r.date === o.date) &&
+          r.remitStatus === 'Remitted'
+        );
+        if(!_isRemitting || _isRemitted) return false;
       }
       return true;
     });
@@ -5854,9 +5919,10 @@ function renderCancelledItems() {
     // Req#3: Remitter view — only show cancelled items whose rider is "Remitting" OR "Remitted".
     // "For Remittance" riders are excluded — their items aren't ready for processing yet.
     if(currentRole === 'remitter') {
+      // Visible ONLY when remitStatus === 'Remitting' (not For Remittance, not Remitted)
       const _riderActive = o.assignedRider && (S.remitLog||[]).some(r =>
         r.riderName === o.assignedRider && r.date === o.date &&
-        (r.remitStatus === 'Remitting' || r.remitStatus === 'Remitted')
+        r.remitStatus === 'Remitting'
       );
       if(!_riderActive) return;
     }
@@ -5970,6 +6036,10 @@ function previewReturnOrder() {
 }
 
 function saveReturnLog() {
+  if(window._lock_saveReturnLog) { toast('⏳ Please wait...'); return; }
+  window._lock_saveReturnLog = true;
+  const _relReturnLog = () => { window._lock_saveReturnLog = false; };
+  setTimeout(()=>{ window._lock_saveReturnLog = false; }, 10000); // safety timeout
   const orderNum = document.getElementById('ret-order-num').value.trim().toUpperCase();
   const desc = document.getElementById('ret-item-desc').value.trim();
   const receivedBy = document.getElementById('ret-received-by').value.trim();
@@ -6103,6 +6173,7 @@ function saveReturnLog() {
   }
 
   save();
+  _relReturnLog();
   closeModal('modal-return-log');
   toast('✅ Return recorded!');
   renderReturnLog();
@@ -6492,14 +6563,46 @@ function renderDailySales(){
   const lbcRemit = del.filter(o=>o.paymentMethod==='LBC').reduce((s,o)=>s+(o.grandTotal||0),0);
   const emsRemit = del.filter(o=>o.paymentMethod==='EMS').reduce((s,o)=>s+(o.grandTotal||0),0);
   const fedexRemit = del.filter(o=>o.paymentMethod==='FedEx').reduce((s,o)=>s+(o.grandTotal||0),0);
-  // COD Online: count when checker-verified (not just delivered) since payment already confirmed
-  const codOnlineRemit = (S.orders||[]).filter(o=>{
+  // Build remitted order nums set for COD-OP partial balance detection
+  // Build set of remitted order numbers (from remit log entries marked Remitted)
+  const _remittedNumsDS = new Set();
+  (S.remitLog||[]).filter(r=>r.remitStatus==='Remitted').forEach(r=>{
+    (r.orderNums||[]).forEach(n=>_remittedNumsDS.add(n));
+    (r.orderIds||[]).forEach(id=>_remittedNumsDS.add(id)); // also check by _id
+  });
+
+  // COD-OP: split into ONLINE portion (on verify) + COD CASH portion (on remit)
+  const _codOpOrders = (S.orders||[]).filter(o=>{
     if(!o||o.paymentMethod!=='COD - Online Payment') return false;
     if(o.checkerStatus!=='Verified'&&o.verificationStatus!=='Verified') return false;
     if(o.status==='Cancelled'||o.status==='RTO') return false;
     return (o.date||'')=== d;
-  }).reduce((s,o)=>s+(o.grandTotal||0),0);
-  const overall = codRemit + lbcRemit + emsRemit + fedexRemit + codOnlineRemit;
+  });
+  // Online portion = what client already paid online (at verify time)
+  const codOnlineRemit = _codOpOrders.reduce((s,o)=>{
+    if(o.paymentStatus==='Partial') {
+      // Only online-paid portion reflects in COD-Online on verify
+      return s + Math.round((o.payments||[]).reduce((ps,pm)=>ps+(parseFloat(pm.amount)||0),0)*100)/100;
+    }
+    return s+(o.grandTotal||0);
+  },0);
+  // COD cash portion = remaining balance collected by rider upon delivery (after remit)
+  const codOpCashRemit = (S.orders||[]).filter(o=>{
+    if(!o||o.paymentMethod!=='COD - Online Payment') return false;
+    if(o.paymentStatus!=='Partial') return false;
+    if(o.status!=='Delivered') return false;
+    const _idx = (S.orders||[]).indexOf(o);
+    const _n = onum(_idx);
+    const _id = o._id || '';
+    if(!_remittedNumsDS.has(_n) && !_remittedNumsDS.has(_id)) return false; // only after remitted
+    const delivDate = o.dateDelivered || o.date;
+    return delivDate===d || o.date===d;
+  }).reduce((s,o)=>{
+    const _paid = Math.round((o.payments||[]).reduce((ps,pm)=>ps+(parseFloat(pm.amount)||0),0)*100)/100;
+    return s + Math.max(0, Math.round(((o.grandTotal||0) - _paid)*100)/100);
+  },0);
+
+  const overall = codRemit + codOpCashRemit + lbcRemit + emsRemit + fedexRemit + codOnlineRemit;
   // Other Items Sales — sum of remitted OI items for this date
   const oiRemit = (S.otherItems||[])
     .filter(r => r.status === 'remitted' && r.date === d)
@@ -6517,7 +6620,7 @@ function renderDailySales(){
     </div>
     <div class="two-col">
       <div class="card"><div class="card-header"><span class="card-title">Remit Summary</span></div>
-        <div class="info-row"><span style="color:var(--muted);">COD (Cash on Delivery)</span><strong>${p(codRemit)}</strong></div>
+        <div class="info-row"><span style="color:var(--muted);">COD (Cash on Delivery)</span><strong>${p(codRemit + codOpCashRemit)}${codOpCashRemit>0?` <span style="font-size:9.5px;color:var(--orange);">(+${p(codOpCashRemit)} COD-OP balance)</span>`:''}</strong></div>
         <div class="info-row"><span style="color:var(--muted);">LBC</span><strong>${p(lbcRemit)}</strong></div>
         <div class="info-row"><span style="color:var(--muted);">EMS</span><strong>${p(emsRemit)}</strong></div>
         <div class="info-row"><span style="color:var(--muted);">FedEx</span><strong>${p(fedexRemit)}</strong></div>
@@ -6607,7 +6710,7 @@ function renderPayroll(tab){
       <td style="display:flex;gap:3px;">
         <button class="btn btn-outline btn-sm" onclick="openEditPay(${gi})">✏️</button>
         <button class="btn btn-red btn-sm" onclick="delPay(${gi})">🗑️</button>
-      </td></tr>`}).join(''):'<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:26px;">No payroll records</td></tr>'}</tbody>
+      </td></tr>`}).join(''):'<tr><td colspan="14" style="text-align:center;color:var(--muted);padding:26px;">No payroll records</td></tr>'}</tbody>
   </table></div></div>`;
 }
 
@@ -6623,6 +6726,9 @@ function backToRoleSelect(){
 }
 
 function addAdminAccount(){
+  if(window._lock_addAdmin) { toast('⏳ Please wait...'); return; }
+  window._lock_addAdmin = true;
+  setTimeout(()=>{ window._lock_addAdmin=false; }, 3000);
   const name=document.getElementById('new-admin-name').value.trim().toUpperCase();
   const pw=document.getElementById('new-admin-pw').value;
   if(!name||!pw){toast('⚠️ Name and password required');return;}
@@ -6819,6 +6925,9 @@ function openNewPayModal(){
   calcPay(); openModal('modal-payroll');
 }
 function savePay(){
+  if(window._lock_savePay) { toast('⏳ Please wait...'); return; }
+  window._lock_savePay = true;
+  setTimeout(()=>{ window._lock_savePay=false; }, 3000);
   const name=document.getElementById('pay-name').value.trim();if(!name){toast('Name required');return;}
   const rate=+document.getElementById('pay-rate').value||0,days=+document.getElementById('pay-days').value||0;
   const parcels=+document.getElementById('pay-parcels').value||0,rpp=+document.getElementById('pay-rate-per').value||25;
@@ -6876,6 +6985,9 @@ function openEditExp(i){
   document.getElementById('exp-edit-idx').value=i;openModal('modal-expense');
 }
 function saveExp(){
+  if(window._lock_saveExp) { toast('⏳ Please wait...'); return; }
+  window._lock_saveExp = true;
+  setTimeout(()=>{ window._lock_saveExp=false; }, 3000);
   const desc=document.getElementById('exp-desc').value.trim(),amt=parseFloat(document.getElementById('exp-amount').value)||0;
   if(!desc||!amt){toast('⚠️ Fill all fields');return;}
   const obj={date:document.getElementById('exp-date').value||today(),category:document.getElementById('exp-cat').value,desc,amount:amt};
@@ -7309,6 +7421,10 @@ function openEditInv(i){
   calcInv(); openModal('modal-inventory');
 }
 function saveInv(){
+  if(window._lock_saveInv) { toast('⏳ Please wait...'); return; }
+  window._lock_saveInv = true;
+  const _relSaveInv = () => { window._lock_saveInv=false; };
+  setTimeout(()=>{ window._lock_saveInv = false; }, 10000); // safety timeout
   const code=document.getElementById('inv-code').value.trim().toUpperCase();
   const desc=document.getElementById('inv-desc').value.trim();
   if(!code||!desc){toast('⚠️ Code & description required');return;}
@@ -7393,7 +7509,7 @@ function saveInv(){
   } else {
     S.inventory.push(obj);
   }
-  save(); closeModal('modal-inventory'); toast('✅ Product saved!');
+  save(); _relSaveInv(); closeModal('modal-inventory'); toast('✅ Product saved!');
   document.getElementById('inv-edit-idx').value='';
   document.getElementById('inv-modal-title').textContent='Add Product';
   renderInv(invTab);
@@ -7483,6 +7599,9 @@ function updateStockPreview(){
 }
 
 function saveStock(){
+  if(window._lock_saveStock) { toast('⏳ Please wait...'); return; }
+  window._lock_saveStock = true;
+  setTimeout(()=>{ window._lock_saveStock=false; }, 3000);
   // Guard: prevent double-submit on rapid clicks
   const btn = document.querySelector('#modal-stock .btn-gold');
   if(btn && btn.dataset.saving === '1') return;
@@ -7843,6 +7962,9 @@ function renderCourierDashboard(){
 
 // ── COD-OP: Move order to In Progress tab ─────────────────────────────────
 function moveCodOpToInProgress(idx) {
+  if(window['_lock_codop_'+idx]) { toast('⏳ Please wait...'); return; }
+  window['_lock_codop_'+idx] = true;
+  setTimeout(()=>{ window['_lock_codop_'+idx]=false; }, 3000);
   const o = S.orders[idx];
   if(!o) return;
   if(o.paymentMethod !== 'COD - Online Payment') { toast('⚠️ This is only for COD-OP orders.'); return; }
@@ -7857,6 +7979,9 @@ function moveCodOpToInProgress(idx) {
 
 // ── COD-OP: Move order back from In Progress to its original payment tab ─────
 function moveCodOpFromInProgress(idx, targetTab) {
+  if(window['_lock_codopFrom_'+idx]) { toast('⏳ Please wait...'); return; }
+  window['_lock_codopFrom_'+idx] = true;
+  setTimeout(()=>{ window['_lock_codopFrom_'+idx]=false; }, 3000);
   const o = S.orders[idx];
   if(!o) return;
   // targetTab passed explicitly from button; fallback to stored codopPrevTab, then paymentStatus
@@ -8003,6 +8128,9 @@ function previewGov(){
   document.getElementById('gs-total-preview').textContent=p(total);
 }
 function saveGovSettings(){
+  if(window._lock_saveGov) { toast('⏳ Please wait...'); return; }
+  window._lock_saveGov = true;
+  setTimeout(()=>{ window._lock_saveGov=false; }, 3000);
   S.govSettings={sss:+document.getElementById('gs-sss').value||0,philhealth:+document.getElementById('gs-philhealth').value||0,pagibig:+document.getElementById('gs-pagibig').value||0,tax:+document.getElementById('gs-tax').value||0,other:+document.getElementById('gs-other').value||0,parcelRate:+document.getElementById('gs-parcel-rate').value||25};
   save();const n=document.getElementById('gov-save-notice');n.style.display='block';setTimeout(()=>n.style.display='none',3000);
   toast('✅ Gov remittance defaults saved!');
@@ -8026,6 +8154,9 @@ function applyGovToAll(){
   save();toast('✅ Applied to all '+S.payroll.length+' payroll records!');
 }
 function saveBizInfo(){
+  if(window._lock_saveBiz) { toast('⏳ Please wait...'); return; }
+  window._lock_saveBiz = true;
+  setTimeout(()=>{ window._lock_saveBiz=false; }, 3000);
   S.bizInfo={name:document.getElementById('biz-name').value,address:document.getElementById('biz-address').value,contact:document.getElementById('biz-contact').value,social:document.getElementById('biz-social').value};
   save();toast('✅ Business info saved!');
 }
@@ -8052,6 +8183,9 @@ function renderAdminList(){
 // RIDER ACCOUNTS — Add new rider or update password by name
 // ============================================================
 function addRiderAccount() {
+  if(window._lock_addRider) { toast('⏳ Please wait...'); return; }
+  window._lock_addRider = true;
+  setTimeout(()=>{ window._lock_addRider=false; }, 3000);
   const nameInput = document.getElementById('new-rider-name');
   const pwInput   = document.getElementById('new-rider-pw');
   if(!nameInput || !pwInput) return;
@@ -8225,6 +8359,19 @@ function renderPnl(){
       .filter(e => e.remitStatus === 'Remitted')
       .map(e => (e.riderName||'') + '|' + (e.date||''))
   );
+  // Helper: inventory-only subtotal per order (excludes OI/non-inventory items)
+  const _plInvTotal = (o) => (o.items||[]).reduce((s,it,ii)=>{
+    const _code=(it.code||'').toUpperCase().trim();
+    if(!_code) return s+(it.total||0);
+    const _inInv=(S.inventory||[]).some(inv=>inv.code&&inv.code.toUpperCase()===_code);
+    if(!_inInv) return s; // OI item — goes to Other Items Sales, not COD total
+    const iS=o.itemStatuses||{},iCQ=o.itemCancelQty||{};
+    if(iS[ii]==='Cancelled') return s;
+    const cxQty=iCQ[ii]||0;
+    if(cxQty>0){const tQty=it.grams||it.qty||1;const ppu=(it.total||0)/Math.max(1,tQty);return s+Math.max(0,(it.total||0)-cxQty*ppu);}
+    return s+(it.total||0);
+  },0);
+
   const codDelivered = S.orders.filter(o=>{
     if(!o||!o.status) return false;
     if(o.status!=='Delivered') return false;
@@ -8274,6 +8421,45 @@ function renderPnl(){
   const _invCodes = new Set((S.inventory||[]).map(iv=>(iv.code||'').toUpperCase().trim()).filter(Boolean));
   function _inventoryItemsTotal(o) {
     if(!o) return 0;
+    // COD-OP Partial:
+    // - If rider has been Remitted (both online + cash balance collected) → show FULL inventory total
+    // - If not yet fully remitted → show only the online-paid portion (prorated)
+    if(o.paymentMethod === 'COD - Online Payment' && o.paymentStatus === 'Partial') {
+      const _ordIdx = (S.orders||[]).indexOf(o);
+      const _ordNum = _ordIdx >= 0 ? onum(_ordIdx) : '';
+      const _ordId  = o._id || '';
+      // Check if this order is in a Remitted batch (rider collected both portions)
+      const _isFullyRemitted = (S.remitLog||[]).some(r =>
+        r.remitStatus === 'Remitted' &&
+        ((r.orderNums && r.orderNums.includes(_ordNum)) ||
+         (r.orderIds  && r.orderIds.includes(_ordId)))
+      );
+      // Full inventory total (used for both prorated and full cases)
+      const _fullInvTotal = (o.items||[]).reduce((s,it,ii) => {
+        if(!it) return s;
+        const _code = (it.code||'').toUpperCase().trim();
+        const iS = o.itemStatuses||{}, iCQ = o.itemCancelQty||{};
+        if(iS[ii]==='Cancelled'||iS[ii]==='Update') return s;
+        const _isOI = typeof _getOiPrefix==='function' && _getOiPrefix(_code);
+        if(_isOI||!_invCodes.has(_code)) return s;
+        const cxQty=iCQ[ii]||0;
+        if(cxQty>0){const tq=it.grams>0?it.grams:(it.qty||1);return s+Math.round((it.total||0)*Math.max(0,(tq-cxQty)/tq)*100)/100;}
+        return s+(it.total||0);
+      }, 0);
+      if(_isFullyRemitted) {
+        // Rider remitted — full amount recognized in P&L
+        return _fullInvTotal;
+      }
+      // Not yet remitted — only online-paid portion counts in P&L now
+      const _paidOnline = Math.round(
+        (o.payments||[]).reduce((s,pm) => s + (parseFloat(pm.amount)||0), 0) * 100
+      ) / 100;
+      const _grandTotal = o.grandTotal || 0;
+      if(_grandTotal <= 0) return 0;
+      const _ratio = Math.min(1, _paidOnline / _grandTotal);
+      return Math.round(_fullInvTotal * _ratio * 100) / 100;
+    }
+
     const iS  = o.itemStatuses  || {};
     const iCQ = o.itemCancelQty || {};
     return (o.items||[]).reduce((s, it, ii) => {
@@ -8385,7 +8571,7 @@ function renderPnl(){
     }, 0);
   }, 0);
   const itemsProfit  = totalItemsSales - totalCOGS;  // pure inventory: sales - COGS
-  const grossProfit  = itemsProfit + sfRevenue10pct + oiProfit + codOpTotal; // full gross
+  const grossProfit  = itemsProfit + sfRevenue10pct + oiProfit; // COD-OP flows through itemsSales/oiProfit automatically
 
   // === OPERATING EXPENSES by standard categories ===
   const STD_CATS = ['Ads','Salaries','Incentives','Baog','Bills','Supplies','Tax','Benefits','Others'];
@@ -8443,9 +8629,8 @@ function renderPnl(){
     ${row('TOTAL PROFIT = Total Sales − Total Cost',p(itemsProfit),itemsProfit>=0?'var(--green)':'var(--red)',false,true)}
     ${sfRevenue10pct>0?row('  ↳ SF 10% Company (from Rider Remit)','+ '+p(sfRevenue10pct),'var(--gold)',true):''}
     ${oiProfit>0?row('  ↳ Other Items Profit (off-book)','+ '+p(oiProfit),'var(--gold)',true):''}
-    ${codOpTotal>0?row('  ↳ COD - Online Payment ('+_codOpOrders.length+' orders)','+ '+p(codOpTotal),'var(--gold)',true):''}
     ${div}
-    ${row('GROSS PROFIT = Total Profit + SF10% + OI Profit + COD-OP',p(grossProfit),grossProfit>=0?'var(--green)':'var(--red)',false,true)}
+    ${row('GROSS PROFIT = Total Profit + SF10% + OI Profit',p(grossProfit),grossProfit>=0?'var(--green)':'var(--red)',false,true)}
     ${div}
     ${sH('OPERATING EXPENSES')}
     ${STD_CATS.map(cat=>row(cat,(catMap[cat]?'('+p(catMap[cat])+')':'₱0.00'),catMap[cat]?'var(--red)':'var(--muted)',true)).join('')}
@@ -8461,8 +8646,48 @@ function renderPnl(){
   document.getElementById('pnl-breakdown').innerHTML=`
     <div class="card">
       <div class="card-header"><span class="card-title">Sales Breakdown</span></div>
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">COD Delivered</span><span><strong>${codDelivered.length}</strong> — ${p(codDelivered.reduce((s,o)=>s+(o.grandTotal||0),0))}</span></div>
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">COD - Online Payment</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='COD - Online Payment').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='COD - Online Payment').reduce((s,o)=>s+(o.grandTotal||0),0))}</span></div>
+      ${(()=>{
+        // COD Delivered: pure COD orders + COD-OP Partial REMAINING BALANCE (collected by rider on remit)
+        const _codOpPartialRemitted = (S.remitLog||[]).filter(r=>r.remitStatus==='Remitted'&&r.date>=from&&r.date<=to);
+        const _remittedNums = new Set();
+        _codOpPartialRemitted.forEach(r=>{(r.orderNums||[]).forEach(n=>_remittedNums.add(n));});
+        // COD-OP Partial orders that have been remitted — their remaining balance goes to COD Delivered
+        const _codOpPartialOrders = (S.orders||[]).filter((o,oi)=>
+          o && o.paymentMethod==='COD - Online Payment' && o.paymentStatus==='Partial' &&
+          o.status==='Delivered' && _remittedNums.has(onum(oi)) &&
+          (()=>{ const d=(o.dateDelivered||o.date||'').slice(0,10); return d>=from&&d<=to; })()
+        );
+        const _codOpPartialCashAmt = _codOpPartialOrders.reduce((s,o)=>{
+          const _paid = (o.payments||[]).reduce((ps,pm)=>ps+(parseFloat(pm.amount)||0),0);
+          return s + Math.max(0, Math.round(((o.grandTotal||0)-_paid)*100)/100);
+        }, 0);
+        const _invTotCOD = codDelivered.reduce((s,o)=>s+_plInvTotal(o),0);
+        const _oiTotCOD  = codDelivered.reduce((s,o)=>s+(o.grandTotal||0),0) - _invTotCOD;
+        const _codDelivTotal = _invTotCOD + _codOpPartialCashAmt;
+        return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;">
+          <span style="color:var(--muted);">COD Delivered</span>
+          <span><strong>${codDelivered.length + _codOpPartialOrders.length}</strong> — ${p(_codDelivTotal)}${_oiTotCOD>0?` <span style="color:var(--muted);font-size:10px;">(+${p(_oiTotCOD)} OI→Other Items)</span>`:''}${_codOpPartialCashAmt>0?` <span style="color:var(--muted);font-size:10px;">(+${p(_codOpPartialCashAmt)} COD-OP balance)</span>`:''}
+          </span>
+        </div>`;
+      })()}
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;">
+        <span style="color:var(--muted);">COD - Online Payment</span>
+        <span><strong>${courierVerified.filter(o=>o.paymentMethod==='COD - Online Payment').length}</strong> — ${(()=>{
+          const _codOpList = courierVerified.filter(o=>o.paymentMethod==='COD - Online Payment');
+          // Show only the ONLINE-PAID portion (partial = only what client paid online)
+          const _onlinePaid = _codOpList.reduce((s,o)=>{
+            if(o.paymentStatus==='Partial') {
+              return s + Math.round((o.payments||[]).reduce((ps,pm)=>ps+(parseFloat(pm.amount)||0),0)*100)/100;
+            }
+            return s + _plInvTotal(o);
+          }, 0);
+          const _oiTot = _codOpList.reduce((s,o)=>{
+            if(o.paymentStatus==='Partial') return s; // OI for partial tracked separately
+            return s + Math.max(0,(o.grandTotal||0)-_plInvTotal(o));
+          }, 0);
+          return p(_onlinePaid) + (_oiTot>0?` <span style="color:var(--muted);font-size:10px;">(+${p(_oiTot)} OI→Other Items)</span>`:'');
+        })()}</span>
+      </div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">LBC Verified</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='LBC').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='LBC').reduce((s,o)=>s+(o.grandTotal||0),0))}</span></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">EMS Verified</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='EMS').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='EMS').reduce((s,o)=>s+(o.grandTotal||0),0))}</span></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--navy-border);font-size:12px;"><span style="color:var(--muted);">FedEx Verified</span><span><strong>${courierVerified.filter(o=>o.paymentMethod==='FedEx').length}</strong> — ${p(courierVerified.filter(o=>o.paymentMethod==='FedEx').reduce((s,o)=>s+(o.grandTotal||0),0))}</span></div>
@@ -8502,6 +8727,19 @@ function printPnl(){
   const from = document.getElementById('pnl-from')?.value || today();
   const to   = document.getElementById('pnl-to')?.value   || today();
   const label = from===to ? from : `${from} → ${to}`;
+  // Helper: inventory-only subtotal (OI/non-inventory items excluded)
+  const _plInvTotal = (o) => (o.items||[]).reduce((s,it,ii)=>{
+    const _code=(it.code||'').toUpperCase().trim();
+    if(!_code) return s+(it.total||0);
+    const _inInv=(S.inventory||[]).some(inv=>inv.code&&inv.code.toUpperCase()===_code);
+    if(!_inInv) return s;
+    const iS=o.itemStatuses||{},iCQ=o.itemCancelQty||{};
+    if(iS[ii]==='Cancelled') return s;
+    const cxQty=iCQ[ii]||0;
+    if(cxQty>0){const tQty=it.grams||it.qty||1;const ppu=(it.total||0)/Math.max(1,tQty);return s+Math.max(0,(it.total||0)-cxQty*ppu);}
+    return s+(it.total||0);
+  },0);
+
   const codDelivered = S.orders.filter(o=>{if(!o||!o.status)return false;
     if(o.status!=='Delivered') return false;
     if((o.paymentMethod||'COD')!=='COD') return false;
@@ -8513,7 +8751,7 @@ function printPnl(){
     o.paymentStatus==='Fully Paid'&&o.verificationStatus==='Verified'&&
     (o.dateOfPayment||'').slice(0,10)>=from&&(o.dateOfPayment||'').slice(0,10)<=to);
   const incomeOrders=[...codDelivered,...courierVerified];
-  const totalSales=incomeOrders.reduce((s,o)=>s+(o.grandTotal||0),0);
+  const totalSales=incomeOrders.reduce((s,o)=>s+_plInvTotal(o),0);
   const totalShippingRevPrint=incomeOrders.reduce((s,o)=>s+(parseFloat(o.shipping)||0),0);
   const totalCOGS=incomeOrders.reduce((s,o)=>{
     return s+(o.items||[]).reduce((is,it)=>{
@@ -8584,7 +8822,19 @@ function renderDash(){
     if(o.status!=='Delivered') return false;
     if((o.paymentMethod||'COD')==='COD') return _isRemittedCodOrder(o);
     return true;
-  }).reduce((s,o)=>s+(o.grandTotal||0),0);
+  }).reduce((s,o)=>{
+    // Inventory items only — OI items tracked in Other Items Profit card
+    const _invCodes=new Set((S.inventory||[]).map(iv=>(iv.code||'').toUpperCase().trim()).filter(Boolean));
+    const iS=o.itemStatuses||{},iCQ=o.itemCancelQty||{};
+    return s+(o.items||[]).reduce((is,it,ii)=>{
+      const _code=(it.code||'').toUpperCase().trim();
+      if(iS[ii]==='Cancelled'||iS[ii]==='Update') return is;
+      if(!_invCodes.has(_code)) return is; // OI item — exclude
+      const cxQ=iCQ[ii]||0;
+      if(cxQ>0){const tot=it.grams||it.qty||1;return is+Math.max(0,(it.total||0)-cxQ*((it.total||0)/Math.max(1,tot)));}
+      return is+(it.total||0);
+    },0);
+  },0);
   const pending=allOrders.filter(o=>o.checkerStatus==='Pending').length; // always all-time
   const todayO=allOrders.filter(o=>o.date===today()).length; // always today
   const expTotal=(S.expenses||[]).filter(e => {
@@ -8596,9 +8846,10 @@ function renderDash(){
 
   // ── Net Profit — exact same logic as P&L Report ──────────────────────────
   let _dashNetProfit = 0, _dashOiProfit = 0, _dashOiSales = 0; // safe defaults
+  let _dashFrom, _dashTo;
   try {
-  const _dashFrom = _dfFrom || '2000-01-01';
-  const _dashTo   = _dfTo   || '2099-12-31';
+  _dashFrom = _dfFrom || '2000-01-01';
+  _dashTo   = _dfTo   || '2099-12-31';
 
   // Build remitted keys (same as P&L)
   const _dashRemittedKeys = new Set(
@@ -8645,10 +8896,10 @@ function renderDash(){
   const _dashSF10=Math.round((S.remitLog||[]).filter(e=>{const d=e.date||'';return d>=_dashFrom&&d<=_dashTo;}).reduce((s,e)=>s+(e.sf10||0),0)*100)/100;
 
   // OI Profit: use stored r.profit (same as P&L)
-  const _dashOiProfit=Math.round((S.otherItems||[]).filter(r=>{
+  _dashOiProfit=Math.round((S.otherItems||[]).filter(r=>{
     return r.status==='remitted'&&r.isVerified!==false&&(r.date||'')>=_dashFrom&&(r.date||'')<=_dashTo;
   }).reduce((s,r)=>s+(r.profit!=null?r.profit:0),0)*100)/100;
-  const _dashOiSales=Math.round((S.otherItems||[]).filter(r=>{
+  _dashOiSales=Math.round((S.otherItems||[]).filter(r=>{
     return r.status==='remitted'&&r.isVerified!==false&&(r.date||'')>=_dashFrom&&(r.date||'')<=_dashTo;
   }).reduce((s,r)=>s+(r.total||0),0)*100)/100;
 
@@ -8661,13 +8912,13 @@ function renderDash(){
 
   // Gross Profit = itemsProfit + SF10 + OI Profit + COD-OP (same as P&L)
   const _dashItemsProfit=_dashItemsSales-_dashTotalCOGS;
-  const _dashGrossProfit=_dashItemsProfit+_dashSF10+_dashOiProfit+_dashCodOpTotal;
+  const _dashGrossProfit=_dashItemsProfit+_dashSF10+_dashOiProfit; // COD-OP flows through _dashItemsSales/OI automatically
 
   // Operating expenses
   const _dashOpEx=(S.expenses||[]).filter(e=>{const d=e.date||'';return d>=_dashFrom&&d<=_dashTo;}).reduce((s,e)=>s+parseFloat(e.amount||0),0);
 
   // Net Profit = Gross Profit - OpEx (exact match with P&L)
-  const _dashNetProfit=_dashGrossProfit-_dashOpEx;
+  _dashNetProfit=_dashGrossProfit-_dashOpEx;
   } catch(_dashErr) { console.error('[GOE] Dashboard P&L calc error:', _dashErr); }
 
   document.getElementById('dash-stats').innerHTML=`
@@ -9596,47 +9847,50 @@ function renderRiderParcels() {
         return !_remitted; // show until remitted, then hide
       }
       // Only show orders dispatcher marked Ready or beyond — not Preparing
-      if(!RIDER_VISIBLE_STATUSES.has(o.status)) return false;
+      // Exception: rescheduled orders (have scheduledDelivery set) stay visible
+      // even if status went back to Preparing after reschedule from For Update
+      const _isRescheduled = !!o.scheduledDelivery || o.wasForUpdate === true;
+      if(!RIDER_VISIBLE_STATUSES.has(o.status) && !_isRescheduled) return false;
       return true;
     });
-  // Hide orders that are covered by a completed (Remitted) batch.
-  // An order is "covered" if its createdAt <= entry.remittedAt for a Remitted entry
-  // with matching riderName + date. Orders created AFTER remittedAt are new batch.
-  // Ready/OFD always visible — rider physically has them, regardless of remit history.
-  // Build set of order IDs that are in a Remitted batch (by this rider)
-  // Uses orderIds array stored in remitLog for precise per-order detection
-  const _remittedOrderIds = new Set();
-  const _remittedOrderNums = new Set();
+  // Build a map: orderNum/ID → array of Remitted batch dates for this rider
+  // This lets us check per-order: is THIS order remitted for THIS specific date?
+  const _remittedByOrderDate = new Map(); // key: orderNum, value: Set of remitted dates
   (S.remitLog||[]).forEach(r => {
     if(r.riderName !== currentRider.name || r.remitStatus !== 'Remitted') return;
-    // New format: exact order IDs stored
-    if(r.orderIds && r.orderIds.length) r.orderIds.forEach(id => _remittedOrderIds.add(id));
-    if(r.orderNums && r.orderNums.length) r.orderNums.forEach(n => _remittedOrderNums.add(n));
+    const addEntry = (key) => {
+      if(!_remittedByOrderDate.has(key)) _remittedByOrderDate.set(key, new Set());
+      _remittedByOrderDate.get(key).add(r.date);
+    };
+    if(r.orderIds)  r.orderIds.forEach(id => addEntry(id));
+    if(r.orderNums) r.orderNums.forEach(n  => addEntry(n));
+  });
+
+  // Legacy: remitted dates without orderIds (old entries)
+  const _remittedDatesLegacy = new Set();
+  (S.remitLog||[]).forEach(r => {
+    if(r.riderName !== currentRider.name || r.remitStatus !== 'Remitted') return;
+    if(!r.orderIds && !r.orderNums) _remittedDatesLegacy.add(r.date);
   });
 
   const myOrders = allMyOrders.filter(o => {
-    // Ready/OFD: always visible — rider physically has the parcel
-    if(o.status === 'Ready' || o.status === 'Out for Delivery') return true;
-
-    // Check if this specific order is in a Remitted batch
     const orderId  = o._id || onum(o.idx);
     const orderNum = onum(o.idx);
 
-    // New format: check by exact order ID or order number
-    if(_remittedOrderIds.size > 0 || _remittedOrderNums.size > 0) {
-      const inRemittedBatch = _remittedOrderIds.has(orderId) || _remittedOrderNums.has(orderNum);
-      return !inRemittedBatch;
-    }
+    // Check if this order has been remitted specifically for its CURRENT date
+    // This correctly handles rescheduled orders — old batch dates don't count
+    const _remittedDatesForOrder = _remittedByOrderDate.get(orderId) || _remittedByOrderDate.get(orderNum);
+    const _isRemittedForCurrentDate = _remittedDatesForOrder
+      ? _remittedDatesForOrder.has(o.date)
+      : _remittedDatesLegacy.has(o.date); // legacy fallback
 
-    // Legacy fallback: use createdAt <= remittedAt (old entries without orderIds)
-    const _remittedEntries = (S.remitLog||[]).filter(r =>
-      r.riderName === currentRider.name && r.remitStatus === 'Remitted' && r.remittedAt
-    );
-    const covered = _remittedEntries.some(r =>
-      r.date === o.date &&
-      (o.createdAt ? o.createdAt <= r.remittedAt : false)
-    );
-    return !covered;
+    // Ready/OFD: always visible — rider physically has the parcel
+    if(o.status === 'Ready' || o.status === 'Out for Delivery') return true;
+
+    // All other statuses: visible until remitted for the order's CURRENT date
+    // This naturally handles rescheduled orders — they stay visible until
+    // their NEW date batch is also remitted, regardless of old batch history
+    return !_isRemittedForCurrentDate;
   });
   // Date filter: exact string match — df is whatever user typed
   // type="text" input means no browser date validation interference
@@ -9897,9 +10151,36 @@ function renderRiderParcels() {
           : hasCancelledItems
           ? `<span style="color:var(--orange);">⚠️ May ${cancelledCount} cancelled item — adjusted remit:</span>`
           : '💰 Remit para sa parcel na ito:'}
+        ${o.paymentMethod==='COD - Online Payment' ? (()=>{
+          const _pmts = o.payments||[];
+          const _totalPaid = Math.round(_pmts.reduce((s,pm)=>s+(parseFloat(pm.amount)||0),0)*100)/100;
+          const _remaining = Math.max(0, Math.round(((o.grandTotal||0)-_totalPaid)*100)/100);
+          const _isCodOpPartial = o.paymentStatus==='Partial' || (_totalPaid>0 && _remaining>0);
+          if(!_isCodOpPartial && !o.paymentNotes) return '';
+          return `<div style="margin-top:6px;">
+            ${_isCodOpPartial?`
+              <div style="padding:6px 10px;background:rgba(224,138,48,0.13);border-left:3px solid var(--orange);border-radius:5px;margin-bottom:4px;">
+                <div style="font-size:11px;font-weight:700;color:var(--orange);">⚠️ PARTIAL — Collect: <span style="color:var(--red);font-size:13px;">${p(_remaining)}</span></div>
+                <div style="font-size:9.5px;color:var(--muted);margin-top:2px;">Nabayad na ni client: <span style="color:var(--blue);">${p(_totalPaid)}</span>
+                  ${_pmts.map(pm=>`<span style="margin-left:6px;font-size:9px;">[${pm.refno||'—'} · ${p(pm.amount||0)}]</span>`).join('')}
+                </div>
+              </div>`:''}
+            ${o.paymentNotes?`<div style="padding:5px 8px;background:rgba(224,138,48,0.09);border-left:3px solid var(--orange);border-radius:4px;font-size:10px;color:var(--orange);">📌 <strong>Note:</strong> ${o.paymentNotes}</div>`:''}
+          </div>`;
+        })() : ''}
       </td>
       <td colspan="4" style="font-size:11px;font-weight:700;color:${o.status==='Delivered'?'var(--green)':o.status==='Cancelled'?'var(--red)':'var(--muted)'};">
-        ${o.status==='Delivered' ? p(activeItemsTotal) : o.status==='Cancelled' ? '₱0.00' : '(pending)'}
+        ${(()=>{
+          if(o.status==='Cancelled') return '₱0.00';
+          if(o.paymentMethod==='COD - Online Payment' && o.paymentStatus==='Partial') {
+            const _pd = Math.round((o.payments||[]).reduce((s,pm)=>s+(parseFloat(pm.amount)||0),0)*100)/100;
+            const _rem = Math.max(0,Math.round(((o.grandTotal||0)-_pd)*100)/100);
+            return o.status==='Delivered'
+              ? `<span style="color:var(--red);">${p(_rem)}</span><div style="font-size:9px;color:var(--muted);font-weight:400;">to collect</div>`
+              : `<span style="color:var(--orange);">${p(_rem)}</span><div style="font-size:9px;color:var(--muted);font-weight:400;">(pending collect)</div>`;
+          }
+          return o.status==='Delivered' ? p(activeItemsTotal) : '(pending)';
+        })()}
       </td>
     </tr>`;
   }).join('') :
@@ -10041,6 +10322,10 @@ function riderSaveItemRemark(orderIdx, itemIdx, remark) {
 // DO NOT add deductions outside of this function's _isNowOut/_wasOut logic.
 // ═══════════════════════════════════════════════════════════════════════════
 function riderItemStatus(orderIdx, itemIdx, newStatus) {
+  const _riderItemKey = '_lock_riderItem_'+orderIdx+'_'+itemIdx;
+  if(window[_riderItemKey]) { toast('⏳ Please wait...'); return; }
+  window[_riderItemKey] = true;
+  setTimeout(()=>{ window[_riderItemKey]=false; }, 3000);
 // ═══════════════════════════════════════════════════════════════════════════
 // riderItemPartialCancel — PARTIAL CANCEL DEDUCTION GUARD
 // FORMULA: deducts DIFF only (newCancelAmt - prevCancelAmt) to prevent double-deduction.
@@ -10511,7 +10796,7 @@ async function saveOrder() {
 
   // ── COD-OP validation: Partial or Fully Paid requires at least one Ref# ──
   if(isCodOnlineMethod && (_selectedPayStatus === 'Partial' || _selectedPayStatus === 'Fully Paid')) {
-    const hasRef = payments.some(p => p.refno && p.refno.trim() !== '');
+    const hasRef = (payments||[]).some(p => p && p.refno && p.refno.trim() !== '');
     if(!hasRef) {
       const _label = _selectedPayStatus === 'Fully Paid' ? 'Fully Paid' : 'Partially Paid';
       toast('⚠️ ' + _label + ': kailangan ng Reference Number. Mag-add ng kahit isang Ref. No. bago i-save.');
@@ -10719,6 +11004,9 @@ async function saveOrder() {
   }
 }
 function delOrder(i){
+  if(window['_lock_del_'+i]) { return; }
+  window['_lock_del_'+i] = true;
+  setTimeout(()=>{ window['_lock_del_'+i]=false; }, 5000);
   _confirmDel(`Delete order ${onum(i)} for "${S.orders[i]?.name}"?`, ()=>{
     const o = S.orders[i];
     // ── Restore ALL inventory (rider item cancels no longer auto-restore) ──
@@ -11218,13 +11506,17 @@ function openRemitModal(editIdx=null) {
   // Reset calc display
   ['remit-gross-sf','remit-subtotal','remit-sf-10','remit-sf-rider-share','remit-net-earn']
     .forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent='₱0.00'; });
-  if(editIdx !== null) {
-    const e = S.remitLog[editIdx];
+  if(editIdx !== null && editIdx !== undefined && editIdx !== '') {
+    const _eIdx = +editIdx; // ensure numeric
+    const e = S.remitLog[_eIdx];
+    if(!e) { toast('⚠️ Hindi mahanap ang remit entry. I-refresh ang page.'); return; }
     sel.value = S.riders.findIndex(r=>r.name===e.riderName);
     document.getElementById('remit-date').value = e.date;
     // Restore status
     document.querySelectorAll('input[name="remit-status-radio"]').forEach(r=>{ r.checked = r.value === (e.remitStatus||'For Remittance'); });
     onRemitStatusChange(e.remitStatus||'For Remittance');
+    // Also fix remit-edit-idx to numeric string
+    document.getElementById('remit-edit-idx').value = _eIdx;
     populateRemitParcels();
   } else {
     // New entry: if only one rider exists, auto-select and populate
@@ -11249,6 +11541,18 @@ function openRemitModal(editIdx=null) {
  */
 function _remitItemsTotal(o) {
   if(!o || o.status==='Cancelled' || o.status==='RTO') return 0;
+
+  // COD-OP Partial: rider only collects the REMAINING BALANCE (grandTotal - already paid)
+  if(o.paymentMethod === 'COD - Online Payment' && o.paymentStatus === 'Partial') {
+    const _paid = Math.round(
+      (o.payments||[]).reduce((s,pm) => s + (parseFloat(pm.amount)||0), 0) * 100
+    ) / 100;
+    const _remaining = Math.max(0, Math.round(((o.grandTotal||0) - _paid) * 100) / 100);
+    // Subtract SF so _remitOrderSF adds it back correctly in codSubtotal+deliveredSF
+    const _sf = Math.round((o.shipping||0) * 100) / 100;
+    return Math.max(0, Math.round((_remaining - _sf) * 100) / 100);
+  }
+
   const _iS  = o.itemStatuses  || {};
   const _iCQ = o.itemCancelQty || {};
   let total = 0;
@@ -11293,6 +11597,16 @@ function _computeRemit(delivered, manualBenefits) {
     delivered.reduce((s, o) => s + _remitItemsTotal(o), 0) * 100
   ) / 100;
 
+  // Split: COD-OP online payments received vs COD cash to collect
+  const codOnlineAmt = Math.round(delivered.reduce((s, o) => {
+    if(o.paymentMethod !== 'COD - Online Payment') return s;
+    // Online portion = what customer already paid online
+    const _paid = (o.payments||[]).reduce((ps,pm)=>ps+(parseFloat(pm.amount)||0), 0);
+    return s + Math.round(_paid * 100) / 100;
+  }, 0) * 100) / 100;
+  // codCashAmt = what rider collects in cash: total subtotal minus the online-paid portion
+  const codCashAmt = Math.max(0, Math.round((codSubtotal - codOnlineAmt) * 100) / 100);
+
   // Delivered SF: sum of SF for orders that have at least one non-cancelled item
   const deliveredSF = Math.round(
     delivered.reduce((s, o) => s + _remitOrderSF(o), 0) * 100
@@ -11319,6 +11633,8 @@ function _computeRemit(delivered, manualBenefits) {
 
   return {
     codSubtotal,   // Items only (net of partial cancels)
+    codOnlineAmt,  // Online payments already received (COD-OP)
+    codCashAmt,    // Cash to collect from rider (remaining balances + COD orders)
     deliveredSF,   // SF of delivered parcels
     sf10,          // 10% company SF cut
     sfRider90,     // 90% rider portion
@@ -11348,29 +11664,67 @@ function populateRemitParcels() {
   // Exclude orders from fully-Remitted dates — those are settled history
   // Exclude orders already covered by a Remitted batch (createdAt <= remittedAt).
   // Only show orders that belong to the CURRENT/NEW batch being created.
-  const _ppRemitted = (S.remitLog||[]).filter(r =>
-    r.riderName === rider.name && r.remitStatus === 'Remitted' && r.remittedAt
+  // Get current edit index (if editing existing entry, exclude it from batched check)
+  const _currentEditIdx = document.getElementById('remit-edit-idx')?.value;
+  const _isEditing = _currentEditIdx !== '' && _currentEditIdx != null && _currentEditIdx !== undefined;
+  const _editIdxNum = _isEditing ? +_currentEditIdx : -1; // -1 means no exclusion
+
+  // Exclude orders already covered by ANY existing remit entry (Remitted OR Remitting OR For Remittance)
+  // for this rider — prevents duplicates when adding a new entry
+  // When editing, exclude the current entry so its own orders still appear
+  const _ppRemitted = (S.remitLog||[]).filter((r,ri) =>
+    r.riderName === rider.name && r.remitStatus === 'Remitted' && r.remittedAt &&
+    ri !== _editIdxNum
   );
+  const _ppAllBatched = (S.remitLog||[]).filter((r,ri) =>
+    r.riderName === rider.name &&
+    (r.remitStatus === 'Remitted' || r.remitStatus === 'Remitting' || r.remitStatus === 'For Remittance') &&
+    ri !== _editIdxNum
+  );
+  // Build set of order IDs/nums already covered by any existing remit entry
+  const _remittedIds  = new Set();
+  const _remittedNums = new Set();
+  _ppAllBatched.forEach(r => {
+    if(r.orderIds)  r.orderIds.forEach(id => _remittedIds.add(id + '|' + r.date));
+    if(r.orderNums) r.orderNums.forEach(n => _remittedNums.add(n + '|' + r.date));
+  });
+
   const myOrders = (S.orders||[]).map((o,i)=>o?{...o,idx:i}:null).filter(Boolean)
     .filter(o => {
       if(o.assignedRider !== rider.name) return false;
+
+      const _ordId  = o._id || onum(o.idx);
+      const _ordNum = onum(o.idx);
+      const _hasItemUpdate = Object.values(o.itemStatuses||{}).some(st => st === 'Update');
+      // A For Update order = whole-order status Update OR any item is Update
+      // Also treat orders that WERE For Update (previously Remitted batch had it as Update)
+      // but now rescheduled (status may be Preparing/Ready again)
+      // Rescheduled orders: detected via scheduledDelivery field (persisted in Firestore)
+      // OR status === 'Update' OR item-level Update — all treated the same way
+      const _isRescheduled = !!o.scheduledDelivery || o.status === 'Update' || _hasItemUpdate;
+
+      if(_isRescheduled) {
+        // Rescheduled orders: must still match the selected date
+        if(df && o.date !== df) return false;
+        // Only hide if already Remitted for their CURRENT date (ID + date must both match)
+        const _coveredNow = _remittedIds.has(_ordId+'|'+o.date) || _remittedNums.has(_ordNum+'|'+o.date);
+        return !_coveredNow;
+      }
+
+      // Normal orders: apply date filter
       if(df && o.date !== df) return false;
       // GUARD: exclude unverified orders — checker must verify first
       if((o.checkerStatus||'Pending') !== 'Verified') return false;
-      // GUARD: exclude Preparing orders — dispatcher must set Ready before remit
-      // Only include orders that have been dispatched to rider (Ready or beyond)
+      // GUARD: only dispatched orders (Ready or beyond)
       const _REMIT_VISIBLE = new Set(['Ready','Out for Delivery','Delivered','Cancelled','RTO','Update']);
       if(!_REMIT_VISIBLE.has(o.status)) return false;
-      // Exclude if this specific order is in a Remitted batch (by order ID)
-      const _ordId = o._id || onum(o.idx);
-      const _ordNum = onum(o.idx);
-      // New format: check orderIds array stored in remitLog
-      const coveredByNew = _ppRemitted.some(r =>
-        (r.orderIds && r.orderIds.includes(_ordId)) ||
-        (r.orderNums && r.orderNums.includes(_ordNum))
+      // Exclude if already in ANY existing remit entry (Remitted, Remitting, For Remittance)
+      const coveredByNew = _ppAllBatched.some(r =>
+        r.date === o.date &&
+        ((r.orderIds && r.orderIds.includes(_ordId)) ||
+         (r.orderNums && r.orderNums.includes(_ordNum)))
       );
       if(coveredByNew) return false;
-      // Legacy fallback: createdAt-based check for old entries without orderIds
       const coveredByLegacy = _ppRemitted.some(r =>
         r.date === o.date && r.orderIds == null &&
         (o.createdAt ? o.createdAt <= r.remittedAt : false)
@@ -11382,7 +11736,7 @@ function populateRemitParcels() {
   // ── CANONICAL MATH ENGINE — single source of truth ──────────────────────
   const manualBenefits_pp = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
   const _cm = _computeRemit(delivered, manualBenefits_pp);
-  const { codSubtotal, deliveredSF, sf10, sfRider90, cashbond, parcelFee, netSF, netTotal } = _cm;
+  const { codSubtotal, deliveredSF, sf10, sfRider90, cashbond, parcelFee, netSF, netTotal, codOnlineAmt, codCashAmt } = _cm;
   const totalSF = myOrders.reduce((s,o)=>s+(o.shipping||0),0); // gross SF display
   // Benefits displayed separately; manualBenefits_pp already used in _computeRemit
   // Do NOT pre-fill — leave at 0.00 for new entries
@@ -11460,11 +11814,24 @@ function populateRemitParcels() {
         _recomputedItems += cxQty > 0 ? Math.max(0,(it.total||0)-ppu*cxQty) : (it.total||0);
       });
     }
-    const netRemitAmt = isWholeOrderCancelled ? 0 : Math.max(0, _recomputedItems + (o.shipping||0));
+    // COD-OP Partial: net remit = remaining balance only
+    const _isCodOpPartialRow = o.paymentMethod === 'COD - Online Payment' && o.paymentStatus === 'Partial';
+    const _paidSoFar = _isCodOpPartialRow
+      ? Math.round((o.payments||[]).reduce((s,pm)=>s+(parseFloat(pm.amount)||0),0)*100)/100 : 0;
+    const _remainingBalance = _isCodOpPartialRow
+      ? Math.max(0, Math.round(((o.grandTotal||0) - _paidSoFar)*100)/100) : 0;
+
+    const netRemitAmt = isWholeOrderCancelled ? 0
+      : _isCodOpPartialRow ? _remainingBalance
+      : Math.max(0, _recomputedItems + (o.shipping||0));
 
     const remitAmtDisplay = isWholeOrderCancelled
       ? `<span style="color:var(--red);font-weight:700;">₱0.00</span>
          <div style="font-size:9px;color:var(--muted);text-decoration:line-through;">${p(_recomputedItems + (o.shipping||0))} (orig)</div>`
+      : _isCodOpPartialRow
+        ? `<span style="color:var(--red);font-weight:700;">${p(_remainingBalance)}</span>
+           <div style="font-size:9px;color:var(--muted);margin-top:1px;">Grand Total: ${p(o.grandTotal||0)}</div>
+           <div style="font-size:9px;color:var(--blue);">Nabayad na: ${p(_paidSoFar)}</div>`
       : hasAnyCancelledItems
         ? `<span style="color:var(--green);font-weight:700;">${p(netRemitAmt)}</span>
            <div style="font-size:9px;color:var(--orange);">Orig: <span style="text-decoration:line-through;">${p(_recomputedItems + totalCancelledAmt + (o.shipping||0))}</span></div>
@@ -11497,6 +11864,19 @@ function populateRemitParcels() {
                 ? `<span class="status delivered" style="font-size:9px;white-space:nowrap;font-weight:700;">✅ Delivered</span>`
                 : `<span class="status ${sclass(o.status)}" style="font-size:9px;white-space:nowrap;font-weight:700;">${o.status}</span>`
         }
+        ${o.paymentMethod==='COD - Online Payment' ? (()=>{
+          const _pmts2 = o.payments||[];
+          const _paid2 = Math.round(_pmts2.reduce((s,pm)=>s+(parseFloat(pm.amount)||0),0)*100)/100;
+          const _rem2  = Math.max(0, Math.round(((o.grandTotal||0)-_paid2)*100)/100);
+          const _isPartial2 = o.paymentStatus==='Partial' || (_paid2>0 && _rem2>0);
+          return (_isPartial2 || o.paymentNotes) ? `
+            ${_isPartial2?`<div style="font-size:9px;margin-top:3px;padding:3px 6px;background:rgba(224,138,48,0.13);border-left:2px solid var(--orange);border-radius:3px;">
+              <span style="color:var(--red);font-weight:700;">Collect: ${p(_rem2)}</span>
+              <span style="color:var(--muted);margin-left:4px;">Paid: ${p(_paid2)}</span>
+            </div>`:''}
+            ${o.paymentNotes?`<div style="font-size:9px;color:var(--orange);margin-top:2px;white-space:normal;max-width:130px;">📌 ${o.paymentNotes}</div>`:''}
+          ` : '';
+        })() : ''}
       </td>
     </tr>`;
   }).join('');
@@ -11547,6 +11927,17 @@ function populateRemitParcels() {
   // Update calc display
   document.getElementById('remit-gross-sf').textContent = p(deliveredSF);
   document.getElementById('remit-subtotal').textContent = p(codSubtotal + deliveredSF); // items + SF = what rider collected
+  // Show COD cash / COD-OP online split if there are COD-OP orders
+  const _hasCodOp = delivered.some(o => o.paymentMethod === 'COD - Online Payment');
+  const _codCashRow = document.getElementById('remit-cod-cash-row');
+  const _codOnlineRow = document.getElementById('remit-cod-online-row');
+  if(_hasCodOp) {
+    if(_codCashRow) { _codCashRow.style.display = ''; document.getElementById('remit-cod-cash-amt').textContent = p(codSubtotal - codOnlineAmt + deliveredSF); }
+    if(_codOnlineRow) { _codOnlineRow.style.display = ''; document.getElementById('remit-cod-online-amt').textContent = p(codOnlineAmt); }
+  } else {
+    if(_codCashRow) _codCashRow.style.display = 'none';
+    if(_codOnlineRow) _codOnlineRow.style.display = 'none';
+  }
   document.getElementById('remit-sf-10').textContent = '-'+p(sf10);
   const cbDisplayEl = document.getElementById('remit-cashbond-display'); if(cbDisplayEl) cbDisplayEl.textContent = '-'+p(cashbond);
   const pfEl = document.getElementById('remit-parcel-fee-display'); if(pfEl) pfEl.textContent = '-'+p(parcelFee);
@@ -11588,7 +11979,7 @@ function recalcRemitNet() {
   // ── CANONICAL MATH ENGINE — guaranteed match with save ─────────────────────
   const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
   const _cm_recalc = _computeRemit(delivered, manualBenefits);
-  const { codSubtotal, deliveredSF, sfRider90, cashbond, parcelFee, netSF, netTotal } = _cm_recalc;
+  const { codSubtotal, deliveredSF, sfRider90, cashbond, parcelFee, netSF, netTotal, codOnlineAmt, codCashAmt } = _cm_recalc;
 
   // Update displays
   const sfShareEl = document.getElementById('remit-sf-rider-share');
@@ -11690,9 +12081,12 @@ function _syncOtherItemStatus(orderNum, newStatus) {
     if(newStatus === 'remitted' && r.status !== 'product') return;   // only product→remitted
     if(newStatus === 'remitted') {
       // RULE: Only move to Sales when order is Delivered AND rider remitted.
-      // For Update, Cancelled, RTO = rider didn't collect → stay in Products tab.
+      // Exception: LBC/EMS/FedEx courier orders — Fully Paid on verify, go directly to Sales.
       const _ord = (S.orders||[]).find(o => o && onum((S.orders||[]).indexOf(o)) === orderNum);
-      if(!_ord || _ord.status !== 'Delivered') return;
+      if(!_ord) return;
+      const _isCourier = _ord.paymentMethod==='LBC'||_ord.paymentMethod==='EMS'||_ord.paymentMethod==='FedEx';
+      const _isCodOpFP = _ord.paymentMethod==='COD - Online Payment' && _ord.paymentStatus==='Fully Paid';
+      if(!_isCourier && !_isCodOpFP && _ord.status !== 'Delivered') return;
       // Also skip if this specific item is still For Update
       const _itemSt = (_ord.itemStatuses||{})[r.itemIdx];
       if(_itemSt === 'Update' || _itemSt === 'For Update') return;
@@ -11725,21 +12119,36 @@ function saveRemit() {
   // wrong order numbers when S.orders has null/undefined slots from Firebase.
   const myOrders = (S.orders||[]).map((o,i)=>o?{...o,idx:i}:null).filter(Boolean)
     .filter(o=>{
-      if(o.assignedRider !== rider.name || o.date !== date) return false;
-      // GUARD: exclude unverified — checker must verify first
-      if((o.checkerStatus||'Pending') !== 'Verified') return false;
-      // GUARD: exclude Preparing — not yet dispatched to rider
-      const _SAVE_VISIBLE = new Set(['Ready','Out for Delivery','Delivered','Cancelled','RTO','Update']);
-      if(!_SAVE_VISIBLE.has(o.status)) return false;
-      // GUARD: exclude orders already in a Remitted batch (by order ID)
+      if(o.assignedRider !== rider.name) return false;
       const _svId  = o._id || onum(o.idx);
       const _svNum = onum(o.idx);
+      // Rescheduled orders: detected via scheduledDelivery field (persisted in Firestore)
+      const _isRescheduled = !!o.scheduledDelivery || o.status === 'Update' ||
+        Object.values(o.itemStatuses||{}).some(st => st === 'Update');
+      if(_isRescheduled) {
+        // Rescheduled orders: include if their current date matches remit date
+        if(o.date !== date) return false;
+        // Only exclude if already remitted for this exact date
+        const _alreadyRemitted = (S.remitLog||[]).some(r =>
+          r.riderName === rider.name && r.remitStatus === 'Remitted' &&
+          r.date === o.date &&
+          ((r.orderIds && r.orderIds.includes(_svId)) ||
+           (r.orderNums && r.orderNums.includes(_svNum)))
+        );
+        return !_alreadyRemitted;
+      }
+      // Normal orders: strict date match + checker verified + dispatched status
+      if(o.date !== date) return false;
+      if((o.checkerStatus||'Pending') !== 'Verified') return false;
+      const _SAVE_VISIBLE = new Set(['Ready','Out for Delivery','Delivered','Cancelled','RTO','Update']);
+      if(!_SAVE_VISIBLE.has(o.status)) return false;
+      // Exclude if already in a Remitted batch (ID + date must match)
       const _svAlreadyRemitted = (S.remitLog||[]).some(r =>
-        r.riderName === rider.name && r.remitStatus === 'Remitted' && (
-          (r.orderIds  && r.orderIds.includes(_svId)) ||
-          (r.orderNums && r.orderNums.includes(_svNum)) ||
-          (r.date === o.date && r.orderIds == null && o.createdAt && r.remittedAt && o.createdAt <= r.remittedAt)
-        )
+        r.riderName === rider.name && r.remitStatus === 'Remitted' &&
+        r.date === o.date &&
+        ((r.orderIds  && r.orderIds.includes(_svId)) ||
+         (r.orderNums && r.orderNums.includes(_svNum)) ||
+         (r.orderIds == null && o.createdAt && r.remittedAt && o.createdAt <= r.remittedAt))
       );
       return !_svAlreadyRemitted;
     });
@@ -11756,7 +12165,7 @@ function saveRemit() {
   // avoids stale grandTotal from partial cancel / For Update transitions
   // ── CANONICAL MATH ENGINE — guaranteed match with display ──────────────────
   const _cm_save = _computeRemit(delivered, manualBenefits);
-  const { codSubtotal, deliveredSF, sf10, sfRider90, cashbond, parcelFee, netSF, netTotal } = _cm_save;
+  const { codSubtotal, deliveredSF, sf10, sfRider90, cashbond, parcelFee, netSF, netTotal, codOnlineAmt, codCashAmt } = _cm_save;
 
   const entry = {
     _id: _uuid(), // required for SAR _id-based merge to prevent race condition wipe
@@ -11859,15 +12268,46 @@ function saveRemit() {
     }
     S.remitLog[+editIdx] = entry;
   } else {
-    S.remitLog.push(entry);
+  S.remitLog.push(entry);
+  // Clear wasForUpdate flag ONLY when fully Remitted for this batch date
+  if(entry.remitStatus === 'Remitted' && entry.orderNums && entry.orderNums.length) {
+    S.orders.forEach(o => {
+      if(!o || !o.wasForUpdate) return;
+      if(o.date !== entry.date) return; // only clear if batch date matches order's current date
+      const _n = onum(S.orders.indexOf(o));
+      if(entry.orderNums.includes(_n) || (entry.orderIds && entry.orderIds.includes(o._id||_n))) {
+        delete o.wasForUpdate;
+      }
+    });
+  }
   }
   // Sync otherItems to 'remitted' for all orders in this batch
   if(remitStatus === 'Remitted') {
-    // First ensure OI entries exist for all delivered orders (safety net for unverified orders)
+    // Ensure OI entries exist for ALL delivered orders in this batch
+    // Rescheduled orders bypass checkerStatus guard — they were verified before reschedule
     delivered.forEach(o => {
-      if(o.checkerStatus === 'Verified') _captureOtherItems(o.idx);
+      const _isRescheduled = !!o.scheduledDelivery || o.wasForUpdate === true;
+      if(o.checkerStatus === 'Verified' || _isRescheduled) {
+        _captureOtherItems(o.idx);
+      }
     });
-    myOrders.forEach(o => _syncOtherItemStatus(onum(o.idx), 'remitted'));
+    // Sync ALL orders in batch to remitted — including rescheduled ones
+    myOrders.forEach(o => {
+      // Force-sync rescheduled delivered orders regardless of OI entry current status
+      const _isRescheduled = !!o.scheduledDelivery || o.wasForUpdate === true;
+      if(_isRescheduled && o.status === 'Delivered') {
+        // Directly set matching OI entries to remitted (bypass product-only guard)
+        const _oNum = onum(o.idx);
+        (S.otherItems||[]).forEach(r => {
+          if(r.orderNum !== _oNum) return;
+          if(r.isVerified === false) return;
+          if(r.status === 'cancelled') return;
+          if(r.status !== 'remitted') r.status = 'remitted';
+        });
+      } else {
+        _syncOtherItemStatus(onum(o.idx), 'remitted');
+      }
+    });
   }
 
 
@@ -11943,7 +12383,7 @@ function renderRemitPage() {
   const byRider = {};
   filteredLog.forEach((e)=>{
     if(!byRider[e.riderName]) byRider[e.riderName]=[];
-    byRider[e.riderName].push({...e, idx: e._realIdx});
+    byRider[e.riderName].push({...e, idx: (e._realIdx !== undefined ? e._realIdx : -1)});
   });
 
   // ── Effective amount helper (defined once, used throughout) ────────────────
@@ -12206,25 +12646,13 @@ function renderRemitPage() {
       </div>
 
       <!-- ── Expandable Body ── -->
-      <div id="${safeId}" style="display:none;">
+      <div id="${safeId}" style="display:none;" onclick="event.stopPropagation()">
         <!-- Remit Log Summary -->
         <div style="padding:10px 14px 6px;font-size:13px;font-weight:700;color:var(--gold);border-bottom:1px solid rgba(255,255,255,0.05);">
           📋 Remit Entries
         </div>
-        <div class="table-wrap" style="padding:0 14px 10px;">
-          <table style="font-size:11px;border-collapse:collapse;width:100%;table-layout:fixed;">
-            <colgroup>
-              <col style="width:90px;">   <!-- Date -->
-              <col style="width:62px;">   <!-- Parcels -->
-              <col style="width:48px;">   <!-- Del -->
-              <col style="width:44px;">   <!-- Cx -->
-              <col style="width:90px;">   <!-- Total SF -->
-              <col style="width:80px;">   <!-- −10% -->
-              <col style="width:110px;">  <!-- COD Subtotal -->
-              <col style="width:110px;">  <!-- Net to Remit -->
-              <col style="width:110px;">  <!-- Status -->
-              <col style="width:80px;">   <!-- Actions -->
-            </colgroup>
+        <div class="table-wrap" style="padding:0 14px 10px;" onclick="event.stopPropagation()">
+          <table style="font-size:11px;border-collapse:collapse;width:100%;">
             <thead><tr style="background:rgba(201,168,76,0.08);">
               <th style="padding:8px 10px;text-align:left;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Date</th>
               <th style="padding:8px 6px;text-align:center;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Parcels</th>
@@ -12296,23 +12724,24 @@ function renderRemitPage() {
                   <td style="padding:7px 10px;text-align:right;color:var(--blue);font-weight:600;">${p(e.remitStatus==='Remitted' ? (e.codSubtotal||(_liveSubtotal+_liveSF)) : (_liveSubtotal+_liveSF))}</td>
                   <td style="padding:7px 10px;text-align:right;color:var(--gold);font-weight:700;">${p(e.remitStatus==='Remitted' ? (e.netTotal||e.codSubtotal||_liveNet) : _liveNet)}</td>
                   <td style="padding:7px 10px;font-weight:600;color:${statusColor(st)};white-space:nowrap;text-align:left;">${statusIcon(st)} ${st}</td>
-                  <td style="padding:7px 10px;text-align:left;">
-                    <div style="display:flex;gap:4px;">
+                  <td style="padding:7px 10px;text-align:left;overflow:visible;white-space:nowrap;position:relative;z-index:10;" onclick="event.stopPropagation()">
+                    <div style="display:flex;gap:4px;align-items:center;">
                       ${st!=='Remitted'
-                        ?`<button class="btn btn-outline btn-sm" onclick="openRemitModal(${e.idx})">✏️</button>
-                           <button class="btn btn-red btn-sm" onclick="delRemit(${e.idx})">🗑️</button>`
+                        ?`<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openRemitModal(${e.idx});" style="flex-shrink:0;position:relative;z-index:10;cursor:pointer;">✏️</button>
+                           <button class="btn btn-red btn-sm" onclick="event.stopPropagation();delRemit(${e.idx});" style="flex-shrink:0;position:relative;z-index:10;cursor:pointer;">🗑️</button>`
                         :`<span style="font-size:13px;color:var(--green);padding:3px 6px;">🔒 Remitted</span>`
                       }
                     </div>
                   </td>
                 </tr>`;
               }).join('')}
-              <!-- TOTAL footer row — colspan matches column positions exactly -->
+              <!-- TOTAL footer row -->
               <tr style="background:rgba(201,168,76,0.1);font-weight:700;font-size:11.5px;border-top:2px solid rgba(201,168,76,0.25);">
                 <td colspan="6" style="padding:8px 10px;color:var(--gold);text-align:left;">TOTAL — ${riderName}</td>
                 <td style="padding:8px 10px;text-align:right;color:var(--blue);font-size:14px;">${p(grandSubtotal)}</td>
                 <td style="padding:8px 10px;text-align:right;color:var(--gold);font-size:14px;">${p(grandNet)}</td>
-                <td colspan="2"></td>
+                <td style="pointer-events:none;"></td>
+                <td style="pointer-events:none;"></td>
               </tr>
             </tbody>
           </table>
@@ -12761,7 +13190,40 @@ function saveOiCapitalPerUnit(id, val) {
   renderOtherItemsPage();
 }
 
+function _repairRescheduledOiEntries() {
+  if(!S.remitLog || !S.orders) return;
+  let _changed = false;
+  console.log('[OI REPAIR] Starting. remitLog:', S.remitLog.length, 'orders:', S.orders.filter(Boolean).length, 'otherItems:', (S.otherItems||[]).length);
+  (S.remitLog||[]).forEach(r => {
+    if(r.remitStatus !== 'Remitted') return;
+    const _nums = new Set([...(r.orderNums||[]), ...(r.orderIds||[])]);
+    console.log('[OI REPAIR] Remitted batch:', r.date, r.riderName, '_nums:', [..._nums]);
+    (S.orders||[]).forEach((o, oi) => {
+      if(!o || o.status !== 'Delivered') return;
+      const _n = onum(oi);
+      if(!_nums.has(_n) && !_nums.has(o._id||'')) return;
+      console.log('[OI REPAIR] Matched order:', _n, 'status:', o.status, 'items:', (o.items||[]).map(it=>it.code));
+      const _hasOiEntry = (S.otherItems||[]).some(oi_r => oi_r.orderNum === _n);
+      console.log('[OI REPAIR] Has OI entry:', _hasOiEntry);
+      if(!_hasOiEntry) {
+        try { _captureOtherItems(oi); _changed = true; console.log('[OI REPAIR] _captureOtherItems called for', _n, 'new otherItems:', (S.otherItems||[]).length); } catch(e) { console.error('[OI REPAIR] capture error:', e); }
+      }
+      (S.otherItems||[]).forEach(oi_r => {
+        if(oi_r.orderNum !== _n) return;
+        console.log('[OI REPAIR] OI entry:', oi_r.orderNum, oi_r.code, 'status:', oi_r.status, 'isVerified:', oi_r.isVerified);
+        if(oi_r.isVerified === false) return;
+        if(oi_r.status === 'cancelled') return;
+        if(oi_r.status !== 'remitted') { oi_r.status = 'remitted'; _changed = true; console.log('[OI REPAIR] Fixed to remitted:', oi_r.code); }
+      });
+    });
+  });
+  console.log('[OI REPAIR] Done. _changed:', _changed, 'otherItems now:', (S.otherItems||[]).length);
+  if(_changed) { try { save(); } catch(e) { console.error('[OI REPAIR] save error:', e); } }
+}
+
 function renderOtherItemsPage() {
+  // Run repair for any rescheduled orders whose OI entries got stuck in 'product'
+  try { _repairRescheduledOiEntries(); } catch(e) {}
   const el = document.getElementById('otheritems-content');
   if(!el) return;
   // Date range filter — From and To (MM/DD/YYYY → YYYY-MM-DD)
@@ -14218,6 +14680,25 @@ function renderCodDelivPage() {
   // Only COD orders
   const allCOD = (S.orders||[]).filter(o=>_isCodFlow(o));
 
+  // Helper: compute inventory-only subtotal (excludes OI/non-inventory items)
+  const _invOnlyTotal = (o) => {
+    return (o.items||[]).reduce((s, it, ii) => {
+      const _code = (it.code||'').toUpperCase().trim();
+      if(!_code) return s + (it.total||0);
+      const _inInv = (S.inventory||[]).some(inv => inv.code && inv.code.toUpperCase() === _code);
+      if(!_inInv) return s; // OI item — exclude from COD total
+      const iS = o.itemStatuses||{}, iCQ = o.itemCancelQty||{};
+      if(iS[ii]==='Cancelled') return s;
+      const cxQty = iCQ[ii]||0;
+      if(cxQty > 0) {
+        const tQty = it.grams||it.qty||1;
+        const ppu = (it.total||0) / Math.max(1, tQty);
+        return s + Math.max(0, (it.total||0) - cxQty * ppu);
+      }
+      return s + (it.total||0);
+    }, 0);
+  };
+
   // Helper: returns true if ALL items in this order are OI items (non-inventory or OI-prefix)
   // Those orders belong in Other Items Sales, not COD Delivery
   const _isAllOiOrder = (o) => {
@@ -14234,10 +14715,12 @@ function renderCodDelivPage() {
   };
 
   // Stats
-  const updateCount= allCOD.filter(o=>o.status==='Update').length;
-  const delivCount = allCOD.filter(o=>o.status==='Delivered' && !_isAllOiOrder(o) && ((o.paymentMethod||'COD')!=='COD' || _isRemittedCodOrder(o))).length;
+  const updateCount= allCOD.filter(o=>o.status==='Update' && (S.remitLog||[]).some(r=>
+    r.riderName===o.assignedRider && r.date===o.date && r.remitStatus==='Remitted'
+  )).length;
+  const delivCount = allCOD.filter(o=>o.status==='Delivered' && ((o.paymentMethod||'COD')!=='COD' || _isRemittedCodOrder(o))).length;
   const cancelCount= allCOD.filter(o=>o.status==='Cancelled').length;
-  const totalRev   = allCOD.filter(o=>o.status==='Delivered'&&((o.paymentMethod||'COD')!=='COD'||_isRemittedCodOrder(o))).reduce((s,o)=>s+(o.grandTotal||0),0);
+  const totalRev   = allCOD.filter(o=>o.status==='Delivered'&&((o.paymentMethod||'COD')!=='COD'||_isRemittedCodOrder(o))).reduce((s,o)=>s+_invOnlyTotal(o),0);
 
   if(statsEl) statsEl.innerHTML = `
     <div class="stat-card blue" onclick="setCodDelivTab('ForUpdate')" style="cursor:pointer;">
@@ -14258,8 +14741,15 @@ function renderCodDelivPage() {
 
   // Filter for current tab
   let list = allCOD.map((o,ri)=>({o,i:(S.orders||[]).indexOf(o)})).filter(({o})=>{
-    if(tab==='ForUpdate') return o.status==='Update';
-    if(tab==='Delivered') return o.status==='Delivered' && !_isAllOiOrder(o) && ((o.paymentMethod||'COD')!=='COD' || _isRemittedCodOrder(o));
+    if(tab==='ForUpdate') {
+      if(o.status !== 'Update') return false;
+      // Only show in COD Delivery For Update AFTER rider's remit has been marked Remitted
+      const _remitted = (S.remitLog||[]).some(r =>
+        r.riderName === o.assignedRider && r.date === o.date && r.remitStatus === 'Remitted'
+      );
+      return _remitted;
+    }
+    if(tab==='Delivered') return o.status==='Delivered' && ((o.paymentMethod||'COD')!=='COD' || _isRemittedCodOrder(o));
     if(tab==='Cancelled') return o.status==='Cancelled';
     return false;
   });
@@ -14306,7 +14796,13 @@ function renderCodDelivPage() {
             <span style="font-weight:600;">${o.name}</span>
             <span style="color:var(--muted);font-size:11px;">${_c(o.contact)}</span>
             <span style="font-size:11px;">${dateCol}</span>
-            <span style="color:var(--green);font-weight:700;">${p(o.grandTotal)}</span>
+            ${(()=>{
+              const _inv = _invOnlyTotal(o);
+              const _oi  = (o.grandTotal||0) - _inv;
+              return _inv > 0
+                ? `<span style="color:var(--green);font-weight:700;">${p(_inv)}</span>${_oi>0?`<span style="color:var(--muted);font-size:10px;margin-left:2px;">+${p(_oi)} OI</span>`:''}`
+                : `<span style="color:var(--muted);font-size:10px;">${p(o.grandTotal)} (OI only)</span>`;
+            })()}
             <span style="font-size:13px;font-weight:700;color:${statusColor};padding:2px 8px;background:rgba(255,255,255,0.05);border-radius:4px;">${o.status}</span>
             ${(reason&&reason!=='—')?'<span style="font-size:13px;color:'+(tab==='ForUpdate'?'var(--orange)':'var(--red)')+';">'+( tab==='ForUpdate'?'🔔 ':'📝 ')+reason+'</span>':''}
           </div>
