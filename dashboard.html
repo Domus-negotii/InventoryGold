@@ -3106,6 +3106,20 @@ function _showRulesHint() {
 <div class="toast" id="toast"></div>
 
 <script>
+// ============ GLOBAL ERROR BARRIER ============
+// Catches uncaught errors so a single bug doesn't freeze the whole app.
+window.addEventListener('error', function(ev){
+  try {
+    console.error('[GOE ERROR]', ev.message, 'at', (ev.filename||'')+':'+(ev.lineno||''));
+    if(typeof toast === 'function' && ev.message && !/(ResizeObserver|Script error)/i.test(ev.message)) {
+      toast('⚠️ May maliit na error — subukan ulit o i-refresh ang page.');
+    }
+  } catch(_) {}
+  return false;
+});
+window.addEventListener('unhandledrejection', function(ev){
+  try { console.error('[GOE PROMISE ERROR]', ev.reason); } catch(_) {}
+});
 // ============ STATE ============
 // v5 key — bumped to clear old seed data from previous versions
 const KEY='gce_v5';
@@ -3361,7 +3375,9 @@ const _isCodFlow    = (o) => _COD_METHODS.has(o?.paymentMethod || 'COD');
 // Used by Dashboard, Daily Sales, Calendar, COD Delivery, Admin Orders stats.
 function _isRemittedCodOrder(o) {
   if(!o || o.status !== 'Delivered') return false;
-  if((o.paymentMethod||'COD') !== 'COD') return false;
+  // Accept both pure COD and COD-OP (online payment) orders
+  const _pm = o.paymentMethod || 'COD';
+  if(_pm !== 'COD' && _pm !== 'COD - Online Payment') return false;
   const _riderName = o.assignedRider || '';
   const _ordId  = o._id || '';
   const _ordNum = typeof onum === 'function' ? onum((S.orders||[]).indexOf(o)) : '';
@@ -6272,7 +6288,12 @@ function renderSorting() {
     .filter(o => _isCodFlow(o)
       && o.status !== 'Cancelled'
       && (o.checkerStatus||'Pending') === 'Verified');
-  if(df) orders = orders.filter(o=>o.date===df);
+  if(df) orders = orders.filter(o=>{
+    // COD-OP uses the checker-set deliver date (codopDeliverDate); others use encode date
+    const _matchDate = (o.paymentMethod === 'COD - Online Payment' && o.codopDeliverDate)
+      ? o.codopDeliverDate : o.date;
+    return _matchDate === df;
+  });
   if(sf) orders = orders.filter(o=>o.status===sf);
   // Search filter — name or contact number
   if(sq) orders = orders.filter(o=>
@@ -7940,6 +7961,11 @@ function renderCourierDashboard(){
                            ? (() => {
                                const _prev = o.codopPrevTab || o.paymentStatus || 'No Payment';
                                const _btnLabel = _prev === 'Partial' ? '↩️ Return to Partial' : _prev === 'Fully Paid' ? '↩️ Return to Fully Paid' : '↩️ Return';
+                               // Once checker has VERIFIED the order, the Return button is locked
+                               const _isVerified = o.checkerStatus === 'Verified';
+                               if(_isVerified) {
+                                 return `<span style="font-size:9.5px;color:var(--green);white-space:nowrap;padding:3px 6px;">✅ Verified (locked)</span>`;
+                               }
                                const _btnColor = _prev === 'Partial' ? 'var(--orange)' : 'var(--green)';
                                const _btnBorder = _prev === 'Partial' ? 'rgba(224,138,48,0.4)' : 'rgba(46,204,138,0.4)';
                                const _btnBg = _prev === 'Partial' ? 'rgba(224,138,48,0.12)' : 'rgba(46,204,138,0.12)';
@@ -7984,6 +8010,12 @@ function moveCodOpFromInProgress(idx, targetTab) {
   setTimeout(()=>{ window['_lock_codopFrom_'+idx]=false; }, 3000);
   const o = S.orders[idx];
   if(!o) return;
+  // GUARD: once checker has verified the order, it can't be returned to Partial/Fully Paid
+  if(o.checkerStatus === 'Verified') {
+    toast('⚠️ Hindi na pwedeng i-return — na-verify na ni checker ang order na ito.');
+    window['_lock_codopFrom_'+idx] = false;
+    return;
+  }
   // targetTab passed explicitly from button; fallback to stored codopPrevTab, then paymentStatus
   const backTab = targetTab || o.codopPrevTab || o.paymentStatus || 'No Payment';
   o.codopInProgress = false;
@@ -9386,9 +9418,11 @@ function clearAllTransactions() {
   _TX_KEYS.forEach(k=>{ S[k] = []; });
 
   // ── 3. Force-write to Firebase NOW (no debounce) — broadcasts to all devices ──
-  const _fbApiKey = localStorage.getItem('gce_fb_config')
-    ? JSON.parse(localStorage.getItem('gce_fb_config')).apiKey || _FB_APIKEY
-    : _FB_APIKEY;
+  let _fbApiKey = _FB_APIKEY;
+  try {
+    const _cfgRaw = localStorage.getItem('gce_fb_config');
+    if(_cfgRaw) _fbApiKey = (JSON.parse(_cfgRaw).apiKey) || _FB_APIKEY;
+  } catch(e) { _fbApiKey = _FB_APIKEY; }
   const _clearPayload = { fields: {
     lastGlobalClear: { stringValue: clearTs },
     orders:        { arrayValue: { values: [] } },
@@ -9442,7 +9476,9 @@ function clearAllTransactions() {
   try { if(typeof renderRemitPage==='function') renderRemitPage(); } catch(e) {}
 }
 function loadFbConfig(){
-  const cfg = JSON.parse(localStorage.getItem('gce_fb_config')||'null');
+  let cfg = null;
+  try { cfg = JSON.parse(localStorage.getItem('gce_fb_config')||'null'); }
+  catch(e) { console.warn('[GOE] Invalid fb config in localStorage:', e); cfg = null; }
   if(!cfg) return;
   document.getElementById('fb-apikey').value = cfg.apiKey||'';
   document.getElementById('fb-authdomain').value = cfg.authDomain||'';
@@ -11248,7 +11284,12 @@ function renderTracking() {
       // Checker-cancelled = has cancelledBy set → goes to Recently Deleted, not tracking
       if(s === 'Cancelled' && o.cancelledBy) return false;
       // Date filter: strict for all roles
-      if(df && o.date !== df) return false;
+      // COD-OP uses the checker-set deliver date (codopDeliverDate); others use encode date
+      if(df) {
+        const _matchDate = (o.paymentMethod === 'COD - Online Payment' && o.codopDeliverDate)
+          ? o.codopDeliverDate : o.date;
+        if(_matchDate !== df) return false;
+      }
       // Sorter: hide terminal orders whose rider+date combo is already remitted
       if(currentRole === 'sorter' && TERMINAL.has(s)) {
         const key = `${o.assignedRider||''}|${o.date}`;
@@ -11270,7 +11311,12 @@ function renderTracking() {
     if(o.status === 'Delivered' || o.status === 'RTO') return false;
     if(filt && o.status!==filt) return false;
     // Date filter: strict for all roles
-    if(df && o.date !== df) return false;
+    // COD-OP uses the checker-set deliver date (codopDeliverDate); others use encode date
+    if(df) {
+      const _matchDate = (o.paymentMethod === 'COD - Online Payment' && o.codopDeliverDate)
+        ? o.codopDeliverDate : o.date;
+      if(_matchDate !== df) return false;
+    }
     // Sorter: hide terminal orders whose rider+date combo is officially remitted
     if(currentRole === 'sorter' && TERMINAL.has(o.status)) {
       const key = `${o.assignedRider||''}|${o.date}`;
@@ -15824,6 +15870,20 @@ function detectDuplicates(orders) {
     return (d.length >= 9 && d.length <= 10) ? d : '';
   }
 
+  // Name tokens: lowercase, strip accents/punctuation, split into words,
+  // drop very short tokens (initials) and common name-connectors
+  const _NAME_STOP = new Set(['jr','sr','ii','iii','iv','de','del','dela','delos','dela','san','sta','sto','mr','mrs','ms','dr']);
+  function _nameTokens(val) {
+    return _safe(val)
+      .toLowerCase()
+      .replace(/[àáâãäå]/g,'a').replace(/[èéêë]/g,'e')
+      .replace(/[ìíîï]/g,'i').replace(/[òóôõö]/g,'o')
+      .replace(/[ùúûü]/g,'u').replace(/ñ/g,'n')
+      .replace(/[^a-z\s]/g,' ')
+      .split(/\s+/)
+      .filter(w => w.length >= 2 && !_NAME_STOP.has(w));
+  }
+
   // House number: extract a normalized identifier
   // Returns a typed key: "b2l5" (block/lot), "l5" (lot only),
   //                      "u3" (unit/apt), or plain digits for long numbers
@@ -15951,6 +16011,26 @@ function detectDuplicates(orders) {
 
     const cityI = _normCity(oi.city);
     const cityJ = _normCity(oj.city);
+
+    // ── RULE 0: Shared Name Tokens → merge (same person, name variations) ──
+    // Handles: "Julius Robert Malupiton" / "Julius Malupiton" / "Julius Robert" / "Robert Malupiton"
+    // Match if the two names share ≥2 tokens, OR one name's tokens are a subset of the other.
+    const _tokI = _nameTokens(oi.name);
+    const _tokJ = _nameTokens(oj.name);
+    if (_tokI.length && _tokJ.length) {
+      const _setI = new Set(_tokI);
+      const _shared = _tokJ.filter(t => _setI.has(t));
+      // (a) share at least 2 name tokens → same person
+      if (_shared.length >= 2) return true;
+      // (b) one is a PROPER subset of the other (strictly shorter) with ≥2 tokens
+      //     e.g. "Julius Robert" (2) ⊂ "Julius Robert Malupiton" (3)
+      //     Only applies when lengths DIFFER — equal-length names must use rule (a) above.
+      if (_tokI.length !== _tokJ.length) {
+        const _shorter  = _tokI.length < _tokJ.length ? _tokI : _tokJ;
+        const _longerSet = _tokI.length < _tokJ.length ? new Set(_tokJ) : _setI;
+        if (_shorter.length >= 2 && _shorter.every(t => _longerSet.has(t))) return true;
+      }
+    }
 
     // ── RULE 1: Same phone → always merge (same person regardless of address/city) ──
     // Same contact number = same customer even if address differs.
