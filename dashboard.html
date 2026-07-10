@@ -3436,6 +3436,17 @@ function validateDateInput(input) {
 // CRITICAL: i must be the ORIGINAL S.orders index, not a re-indexed/filtered position.
 // Always use map((o,i)=>({...o,idx:i})) BEFORE .filter() to preserve idx.
 const onum=i=>'GOE-'+String(i+1).padStart(5,'0');
+// ── COD-OP effective date helper ──────────────────────────────────────────
+// COD-OP orders use the checker-set Deliver Date (codopDeliverDate) as their
+// scheduled delivery date. All other orders use their encode date (o.date).
+// Centralized so every date filter (rider dash, tracking, sorting) stays consistent.
+function _effectiveDate(o){
+  if(!o) return '';
+  if(o.paymentMethod === 'COD - Online Payment' && o.codopDeliverDate && String(o.codopDeliverDate).trim()){
+    return String(o.codopDeliverDate).trim();
+  }
+  return o.date || '';
+}
 const sclass=s=>({'In Transit':'transit','Delivering':'delivering','Delivered':'delivered','Cancelled':'cancelled','RTO':'cancelled','For Return':'return','Returned':'returned','Preparing':'delivering','Ready':'blue','Out for Delivery':'gold','Update':'return'}[s]||'transit');
 function toast(msg,t=2500){
   // Don't overwrite an active delete confirmation toast
@@ -4334,9 +4345,10 @@ function renderChecker(){
     o.checkerStatus === 'Pending' &&
     !['Cancelled','RTO','Delivered','Out for Delivery','Update'].includes(o.status)
   ).length;
-  // COD-OP checker badge: count all unverified COD-OP orders
+  // COD-OP checker badge: count only orders admin moved to "In Progress"
   const _pendingCODOP = _safeO.filter(o =>
     o.paymentMethod === 'COD - Online Payment' &&
+    o.codopInProgress === true &&
     o.checkerStatus === 'Pending' &&
     !['Cancelled','RTO','Delivered','Out for Delivery','Update'].includes(o.status)
   ).length;
@@ -4418,8 +4430,8 @@ function renderChecker(){
     if(_isCourierTab && _COURIER_DONE.has(o.lbcStatus||'')) return false;
     // LBC/EMS/FedEx: only show Fully Paid orders — admin sets payment status, not checker
     if(_isCourierTab && (o.paymentStatus||'No Payment') !== 'Fully Paid') return false;
-    // COD-OP checker: show all unverified COD-OP orders (admin verifies then moves to In Progress)
-    // No codopInProgress gate — checker needs to verify before rider can pick up
+    // COD-OP checker: only show orders that admin has moved to "In Progress" tab
+    if(checkerTab === 'COD-OP' && !o.codopInProgress) return false;
     if(filt && o.checkerStatus !== filt) return false;
     if(df && o.date !== df) return false;
     if(q && !(o.name||'').toLowerCase().includes(q) && !(o.contact||'').toLowerCase().includes(q)) return false;
@@ -4447,7 +4459,8 @@ function renderChecker(){
     const _unverifiedList = list.filter(({o}) =>
       o.checkerStatus !== 'Verified' && o.verificationStatus !== 'Verified'
     );
-    const dupSets = detectDuplicates(_unverifiedList);
+    // Merge/duplicate detection runs for COD tab ONLY — COD-OP is excluded.
+    const dupSets = isCOD ? detectDuplicates(_unverifiedList) : [];
     window._checkerDupSets = dupSets; // expose globally so verifyOrder can check
 
     // Filter out groups where ALL orders have been dismissed via X button
@@ -4458,9 +4471,9 @@ function renderChecker(){
 
     // Show duplicate alert banner
     const dupBanner = document.getElementById('checker-dup-banner');
-    // Duplicate banner: COD tab only — LBC/EMS/FedEx have different workflows
+    // Duplicate banner: COD tab ONLY — COD-OP and LBC/EMS/FedEx don't show merge/customer info
     if(dupBanner) {
-      if(visibleDupSets.length > 0 && (isCOD || isCODOP)) {
+      if(visibleDupSets.length > 0 && isCOD) {
         const names = visibleDupSets.map(g => g[0].o.name).join(', ');
         dupBanner.innerHTML = `<div style="background:rgba(224,138,48,0.15);border:1.5px solid var(--orange);border-radius:8px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
           <div><span style="color:var(--orange);font-weight:700;">⚠️ ${visibleDupSets.length} Possible Duplicate Order(s) Detected!</span>
@@ -4473,8 +4486,8 @@ function renderChecker(){
         dupBanner.style.display = 'none';
       }
     }
-    // Always hide banner when on LBC/EMS/FedEx tabs
-    if(!isCOD && !isCODOP && dupBanner) { dupBanner.innerHTML = ''; dupBanner.style.display = 'none'; }
+    // Hide banner on COD-OP and LBC/EMS/FedEx tabs — merge/customer info shows on COD only
+    if(!isCOD && dupBanner) { dupBanner.innerHTML = ''; dupBanner.style.display = 'none'; }
 
     if(!list.length) {
       document.getElementById('checker-tbody').innerHTML =
@@ -4559,7 +4572,9 @@ function renderChecker(){
               ${o.status==='Cancelled'
                 ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
                 :o.checkerStatus!=='Verified'
-                ?`<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`
+                ?(isCODOP && !(o.codopDeliverDate && o.codopDeliverDate.trim())
+                   ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled title="Maglagay muna ng Deliver Date bago i-verify">✔ Verify</button><div style="font-size:8.5px;color:var(--orange);margin-top:1px;">⚠️ Kailangan ng Deliver Date</div>`
+                   :`<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`)
                 :(isLocked
                   ?`<span style="font-size:9.5px;color:var(--muted);padding:2px 6px;">🔒 ${o.status==='Delivered'?'Delivered':'In Progress'}</span>`
                   :`<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`)}
@@ -4985,6 +5000,13 @@ function verifyOrder(i){
   if(!S.orders[i]) { console.warn('[GOE] verifyOrder: invalid index', i); _releaseVerifyLock(); return; }
   // GUARD: already verified — prevent double-entry
   if(S.orders[i].checkerStatus === 'Verified') { toast('⚠️ Verified na ang order na ito.'); _releaseVerifyLock(); return; }
+  // GUARD: COD-OP requires a Deliver Date before verifying
+  if(S.orders[i].paymentMethod === 'COD - Online Payment' &&
+     !(S.orders[i].codopDeliverDate && String(S.orders[i].codopDeliverDate).trim())) {
+    toast('⚠️ Maglagay muna ng Deliver Date bago i-verify ang COD-OP order.');
+    _releaseVerifyLock();
+    return;
+  }
   // GUARD: block verify if order is in a detected merge group
   // Checker must merge or dismiss the duplicate alert before verifying.
   // ═══ MERGE BLOCK BARRIER ══════════════════════════════════════════════════
@@ -6288,12 +6310,7 @@ function renderSorting() {
     .filter(o => _isCodFlow(o)
       && o.status !== 'Cancelled'
       && (o.checkerStatus||'Pending') === 'Verified');
-  if(df) orders = orders.filter(o=>{
-    // COD-OP uses the checker-set deliver date (codopDeliverDate); others use encode date
-    const _matchDate = (o.paymentMethod === 'COD - Online Payment' && o.codopDeliverDate)
-      ? o.codopDeliverDate : o.date;
-    return _matchDate === df;
-  });
+  if(df) orders = orders.filter(o=>_effectiveDate(o) === df);
   if(sf) orders = orders.filter(o=>o.status===sf);
   // Search filter — name or contact number
   if(sq) orders = orders.filter(o=>
@@ -7991,6 +8008,8 @@ function moveCodOpToInProgress(idx) {
   if(window['_lock_codop_'+idx]) { toast('⏳ Please wait...'); return; }
   window['_lock_codop_'+idx] = true;
   setTimeout(()=>{ window['_lock_codop_'+idx]=false; }, 3000);
+  if(!S.orders || !S.orders[idx]) { window['_lock_codop_'+idx]=false; return; }
+  if(S.orders[idx].paymentMethod !== 'COD - Online Payment') { toast('⚠️ COD-OP orders lang ang pwede dito.'); window['_lock_codop_'+idx]=false; return; }
   const o = S.orders[idx];
   if(!o) return;
   if(o.paymentMethod !== 'COD - Online Payment') { toast('⚠️ This is only for COD-OP orders.'); return; }
@@ -9929,10 +9948,11 @@ function renderRiderParcels() {
     return !_isRemittedForCurrentDate;
   });
   // Date filter: exact string match — df is whatever user typed
-  // type="text" input means no browser date validation interference
+  // COD-OP uses the checker-set Deliver Date (codopDeliverDate) — the SCHEDULED delivery date,
+  // NOT the encode date. All other orders use their encode date.
   let filtered;
   if(df) {
-    filtered = myOrders.filter(o => o.date === df);
+    filtered = myOrders.filter(o => _effectiveDate(o) === df);
   } else {
     filtered = [...myOrders];
   }
@@ -11285,11 +11305,7 @@ function renderTracking() {
       if(s === 'Cancelled' && o.cancelledBy) return false;
       // Date filter: strict for all roles
       // COD-OP uses the checker-set deliver date (codopDeliverDate); others use encode date
-      if(df) {
-        const _matchDate = (o.paymentMethod === 'COD - Online Payment' && o.codopDeliverDate)
-          ? o.codopDeliverDate : o.date;
-        if(_matchDate !== df) return false;
-      }
+      if(df && _effectiveDate(o) !== df) return false;
       // Sorter: hide terminal orders whose rider+date combo is already remitted
       if(currentRole === 'sorter' && TERMINAL.has(s)) {
         const key = `${o.assignedRider||''}|${o.date}`;
@@ -11312,11 +11328,7 @@ function renderTracking() {
     if(filt && o.status!==filt) return false;
     // Date filter: strict for all roles
     // COD-OP uses the checker-set deliver date (codopDeliverDate); others use encode date
-    if(df) {
-      const _matchDate = (o.paymentMethod === 'COD - Online Payment' && o.codopDeliverDate)
-        ? o.codopDeliverDate : o.date;
-      if(_matchDate !== df) return false;
-    }
+    if(df && _effectiveDate(o) !== df) return false;
     // Sorter: hide terminal orders whose rider+date combo is officially remitted
     if(currentRole === 'sorter' && TERMINAL.has(o.status)) {
       const key = `${o.assignedRider||''}|${o.date}`;
@@ -12111,6 +12123,7 @@ function _syncOiPrefixStatus(orderIdx, newStatus) {
 }
 
 function _syncOtherItemStatus(orderNum, newStatus) {
+  if(!orderNum || !S.otherItems) return;
   try {
   // ═══ _syncOtherItemStatus LIFECYCLE GUARD ══════════════════════════════════
   // ONLY called from saveRemit when remitStatus = 'Remitted'.
@@ -15843,6 +15856,14 @@ function detectDuplicates(orders) {
   // ── Guard: empty/invalid input ──────────────────────────────────────────
   if (!Array.isArray(orders) || orders.length < 2) return [];
 
+  // ── SHIPPING METHOD GUARD: COD-OP orders are NEVER included in merge ──────
+  // Only pure COD orders participate in duplicate/merge detection.
+  orders = orders.filter(item => {
+    const _o = item && item.o ? item.o : item;
+    return _o && (_o.paymentMethod || 'COD') === 'COD';
+  });
+  if (orders.length < 2) return [];
+
   // ── Normalizers ─────────────────────────────────────────────────────────
 
   function _safe(val) { return (val == null ? '' : String(val)).trim(); }
@@ -16007,6 +16028,28 @@ function detectDuplicates(orders) {
   function _directMatch(oi, oj) {
     // Null-guard both orders
     if (!oi || !oj) return false;
+
+    // ── SHIPPING METHOD GUARD: only merge within the SAME payment method ──────
+    // COD orders merge only with COD; COD-OP merges only with COD-OP.
+    // Never mix COD and COD-Online-Payment in the same merge group.
+    const _pmI = oi.paymentMethod || 'COD';
+    const _pmJ = oj.paymentMethod || 'COD';
+    if (_pmI !== _pmJ) return false;
+
+    // ── DATE GUARD: parcels from different dates must not be grouped ──────────
+    // Uses effective date: COD-OP → Deliver Date (codopDeliverDate); others → encode date.
+    // Both COD and COD-OP are compared by effective date so same-day duplicates
+    // are detected while different-day parcels stay separate.
+    const _effDate = (ord) => {
+      if(!ord) return '';
+      if(ord.paymentMethod === 'COD - Online Payment' && ord.codopDeliverDate && String(ord.codopDeliverDate).trim())
+        return String(ord.codopDeliverDate).trim();
+      return _safe(ord.date);
+    };
+    const _dateI = _effDate(oi);
+    const _dateJ = _effDate(oj);
+    // Only block when BOTH dates are known and differ (missing dates don't block)
+    if (_dateI && _dateJ && _dateI !== _dateJ) return false;
 
 
     const cityI = _normCity(oi.city);
@@ -16191,7 +16234,7 @@ function openMergeModal() {
   // Cancelled orders must NEVER appear in merge detection.
   const codOrders = (S.orders||[]).map((o,i)=>o?({o,i}):null).filter(Boolean)
     .filter(({o}) =>
-      _isCodFlow(o) &&   // COD + COD Online only — never LBC/EMS/FedEx
+      (o.paymentMethod||'COD') === 'COD' &&   // PURE COD ONLY — COD-OP is excluded from merge
       !['Cancelled','RTO','Delivered'].includes(o.status) &&
       o.checkerStatus !== 'Verified' &&
       o.verificationStatus !== 'Verified'
