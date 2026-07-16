@@ -3447,6 +3447,30 @@ function _effectiveDate(o){
   }
   return o.date || '';
 }
+// ── COD-OP amount-to-collect helper ────────────────────────────────────────
+// Returns how much CASH the rider still needs to collect from the customer.
+//  - Pure COD → full grandTotal (nothing paid online)
+//  - COD-OP Fully Paid → ₱0.00 (already paid, nothing to collect)
+//  - COD-OP Partial → grandTotal − total already paid online (remaining balance)
+function _amountToCollect(o){
+  if(!o) return 0;
+  if(o.paymentMethod === 'COD - Online Payment'){
+    if(o.paymentStatus === 'Fully Paid') return 0;
+    if(o.paymentStatus === 'Partial'){
+      const _paid = Math.round((o.payments||[]).reduce((s,pm)=>s+(parseFloat(pm.amount)||0),0)*100)/100;
+      return Math.max(0, Math.round(((o.grandTotal||0) - _paid)*100)/100);
+    }
+    // No Payment → collect full amount
+    return o.grandTotal || 0;
+  }
+  // Pure COD → collect full grandTotal
+  return o.grandTotal || 0;
+}
+// Total already paid online for a COD-OP order (0 for others)
+function _amountPaidOnline(o){
+  if(!o || o.paymentMethod !== 'COD - Online Payment') return 0;
+  return Math.round((o.payments||[]).reduce((s,pm)=>s+(parseFloat(pm.amount)||0),0)*100)/100;
+}
 const sclass=s=>({'In Transit':'transit','Delivering':'delivering','Delivered':'delivered','Cancelled':'cancelled','RTO':'cancelled','For Return':'return','Returned':'returned','Preparing':'delivering','Ready':'blue','Out for Delivery':'gold','Update':'return'}[s]||'transit');
 function toast(msg,t=2500){
   // Don't overwrite an active delete confirmation toast
@@ -4547,7 +4571,7 @@ function renderChecker(){
             ${isCODOP ? `<td>
               <input type="date" value="${o.codopDeliverDate||''}"
                 style="font-size:10.5px;padding:2px 5px;border:1px solid var(--navy-border);border-radius:5px;background:var(--navy-card);color:var(--text);width:130px;"
-                onchange="(function(el){S.orders[${i}].codopDeliverDate=el.value;save();toast('📅 Deliver date saved.');})(this)">
+                onchange="(function(el){S.orders[${i}].codopDeliverDate=el.value;save();toast(el.value?'📅 Deliver date saved.':'📅 Deliver date cleared.');setTimeout(function(){try{renderChecker();}catch(e){}},50);})(this)">
               ${o.codopDeliverDate
                 ? '<div style="font-size:9px;color:var(--green);margin-top:2px;">✅ '+o.codopDeliverDate+'</div>'
                 : '<div style="font-size:9px;color:var(--muted);">Not set</div>'}
@@ -5033,11 +5057,12 @@ function verifyOrder(i){
     if(_inDupGroup && !_isCodOpOrder) {
       // Merge guard applies to COD orders only — COD-OP can verify despite duplicate detection
       toast('⚠️ Hindi pwedeng i-verify — na-detect na DUPLICATE ang order na ito. I-MERGE muna o alisin sa merge group bago mag-verify.');
+      _releaseVerifyLock();
       return;
     }
   }
   // Guard: prevent double-click during in-progress verify/unverify
-  if(window._verifyBusy) { toast('⏳ Please wait...'); return; }
+  if(window._verifyBusy) { toast('⏳ Please wait...'); _releaseVerifyLock(); return; }
   window._verifyBusy = true;
   setTimeout(()=>{ window._verifyBusy = false; }, 3000);
   const o = S.orders[i];
@@ -5114,6 +5139,7 @@ function verifyOrder(i){
   persist();
   save();
   _releaseVerifyLock();
+  window._verifyBusy = false; // release immediately so next parcel can be verified right away
   const _toastMsg = _isCourierOrder
     ? '✅ Order verified! Status: Preparing. Checker must set to Ready to Pick-up when parcel is ready.'
     : '✅ Order verified! Inventory deducted. Rider can now pick-up.';
@@ -6388,8 +6414,22 @@ function renderSorting() {
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;border-top:1px solid var(--navy-border);padding-top:5px;">
           <span style="font-size:10px;color:var(--muted);">SF: ${p(o.shipping)}</span>
-          <span class="sort-card-total">${p(o.grandTotal)}</span>
+          <span class="sort-card-total">${(()=>{
+            const _collect = _amountToCollect(o);
+            if(o.paymentMethod === 'COD - Online Payment'){
+              if(o.paymentStatus === 'Fully Paid')
+                return `<span style="color:var(--green);">₱0.00</span>`;
+              if(o.paymentStatus === 'Partial')
+                return `<span style="color:var(--orange);">${p(_collect)}</span>`;
+            }
+            return p(_collect);
+          })()}</span>
         </div>
+        ${o.paymentMethod === 'COD - Online Payment' && o.paymentStatus === 'Partial'
+          ? `<div style="font-size:9px;color:var(--muted);margin-top:2px;text-align:right;">Paid: ${p(_amountPaidOnline(o))} / ${p(o.grandTotal||0)}</div>`
+          : o.paymentMethod === 'COD - Online Payment' && o.paymentStatus === 'Fully Paid'
+            ? `<div style="font-size:9px;color:var(--green);margin-top:2px;text-align:right;">✅ Fully Paid — walang kolektahin</div>`
+            : ''}
         <div style="margin-top:5px;">
           ${sortLocked
             ? `<div style="font-size:10px;color:var(--orange);background:rgba(224,138,48,0.1);
@@ -10180,9 +10220,28 @@ function renderRiderParcels() {
       <td>${o.date}</td>
       <td style="font-weight:600;color:var(--blue);">${p(o.shipping||0)}</td>
       <td style="font-weight:600;">
-        ${hasCancelledItems
-          ? `<span style="color:var(--gold);">${p(activeItemsTotal)}</span><br><span style="font-size:9.5px;color:var(--muted);">(${cancelledCount} item${cancelledCount>1?'s':''} cancelled)</span>`
-          : `<span style="color:var(--green);">${p(activeItemsTotal)}</span>`}
+        ${(()=>{
+          // COD-OP: show amount rider needs to COLLECT (fully paid = ₱0, partial = balance)
+          if(o.paymentMethod === 'COD - Online Payment'){
+            const _paid = _amountPaidOnline(o);
+            if(o.paymentStatus === 'Fully Paid'){
+              return `<span style="color:var(--green);">₱0.00</span><br><span style="font-size:9px;color:var(--muted);">✅ Fully Paid<br>(walang kolektahin)</span>`;
+            }
+            if(o.paymentStatus === 'Partial'){
+              const _bal = Math.max(0, Math.round(((o.grandTotal||0) - _paid)*100)/100);
+              return `<span style="color:var(--orange);font-size:14px;">${p(_bal)}</span>
+                <br><span style="font-size:9px;color:var(--muted);">Total: ${p(o.grandTotal||0)}</span>
+                <br><span style="font-size:9px;color:var(--blue);">Nabayad: ${p(_paid)}</span>
+                <br><span style="font-size:9px;color:var(--orange);font-weight:700;">Kolektahin: ${p(_bal)}</span>`;
+            }
+            // No Payment → collect full
+            return `<span style="color:var(--green);">${p(o.grandTotal||0)}</span><br><span style="font-size:9px;color:var(--muted);">(No online payment)</span>`;
+          }
+          // Pure COD → existing behavior
+          return hasCancelledItems
+            ? `<span style="color:var(--gold);">${p(activeItemsTotal)}</span><br><span style="font-size:9.5px;color:var(--muted);">(${cancelledCount} item${cancelledCount>1?'s':''} cancelled)</span>`
+            : `<span style="color:var(--green);">${p(activeItemsTotal)}</span>`;
+        })()}
       </td>
       <td><span class="status ${sclass(o.status)}">${o.status}</span></td>
       <td>
@@ -10913,6 +10972,18 @@ async function saveOrder() {
     o.paymentNotes = orig.paymentNotes || '';
     o.verificationStatus = orig.verificationStatus || 'Not Verified';
     o.lbcStatus = orig.lbcStatus || o.lbcStatus;
+    // ── COD-OP: preserve In-Progress state & deliver date across edits ──
+    // When checker edits a COD-OP order (fix contact, add item, etc.), it must
+    // STAY in the checker's In-Progress lane — never bounce back to admin.
+    o.codopInProgress = orig.codopInProgress;
+    o.codopPrevTab = orig.codopPrevTab;
+    o.codopDeliverDate = orig.codopDeliverDate;
+    // Preserve rescheduling metadata too
+    if(orig.scheduledDelivery) o.scheduledDelivery = orig.scheduledDelivery;
+    if(orig.dateDelivered) o.dateDelivered = orig.dateDelivered;
+    if(orig.itemStatuses) o.itemStatuses = orig.itemStatuses;
+    if(orig.itemCancelQty) o.itemCancelQty = orig.itemCancelQty;
+    if(orig.wasForUpdate) o.wasForUpdate = orig.wasForUpdate;
     if(!assignedRider && orig.assignedRider) o.assignedRider = orig.assignedRider;
     // Keep tracking number from the form (may have been edited) or fallback to orig
     if(!o.trackingNumber && orig.trackingNumber) o.trackingNumber = orig.trackingNumber;
@@ -11382,7 +11453,17 @@ function renderTracking() {
           <td>${o.admin}</td>
           <td style="font-size:11px;color:var(--blue);">🏍️ ${o.assignedRider||'—'}</td>
           <td>${o.date}</td>
-          <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
+          <td style="color:var(--green);font-weight:600;">${(()=>{
+            const _collect = _amountToCollect(o);
+            if(o.paymentMethod === 'COD - Online Payment'){
+              const _paid = _amountPaidOnline(o);
+              if(o.paymentStatus === 'Fully Paid')
+                return `<span style="color:var(--green);">₱0.00</span><div style="font-size:9px;color:var(--muted);font-weight:400;">✅ Fully Paid</div>`;
+              if(o.paymentStatus === 'Partial')
+                return `<span style="color:var(--orange);">${p(_collect)}</span><div style="font-size:9px;color:var(--muted);font-weight:400;">Paid: ${p(_paid)} / ${p(o.grandTotal)}</div>`;
+            }
+            return p(_collect);
+          })()}</td>
           <td><span class="status ${sclass(o.status)}">${o.status||'—'}</span></td>
           <td>${isLocked
             ? `<span style="font-size:10px;color:var(--muted);padding:3px 8px;border:1px solid var(--navy-border);border-radius:5px;">🔒 ${o.status}</span>`
