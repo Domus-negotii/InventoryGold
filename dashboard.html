@@ -3800,6 +3800,15 @@ function rowTabNext(e, el) {
 let _editSource = ''; // 'courier-dashboard' | 'orders' | ''
 
 function openEditOrder(i){
+  // ── NULL GUARD ────────────────────────────────────────────────────────────
+  if(!S.orders || !S.orders[i]) { toast('⚠️ Hindi mahanap ang order. I-refresh ang page.'); return; }
+  // ── VERIFIED LOCK: warn immediately if the order is already verified ───────
+  // Editing is blocked at save time; this tells the user up-front.
+  const _oChk = S.orders[i];
+  if(_oChk && (_oChk.checkerStatus === 'Verified' || _oChk.verificationStatus === 'Verified')) {
+    toast('🔒 Verified na ang order na ito — i-UNVERIFY muna bago mag-edit.');
+    return;
+  }
   if(_editSource !== 'courier-dashboard') _editSource = ''; // ensure clean state
 
   // ── RESET all form fields to clean state first (same as openEncodeModal) ──
@@ -4591,8 +4600,12 @@ function renderChecker(){
                 : `<button class="btn btn-outline btn-sm" onclick="togglePrinted(${i})" style="font-size:10px;padding:2px 7px;">🖨️ Print</button>`}
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
-              ${!isLocked?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>`:''}
-              ${currentRole==='owner'?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" title="CEO Edit">✏️ Edit</button>`:''}
+              ${(()=>{
+                const _isVer = o.checkerStatus==='Verified' || o.verificationStatus==='Verified';
+                if(_isVer) return `<span style="font-size:9px;color:var(--muted);padding:3px 5px;border:1px solid var(--navy-border);border-radius:4px;white-space:nowrap;" title="I-unverify muna bago mag-edit">🔒 Locked</span>`;
+                return !isLocked ? `<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})">✏️</button>` : '';
+              })()}
+              ${(currentRole==='owner' && !(o.checkerStatus==='Verified'||o.verificationStatus==='Verified'))?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" title="CEO Edit">✏️ Edit</button>`:''}
               ${o.status==='Cancelled'
                 ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
                 :o.checkerStatus!=='Verified'
@@ -4704,10 +4717,13 @@ function renderChecker(){
                 : `<button class="btn btn-outline btn-sm" onclick="togglePrinted(${i})" style="font-size:10px;padding:2px 7px;">🖨️ Print</button>`}
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
-              ${currentRole==='owner'?'<button class="btn btn-outline btn-sm" onclick="openEditOrder('+i+')" title="CEO Edit" style="font-size:10.5px;">✏️ Edit</button>':''}
+              ${(currentRole==='owner' && verifSt!=='Verified')?'<button class="btn btn-outline btn-sm" onclick="openEditOrder('+i+')" title="CEO Edit" style="font-size:10.5px;">✏️ Edit</button>':''}
+              ${verifSt==='Verified'
+                ? '<span style="font-size:9px;color:var(--muted);padding:3px 5px;border:1px solid var(--navy-border);border-radius:4px;white-space:nowrap;" title="I-unverify muna bago mag-edit">🔒 Locked</span>'
+                : ''}
               ${isDroppedOff
                 ? '<span style="font-size:9.5px;color:var(--blue);padding:2px 6px;background:rgba(74,144,217,0.1);border-radius:4px;">🔒 Dropped Off</span>'
-                : ((!isLocked ? '<button class="btn btn-outline btn-sm" onclick="openEditOrder('+i+')">✏️</button>' : '')
+                : (((!isLocked && verifSt!=='Verified') ? '<button class="btn btn-outline btn-sm" onclick="openEditOrder('+i+')">✏️</button>' : '')
                   + (canVerify && verifSt==='Verified'
                     ? '<button class="btn btn-green btn-sm" onclick="verifyOrder('+i+')">✔ Verified</button>'
                     : o.status==='Cancelled' ? '<span style="font-size:9px;color:var(--red);">🚫 Cancelled</span>' : canVerify
@@ -5017,7 +5033,7 @@ function assignRiderFromChecker(orderIdx, riderName) {
 }
 function verifyOrder(i){
   // CONCURRENCY LOCK: prevent double-click creating duplicate verify entries
-  if(window._verifyingOrder === i) { toast('⏳ Processing...'); return; }
+  if(window._verifyingOrder === i) { toast('⏳ Processing...'); _releaseVerifyLock(); return; }
   window._verifyingOrder = i;
   const _releaseVerifyLock = () => { if(window._verifyingOrder === i) window._verifyingOrder = null; };
   // GUARD: null-check order exists before any inventory/status mutation
@@ -5029,7 +5045,7 @@ function verifyOrder(i){
      !(S.orders[i].codopDeliverDate && String(S.orders[i].codopDeliverDate).trim())) {
     toast('⚠️ Maglagay muna ng Deliver Date bago i-verify ang COD-OP order.');
     _releaseVerifyLock();
-    return;
+    _releaseVerifyLock(); return;
   }
   // GUARD: block verify if order is in a detected merge group
   // Checker must merge or dismiss the duplicate alert before verifying.
@@ -5058,7 +5074,7 @@ function verifyOrder(i){
       // Merge guard applies to COD orders only — COD-OP can verify despite duplicate detection
       toast('⚠️ Hindi pwedeng i-verify — na-detect na DUPLICATE ang order na ito. I-MERGE muna o alisin sa merge group bago mag-verify.');
       _releaseVerifyLock();
-      return;
+      _releaseVerifyLock(); return;
     }
   }
   // Guard: prevent double-click during in-progress verify/unverify
@@ -5070,7 +5086,7 @@ function verifyOrder(i){
   // Guard: LBC/EMS/FedEx orders must be Fully Paid before verification
   if(isCourier && (o.paymentStatus||'No Payment') !== 'Fully Paid'){
     toast('⚠️ Cannot verify — order must be marked as Fully Paid first.');
-    return;
+    _releaseVerifyLock(); return;
   }
   // LBC/EMS/FedEx: tracking (not FedEx), date paid, date dropoff required
   const isFedEx = o.paymentMethod==='FedEx';
@@ -5081,7 +5097,7 @@ function verifyOrder(i){
     if(!o.dateOfDropoff)  missing.push('Date of Drop-off');
     if(missing.length > 0) {
       toast('⚠️ Hindi pa mave-verify. I-fill up muna ang: ' + missing.join(', '));
-      return;
+      _releaseVerifyLock(); return;
     }
   }
   // ── Deduct inventory on Checker Verify ────────────────────────
@@ -5150,13 +5166,13 @@ function verifyOrder(i){
   try { renderOtherItemsPage(); } catch(e) {}
 }
 function unverifyOrder(i){
-  if(window['_lock_unverify_'+i]) { toast('⏳ Please wait...'); return; }
+  if(window['_lock_unverify_'+i]) { toast('⏳ Please wait...'); _relUnverify(); return; }
   window['_lock_unverify_'+i] = true;
   const _relUnverify = () => { window['_lock_unverify_'+i] = false; };
   // GUARD: null-check order exists before any inventory/status mutation
   if(!S.orders[i]) { console.warn('[GOE] unverifyOrder: invalid index', i); _relUnverify(); return; }
   // Guard: prevent double-click during in-progress save
-  if(window._verifyBusy) { toast('⏳ Please wait...'); return; }
+  if(window._verifyBusy) { toast('⏳ Please wait...'); _relUnverify(); return; }
   window._verifyBusy = true;
   setTimeout(()=>{ window._verifyBusy = false; }, 3000);
   const o = S.orders[i];
@@ -5168,7 +5184,7 @@ function unverifyOrder(i){
                    o.status === 'Out for Delivery' ? 'Out for Delivery na — nasa rider na' :
                    'Cancelled na';
     toast('🔒 Hindi na maaaring i-unverify — ' + reason + ' ang parcel.');
-    return;
+    _relUnverify(); return;
   }
   // Block unverify ONLY if this specific order was already part of a completed remittance.
   // A Remitted entry for the same rider+date does NOT block NEW orders from being unverified —
@@ -5186,7 +5202,7 @@ function unverifyOrder(i){
     );
     if(isRemitted) {
       toast('🔒 Hindi na maaaring i-unverify — na-Remit na ni rider ang parcel na ito.');
-      return;
+      _relUnverify(); return;
     }
   }
   // ── Restore inventory on Unverify ──────────────────────────────
@@ -5255,6 +5271,7 @@ function buildRefRows(o) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function openInvoice(i){
+  if(!S.orders || !S.orders[i]) { toast('⚠️ Hindi mahanap ang order. I-refresh ang page.'); return; }
   const o=S.orders[i];
   // ── Mark as Printed when invoice is opened ────────────────────
   if(i !== undefined && i !== null && S.orders[i] && !S.orders[i].printed) {
@@ -5356,6 +5373,32 @@ function openInvoice(i){
       <td style="font-size:13px;font-weight:900;color:#000;padding:3px 1px;text-align:right;">₱${Number(o.grandTotal||0).toFixed(2)}</td>
     </tr>
   </table>
+  ${(o.paymentMethod === 'COD - Online Payment') ? (()=>{
+    const _adv = Math.round((o.payments||[]).reduce((s,pm)=>s+(parseFloat(pm.amount)||0),0)*100)/100;
+    const _bal = Math.max(0, Math.round(((o.grandTotal||0) - _adv)*100)/100);
+    if(_adv <= 0 && o.paymentStatus !== 'Fully Paid') return '';
+    return `
+    ${DASH_LINE}
+    <table style="width:100%;border-collapse:collapse;">
+      <tr>
+        <td style="font-size:9.5px;font-weight:700;color:#000;padding:2px 1px;">Advance Payment:</td>
+        <td style="font-size:9.5px;font-weight:700;color:#000;padding:2px 1px;text-align:right;">- ₱${_adv.toFixed(2)}</td>
+      </tr>
+      ${(o.payments||[]).filter(pm=>pm && (pm.refno||pm.amount)).map(pm=>`
+      <tr>
+        <td style="font-size:7.5px;color:#000;padding:0 1px 1px 8px;">Ref: ${(pm.refno||'—')}</td>
+        <td style="font-size:7.5px;color:#000;padding:0 1px 1px;text-align:right;">₱${Number(pm.amount||0).toFixed(2)}</td>
+      </tr>`).join('')}
+      <tr>
+        <td style="font-size:12px;font-weight:900;color:#000;padding:3px 1px;border-top:1px solid #000;">REMAINING BALANCE:</td>
+        <td style="font-size:12px;font-weight:900;color:#000;padding:3px 1px;text-align:right;border-top:1px solid #000;">₱${_bal.toFixed(2)}</td>
+      </tr>
+      ${_bal === 0 ? `
+      <tr>
+        <td colspan="2" style="font-size:9px;font-weight:700;color:#000;padding:2px 1px;text-align:center;">*** FULLY PAID — WALANG BAYARIN ***</td>
+      </tr>` : ''}
+    </table>` ;
+  })() : ''}
   ${SOLID_LINE}
 
   <!-- ── COD ONLY: Received line, PAALALA, Signatures ── -->
@@ -5528,7 +5571,7 @@ function openReDeliverPicker(orderIdx) {
 }
 
 function confirmReDeliver(orderIdx) {
-  if(window._lock_reDeliver) { toast('⏳ Please wait...'); return; }
+  if(window._lock_reDeliver) { toast('⏳ Please wait...'); _relReDeliver(); return; }
   window._lock_reDeliver = true;
   const _relReDeliver = () => { window._lock_reDeliver = false; };
   const inp = document.getElementById('_redeliver-date');
@@ -6100,7 +6143,7 @@ function previewReturnOrder() {
 }
 
 function saveReturnLog() {
-  if(window._lock_saveReturnLog) { toast('⏳ Please wait...'); return; }
+  if(window._lock_saveReturnLog) { toast('⏳ Please wait...'); _relReturnLog(); return; }
   window._lock_saveReturnLog = true;
   const _relReturnLog = () => { window._lock_saveReturnLog = false; };
   setTimeout(()=>{ window._lock_saveReturnLog = false; }, 10000); // safety timeout
@@ -6108,10 +6151,10 @@ function saveReturnLog() {
   const desc = document.getElementById('ret-item-desc').value.trim();
   const receivedBy = document.getElementById('ret-received-by').value.trim();
   const qtyGrams = parseFloat(document.getElementById('ret-qty-grams').value)||0;
-  if(!orderNum) { toast('⚠️ Order # required'); return; }
-  if(!desc) { toast('⚠️ Item description required'); return; }
-  if(!receivedBy) { toast('⚠️ Received By required'); return; }
-  if(qtyGrams <= 0) { toast('⚠️ Qty/Grams returned required'); return; }
+  if(!orderNum) { toast('⚠️ Order # required'); _relReturnLog(); return; }
+  if(!desc) { toast('⚠️ Item description required'); _relReturnLog(); return; }
+  if(!receivedBy) { toast('⚠️ Received By required'); _relReturnLog(); return; }
+  if(qtyGrams <= 0) { toast('⚠️ Qty/Grams returned required'); _relReturnLog(); return; }
 
   const itemIdx = document.getElementById('ret-item-idx').value;
   const parsedItemIdx = itemIdx !== '' ? parseInt(itemIdx) : null;
@@ -6132,11 +6175,11 @@ function saveReturnLog() {
           if(inv) {
             invFound = true;
             const retQty = parseFloat(qtyGrams)||0;
-            if(retQty <= 0) { toast('⚠️ Qty/Grams must be > 0'); return; }
+            if(retQty <= 0) { toast('⚠️ Qty/Grams must be > 0'); _relReturnLog(); return; }
             if(inv.itemType === 'fixprice') {
               // QTY-based: restore whole number quantity
               const restoreQty = Math.round(retQty);
-              if(restoreQty <= 0) { toast('⚠️ Qty must be > 0'); return; }
+              if(restoreQty <= 0) { toast('⚠️ Qty must be > 0'); _relReturnLog(); return; }
               const before = parseFloat(inv.qty)||0;
               inv.qty = parseFloat((before + restoreQty).toFixed(4));
               S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), 
@@ -7499,13 +7542,13 @@ function openEditInv(i){
   calcInv(); openModal('modal-inventory');
 }
 function saveInv(){
-  if(window._lock_saveInv) { toast('⏳ Please wait...'); return; }
+  if(window._lock_saveInv) { toast('⏳ Please wait...'); _relSaveInv(); return; }
   window._lock_saveInv = true;
   const _relSaveInv = () => { window._lock_saveInv=false; };
   setTimeout(()=>{ window._lock_saveInv = false; }, 10000); // safety timeout
   const code=document.getElementById('inv-code').value.trim().toUpperCase();
   const desc=document.getElementById('inv-desc').value.trim();
-  if(!code||!desc){toast('⚠️ Code & description required');return;}
+  if(!code||!desc){toast('⚠️ Code & description required');_relSaveInv(); return;}
   const t=document.getElementById('inv-type')?.value||'grams';
   const editIdx=document.getElementById('inv-edit-idx').value;
 
@@ -7516,7 +7559,7 @@ function saveInv(){
       const existing = S.inventory[existingIdx];
       if(t==='fixprice' && existing.itemType==='fixprice') {
         const addQty = +document.getElementById('inv-qty').value||0;
-        if(!addQty){ toast('⚠️ Enter quantity to merge'); return; }
+        if(!addQty){ toast('⚠️ Enter quantity to merge'); _relSaveInv(); return; }
         const before = existing.qty;
         existing.qty += addQty;
         S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), productCode:code,type:'in',qty:addQty,date:today(),
@@ -7524,10 +7567,10 @@ function saveInv(){
         save(); closeModal('modal-inventory'); toast(`✅ Stock merged! ${existing.desc||desc} now has ${existing.qty} pcs.`);
         document.getElementById('inv-edit-idx').value='';
         document.getElementById('inv-modal-title').textContent='Add Product';
-        renderInv(invTab); return;
+        renderInv(invTab); _relSaveInv(); return;
       } else if(t==='grams' && existing.itemType!=='fixprice') {
         const addGrams = +document.getElementById('inv-grams').value||0;
-        if(!addGrams){ toast('⚠️ Enter grams to merge'); return; }
+        if(!addGrams){ toast('⚠️ Enter grams to merge'); _relSaveInv(); return; }
         const before = existing.grams;
         existing.grams += addGrams;
         S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), productCode:code,type:'in',qty:addGrams,date:today(),
@@ -7535,7 +7578,7 @@ function saveInv(){
         save(); closeModal('modal-inventory'); toast(`✅ Stock merged! ${existing.desc||desc} now has ${existing.grams}g.`);
         document.getElementById('inv-edit-idx').value='';
         document.getElementById('inv-modal-title').textContent='Add Product';
-        renderInv(invTab); return;
+        renderInv(invTab); _relSaveInv(); return;
       }
     }
   }
@@ -7545,7 +7588,7 @@ function saveInv(){
     const conflictIdx = S.inventory.findIndex((it,ix) => it.code.toUpperCase()===code && ix !== +editIdx);
     if(conflictIdx >= 0) {
       toast(`⚠️ Serial Code "${code}" already exists on another product (${S.inventory[conflictIdx].desc}). Use a different code.`);
-      return;
+      _relSaveInv(); return;
     }
   }
 
@@ -8067,6 +8110,7 @@ function moveCodOpFromInProgress(idx, targetTab) {
   if(window['_lock_codopFrom_'+idx]) { toast('⏳ Please wait...'); return; }
   window['_lock_codopFrom_'+idx] = true;
   setTimeout(()=>{ window['_lock_codopFrom_'+idx]=false; }, 3000);
+  if(!S.orders || !S.orders[idx]) { window['_lock_codopFrom_'+idx]=false; return; }
   const o = S.orders[idx];
   if(!o) return;
   // GUARD: once checker has verified the order, it can't be returned to Partial/Fully Paid
@@ -10799,6 +10843,18 @@ async function saveOrder() {
   const backupContact = (document.getElementById('enc-backup-contact')?.value||'').replace(/\D/g,'');
   const address = document.getElementById('enc-address').value.trim();
   const _editIdxVal = document.getElementById('enc-edit-idx').value;
+
+  // ── VERIFIED LOCK: cannot save edits to an already-verified order ──────────
+  // Applies to COD and COD-OP. Checker must UNVERIFY first before editing.
+  // Owner/CEO is also blocked so the audit trail stays clean.
+  if(_editIdxVal !== '' && _editIdxVal != null) {
+    const _lockedOrd = S.orders[parseInt(_editIdxVal)];
+    if(_lockedOrd && (_lockedOrd.checkerStatus === 'Verified' || _lockedOrd.verificationStatus === 'Verified')) {
+      toast('🔒 Verified na ang order na ito — i-UNVERIFY muna bago mag-edit at mag-save.');
+      return;
+    }
+  }
+
   let admin = document.getElementById('enc-admin').value.trim();
   // Edit mode: if admin field is empty (e.g. merged order with composite admin like "ZEN / ANGIE"
   // that doesn't match any dropdown option), fall back to the saved order's admin value
@@ -11489,6 +11545,8 @@ function renderTracking() {
 
 
 function updateLbcStatus(orderIdx, newStatus) {
+  if(!S.orders || !S.orders[orderIdx]) { console.warn('[GOE] updateLbcStatus: invalid index', orderIdx); return; }
+  if(!newStatus) return;
   S.orders[orderIdx].lbcStatus = newStatus;
   // Sync main status so P&L, Daily Parcels, Dashboard reflect correctly
   if(newStatus === 'Delivered') {
@@ -11499,7 +11557,12 @@ function updateLbcStatus(orderIdx, newStatus) {
   }
   save();
   toast(`📦 Parcel Status → ${newStatus}${newStatus==='Delivered'?' ✅ Naka-reflect na sa P&L & Daily Parcels':''}`);
-  // LBC/INTL now managed via Order Management page
+  // Refresh whichever page is showing so the row moves to the right tab
+  try { if(document.getElementById('lbcd-content')) renderLbcDelivery(); } catch(e){}
+  try { if(document.getElementById('emsd-content'))  renderEmsDelivery(); } catch(e){}
+  try { if(document.getElementById('fedexd-content')) renderFedexDelivery(); } catch(e){}
+  try { if(document.getElementById('checker-lbc-tbody')) renderChecker(); } catch(e){}
+  try { if(document.getElementById('om-stats')) renderOrderMgmt(); } catch(e){}
   if(currentRole==='owner') renderDash();
 }
 
@@ -14179,7 +14242,7 @@ function renderOrderMgmt() {
         </select>
       </td>
       <td>
-        <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
+        <span style="font-size:10px;color:var(--muted);">—</span>
       </td>
     </tr>`;
   }).join('');
@@ -14601,8 +14664,17 @@ function renderLbcDelivery() {
           <div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Drop-off</span><br><span style="color:${o.dateOfDropoff?'var(--blue)':'var(--muted)'};">${o.dateOfDropoff||'—'}</span></div>
           ${o.dateDelivered?`<div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Delivered</span><br><span style="color:var(--green);">${o.dateDelivered}</span></div>`:''}
           <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Items</span><br>${itemList||'—'}</div>
-          <div style="grid-column:1/-1;margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">
+          <div style="grid-column:1/-1;margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
             <button class="btn btn-sm" onclick="openEditOrder(${i})" style="background:var(--gold);color:#000;font-weight:700;font-size:12px;">✏️ Edit</button>
+            ${lbcDeliveryTab === 'odz' ? `
+              <button class="btn btn-print btn-sm" onclick="openInvoice(${i})" style="font-weight:700;font-size:12px;" title="Re-print invoice after changes">🖨️ Print</button>
+              <div style="display:flex;align-items:center;gap:5px;margin-left:auto;">
+                <span style="font-size:10.5px;color:var(--muted);text-transform:uppercase;font-weight:700;">Update Status:</span>
+                <select class="form-control" style="width:190px;font-size:11px;padding:4px 7px;"
+                  onchange="updateLbcStatus(${i},this.value)">
+                  ${ODZ_STATUSES.map(s=>`<option value="${s}"${lst===s?' selected':''}>${s}</option>`).join('')}
+                </select>
+              </div>` : ''}
             ${lbcDeliveryTab === 'ofd' ? `<button class="btn btn-green btn-sm" onclick="markCourierDelivered(${i},'LBC')" style="font-weight:700;font-size:12px;">✅ Mark as Delivered</button>` : ''}
           </div>
         </div>
