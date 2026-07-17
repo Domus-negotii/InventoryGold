@@ -1437,10 +1437,24 @@ function _showRulesHint() {
     <div id="orders-main-view"></div>
     <!-- Courier Orders Dashboard search (static — never wiped by renderCourierDashboard) -->
     <div id="courier-search-wrap" style="display:none;padding:10px 0 0;">
-      <input class="form-control" id="cd-global-search"
-        placeholder="🔍 Search Order # / Customer / Contact / Tracking #"
-        style="width:100%;font-size:12px;padding:7px 11px;border-radius:7px;"
-        oninput="renderCourierDashboard()">
+      <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
+        <input class="form-control" id="cd-global-search"
+          placeholder="🔍 Search name / CP# / order# / tracking#"
+          style="flex:1;min-width:200px;font-size:12px;padding:7px 11px;border-radius:7px;"
+          oninput="renderCourierDashboard()">
+        <select class="form-control" style="width:150px;font-size:12px;padding:7px 9px;border-radius:7px;"
+          id="cd-method-filter" onchange="renderCourierDashboard()">
+          <option value="">All Methods</option>
+          <option value="COD">COD</option>
+          <option value="COD - Online Payment">COD – Online</option>
+          <option value="LBC">LBC</option>
+          <option value="EMS">EMS</option>
+          <option value="FedEx">FedEx</option>
+        </select>
+        <input type="text" class="form-control" style="width:148px;font-size:12px;padding:7px 9px;border-radius:7px;"
+          id="cd-date-filter" oninput="validateDateInput(this);renderCourierDashboard()"
+          title="Filter by date" placeholder="MM/DD/YYYY" maxlength="10">
+      </div>
     </div>
     <!-- Courier Orders Dashboard (LBC/EMS/FedEx/COD) -->
     <div id="courier-dashboard-content"></div>
@@ -5914,12 +5928,12 @@ function renderUpdateOrders() {
         const _hasItemUpdate = Object.values(o.itemStatuses||{}).some(st => st === 'Update');
         const _isRemitting = o.assignedRider && (S.remitLog||[]).some(r =>
           r.riderName === o.assignedRider &&
-          (_hasItemUpdate ? true : r.date === o.date) &&
+          (_hasItemUpdate ? true : r.date === _effectiveDate(o)) &&
           r.remitStatus === 'Remitting'
         );
         const _isRemitted = o.assignedRider && (S.remitLog||[]).some(r =>
           r.riderName === o.assignedRider &&
-          (_hasItemUpdate ? true : r.date === o.date) &&
+          (_hasItemUpdate ? true : r.date === _effectiveDate(o)) &&
           r.remitStatus === 'Remitted'
         );
         if(!_isRemitting || _isRemitted) return false;
@@ -6028,7 +6042,7 @@ function renderCancelledItems() {
     if(currentRole === 'remitter') {
       // Visible ONLY when remitStatus === 'Remitting' (not For Remittance, not Remitted)
       const _riderActive = o.assignedRider && (S.remitLog||[]).some(r =>
-        r.riderName === o.assignedRider && r.date === o.date &&
+        r.riderName === o.assignedRider && r.date === _effectiveDate(o) &&
         r.remitStatus === 'Remitting'
       );
       if(!_riderActive) return;
@@ -6059,7 +6073,12 @@ function renderCancelledItems() {
     <td style="font-weight:500;">${o.name}</td>
     <td style="font-size:11px;">${_c(o.contact)}</td>
     <td style="color:var(--blue);">🏍️ ${o.assignedRider||'—'}</td>
-    <td>${o.date}</td>
+    <td>${(()=>{
+      const _d = _effectiveDate(o);
+      return (o.paymentMethod === 'COD - Online Payment' && o.codopDeliverDate)
+        ? `${_d}<div style="font-size:8.5px;color:var(--blue);">📅 Deliver Date</div>`
+        : _d;
+    })()}</td>
     <td style="font-family:monospace;font-size:11px;color:var(--gold);">${it.code||'—'}</td>
     <td style="font-size:11.5px;">${it.desc||'—'}</td>
     <td style="font-weight:600;color:${isCancelled?'var(--red)':'var(--orange)'};">
@@ -6128,7 +6147,7 @@ function previewReturnOrder() {
     <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;margin-bottom:6px;">
       <strong style="color:var(--gold);">${numInput}</strong>
       <span>👤 ${o.name}</span><span>📞 ${_c(o.contact)}</span>
-      <span>📍 ${o.city||o.address||'—'}</span><span>📅 ${o.date}</span>
+      <span>📍 ${o.city||o.address||'—'}</span><span>📅 ${_effectiveDate(o)}${(o.paymentMethod==='COD - Online Payment'&&o.codopDeliverDate)?' <span style="color:var(--blue);font-size:9px;">(Deliver Date)</span>':''}</span>
       <span>🏍️ ${o.assignedRider||'—'}</span>
       <span class="status ${sclass(o.status)}">${o.status}</span>
     </div>
@@ -7956,12 +7975,25 @@ function renderCourierDashboard(){
 
   // Apply global search filter
   const _cdSearch=(document.getElementById('cd-global-search')?.value||'').toLowerCase().trim();
-  const searchFiltered=_cdSearch
+  let searchFiltered=_cdSearch
     ? payTabOrders.filter(item=>{
         return [item.name,item.contact,onum(item.idx),(item.trackingNumber||'')]
           .some(v=>(v||'').toLowerCase().includes(_cdSearch));
       })
     : payTabOrders;
+
+  // ── Method filter (All Methods / COD / COD – Online / LBC / EMS / FedEx) ──
+  const _cdMethod = document.getElementById('cd-method-filter')?.value || '';
+  if(_cdMethod) {
+    searchFiltered = searchFiltered.filter(o => (o.paymentMethod || 'COD') === _cdMethod);
+  }
+
+  // ── Date filter — MM/DD/YYYY input converted to stored YYYY-MM-DD format.
+  //    COD-OP matches on the checker's Deliver Date via _effectiveDate().
+  const _cdDate = mdy2ymd((document.getElementById('cd-date-filter')?.value || '').trim());
+  if(_cdDate) {
+    searchFiltered = searchFiltered.filter(o => _effectiveDate(o) === _cdDate);
+  }
 
   // Show the static search bar (hidden until dashboard loads)
   const _searchWrap = document.getElementById('courier-search-wrap');
@@ -8027,7 +8059,10 @@ function renderCourierDashboard(){
                  ${isOwner?'<th>Admin</th>':''}
                  <th>${curCourier==='COD'?(curPayTab==='Cancelled'?'Reason':'Status'):'Tracking #'}</th><th>Items Total</th><th>SF</th>
                  ${(curPayTab==='Partial'||curPayTab==='In Progress')?'<th>Notes</th>':''}
-                 <th>Grand Total</th><th>Status</th><th>Verif</th><th>Actions</th>
+                 <th>Grand Total</th>
+                 ${(curCourier==='COD-OP' && (curPayTab==='Partial'||curPayTab==='Fully Paid'||curPayTab==='In Progress'))
+                   ? '<th style="color:var(--blue);">💳 Payment</th><th style="color:var(--orange);">⚖️ Remaining Balance</th>' : ''}
+                 <th>Status</th><th>Verif</th><th>Actions</th>
                </tr></thead>
                <tbody>
                  ${searchFiltered.map(o=>`<tr>
@@ -8040,6 +8075,24 @@ function renderCourierDashboard(){
                    <td>${p(o.shipping||0)}</td>
                    ${(curPayTab==='Partial'||curPayTab==='In Progress')?`<td style="font-size:10px;color:var(--orange);">${o.paymentNotes||'—'}</td>`:''}
                    <td style="font-weight:700;color:var(--green);">${p(o.grandTotal||0)}</td>
+                   ${(curCourier==='COD-OP' && (curPayTab==='Partial'||curPayTab==='Fully Paid'||curPayTab==='In Progress')) ? (()=>{
+                     const _pmts = o.payments || [];
+                     const _paid = Math.round(_pmts.reduce((s,pm)=>s+(parseFloat(pm&&pm.amount)||0),0)*100)/100;
+                     const _bal  = Math.max(0, Math.round(((o.grandTotal||0) - _paid)*100)/100);
+                     const _refs = _pmts.filter(pm=>pm&&(pm.refno||pm.amount)).map(pm=>
+                       `<div style="font-size:9px;color:var(--muted);">${pm.refno||'—'} <span style="color:var(--blue);">${p(pm.amount||0)}</span></div>`
+                     ).join('');
+                     return `<td style="font-size:11px;">
+                       ${_paid > 0
+                         ? `<span style="color:var(--blue);font-weight:700;">${p(_paid)}</span>${_refs}`
+                         : '<span style="color:var(--muted);font-size:10px;">—</span>'}
+                     </td>
+                     <td style="font-size:11px;font-weight:700;color:${_bal===0?'var(--green)':(_paid>0?'var(--orange)':'var(--red)')};">
+                       ${_bal === 0
+                         ? '<span style="color:var(--green);">✅ Fully Paid</span>'
+                         : p(_bal)}
+                     </td>`;
+                   })() : ''}
                    <td><span class="status ${sclass(o.status)}" style="font-size:9px;">${o.status}</span></td>
                    <td style="font-size:10px;">
                      ${o.verificationStatus==='Verified'
@@ -9981,7 +10034,7 @@ function renderRiderParcels() {
         if(o.cancelledBy && !['Rider','rider'].includes(o.cancelledBy)) return false;
         // RULE 2: Rider had the order and cancelled item(s) → stay visible until officially remitted
         const _remitted = (S.remitLog||[]).some(r =>
-          r.riderName === o.assignedRider && r.date === o.date && r.remitStatus === 'Remitted'
+          r.riderName === o.assignedRider && r.date === _effectiveDate(o) && r.remitStatus === 'Remitted'
         );
         return !_remitted; // show until remitted, then hide
       }
@@ -10261,7 +10314,12 @@ function renderRiderParcels() {
       <td style="font-weight:500;">${o.name}</td>
       <td>${_c(o.contact)}</td>
       <td style="font-size:10.5px;max-width:170px;">${o.address||'—'}${o.city?'<br><span style="color:var(--muted);font-size:9px;">📍 '+o.city+'</span>':''}${o.landmark?'<br><span style="color:var(--muted);font-size:9px;">🏠 '+o.landmark+'</span>':''}</td>
-      <td>${o.date}</td>
+      <td>${(()=>{
+        const _d = _effectiveDate(o);
+        return (o.paymentMethod === 'COD - Online Payment' && o.codopDeliverDate)
+          ? `${_d}<div style="font-size:8.5px;color:var(--blue);">📅 Deliver Date</div>`
+          : _d;
+      })()}</td>
       <td style="font-weight:600;color:var(--blue);">${p(o.shipping||0)}</td>
       <td style="font-weight:600;">
         ${(()=>{
@@ -10963,6 +11021,16 @@ async function saveOrder() {
       document.getElementById('enc-payments-group')?.scrollIntoView({behavior:'smooth',block:'nearest'});
       return;
     }
+    // 4. AMOUNT must cover the full Grand Total (SF + Items − Discount).
+    //    Overpayment is allowed (buyers sometimes tip) — only underpayment blocks the save.
+    const _fpPaid = Math.round(payments.reduce((s,pm)=>s+(parseFloat(pm&&pm.amount)||0),0)*100)/100;
+    const _fpGrand = Math.round(Math.max(0,(isNaN(iT)?0:iT)+(isNaN(sf2)?0:sf2)-(isNaN(globalDiscount)?0:globalDiscount))*100)/100;
+    if(_fpPaid < _fpGrand) {
+      const _short = Math.round((_fpGrand - _fpPaid)*100)/100;
+      toast('⚠️ Fully Paid: kulang ang AMOUNT. Bayad: ' + p(_fpPaid) + ' / Grand Total: ' + p(_fpGrand) + ' (kulang ng ' + p(_short) + '). Piliin ang "Partially Paid Orders" o itama ang amount.');
+      document.getElementById('enc-payments-group')?.scrollIntoView({behavior:'smooth',block:'nearest'});
+      return;
+    }
   }
 
   // ── COD-OP validation: Partial or Fully Paid requires at least one Ref# ──
@@ -11435,7 +11503,7 @@ function renderTracking() {
       if(df && _effectiveDate(o) !== df) return false;
       // Sorter: hide terminal orders whose rider+date combo is already remitted
       if(currentRole === 'sorter' && TERMINAL.has(s)) {
-        const key = `${o.assignedRider||''}|${o.date}`;
+        const key = `${o.assignedRider||''}|${_effectiveDate(o)}`;
         if(sorterRemittedKeys.has(key)) return false;
       }
       return true;
@@ -11458,7 +11526,7 @@ function renderTracking() {
     if(df && _effectiveDate(o) !== df) return false;
     // Sorter: hide terminal orders whose rider+date combo is officially remitted
     if(currentRole === 'sorter' && TERMINAL.has(o.status)) {
-      const key = `${o.assignedRider||''}|${o.date}`;
+      const key = `${o.assignedRider||''}|${_effectiveDate(o)}`;
       if(sorterRemittedKeys.has(key)) return false;
     }
     // Search filter
@@ -11508,7 +11576,12 @@ function renderTracking() {
           <td style="font-size:11px;color:var(--muted);">${o.address}</td>
           <td>${o.admin}</td>
           <td style="font-size:11px;color:var(--blue);">🏍️ ${o.assignedRider||'—'}</td>
-          <td>${o.date}</td>
+          <td>${(()=>{
+            const _d = _effectiveDate(o);
+            return (o.paymentMethod === 'COD - Online Payment' && o.codopDeliverDate)
+              ? `${_d}<div style="font-size:8.5px;color:var(--blue);">📅 Deliver Date</div>`
+              : _d;
+          })()}</td>
           <td style="color:var(--green);font-weight:600;">${(()=>{
             const _collect = _amountToCollect(o);
             if(o.paymentMethod === 'COD - Online Payment'){
@@ -11792,6 +11865,9 @@ function _remitOrderSF(o) {
  * @returns {Object} all remit figures
  */
 function _computeRemit(delivered, manualBenefits) {
+  // GUARD: always work with a safe array; never trust the caller
+  delivered = Array.isArray(delivered) ? delivered.filter(Boolean) : [];
+  manualBenefits = parseFloat(manualBenefits) || 0;
   manualBenefits = Math.round((parseFloat(manualBenefits)||0) * 100) / 100;
 
   // COD Subtotal: sum of effective items for all delivered orders
@@ -11855,7 +11931,10 @@ function _computeRemit(delivered, manualBenefits) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 function populateRemitParcels() {
-  const idx = document.getElementById('remit-rider').value;
+  if(!S.orders || !S.riders) return;
+  const _rEl = document.getElementById('remit-rider');
+  if(!_rEl) return;
+  const idx = _rEl.value;
   if(idx === '') {
     document.getElementById('remit-parcel-summary').innerHTML = '<p style="color:var(--muted);font-size:11.5px;margin:0;">Select a rider to see parcel summary.</p>';
     return;
@@ -11905,16 +11984,19 @@ function populateRemitParcels() {
       // OR status === 'Update' OR item-level Update — all treated the same way
       const _isRescheduled = !!o.scheduledDelivery || o.status === 'Update' || _hasItemUpdate;
 
+      // COD-OP orders are scheduled by the checker's Deliver Date, not the encode date.
+      const _ordEffDate = _effectiveDate(o);
+
       if(_isRescheduled) {
         // Rescheduled orders: must still match the selected date
-        if(df && o.date !== df) return false;
+        if(df && _ordEffDate !== df) return false;
         // Only hide if already Remitted for their CURRENT date (ID + date must both match)
-        const _coveredNow = _remittedIds.has(_ordId+'|'+o.date) || _remittedNums.has(_ordNum+'|'+o.date);
+        const _coveredNow = _remittedIds.has(_ordId+'|'+_ordEffDate) || _remittedNums.has(_ordNum+'|'+_ordEffDate);
         return !_coveredNow;
       }
 
-      // Normal orders: apply date filter
-      if(df && o.date !== df) return false;
+      // Normal orders: apply date filter (COD-OP uses checker's Deliver Date)
+      if(df && _ordEffDate !== df) return false;
       // GUARD: exclude unverified orders — checker must verify first
       if((o.checkerStatus||'Pending') !== 'Verified') return false;
       // GUARD: only dispatched orders (Ready or beyond)
@@ -11922,13 +12004,13 @@ function populateRemitParcels() {
       if(!_REMIT_VISIBLE.has(o.status)) return false;
       // Exclude if already in ANY existing remit entry (Remitted, Remitting, For Remittance)
       const coveredByNew = _ppAllBatched.some(r =>
-        r.date === o.date &&
+        r.date === _ordEffDate &&
         ((r.orderIds && r.orderIds.includes(_ordId)) ||
          (r.orderNums && r.orderNums.includes(_ordNum)))
       );
       if(coveredByNew) return false;
       const coveredByLegacy = _ppRemitted.some(r =>
-        r.date === o.date && r.orderIds == null &&
+        r.date === _ordEffDate && r.orderIds == null &&
         (o.createdAt ? o.createdAt <= r.remittedAt : false)
       );
       return !coveredByLegacy;
@@ -12176,7 +12258,8 @@ function recalcRemitNet() {
   const date = document.getElementById('remit-date')?.value || today();
 
   // Recompute fresh from S.orders (same as populateRemitParcels)
-  const delivered = (S.orders||[]).filter(o => o && o.assignedRider === rider.name && o.date === date && o.status === 'Delivered');
+  // COD-OP orders are keyed by the checker's Deliver Date, not the encode date
+  const delivered = (S.orders||[]).filter(o => o && o.assignedRider === rider.name && _effectiveDate(o) === date && o.status === 'Delivered');
 
   // ── CANONICAL MATH ENGINE — guaranteed match with save ─────────────────────
   const manualBenefits = parseFloat(document.getElementById('remit-benefits-input')?.value)||0;
@@ -12253,7 +12336,7 @@ function _syncOiPrefixStatus(orderIdx, newStatus) {
         status:'product', isFpPg:true,
         createdAt:new Date().toISOString(),
         checkedBy:currentUser?.name||'System',
-        admin:_o.admin||'', riderName:_o.assignedRider||'', date:_o.date||''
+        admin:_o.admin||'', riderName:_o.assignedRider||'', date:_effectiveDate(_o)||''
       };
       S.otherItems.push(_oiEntry);
     }
@@ -12325,30 +12408,32 @@ function saveRemit() {
       if(o.assignedRider !== rider.name) return false;
       const _svId  = o._id || onum(o.idx);
       const _svNum = onum(o.idx);
+      // COD-OP orders key off the checker's Deliver Date, not the encode date
+      const _svEffDate = _effectiveDate(o);
       // Rescheduled orders: detected via scheduledDelivery field (persisted in Firestore)
       const _isRescheduled = !!o.scheduledDelivery || o.status === 'Update' ||
         Object.values(o.itemStatuses||{}).some(st => st === 'Update');
       if(_isRescheduled) {
         // Rescheduled orders: include if their current date matches remit date
-        if(o.date !== date) return false;
+        if(_svEffDate !== date) return false;
         // Only exclude if already remitted for this exact date
         const _alreadyRemitted = (S.remitLog||[]).some(r =>
           r.riderName === rider.name && r.remitStatus === 'Remitted' &&
-          r.date === o.date &&
+          r.date === _svEffDate &&
           ((r.orderIds && r.orderIds.includes(_svId)) ||
            (r.orderNums && r.orderNums.includes(_svNum)))
         );
         return !_alreadyRemitted;
       }
       // Normal orders: strict date match + checker verified + dispatched status
-      if(o.date !== date) return false;
+      if(_svEffDate !== date) return false;
       if((o.checkerStatus||'Pending') !== 'Verified') return false;
       const _SAVE_VISIBLE = new Set(['Ready','Out for Delivery','Delivered','Cancelled','RTO','Update']);
       if(!_SAVE_VISIBLE.has(o.status)) return false;
       // Exclude if already in a Remitted batch (ID + date must match)
       const _svAlreadyRemitted = (S.remitLog||[]).some(r =>
         r.riderName === rider.name && r.remitStatus === 'Remitted' &&
-        r.date === o.date &&
+        r.date === _svEffDate &&
         ((r.orderIds  && r.orderIds.includes(_svId)) ||
          (r.orderNums && r.orderNums.includes(_svNum)) ||
          (r.orderIds == null && o.createdAt && r.remittedAt && o.createdAt <= r.remittedAt))
@@ -12474,10 +12559,12 @@ function saveRemit() {
   S.remitLog.push(entry);
   // Clear wasForUpdate flag ONLY when fully Remitted for this batch date
   if(entry.remitStatus === 'Remitted' && entry.orderNums && entry.orderNums.length) {
-    S.orders.forEach(o => {
+    S.orders.forEach((o, _oi) => {
       if(!o || !o.wasForUpdate) return;
-      if(o.date !== entry.date) return; // only clear if batch date matches order's current date
-      const _n = onum(S.orders.indexOf(o));
+      if(_effectiveDate(o) !== entry.date) return; // only clear if batch date matches order's effective date
+      // Use the forEach index directly — indexOf() breaks after Firebase re-hydration
+      // because object identity is lost (S.orders holds fresh objects, not the same refs).
+      const _n = onum(_oi);
       if(entry.orderNums.includes(_n) || (entry.orderIds && entry.orderIds.includes(o._id||_n))) {
         delete o.wasForUpdate;
       }
@@ -14957,7 +15044,7 @@ function renderCodDelivPage() {
       if(o.status !== 'Update') return false;
       // Only show in COD Delivery For Update AFTER rider's remit has been marked Remitted
       const _remitted = (S.remitLog||[]).some(r =>
-        r.riderName === o.assignedRider && r.date === o.date && r.remitStatus === 'Remitted'
+        r.riderName === o.assignedRider && r.date === _effectiveDate(o) && r.remitStatus === 'Remitted'
       );
       return _remitted;
     }
@@ -14998,7 +15085,7 @@ function renderCodDelivPage() {
     }).join(', ');
     // Req#1: For Update tab — check if this order's rider+date is officially Remitted
     const _isRemitted = tab==='ForUpdate' && (S.remitLog||[]).some(r=>
-      r.riderName === o.assignedRider && r.date === o.date && r.remitStatus === 'Remitted'
+      r.riderName === o.assignedRider && r.date === _effectiveDate(o) && r.remitStatus === 'Remitted'
     );
     return `
       <div class="card" style="margin-bottom:6px;">
