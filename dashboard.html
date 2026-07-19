@@ -4479,6 +4479,10 @@ function renderChecker(){
     if(_isCourierTab && (o.paymentStatus||'No Payment') !== 'Fully Paid') return false;
     // COD-OP checker: only show orders that admin has moved to "In Progress" tab
     if(checkerTab === 'COD-OP' && !o.codopInProgress) return false;
+    // LBC/EMS/FedEx checker: only show orders admin has moved to "In Progress"
+    if((checkerTab === 'LBC' || checkerTab === 'EMS' || checkerTab === 'FedEx') && !o.lbcInProgress) return false;
+    // COD checker: only show orders admin has moved to "In Progress" (strict, same as couriers)
+    if(checkerTab === 'COD' && !o.lbcInProgress) return false;
     if(filt && o.checkerStatus !== filt) return false;
     if(df && o.date !== df) return false;
     if(q && !(o.name||'').toLowerCase().includes(q) && !(o.contact||'').toLowerCase().includes(q)) return false;
@@ -4578,26 +4582,33 @@ function renderChecker(){
             ${isCODOP ? (() => {
               const _pmts = o.payments || [];
               const _totalPaid = Math.round(_pmts.reduce((s,pm)=>s+(parseFloat(pm.amount)||0),0)*100)/100;
-              const _remaining = Math.max(0, Math.round(((o.grandTotal||0) - _totalPaid)*100)/100);
+              // NOT clamped to 0 — negative means the buyer OVERPAID (tip/excess)
+              const _remaining = Math.round(((o.grandTotal||0) - _totalPaid)*100)/100;
               const _refList = _pmts.map(pm=>`<div style="font-size:9.5px;color:var(--muted);">${pm.refno||'—'} ${pm.amount?'<span style=\'color:var(--blue);\'>'+p(pm.amount)+'</span>':''}</div>`).join('');
+              const _remColor = _remaining < 0 ? 'var(--gold)' : _remaining === 0 ? 'var(--green)' : (_remaining < (o.grandTotal||0) ? 'var(--orange)' : 'var(--red)');
               return `<td style="font-size:11px;">
                 ${_totalPaid > 0
                   ? `<span style="color:var(--blue);font-weight:700;">${p(_totalPaid)}</span>${_refList}`
                   : '<span style="color:var(--muted);font-size:10px;">—</span>'}
               </td>
-              <td style="font-size:11px;font-weight:700;color:${_remaining===0?'var(--green)':_remaining<(o.grandTotal||0)?'var(--orange)':'var(--red)'};">
-                ${_remaining === 0
-                  ? '<span style="color:var(--green);">✅ Fully Paid</span>'
-                  : p(_remaining)}
+              <td style="font-size:11px;font-weight:700;color:${_remColor};">
+                ${_remaining < 0
+                  ? `<span style="color:var(--gold);">-${p(Math.abs(_remaining))}</span><div style="font-size:8.5px;color:var(--muted);font-weight:400;">💰 Sobra / Tip</div>`
+                  : _remaining === 0
+                    ? '<span style="color:var(--green);">✅ Fully Paid</span>'
+                    : p(_remaining)}
               </td>`;
             })() : ''}
             ${isCODOP ? `<td>
               <input type="date" value="${o.codopDeliverDate||''}"
-                style="font-size:10.5px;padding:2px 5px;border:1px solid var(--navy-border);border-radius:5px;background:var(--navy-card);color:var(--text);width:130px;"
-                onchange="(function(el){S.orders[${i}].codopDeliverDate=el.value;save();toast(el.value?'📅 Deliver date saved.':'📅 Deliver date cleared.');setTimeout(function(){try{renderChecker();}catch(e){}},50);})(this)">
-              ${o.codopDeliverDate
-                ? '<div style="font-size:9px;color:var(--green);margin-top:2px;">✅ '+o.codopDeliverDate+'</div>'
-                : '<div style="font-size:9px;color:var(--muted);">Not set</div>'}
+                ${(o.checkerStatus==='Verified'||o.verificationStatus==='Verified') ? 'disabled title="🔒 Verified na — i-UNVERIFY muna bago baguhin ang Deliver Date"' : ''}
+                style="font-size:10.5px;padding:2px 5px;border:1px solid var(--navy-border);border-radius:5px;background:var(--navy-card);color:var(--text);width:130px;${(o.checkerStatus==='Verified'||o.verificationStatus==='Verified')?'opacity:0.5;cursor:not-allowed;':''}"
+                onchange="(function(el){if(!S.orders[${i}]){return;}if(S.orders[${i}].checkerStatus==='Verified'||S.orders[${i}].verificationStatus==='Verified'){toast('🔒 Verified na ang order — i-UNVERIFY muna bago baguhin ang Deliver Date.');el.value=S.orders[${i}].codopDeliverDate||'';return;}S.orders[${i}].codopDeliverDate=el.value;save();toast(el.value?'📅 Deliver date saved.':'📅 Deliver date cleared.');setTimeout(function(){try{renderChecker();}catch(e){}},50);})(this)">
+              ${(o.checkerStatus==='Verified'||o.verificationStatus==='Verified')
+                ? '<div style="font-size:9px;color:var(--muted);margin-top:2px;">🔒 Locked (verified)</div>'
+                : o.codopDeliverDate
+                  ? '<div style="font-size:9px;color:var(--green);margin-top:2px;">✅ '+o.codopDeliverDate+'</div>'
+                  : '<div style="font-size:9px;color:var(--muted);">Not set</div>'}
             </td>` : ''}
             <td>
               ${isLocked
@@ -5591,6 +5602,7 @@ function confirmReDeliver(orderIdx) {
   const inp = document.getElementById('_redeliver-date');
   const chosenDate = inp?.value?.trim();
   if(!chosenDate) { toast('⚠️ Pumili ng petsa para sa re-delivery.'); _relReDeliver(); return; }
+  if(!S.orders || !S.orders[orderIdx]) { toast('⚠️ Hindi mahanap ang order.'); _relReDeliver(); return; }
   document.getElementById('_redeliver-overlay')?.remove();
   S.orders[orderIdx].date = chosenDate;
   S.orders[orderIdx].scheduledDelivery = chosenDate; // reflect in rider/COD views
@@ -5625,7 +5637,7 @@ function resolveUpdate(orderIdx, newStatus) {
   window['_lock_resolve_'+orderIdx] = true;
   setTimeout(()=>{ window['_lock_resolve_'+orderIdx]=false; }, 3000);
   const o = S.orders[orderIdx];
-  if(!o) return;
+  if(!o) { window['_lock_resolve_'+orderIdx]=false; return; }
 
   if(newStatus === 'Out for Delivery') {
     // Legacy path — kept for safety, uses date picker now via openReDeliverPicker
@@ -7914,9 +7926,10 @@ function renderCourierDashboard(){
 
   // For COD: logistical sub-tabs; for LBC/EMS/FedEx: payment sub-tabs
   const COD_TABS = [
-    {key:'Encoded',   label:'📋 Encoded',   color:'var(--blue)'},
-    {key:'Delivered', label:'✅ Delivered',  color:'var(--green)'},
-    {key:'Cancelled', label:'🚫 Cancelled',  color:'var(--red)'},
+    {key:'Encoded',     label:'📋 Encoded',     color:'var(--blue)'},
+    {key:'In Progress', label:'🔄 In Progress', color:'var(--purple)'},
+    {key:'Delivered',   label:'✅ Delivered',    color:'var(--green)'},
+    {key:'Cancelled',   label:'🚫 Cancelled',    color:'var(--red)'},
   ];
   const PAYMENT_TABS = curCourier === 'COD' ? COD_TABS : curCourier === 'COD-OP' ? [
     {key:'No Payment',   label:'⏳ Unpaid',       color:'var(--red)'},
@@ -7924,6 +7937,12 @@ function renderCourierDashboard(){
     {key:'Fully Paid',   label:'✅ Fully Paid',   color:'var(--green)'},
     {key:'In Progress',  label:'🔄 In Progress',  color:'var(--purple)'},
     {key:'Delivered',    label:'📦 Delivered',    color:'var(--blue)'},
+  ] : (curCourier === 'LBC' || curCourier === 'EMS' || curCourier === 'FedEx') ? [
+    {key:'No Payment',  label:'⏳ Unpaid',      color:'var(--red)'},
+    {key:'Partial',     label:'💳 Partial',     color:'var(--orange)'},
+    {key:'Fully Paid',  label:'✅ Fully Paid',  color:'var(--green)'},
+    {key:'In Progress', label:'🔄 In Progress', color:'var(--purple)'},
+    {key:'Delivered',   label:'📦 Delivered',   color:'var(--blue)'},
   ] : [
     {key:'No Payment', label:'⏳ Unpaid',     color:'var(--red)'},
     {key:'Partial',    label:'💳 Partial',    color:'var(--orange)'},
@@ -7954,22 +7973,28 @@ function renderCourierDashboard(){
   let payTabOrders;
   if(curCourier === 'COD') {
     // COD: logistical buckets
-    if(curPayTab === 'Encoded')    payTabOrders = courierOrders.filter(o=>!['Delivered','Cancelled','RTO'].includes(o.status));
+    // "In Progress" = admin handed the parcel to the checker (lbcInProgress flag, shared with couriers).
+    if(curPayTab === 'In Progress') payTabOrders = courierOrders.filter(o=>o.lbcInProgress===true&&!['Delivered','Cancelled','RTO'].includes(o.status));
+    else if(curPayTab === 'Encoded')    payTabOrders = courierOrders.filter(o=>!['Delivered','Cancelled','RTO'].includes(o.status)&&!o.lbcInProgress);
     else if(curPayTab === 'Delivered')  payTabOrders = courierOrders.filter(o=>o.status==='Delivered');
     else if(curPayTab === 'Cancelled')  payTabOrders = courierOrders.filter(o=>o.status==='Cancelled');
-    else payTabOrders = courierOrders.filter(o=>!['Delivered','Cancelled','RTO'].includes(o.status));
+    else payTabOrders = courierOrders.filter(o=>!['Delivered','Cancelled','RTO'].includes(o.status)&&!o.lbcInProgress);
   } else {
     // LBC/EMS/FedEx/COD-OP: payment buckets
-    if(curCourier === 'COD-OP' && curPayTab === 'In Progress') {
-      payTabOrders = courierOrders.filter(o=>o.codopInProgress===true&&o.status!=='Delivered'&&o.status!=='Cancelled'&&o.status!=='RTO');
+    // "In Progress" = admin has handed the parcel over to the checker.
+    //   COD-OP uses codopInProgress; LBC/EMS use lbcInProgress.
+    if(curPayTab === 'In Progress') {
+      payTabOrders = curCourier === 'COD-OP'
+        ? courierOrders.filter(o=>o.codopInProgress===true&&o.status!=='Delivered'&&o.status!=='Cancelled'&&o.status!=='RTO')
+        : courierOrders.filter(o=>o.lbcInProgress===true&&o.status!=='Delivered'&&o.status!=='Cancelled'&&o.status!=='RTO');
     } else {
       payTabOrders = curPayTab==='Delivered'
         ? courierOrders.filter(o=>o.status==='Delivered')
         : curPayTab==='Fully Paid'
-        ? courierOrders.filter(o=>(o.paymentStatus||'No Payment')==='Fully Paid'&&o.status!=='Delivered'&&o.status!=='Cancelled'&&o.status!=='RTO'&&!o.codopInProgress)
+        ? courierOrders.filter(o=>(o.paymentStatus||'No Payment')==='Fully Paid'&&o.status!=='Delivered'&&o.status!=='Cancelled'&&o.status!=='RTO'&&!o.codopInProgress&&!o.lbcInProgress)
         : curPayTab==='Partial'
-        ? courierOrders.filter(o=>(o.paymentStatus||'No Payment')==='Partial'&&o.status!=='Cancelled'&&o.status!=='RTO'&&o.status!=='Delivered'&&!o.codopInProgress)
-        : courierOrders.filter(o=>(o.paymentStatus||'No Payment')===curPayTab&&o.status!=='Cancelled'&&o.status!=='RTO'&&o.status!=='Delivered');
+        ? courierOrders.filter(o=>(o.paymentStatus||'No Payment')==='Partial'&&o.status!=='Cancelled'&&o.status!=='RTO'&&o.status!=='Delivered'&&!o.codopInProgress&&!o.lbcInProgress)
+        : courierOrders.filter(o=>(o.paymentStatus||'No Payment')===curPayTab&&o.status!=='Cancelled'&&o.status!=='RTO'&&o.status!=='Delivered'&&!o.lbcInProgress);
     }
   }
 
@@ -8078,19 +8103,23 @@ function renderCourierDashboard(){
                    ${(curCourier==='COD-OP' && (curPayTab==='Partial'||curPayTab==='Fully Paid'||curPayTab==='In Progress')) ? (()=>{
                      const _pmts = o.payments || [];
                      const _paid = Math.round(_pmts.reduce((s,pm)=>s+(parseFloat(pm&&pm.amount)||0),0)*100)/100;
-                     const _bal  = Math.max(0, Math.round(((o.grandTotal||0) - _paid)*100)/100);
+                     // NOT clamped to 0 — a negative balance means the buyer OVERPAID (tip/excess)
+                     const _bal  = Math.round(((o.grandTotal||0) - _paid)*100)/100;
                      const _refs = _pmts.filter(pm=>pm&&(pm.refno||pm.amount)).map(pm=>
                        `<div style="font-size:9px;color:var(--muted);">${pm.refno||'—'} <span style="color:var(--blue);">${p(pm.amount||0)}</span></div>`
                      ).join('');
+                     const _balColor = _bal < 0 ? 'var(--gold)' : _bal === 0 ? 'var(--green)' : (_paid > 0 ? 'var(--orange)' : 'var(--red)');
                      return `<td style="font-size:11px;">
                        ${_paid > 0
                          ? `<span style="color:var(--blue);font-weight:700;">${p(_paid)}</span>${_refs}`
                          : '<span style="color:var(--muted);font-size:10px;">—</span>'}
                      </td>
-                     <td style="font-size:11px;font-weight:700;color:${_bal===0?'var(--green)':(_paid>0?'var(--orange)':'var(--red)')};">
-                       ${_bal === 0
-                         ? '<span style="color:var(--green);">✅ Fully Paid</span>'
-                         : p(_bal)}
+                     <td style="font-size:11px;font-weight:700;color:${_balColor};">
+                       ${_bal < 0
+                         ? `<span style="color:var(--gold);">-${p(Math.abs(_bal))}</span><div style="font-size:8.5px;color:var(--muted);font-weight:400;">💰 Sobra / Tip</div>`
+                         : _bal === 0
+                           ? '<span style="color:var(--green);">✅ Fully Paid</span>'
+                           : p(_bal)}
                      </td>`;
                    })() : ''}
                    <td><span class="status ${sclass(o.status)}" style="font-size:9px;">${o.status}</span></td>
@@ -8103,7 +8132,7 @@ function renderCourierDashboard(){
                      ${(curCourier==='COD-OP' && curPayTab==='In Progress') ? '' : (canEdit(o)
                        ? `<button class="btn btn-outline btn-sm" onclick="_editSource='courier-dashboard';openEditOrder(${o.idx})" title="Edit order">✏️</button>`
                        : '<span style="font-size:9px;color:var(--muted);">Locked</span>')}
-                     ${(curCourier==='COD-OP' && curPayTab==='In Progress') ? '' : (isOwner
+                     ${(curPayTab==='In Progress') ? '' : (isOwner
                        ? `<button class="btn btn-red btn-sm" onclick="delOrder(${o.idx})" title="Delete order">🗑️</button>`
                        : (o.checkerStatus!=='Verified'&&o.status==='Preparing'
                            ? `<button class="btn btn-red btn-sm" onclick="delOrder(${o.idx})" title="Delete order">🗑️</button>`
@@ -8125,13 +8154,31 @@ function renderCourierDashboard(){
                                return `<button class="btn btn-sm" style="color:${_btnColor};border:1px solid ${_btnBorder};background:${_btnBg};white-space:nowrap;font-size:10.5px;" onclick="moveCodOpFromInProgress(${o.idx},'${_prev}')" title="Return to ${_prev} tab">${_btnLabel}</button>`;
                              })()
                            : '')}
+                     ${(((curCourier==='LBC'||curCourier==='EMS'||curCourier==='FedEx') && curPayTab==='Fully Paid' && !o.lbcInProgress) || (curCourier==='COD' && curPayTab==='Encoded' && !o.lbcInProgress))
+                       ? `<button class="btn btn-sm" style="background:rgba(155,111,217,0.15);color:var(--purple);border:1px solid rgba(155,111,217,0.4);white-space:nowrap;" onclick="moveLbcToInProgress(${o.idx})" title="Move to In Progress — checker will see this parcel">🔄 In Progress</button>`
+                       : ((curCourier==='LBC'||curCourier==='EMS'||curCourier==='FedEx'||curCourier==='COD') && curPayTab==='In Progress'
+                           ? (() => {
+                               // Once the checker has VERIFIED the order, the Return button is locked
+                               if(o.verificationStatus === 'Verified' || o.checkerStatus === 'Verified') {
+                                 return `<span style="font-size:9.5px;color:var(--green);white-space:nowrap;padding:3px 6px;">✅ Verified (locked)</span>`;
+                               }
+                               const _lPrev = o.lbcPrevTab || (curCourier==='COD' ? 'Encoded' : (o.paymentStatus || 'Fully Paid'));
+                               // Couriers: checker only sees Fully Paid parcels. If the payment status was
+                               // downgraded after moving here, warn the admin — it's invisible to checker.
+                               // (COD has no Fully-Paid requirement, so no warning for it.)
+                               const _lWarn = (curCourier!=='COD' && (o.paymentStatus||'No Payment') !== 'Fully Paid')
+                                 ? `<div style="font-size:8.5px;color:var(--red);margin-top:2px;white-space:nowrap;">⚠️ Hindi Fully Paid — di makikita ni checker</div>`
+                                 : '';
+                               return `<button class="btn btn-sm" style="color:var(--green);border:1px solid rgba(46,204,138,0.4);background:rgba(46,204,138,0.12);white-space:nowrap;font-size:10.5px;" onclick="moveLbcFromInProgress(${o.idx},'${_lPrev}')" title="Return to ${_lPrev} tab">↩️ Return to ${_lPrev}</button>${_lWarn}`;
+                             })()
+                           : '')}
                    </td>
                  </tr>`).join('')}
                </tbody>
                <tfoot><tr style="background:rgba(201,168,76,0.08);font-weight:700;">
                  <td colspan="${isOwner?((curPayTab==='Partial'||curPayTab==='In Progress')?9:8):((curPayTab==='Partial'||curPayTab==='In Progress')?8:7)}" style="color:var(--gold);">TOTAL (${searchFiltered.length})</td>
                  <td style="color:var(--green);">${p(searchFiltered.reduce((s,o)=>s+(o.grandTotal||0),0))}</td>
-                 <td colspan="3"></td>
+                 <td colspan="${3 + ((curCourier==='COD-OP' && (curPayTab==='Partial'||curPayTab==='Fully Paid'||curPayTab==='In Progress')) ? 2 : 0)}"></td>
                </tfoot>
              </table></div>`
         }
@@ -8181,6 +8228,66 @@ function moveCodOpFromInProgress(idx, targetTab) {
   renderCourierDashboard();
   const label = backTab === 'Partial' ? 'Partial' : backTab === 'Fully Paid' ? 'Fully Paid' : backTab;
   toast('↩️ Order returned to ' + label + ' tab.');
+}
+
+// ── LBC/EMS: Move order to In Progress tab ────────────────────────────────
+// Mirrors the COD-OP flow. Only orders in In Progress appear in the checker's LBC tab.
+function moveLbcToInProgress(idx) {
+  if(window['_lock_lbcip_'+idx]) { toast('⏳ Please wait...'); return; }
+  window['_lock_lbcip_'+idx] = true;
+  setTimeout(()=>{ window['_lock_lbcip_'+idx]=false; }, 3000);
+  if(!S.orders || !S.orders[idx]) { window['_lock_lbcip_'+idx]=false; return; }
+  const o = S.orders[idx];
+  const _pm = o.paymentMethod || '';
+  if(_pm !== 'LBC' && _pm !== 'EMS' && _pm !== 'FedEx' && _pm !== 'COD' && _pm !== 'COD - Online Payment') {
+    toast('⚠️ Hindi valid ang order na ito para sa In Progress.');
+    window['_lock_lbcip_'+idx] = false;
+    return;
+  }
+  // GUARD: cannot move a terminal order (Delivered / Cancelled / RTO) to In Progress
+  if(['Delivered','Cancelled','RTO'].includes(o.status)) {
+    toast('⚠️ Hindi pwedeng i-In Progress — ' + o.status + ' na ang order na ito.');
+    window['_lock_lbcip_'+idx] = false;
+    return;
+  }
+  // GUARD: already In Progress — nothing to do
+  if(o.lbcInProgress) {
+    toast('ℹ️ Nasa In Progress na ang order na ito.');
+    window['_lock_lbcip_'+idx] = false;
+    return;
+  }
+  // Store where this order came from so we can return it correctly
+  o.lbcPrevTab = (_pm === 'COD' || _pm === 'COD - Online Payment') ? 'Encoded' : (o.paymentStatus || 'Fully Paid');
+  o.lbcInProgress = true;
+  save();
+  window._cdPayTab = 'In Progress';
+  renderCourierDashboard();
+  try { renderChecker(); } catch(e) {}
+  toast('🔄 Order moved to In Progress — makikita na ni checker.');
+}
+
+// ── LBC/EMS: Move order back from In Progress to its original payment tab ──
+function moveLbcFromInProgress(idx, targetTab) {
+  if(window['_lock_lbcipFrom_'+idx]) { toast('⏳ Please wait...'); return; }
+  window['_lock_lbcipFrom_'+idx] = true;
+  setTimeout(()=>{ window['_lock_lbcipFrom_'+idx]=false; }, 3000);
+  if(!S.orders || !S.orders[idx]) { window['_lock_lbcipFrom_'+idx]=false; return; }
+  const o = S.orders[idx];
+  // GUARD: once checker has verified the order, it can't be returned
+  if(o.verificationStatus === 'Verified' || o.checkerStatus === 'Verified') {
+    toast('⚠️ Hindi na pwedeng i-return — na-verify na ni checker ang order na ito.');
+    window['_lock_lbcipFrom_'+idx] = false;
+    return;
+  }
+  const _fpm = o.paymentMethod || '';
+  const backTab = targetTab || o.lbcPrevTab || ((_fpm==='COD'||_fpm==='COD - Online Payment') ? 'Encoded' : (o.paymentStatus || 'Fully Paid'));
+  o.lbcInProgress = false;
+  o.lbcPrevTab = '';
+  save();
+  window._cdPayTab = backTab;
+  renderCourierDashboard();
+  try { renderChecker(); } catch(e) {}
+  toast('↩️ Order returned to ' + backTab + ' tab.');
 }
 
 function renderAdminSheets(){
@@ -10106,8 +10213,15 @@ function renderRiderParcels() {
   const deliveredSF_dash = del.reduce((s,o)=>{const _iS=o.itemStatuses||{};const _t=(o.items||[]).length;const _cx=Object.values(_iS).filter(v=>v==='Cancelled').length;return s+(_t>_cx?(o.shipping||0):0);},0); // SF=0 if ALL items cancelled
 
   // 2. Subtotal — Delivered only (For Update excluded), minus cancelled items
-  // Helper: effective amount per order (subtract cancelled + partial cancel items)
-  const _dashEffective = (o) => {
+  // MUST equal the sum of the AMOUNT column shown on each parcel row, otherwise
+  // the rider sees a Subtotal that doesn't match what they actually collected.
+  //
+  // Pure COD  → active item totals (cancelled / partially-cancelled items removed)
+  // COD-OP    → the cash the rider actually collects:
+  //               Fully Paid  → 0     (already paid online)
+  //               Partial     → grandTotal − paid online
+  //               No Payment  → grandTotal
+  const _dashActiveItems = (o) => {
     const iS  = o.itemStatuses  || {};
     const iCQ = o.itemCancelQty || {};
     return (o.items||[]).reduce((s, it, ii) => {
@@ -10122,7 +10236,21 @@ function renderRiderParcels() {
       return s + (it.total||0);
     }, 0);
   };
-  const codSubtotal_dash = del.reduce((s,o) => s + _dashEffective(o), 0);
+  const _dashEffective = (o) => {
+    if(!o) return 0;
+    // COD-OP: mirror the AMOUNT column exactly (see the rider parcel row renderer)
+    if(o.paymentMethod === 'COD - Online Payment') {
+      if(o.paymentStatus === 'Fully Paid') return 0;
+      if(o.paymentStatus === 'Partial') {
+        const _paid = typeof _amountPaidOnline === 'function' ? _amountPaidOnline(o) : 0;
+        return Math.max(0, Math.round(((o.grandTotal||0) - _paid)*100)/100);
+      }
+      return o.grandTotal || 0; // No Payment → collect full
+    }
+    // Pure COD → active items only
+    return _dashActiveItems(o);
+  };
+  const codSubtotal_dash = Math.round(del.reduce((s,o) => s + _dashEffective(o), 0) * 100) / 100;
 
   // 3. Less: SF 10% (Company)
   const sf10_dash = deliveredSF_dash * 0.10;
@@ -10543,6 +10671,7 @@ function riderItemStatus(orderIdx, itemIdx, newStatus) {
   if(window[_riderItemKey]) { toast('⏳ Please wait...'); return; }
   window[_riderItemKey] = true;
   setTimeout(()=>{ window[_riderItemKey]=false; }, 3000);
+  if(!S.orders || !S.orders[orderIdx]) { window[_riderItemKey]=false; toast('⚠️ Hindi mahanap ang order.'); return; }
 // ═══════════════════════════════════════════════════════════════════════════
 // riderItemPartialCancel — PARTIAL CANCEL DEDUCTION GUARD
 // FORMULA: deducts DIFF only (newCancelAmt - prevCancelAmt) to prevent double-deduction.
@@ -11047,6 +11176,19 @@ async function saveOrder() {
       }
       return;
     }
+    // FULLY PAID: total AMOUNT must cover the full Grand Total (SF + Items − Discount).
+    // Overpayment is allowed (buyers sometimes pay extra) — only underpayment blocks the save.
+    if(_selectedPayStatus === 'Fully Paid') {
+      const _coPaid  = Math.round((payments||[]).reduce((s,pm)=>s+(parseFloat(pm&&pm.amount)||0),0)*100)/100;
+      const _coGrand = Math.round(Math.max(0,(isNaN(iT)?0:iT)+(isNaN(sf2)?0:sf2)-(isNaN(globalDiscount)?0:globalDiscount))*100)/100;
+      if(_coPaid < _coGrand) {
+        const _coShort = Math.round((_coGrand - _coPaid)*100)/100;
+        toast('⚠️ Fully Paid: kulang ang AMOUNT. Bayad: ' + p(_coPaid) + ' / Grand Total: ' + p(_coGrand) + ' (kulang ng ' + p(_coShort) + '). Piliin ang "Partially Paid Orders" o itama ang amount.');
+        const _pg2 = document.getElementById('enc-payments-group');
+        if(_pg2) { _pg2.style.display = ''; _pg2.scrollIntoView({behavior:'smooth', block:'nearest'}); }
+        return;
+      }
+    }
   }
 
   // ── ORDER VALIDATOR: shape check before save ──────────────────────────────
@@ -11102,6 +11244,9 @@ async function saveOrder() {
     o.codopInProgress = orig.codopInProgress;
     o.codopPrevTab = orig.codopPrevTab;
     o.codopDeliverDate = orig.codopDeliverDate;
+    // ── LBC/EMS: preserve In-Progress state across edits (same reason as COD-OP) ──
+    o.lbcInProgress = orig.lbcInProgress;
+    o.lbcPrevTab = orig.lbcPrevTab;
     // Preserve rescheduling metadata too
     if(orig.scheduledDelivery) o.scheduledDelivery = orig.scheduledDelivery;
     if(orig.dateDelivered) o.dateDelivered = orig.dateDelivered;
@@ -11627,6 +11772,14 @@ function updateLbcStatus(orderIdx, newStatus) {
   } else {
     // Any non-Delivered status means parcel is still in transit
     S.orders[orderIdx].status = 'Preparing';
+  }
+  // Once dispatched (ODZ / Out for Delivery / RTO / Delivered) the parcel has left
+  // the checker's lane for good — clear the In-Progress flag so it can't resurface
+  // with stale state if the status is later changed back.
+  const _DISPATCHED = ['ODZ/Incomplete Details','Out for Delivery','RTO','Delivered'];
+  if(_DISPATCHED.includes(newStatus)) {
+    S.orders[orderIdx].lbcInProgress = false;
+    S.orders[orderIdx].lbcPrevTab = '';
   }
   save();
   toast(`📦 Parcel Status → ${newStatus}${newStatus==='Delivered'?' ✅ Naka-reflect na sa P&L & Daily Parcels':''}`);
@@ -14786,6 +14939,9 @@ function markCourierDelivered(orderIdx, method) {
   // Set order status to Delivered and stamp dateDelivered
   o.status = 'Delivered';
   if(!o.dateDelivered) o.dateDelivered = today();
+  // Parcel has left the checker's lane — clear the In-Progress flag so state stays truthful
+  o.lbcInProgress = false;
+  o.lbcPrevTab = '';
   save();
   // Sync OI items if any
   _syncOtherItemStatus(onum(orderIdx), 'remitted');
@@ -14871,6 +15027,9 @@ function _confirmDelivered(orderIdx, renderFn) {
   S.orders[orderIdx].dateDelivered = delDate;
   S.orders[orderIdx].lbcStatus = 'Delivered';
   S.orders[orderIdx].status = 'Delivered';
+  // Parcel has left the checker lane — clear In-Progress flag so state stays truthful
+  S.orders[orderIdx].lbcInProgress = false;
+  S.orders[orderIdx].lbcPrevTab = '';
   // NOTE: otherItems status moves to 'remitted' only when REMITTER saves (saveRemit)
   // NOT on Delivered alone — per spec: Delivered + Remitted = Sales tab
   save();
@@ -15608,6 +15767,9 @@ function confirmCheckerCancel() {
   });
   // Mark as Cancelled (keep in S.orders so Remitter can see it) + save cancel reason
   S.orders[orderIdx].status = 'Cancelled';
+  // Clear In-Progress flag — cancelled parcels are out of the checker lane
+  S.orders[orderIdx].lbcInProgress = false;
+  S.orders[orderIdx].lbcPrevTab = '';
   // ═══ CHECKER CANCEL FLAG: set on ALL cancel paths to hide from rider+dispatcher ═
   S.orders[orderIdx].checkerCancelledDirect = true; // CHECKER CANCEL: hidden from rider/dispatcher
   S.orders[orderIdx].checkerStatus = 'Pending';           // cancelled order should not remain Verified
