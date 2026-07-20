@@ -2610,7 +2610,7 @@ function _showRulesHint() {
     <div id="enc-payments-group" style="display:none;margin-top:10px;padding:10px 14px;background:rgba(74,144,217,0.05);border:1px solid rgba(74,144,217,0.2);border-radius:8px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
         <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">
-          Reference No. &amp; Payment History <span style="color:var(--red);font-size:9px;">* Required when Date of Payment is set</span>
+          Reference No. &amp; Payment History <span style="color:var(--red);font-size:9px;">* Required when Date of Paid is set</span>
         </label>
         <button type="button" class="btn btn-outline btn-sm" onclick="addPaymentRow()" style="font-size:10px;">+ Add Payment</button>
       </div>
@@ -2626,7 +2626,7 @@ function _showRulesHint() {
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;width:100%;box-sizing:border-box;">
         <div style="display:flex;flex-direction:column;gap:4px;min-width:0;">
           <label style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">
-            Date of Payment <span style="font-size:9px;color:var(--muted);text-transform:none;">(editable)</span>
+            Date of Paid <span style="font-size:9px;color:var(--muted);text-transform:none;">(editable)</span>
           </label>
           <input type="date" class="form-control enc-tab" id="enc-date-payment"
             onkeydown="encNextField(event,this)" oninput="validateDateInput(this)"
@@ -3485,6 +3485,18 @@ function _amountPaidOnline(o){
   if(!o || o.paymentMethod !== 'COD - Online Payment') return 0;
   return Math.round((o.payments||[]).reduce((s,pm)=>s+(parseFloat(pm.amount)||0),0)*100)/100;
 }
+// SIGNED balance for COD-OP — CAN go negative when the customer overpaid.
+//   grandTotal 4000, paid 5000  → returns -1000 (overpayment / sobra)
+//   grandTotal 4000, paid 3000  → returns  1000 (still to collect)
+// Used for DISPLAY (dispatcher, rider) and to reduce the remitter subtotal.
+// NOTE: this is different from _amountToCollect(), which floors at 0 because a
+// rider can never physically collect a negative amount of cash.
+function _codOpSignedBalance(o){
+  if(!o || o.paymentMethod !== 'COD - Online Payment') return 0;
+  if(o.paymentStatus !== 'Fully Paid' && o.paymentStatus !== 'Partial') return 0;
+  const _paid = _amountPaidOnline(o);
+  return Math.round(((o.grandTotal||0) - _paid)*100)/100; // negative = overpaid
+}
 const sclass=s=>({'In Transit':'transit','Delivering':'delivering','Delivered':'delivered','Cancelled':'cancelled','RTO':'cancelled','For Return':'return','Returned':'returned','Preparing':'delivering','Ready':'blue','Out for Delivery':'gold','Update':'return'}[s]||'transit');
 function toast(msg,t=2500){
   // Don't overwrite an active delete confirmation toast
@@ -3813,16 +3825,19 @@ function rowTabNext(e, el) {
 // Tracks where openEditOrder was called from (for post-save refresh routing)
 let _editSource = ''; // 'courier-dashboard' | 'orders' | ''
 
-function openEditOrder(i){
+function openEditOrder(i, _allowVerifiedEdit){
   // ── NULL GUARD ────────────────────────────────────────────────────────────
   if(!S.orders || !S.orders[i]) { toast('⚠️ Hindi mahanap ang order. I-refresh ang page.'); return; }
   // ── VERIFIED LOCK: warn immediately if the order is already verified ───────
-  // Editing is blocked at save time; this tells the user up-front.
+  // Exception: ODZ/Incomplete parcels in LBC Delivery may be edited by the checker
+  // to fix the incomplete details — _allowVerifiedEdit bypasses the lock for that case.
   const _oChk = S.orders[i];
-  if(_oChk && (_oChk.checkerStatus === 'Verified' || _oChk.verificationStatus === 'Verified')) {
+  if(!_allowVerifiedEdit && _oChk && (_oChk.checkerStatus === 'Verified' || _oChk.verificationStatus === 'Verified')) {
     toast('🔒 Verified na ang order na ito — i-UNVERIFY muna bago mag-edit.');
     return;
   }
+  // Remember if this is an ODZ correction so saveOrder can also bypass its verified lock
+  window._allowVerifiedEditIdx = _allowVerifiedEdit ? i : null;
   if(_editSource !== 'courier-dashboard') _editSource = ''; // ensure clean state
 
   // ── RESET all form fields to clean state first (same as openEncodeModal) ──
@@ -5362,7 +5377,7 @@ function openInvoice(i){
     ${fld('Date:',o.date)}
     ${fld('Method:',o.paymentMethod||'COD')}
   ${(o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||(o.paymentMethod==='FedEx'&&o.trackingNumber))?fld('Tracking #:',o.trackingNumber):''}
-  ${o.dateOfPayment?fld('Date of Payment:',o.dateOfPayment):''}
+  ${o.dateOfPayment?fld('Date of Paid:',o.dateOfPayment):''}
   ${o.dateOfDropoff?fld('Date of Drop-off:',o.dateOfDropoff):''}
   ${buildRefRows(o)}
   </table>
@@ -6491,6 +6506,9 @@ function renderSorting() {
           <span class="sort-card-total">${(()=>{
             const _collect = _amountToCollect(o);
             if(o.paymentMethod === 'COD - Online Payment'){
+              const _signed = _codOpSignedBalance(o);
+              if(_signed < 0)
+                return `<span style="color:var(--gold);">${p(_signed)}</span>`;
               if(o.paymentStatus === 'Fully Paid')
                 return `<span style="color:var(--green);">₱0.00</span>`;
               if(o.paymentStatus === 'Partial')
@@ -6499,7 +6517,9 @@ function renderSorting() {
             return p(_collect);
           })()}</span>
         </div>
-        ${o.paymentMethod === 'COD - Online Payment' && o.paymentStatus === 'Partial'
+        ${o.paymentMethod === 'COD - Online Payment' && _codOpSignedBalance(o) < 0
+          ? `<div style="font-size:9px;color:var(--gold);margin-top:2px;text-align:right;">💰 Sobra — bayad ${p(_amountPaidOnline(o))} / ${p(o.grandTotal||0)}</div>`
+          : o.paymentMethod === 'COD - Online Payment' && o.paymentStatus === 'Partial'
           ? `<div style="font-size:9px;color:var(--muted);margin-top:2px;text-align:right;">Paid: ${p(_amountPaidOnline(o))} / ${p(o.grandTotal||0)}</div>`
           : o.paymentMethod === 'COD - Online Payment' && o.paymentStatus === 'Fully Paid'
             ? `<div style="font-size:9px;color:var(--green);margin-top:2px;text-align:right;">✅ Fully Paid — walang kolektahin</div>`
@@ -7921,7 +7941,7 @@ function renderCourierDashboard(){
   const curCourier = window._cdCourierTab || 'COD';
   const _rawPayTab = window._cdPayTab || 'No Payment';
   // When COD is active, payment keys like 'No Payment'/'Partial'/'Fully Paid' don't apply — default to 'Delivered'
-  const curPayTab = curCourier==='COD' && !['Encoded','Delivered','Cancelled'].includes(_rawPayTab)
+  const curPayTab = curCourier==='COD' && !['Encoded','In Progress','Delivered','Cancelled'].includes(_rawPayTab)
     ? 'Encoded' : _rawPayTab;
 
   // For COD: logistical sub-tabs; for LBC/EMS/FedEx: payment sub-tabs
@@ -7970,33 +7990,41 @@ function renderCourierDashboard(){
     const _pmTab = pm === 'COD - Online Payment' ? 'COD-OP' : (pm || 'COD');
     return _pmTab === curCourier;
   });
-  let payTabOrders;
-  if(curCourier === 'COD') {
-    // COD: logistical buckets
-    // "In Progress" = admin handed the parcel to the checker (lbcInProgress flag, shared with couriers).
-    if(curPayTab === 'In Progress') payTabOrders = courierOrders.filter(o=>o.lbcInProgress===true&&!['Delivered','Cancelled','RTO'].includes(o.status));
-    else if(curPayTab === 'Encoded')    payTabOrders = courierOrders.filter(o=>!['Delivered','Cancelled','RTO'].includes(o.status)&&!o.lbcInProgress);
-    else if(curPayTab === 'Delivered')  payTabOrders = courierOrders.filter(o=>o.status==='Delivered');
-    else if(curPayTab === 'Cancelled')  payTabOrders = courierOrders.filter(o=>o.status==='Cancelled');
-    else payTabOrders = courierOrders.filter(o=>!['Delivered','Cancelled','RTO'].includes(o.status)&&!o.lbcInProgress);
-  } else {
-    // LBC/EMS/FedEx/COD-OP: payment buckets
-    // "In Progress" = admin has handed the parcel over to the checker.
-    //   COD-OP uses codopInProgress; LBC/EMS use lbcInProgress.
-    if(curPayTab === 'In Progress') {
-      payTabOrders = curCourier === 'COD-OP'
-        ? courierOrders.filter(o=>o.codopInProgress===true&&o.status!=='Delivered'&&o.status!=='Cancelled'&&o.status!=='RTO')
-        : courierOrders.filter(o=>o.lbcInProgress===true&&o.status!=='Delivered'&&o.status!=='Cancelled'&&o.status!=='RTO');
-    } else {
-      payTabOrders = curPayTab==='Delivered'
-        ? courierOrders.filter(o=>o.status==='Delivered')
-        : curPayTab==='Fully Paid'
-        ? courierOrders.filter(o=>(o.paymentStatus||'No Payment')==='Fully Paid'&&o.status!=='Delivered'&&o.status!=='Cancelled'&&o.status!=='RTO'&&!o.codopInProgress&&!o.lbcInProgress)
-        : curPayTab==='Partial'
-        ? courierOrders.filter(o=>(o.paymentStatus||'No Payment')==='Partial'&&o.status!=='Cancelled'&&o.status!=='RTO'&&o.status!=='Delivered'&&!o.codopInProgress&&!o.lbcInProgress)
-        : courierOrders.filter(o=>(o.paymentStatus||'No Payment')===curPayTab&&o.status!=='Cancelled'&&o.status!=='RTO'&&o.status!=='Delivered'&&!o.lbcInProgress);
+  // ─────────────────────────────────────────────────────────────────────────
+  // SINGLE SOURCE OF TRUTH for tab membership.
+  // BOTH the tab filter (payTabOrders) AND the tab badge counts call this ONE
+  // function, so they can NEVER desync. Do not inline tab logic anywhere else —
+  // if a tab rule changes, change it HERE only.
+  //   In Progress: COD-OP → codopInProgress ; COD/LBC/EMS/FedEx → lbcInProgress
+  //   Encoded/Fully Paid/Partial exclude In-Progress orders (they moved to that tab)
+  // ─────────────────────────────────────────────────────────────────────────
+  const _cdTabMatch = (o, courier, tabKey) => {
+    if(!o) return false;
+    const _term = ['Delivered','Cancelled','RTO'].includes(o.status);
+    const _notTerm = !_term;
+    const _inProg = courier === 'COD-OP' ? (o.codopInProgress === true) : (o.lbcInProgress === true);
+    const _payStat = o.paymentStatus || 'No Payment';
+    if(courier === 'COD') {
+      switch(tabKey) {
+        case 'In Progress': return _inProg && _notTerm;
+        case 'Encoded':     return _notTerm && !_inProg;
+        case 'Delivered':   return o.status === 'Delivered';
+        case 'Cancelled':   return o.status === 'Cancelled';
+        default:            return _notTerm && !_inProg; // fallback = Encoded
+      }
     }
-  }
+    // COD-OP / LBC / EMS / FedEx
+    switch(tabKey) {
+      case 'In Progress': return _inProg && _notTerm;
+      case 'Delivered':   return o.status === 'Delivered';
+      case 'Fully Paid':  return _payStat === 'Fully Paid' && _notTerm && !o.codopInProgress && !o.lbcInProgress;
+      case 'Partial':     return _payStat === 'Partial'    && _notTerm && !o.codopInProgress && !o.lbcInProgress;
+      default:            return _payStat === tabKey       && _notTerm && !o.lbcInProgress; // No Payment etc.
+    }
+  };
+
+  const payTabOrders = (Array.isArray(courierOrders) ? courierOrders : [])
+    .filter(o => _cdTabMatch(o, curCourier, curPayTab));
 
   // Apply global search filter
   const _cdSearch=(document.getElementById('cd-global-search')?.value||'').toLowerCase().trim();
@@ -8046,20 +8074,9 @@ function renderCourierDashboard(){
       <!-- Payment sub-tabs -->
       <div style="display:flex;gap:4px;padding:8px 14px;background:rgba(0,0,0,0.08);">
         ${PAYMENT_TABS.map(pt=>{
-          const cnt = curCourier==='COD'
-            ? pt.key==='Encoded'    ? courierOrders.filter(o=>!['Delivered','Cancelled','RTO'].includes(o.status)).length
-            : pt.key==='Delivered'  ? courierOrders.filter(o=>o.status==='Delivered').length
-            : pt.key==='Cancelled'  ? courierOrders.filter(o=>o.status==='Cancelled').length
-            : 0
-            : pt.key==='Delivered'
-            ? courierOrders.filter(o=>o.status==='Delivered').length
-            : (curCourier==='COD-OP' && pt.key==='In Progress')
-            ? courierOrders.filter(o=>o.codopInProgress===true&&o.status!=='Delivered'&&o.status!=='Cancelled'&&o.status!=='RTO').length
-            : pt.key==='Fully Paid'
-            ? courierOrders.filter(o=>(o.paymentStatus||'No Payment')==='Fully Paid'&&o.status!=='Delivered'&&o.status!=='Cancelled'&&o.status!=='RTO'&&!o.codopInProgress).length
-            : pt.key==='Partial'
-            ? courierOrders.filter(o=>(o.paymentStatus||'No Payment')==='Partial'&&o.status!=='Cancelled'&&o.status!=='RTO'&&o.status!=='Delivered'&&!o.codopInProgress).length
-            : courierOrders.filter(o=>(o.paymentStatus||'No Payment')===pt.key&&o.status!=='Cancelled'&&o.status!=='RTO'&&o.status!=='Delivered').length;
+          // Count uses the SAME _cdTabMatch predicate as the filter — guaranteed in sync.
+          const cnt = (Array.isArray(courierOrders) ? courierOrders : [])
+            .filter(o => _cdTabMatch(o, curCourier, pt.key)).length;
           const isActive=curPayTab===pt.key;
           return `<button onclick="window._cdPayTab='${pt.key}';renderCourierDashboard();"
             style="padding:5px 14px;font-size:11.5px;font-weight:600;
@@ -10240,11 +10257,12 @@ function renderRiderParcels() {
     if(!o) return 0;
     // COD-OP: mirror the AMOUNT column exactly (see the rider parcel row renderer)
     if(o.paymentMethod === 'COD - Online Payment') {
-      if(o.paymentStatus === 'Fully Paid') return 0;
-      if(o.paymentStatus === 'Partial') {
-        const _paid = typeof _amountPaidOnline === 'function' ? _amountPaidOnline(o) : 0;
-        return Math.max(0, Math.round(((o.grandTotal||0) - _paid)*100)/100);
-      }
+      const _paid = typeof _amountPaidOnline === 'function' ? _amountPaidOnline(o) : 0;
+      // OVERPAYMENT: if the customer paid MORE than grandTotal, the balance goes
+      // NEGATIVE and REDUCES the subtotal (sobra is money the business must account for).
+      const _signed = Math.round(((o.grandTotal||0) - _paid)*100)/100;
+      if(o.paymentStatus === 'Fully Paid') return _signed < 0 ? _signed : 0;
+      if(o.paymentStatus === 'Partial')    return _signed; // may be negative if overpaid
       return o.grandTotal || 0; // No Payment → collect full
     }
     // Pure COD → active items only
@@ -10454,6 +10472,15 @@ function renderRiderParcels() {
           // COD-OP: show amount rider needs to COLLECT (fully paid = ₱0, partial = balance)
           if(o.paymentMethod === 'COD - Online Payment'){
             const _paid = _amountPaidOnline(o);
+            const _signed = _codOpSignedBalance(o); // negative = overpaid
+            // OVERPAYMENT: show the negative balance, but rider physically collects ₱0
+            if(_signed < 0){
+              return `<span style="color:var(--gold);font-size:14px;">${p(_signed)}</span>
+                <br><span style="font-size:9px;color:var(--muted);">Total: ${p(o.grandTotal||0)}</span>
+                <br><span style="font-size:9px;color:var(--blue);">Nabayad: ${p(_paid)}</span>
+                <br><span style="font-size:9px;color:var(--gold);font-weight:700;">💰 Sobra ${p(_signed)}</span>
+                <br><span style="font-size:9px;color:var(--muted);">Kolektahin: ₱0.00</span>`;
+            }
             if(o.paymentStatus === 'Fully Paid'){
               return `<span style="color:var(--green);">₱0.00</span><br><span style="font-size:9px;color:var(--muted);">✅ Fully Paid<br>(walang kolektahin)</span>`;
             }
@@ -11036,7 +11063,10 @@ async function saveOrder() {
   // Owner/CEO is also blocked so the audit trail stays clean.
   if(_editIdxVal !== '' && _editIdxVal != null) {
     const _lockedOrd = S.orders[parseInt(_editIdxVal)];
-    if(_lockedOrd && (_lockedOrd.checkerStatus === 'Verified' || _lockedOrd.verificationStatus === 'Verified')) {
+    // ODZ/Incomplete correction bypass: checker fixing incomplete details on a
+    // verified LBC parcel. Set when the Edit button in ODZ tab was used.
+    const _odzOverride = (window._allowVerifiedEditIdx === parseInt(_editIdxVal));
+    if(!_odzOverride && _lockedOrd && (_lockedOrd.checkerStatus === 'Verified' || _lockedOrd.verificationStatus === 'Verified')) {
       toast('🔒 Verified na ang order na ito — i-UNVERIFY muna bago mag-edit at mag-save.');
       return;
     }
@@ -11394,6 +11424,7 @@ async function saveOrder() {
   } finally {
     // ── Always release the encoding lock ─────────────────────────
     window._encodingInProgress = false;
+    window._allowVerifiedEditIdx = null; // clear ODZ edit override so it never leaks
     document.querySelectorAll('[onclick="saveOrder()"]').forEach(b => {
       b.disabled = false; b.style.opacity = ''; b.textContent = '💾 Save Order';
     });
@@ -11731,6 +11762,9 @@ function renderTracking() {
             const _collect = _amountToCollect(o);
             if(o.paymentMethod === 'COD - Online Payment'){
               const _paid = _amountPaidOnline(o);
+              const _signed = _codOpSignedBalance(o); // negative = overpaid
+              if(_signed < 0)
+                return `<span style="color:var(--gold);">${p(_signed)}</span><div style="font-size:9px;color:var(--muted);font-weight:400;">💰 Sobra (bayad ${p(_paid)} / ${p(o.grandTotal)})</div>`;
               if(o.paymentStatus === 'Fully Paid')
                 return `<span style="color:var(--green);">₱0.00</span><div style="font-size:9px;color:var(--muted);font-weight:400;">✅ Fully Paid</div>`;
               if(o.paymentStatus === 'Partial')
@@ -11970,15 +12004,21 @@ function openRemitModal(editIdx=null) {
 function _remitItemsTotal(o) {
   if(!o || o.status==='Cancelled' || o.status==='RTO') return 0;
 
-  // COD-OP Partial: rider only collects the REMAINING BALANCE (grandTotal - already paid)
-  if(o.paymentMethod === 'COD - Online Payment' && o.paymentStatus === 'Partial') {
+  // COD-OP Partial/Fully Paid: rider collects the REMAINING BALANCE (grandTotal - already paid).
+  // OVERPAYMENT: if the customer paid MORE than grandTotal, the balance is NEGATIVE
+  // and must REDUCE the remitter subtotal (the sobra is accounted against what's owed).
+  if(o.paymentMethod === 'COD - Online Payment' &&
+     (o.paymentStatus === 'Partial' || o.paymentStatus === 'Fully Paid')) {
     const _paid = Math.round(
       (o.payments||[]).reduce((s,pm) => s + (parseFloat(pm.amount)||0), 0) * 100
     ) / 100;
-    const _remaining = Math.max(0, Math.round(((o.grandTotal||0) - _paid) * 100) / 100);
-    // Subtract SF so _remitOrderSF adds it back correctly in codSubtotal+deliveredSF
+    const _signed = Math.round(((o.grandTotal||0) - _paid) * 100) / 100; // negative = overpaid
+    // Fully Paid with no overpayment → nothing to add to subtotal
+    if(o.paymentStatus === 'Fully Paid' && _signed >= 0) return 0;
+    // Subtract SF so _remitOrderSF adds it back correctly in codSubtotal+deliveredSF.
+    // Do NOT floor at 0 — overpayment must be allowed to pull the subtotal down.
     const _sf = Math.round((o.shipping||0) * 100) / 100;
-    return Math.max(0, Math.round((_remaining - _sf) * 100) / 100);
+    return Math.round((_signed - _sf) * 100) / 100;
   }
 
   const _iS  = o.itemStatuses  || {};
@@ -14905,7 +14945,9 @@ function renderLbcDelivery() {
           ${o.dateDelivered?`<div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Delivered</span><br><span style="color:var(--green);">${o.dateDelivered}</span></div>`:''}
           <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Items</span><br>${itemList||'—'}</div>
           <div style="grid-column:1/-1;margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-            <button class="btn btn-sm" onclick="openEditOrder(${i})" style="background:var(--gold);color:#000;font-weight:700;font-size:12px;">✏️ Edit</button>
+            ${(lbcDeliveryTab === 'delivered' || lbcDeliveryTab === 'ofd')
+              ? ''
+              : `<button class="btn btn-sm" onclick="${(lbcDeliveryTab === 'odz' || lbcDeliveryTab === 'rto') ? `openEditOrder(${i}, true)` : `openEditOrder(${i})`}" style="background:var(--gold);color:#000;font-weight:700;font-size:12px;">✏️ Edit</button>`}
             ${lbcDeliveryTab === 'odz' ? `
               <button class="btn btn-print btn-sm" onclick="openInvoice(${i})" style="font-weight:700;font-size:12px;" title="Re-print invoice after changes">🖨️ Print</button>
               <div style="display:flex;align-items:center;gap:5px;margin-left:auto;">
@@ -14915,7 +14957,12 @@ function renderLbcDelivery() {
                   ${ODZ_STATUSES.map(s=>`<option value="${s}"${lst===s?' selected':''}>${s}</option>`).join('')}
                 </select>
               </div>` : ''}
-            ${lbcDeliveryTab === 'ofd' ? `<button class="btn btn-green btn-sm" onclick="markCourierDelivered(${i},'LBC')" style="font-weight:700;font-size:12px;">✅ Mark as Delivered</button>` : ''}
+            ${lbcDeliveryTab === 'ofd' ? `
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <span style="font-size:10.5px;color:var(--muted);text-transform:uppercase;font-weight:700;">Date Delivered:</span>
+                <input type="date" id="deliv-date-${i}" value="${o.dateDelivered || today()}" class="form-control" style="width:150px;font-size:11px;padding:4px 7px;">
+                <button class="btn btn-green btn-sm" onclick="markCourierDelivered(${i},'LBC')" style="font-weight:700;font-size:12px;">✅ Mark as Delivered</button>
+              </div>` : ''}
           </div>
         </div>
       </div>
@@ -14933,12 +14980,16 @@ function renderLbcDelivery() {
 function markCourierDelivered(orderIdx, method) {
   const o = S.orders[orderIdx];
   if(!o) return;
-  if(!confirm(`Mark ${onum(orderIdx)} — ${o.name} as Delivered?`)) return;
+  // Read the chosen delivery date from the inline date picker (if present).
+  const _dateEl = document.getElementById('deliv-date-'+orderIdx);
+  const _chosenDate = _dateEl && _dateEl.value ? _dateEl.value : '';
+  if(_dateEl && !_chosenDate) { toast('⚠️ Pumili muna ng Date Delivered.'); _dateEl.focus(); return; }
+  if(!confirm(`Mark ${onum(orderIdx)} — ${o.name} as Delivered${_chosenDate?' ('+_chosenDate+')':''}?`)) return;
   // Set lbcStatus to Delivered
   o.lbcStatus = 'Delivered';
-  // Set order status to Delivered and stamp dateDelivered
+  // Set order status to Delivered and stamp dateDelivered (use chosen date, else today)
   o.status = 'Delivered';
-  if(!o.dateDelivered) o.dateDelivered = today();
+  o.dateDelivered = _chosenDate || o.dateDelivered || today();
   // Parcel has left the checker's lane — clear the In-Progress flag so state stays truthful
   o.lbcInProgress = false;
   o.lbcPrevTab = '';
@@ -15636,8 +15687,15 @@ function renderEmsDelivery() {
           ${o.dateDelivered?`<div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Delivered</span><br><span style="color:var(--green);">${o.dateDelivered}</span></div>`:''}
           <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Items</span><br>${itemList||'—'}</div>
           <div style="grid-column:1/-1;margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="btn btn-sm" onclick="openEditOrder(${i})" style="background:var(--gold);color:#000;font-weight:700;font-size:12px;">✏️ Edit</button>
-            ${emsDeliveryTab === 'ofd' ? `<button class="btn btn-green btn-sm" onclick="markCourierDelivered(${i},'EMS')" style="font-weight:700;font-size:12px;">✅ Mark as Delivered</button>` : ''}
+            ${(emsDeliveryTab === 'delivered' || emsDeliveryTab === 'ofd')
+              ? ''
+              : `<button class="btn btn-sm" onclick="${emsDeliveryTab === 'rto' ? `openEditOrder(${i}, true)` : `openEditOrder(${i})`}" style="background:var(--gold);color:#000;font-weight:700;font-size:12px;">✏️ Edit</button>`}
+            ${emsDeliveryTab === 'ofd' ? `
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <span style="font-size:10.5px;color:var(--muted);text-transform:uppercase;font-weight:700;">Date Delivered:</span>
+                <input type="date" id="deliv-date-${i}" value="${o.dateDelivered || today()}" class="form-control" style="width:150px;font-size:11px;padding:4px 7px;">
+                <button class="btn btn-green btn-sm" onclick="markCourierDelivered(${i},'EMS')" style="font-weight:700;font-size:12px;">✅ Mark as Delivered</button>
+              </div>` : ''}
           </div>
         </div>
       </div>
@@ -15964,8 +16022,15 @@ function renderFedexDelivery() {
           ${o.dateDelivered?`<div><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Date Delivered</span><br><span style="color:var(--green);">${o.dateDelivered}</span></div>`:''}
           <div style="grid-column:1/-1;"><span style="color:var(--muted);font-size:13px;text-transform:uppercase;">Items</span><br>${itemList||'—'}</div>
           <div style="grid-column:1/-1;margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="btn btn-sm" onclick="openEditOrder(${i})" style="background:var(--gold);color:#000;font-weight:700;font-size:12px;">✏️ Edit</button>
-            ${fedexDeliveryTab === 'ofd' ? `<button class="btn btn-green btn-sm" onclick="markCourierDelivered(${i},'FedEx')" style="font-weight:700;font-size:12px;">✅ Mark as Delivered</button>` : ''}
+            ${(fedexDeliveryTab === 'delivered' || fedexDeliveryTab === 'ofd')
+              ? ''
+              : `<button class="btn btn-sm" onclick="${fedexDeliveryTab === 'rto' ? `openEditOrder(${i}, true)` : `openEditOrder(${i})`}" style="background:var(--gold);color:#000;font-weight:700;font-size:12px;">✏️ Edit</button>`}
+            ${fedexDeliveryTab === 'ofd' ? `
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <span style="font-size:10.5px;color:var(--muted);text-transform:uppercase;font-weight:700;">Date Delivered:</span>
+                <input type="date" id="deliv-date-${i}" value="${o.dateDelivered || today()}" class="form-control" style="width:150px;font-size:11px;padding:4px 7px;">
+                <button class="btn btn-green btn-sm" onclick="markCourierDelivered(${i},'FedEx')" style="font-weight:700;font-size:12px;">✅ Mark as Delivered</button>
+              </div>` : ''}
           </div>
         </div>
       </div>
