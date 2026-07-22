@@ -2623,6 +2623,10 @@ function _showRulesHint() {
     </div>
     <!-- ── Date of Payment | Tracking # | Date of Drop-off (3-col row) ── -->
     <div id="enc-date-payment-group" style="display:none;margin-top:12px;margin-bottom:4px;">
+      <!-- ODZ/RTO reminder banner — shown by openEditOrder when editing an ODZ/RTO parcel -->
+      <div id="enc-dropoff-reminder" style="display:none;margin-bottom:10px;padding:9px 13px;border-radius:7px;background:rgba(232,168,56,0.14);border:1.5px solid rgba(232,168,56,0.55);color:var(--gold);font-size:12px;font-weight:700;">
+        ⚠️ <span id="enc-dropoff-reminder-text">Palitan ang DATE DROP-OFF — na-ODZ/RTO ang parcel na ito, kaya kailangan ng bagong petsa ng drop-off bago mag-save.</span>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;width:100%;box-sizing:border-box;">
         <div style="display:flex;flex-direction:column;gap:4px;min-width:0;">
           <label style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">
@@ -3471,7 +3475,7 @@ function _amountToCollect(o){
   if(o.paymentMethod === 'COD - Online Payment'){
     if(o.paymentStatus === 'Fully Paid') return 0;
     if(o.paymentStatus === 'Partial'){
-      const _paid = Math.round((o.payments||[]).reduce((s,pm)=>s+(parseFloat(pm.amount)||0),0)*100)/100;
+      const _paid = Math.round((o.payments||[]).reduce((s,pm)=>s+(parseFloat(pm&&pm.amount)||0),0)*100)/100;
       return Math.max(0, Math.round(((o.grandTotal||0) - _paid)*100)/100);
     }
     // No Payment → collect full amount
@@ -3483,7 +3487,7 @@ function _amountToCollect(o){
 // Total already paid online for a COD-OP order (0 for others)
 function _amountPaidOnline(o){
   if(!o || o.paymentMethod !== 'COD - Online Payment') return 0;
-  return Math.round((o.payments||[]).reduce((s,pm)=>s+(parseFloat(pm.amount)||0),0)*100)/100;
+  return Math.round((o.payments||[]).reduce((s,pm)=>s+(parseFloat(pm&&pm.amount)||0),0)*100)/100;
 }
 // SIGNED balance for COD-OP — CAN go negative when the customer overpaid.
 //   grandTotal 4000, paid 5000  → returns -1000 (overpayment / sobra)
@@ -3825,9 +3829,31 @@ function rowTabNext(e, el) {
 // Tracks where openEditOrder was called from (for post-save refresh routing)
 let _editSource = ''; // 'courier-dashboard' | 'orders' | ''
 
-function openEditOrder(i, _allowVerifiedEdit){
+function openEditOrder(i, _allowVerifiedEdit, _requireDropoffChange){
   // ── NULL GUARD ────────────────────────────────────────────────────────────
   if(!S.orders || !S.orders[i]) { toast('⚠️ Hindi mahanap ang order. I-refresh ang page.'); return; }
+  // ODZ/RTO edit: remember the ORIGINAL drop-off date so saveOrder can require a change.
+  if(_requireDropoffChange) {
+    window._requireDropoffChangeIdx = i;
+    window._requireDropoffOrigValue = S.orders[i].dateOfDropoff || '';
+    // Show the reminder banner (deferred so the form is rendered first)
+    setTimeout(()=>{
+      const _rb = document.getElementById('enc-dropoff-reminder');
+      if(_rb) _rb.style.display = '';
+      const _dof = document.getElementById('enc-date-dropoff');
+      if(_dof){ _dof.style.borderColor = 'var(--gold)'; _dof.style.boxShadow = '0 0 0 2px rgba(232,168,56,0.25)'; }
+    }, 60);
+  } else {
+    window._requireDropoffChangeIdx = null;
+    window._requireDropoffOrigValue = null;
+    // Hide the reminder banner for normal (non-ODZ/RTO) edits
+    setTimeout(()=>{
+      const _rb = document.getElementById('enc-dropoff-reminder');
+      if(_rb) _rb.style.display = 'none';
+      const _dof = document.getElementById('enc-date-dropoff');
+      if(_dof){ _dof.style.borderColor = ''; _dof.style.boxShadow = ''; }
+    }, 60);
+  }
   // ── VERIFIED LOCK: warn immediately if the order is already verified ───────
   // Exception: ODZ/Incomplete parcels in LBC Delivery may be edited by the checker
   // to fix the incomplete details — _allowVerifiedEdit bypasses the lock for that case.
@@ -4596,7 +4622,7 @@ function renderChecker(){
             <td style="color:var(--green);font-weight:600;">${p(o.grandTotal)}</td>
             ${isCODOP ? (() => {
               const _pmts = o.payments || [];
-              const _totalPaid = Math.round(_pmts.reduce((s,pm)=>s+(parseFloat(pm.amount)||0),0)*100)/100;
+              const _totalPaid = Math.round(_pmts.reduce((s,pm)=>s+(parseFloat(pm&&pm.amount)||0),0)*100)/100;
               // NOT clamped to 0 — negative means the buyer OVERPAID (tip/excess)
               const _remaining = Math.round(((o.grandTotal||0) - _totalPaid)*100)/100;
               const _refList = _pmts.map(pm=>`<div style="font-size:9.5px;color:var(--muted);">${pm.refno||'—'} ${pm.amount?'<span style=\'color:var(--blue);\'>'+p(pm.amount)+'</span>':''}</div>`).join('');
@@ -4656,7 +4682,11 @@ function renderChecker(){
                   ?`<span style="font-size:9.5px;color:var(--muted);padding:2px 6px;">🔒 ${o.status==='Delivered'?'Delivered':'In Progress'}</span>`
                   :`<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`)}
               <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
-              ${!isLocked?`<button class="btn btn-red btn-sm" onclick="checkerCancelOrder(${i})" title="Cancel this order">✕ Cancel</button>`:''}
+              ${(!isLocked && o.checkerStatus!=='Verified' && o.verificationStatus!=='Verified')
+                ? `<button class="btn btn-red btn-sm" onclick="checkerCancelOrder(${i})" title="Cancel this order">✕ Cancel</button>`
+                : (o.checkerStatus==='Verified' || o.verificationStatus==='Verified')
+                  ? `<span style="font-size:9px;color:var(--muted);padding:2px 5px;" title="I-unverify muna bago mag-cancel">🔒</span>`
+                  : ''}
               ${isCODOP && o.status==='Cancelled' ? `<button class="btn btn-red btn-sm" onclick="checkerDeleteCodOp(${i})" title="Permanently delete COD-OP cancelled order">🗑️ Delete</button>` : ''}
               ${currentRole==='owner'?`<button class="btn btn-red btn-sm" onclick="ownerDeleteOrder(${i})" title="CEO: Permanent Delete">🗑️ Delete</button>`:''}
             </td>
@@ -4763,14 +4793,16 @@ function renderChecker(){
                 : ''}
               ${isDroppedOff
                 ? '<span style="font-size:9.5px;color:var(--blue);padding:2px 6px;background:rgba(74,144,217,0.1);border-radius:4px;">🔒 Dropped Off</span>'
-                : (((!isLocked && verifSt!=='Verified') ? '<button class="btn btn-outline btn-sm" onclick="openEditOrder('+i+')">✏️</button>' : '')
-                  + (canVerify && verifSt==='Verified'
-                    ? '<button class="btn btn-green btn-sm" onclick="verifyOrder('+i+')">✔ Verified</button>'
-                    : o.status==='Cancelled' ? '<span style="font-size:9px;color:var(--red);">🚫 Cancelled</span>' : canVerify
-                    ? '<button class="btn btn-blue btn-sm" onclick="verifyOrder('+i+')">✔ Mark Verified</button>'
-                    : '')
-                  + '<button class="btn btn-print btn-sm" onclick="openInvoice('+i+')">🖨️</button>'
-                  + '<button class="btn btn-red btn-sm" onclick="checkerCancelOrder('+i+')">❌ Cancel</button>')
+                : verifSt==='Verified'
+                  // Once VERIFIED: hide Verify + Cancel (locked). Only Unverify + Print remain.
+                  ? ('<button class="btn btn-orange btn-sm" onclick="unverifyOrder('+i+')">↩ Unverify</button>'
+                     + '<button class="btn btn-print btn-sm" onclick="openInvoice('+i+')">🖨️</button>')
+                  : (((!isLocked) ? '<button class="btn btn-outline btn-sm" onclick="openEditOrder('+i+')">✏️</button>' : '')
+                    + (o.status==='Cancelled' ? '<span style="font-size:9px;color:var(--red);">🚫 Cancelled</span>' : canVerify
+                      ? '<button class="btn btn-blue btn-sm" onclick="verifyOrder('+i+')">✔ Mark Verified</button>'
+                      : '')
+                    + '<button class="btn btn-print btn-sm" onclick="openInvoice('+i+')">🖨️</button>'
+                    + '<button class="btn btn-red btn-sm" onclick="checkerCancelOrder('+i+')">❌ Cancel</button>')
               }
               ${currentRole==='owner'?'<button class="btn btn-red btn-sm" onclick="ownerDeleteOrder('+i+')" title="CEO: Permanent Delete">🗑️ Delete</button>':''}
             </td>
@@ -5414,8 +5446,9 @@ function openInvoice(i){
     </tr>
   </table>
   ${(o.paymentMethod === 'COD - Online Payment') ? (()=>{
-    const _adv = Math.round((o.payments||[]).reduce((s,pm)=>s+(parseFloat(pm.amount)||0),0)*100)/100;
-    const _bal = Math.max(0, Math.round(((o.grandTotal||0) - _adv)*100)/100);
+    const _adv = Math.round((o.payments||[]).reduce((s,pm)=>s+(parseFloat(pm&&pm.amount)||0),0)*100)/100;
+    // NOT clamped — negative balance means the customer OVERPAID (sobra).
+    const _bal = Math.round(((o.grandTotal||0) - _adv)*100)/100;
     if(_adv <= 0 && o.paymentStatus !== 'Fully Paid') return '';
     return `
     ${DASH_LINE}
@@ -5431,9 +5464,12 @@ function openInvoice(i){
       </tr>`).join('')}
       <tr>
         <td style="font-size:12px;font-weight:900;color:#000;padding:3px 1px;border-top:1px solid #000;">REMAINING BALANCE:</td>
-        <td style="font-size:12px;font-weight:900;color:#000;padding:3px 1px;text-align:right;border-top:1px solid #000;">₱${_bal.toFixed(2)}</td>
+        <td style="font-size:12px;font-weight:900;color:#000;padding:3px 1px;text-align:right;border-top:1px solid #000;">${_bal < 0 ? '-₱'+Math.abs(_bal).toFixed(2) : '₱'+_bal.toFixed(2)}</td>
       </tr>
-      ${_bal === 0 ? `
+      ${_bal < 0 ? `
+      <tr>
+        <td colspan="2" style="font-size:9px;font-weight:700;color:#000;padding:2px 1px;text-align:center;">*** SOBRA ANG BAYAD: -₱${Math.abs(_bal).toFixed(2)} ***</td>
+      </tr>` : _bal === 0 ? `
       <tr>
         <td colspan="2" style="font-size:9px;font-weight:700;color:#000;padding:2px 1px;text-align:center;">*** FULLY PAID — WALANG BAYARIN ***</td>
       </tr>` : ''}
@@ -6754,7 +6790,7 @@ function renderDailySales(){
   const codOnlineRemit = _codOpOrders.reduce((s,o)=>{
     if(o.paymentStatus==='Partial') {
       // Only online-paid portion reflects in COD-Online on verify
-      return s + Math.round((o.payments||[]).reduce((ps,pm)=>ps+(parseFloat(pm.amount)||0),0)*100)/100;
+      return s + Math.round((o.payments||[]).reduce((ps,pm)=>ps+(parseFloat(pm&&pm.amount)||0),0)*100)/100;
     }
     return s+(o.grandTotal||0);
   },0);
@@ -6770,7 +6806,7 @@ function renderDailySales(){
     const delivDate = o.dateDelivered || o.date;
     return delivDate===d || o.date===d;
   }).reduce((s,o)=>{
-    const _paid = Math.round((o.payments||[]).reduce((ps,pm)=>ps+(parseFloat(pm.amount)||0),0)*100)/100;
+    const _paid = Math.round((o.payments||[]).reduce((ps,pm)=>ps+(parseFloat(pm&&pm.amount)||0),0)*100)/100;
     return s + Math.max(0, Math.round(((o.grandTotal||0) - _paid)*100)/100);
   },0);
 
@@ -8146,7 +8182,7 @@ function renderCourierDashboard(){
                        : '<span style="color:var(--muted);">⏳</span>'}
                    </td>
                    <td style="display:flex;gap:4px;flex-wrap:nowrap;align-items:center;">
-                     ${(curCourier==='COD-OP' && curPayTab==='In Progress') ? '' : (canEdit(o)
+                     ${(curPayTab==='In Progress') ? '' : (canEdit(o)
                        ? `<button class="btn btn-outline btn-sm" onclick="_editSource='courier-dashboard';openEditOrder(${o.idx})" title="Edit order">✏️</button>`
                        : '<span style="font-size:9px;color:var(--muted);">Locked</span>')}
                      ${(curPayTab==='In Progress') ? '' : (isOwner
@@ -8764,7 +8800,7 @@ function renderPnl(){
       }
       // Not yet remitted — only online-paid portion counts in P&L now
       const _paidOnline = Math.round(
-        (o.payments||[]).reduce((s,pm) => s + (parseFloat(pm.amount)||0), 0) * 100
+        (o.payments||[]).reduce((s,pm) => s + (parseFloat(pm&&pm.amount)||0), 0) * 100
       ) / 100;
       const _grandTotal = o.grandTotal || 0;
       if(_grandTotal <= 0) return 0;
@@ -8970,7 +9006,7 @@ function renderPnl(){
           (()=>{ const d=(o.dateDelivered||o.date||'').slice(0,10); return d>=from&&d<=to; })()
         );
         const _codOpPartialCashAmt = _codOpPartialOrders.reduce((s,o)=>{
-          const _paid = (o.payments||[]).reduce((ps,pm)=>ps+(parseFloat(pm.amount)||0),0);
+          const _paid = (o.payments||[]).reduce((ps,pm)=>ps+(parseFloat(pm&&pm.amount)||0),0);
           return s + Math.max(0, Math.round(((o.grandTotal||0)-_paid)*100)/100);
         }, 0);
         const _invTotCOD = codDelivered.reduce((s,o)=>s+_plInvTotal(o),0);
@@ -8989,7 +9025,7 @@ function renderPnl(){
           // Show only the ONLINE-PAID portion (partial = only what client paid online)
           const _onlinePaid = _codOpList.reduce((s,o)=>{
             if(o.paymentStatus==='Partial') {
-              return s + Math.round((o.payments||[]).reduce((ps,pm)=>ps+(parseFloat(pm.amount)||0),0)*100)/100;
+              return s + Math.round((o.payments||[]).reduce((ps,pm)=>ps+(parseFloat(pm&&pm.amount)||0),0)*100)/100;
             }
             return s + _plInvTotal(o);
           }, 0);
@@ -10525,7 +10561,7 @@ function renderRiderParcels() {
           : '💰 Remit para sa parcel na ito:'}
         ${o.paymentMethod==='COD - Online Payment' ? (()=>{
           const _pmts = o.payments||[];
-          const _totalPaid = Math.round(_pmts.reduce((s,pm)=>s+(parseFloat(pm.amount)||0),0)*100)/100;
+          const _totalPaid = Math.round(_pmts.reduce((s,pm)=>s+(parseFloat(pm&&pm.amount)||0),0)*100)/100;
           const _remaining = Math.max(0, Math.round(((o.grandTotal||0)-_totalPaid)*100)/100);
           const _isCodOpPartial = o.paymentStatus==='Partial' || (_totalPaid>0 && _remaining>0);
           if(!_isCodOpPartial && !o.paymentNotes) return '';
@@ -10545,7 +10581,7 @@ function renderRiderParcels() {
         ${(()=>{
           if(o.status==='Cancelled') return '₱0.00';
           if(o.paymentMethod==='COD - Online Payment' && o.paymentStatus==='Partial') {
-            const _pd = Math.round((o.payments||[]).reduce((s,pm)=>s+(parseFloat(pm.amount)||0),0)*100)/100;
+            const _pd = Math.round((o.payments||[]).reduce((s,pm)=>s+(parseFloat(pm&&pm.amount)||0),0)*100)/100;
             const _rem = Math.max(0,Math.round(((o.grandTotal||0)-_pd)*100)/100);
             return o.status==='Delivered'
               ? `<span style="color:var(--red);">${p(_rem)}</span><div style="font-size:9px;color:var(--muted);font-weight:400;">to collect</div>`
@@ -11137,6 +11173,28 @@ async function saveOrder() {
   const dateOfPayment = isLbcMethod ? (document.getElementById('enc-date-payment')?.value||'') : '';
   const dateOfDropoff = isLbcMethod ? (document.getElementById('enc-date-dropoff')?.value||'') : '';
 
+  // ── ODZ/RTO edit: DATE DROP-OFF must be CHANGED ───────────────────────────
+  // When editing an ODZ or RTO parcel, the drop-off date must be updated (the
+  // parcel is being re-dropped). Remind the admin if they forgot to change it.
+  if(_editIdxVal !== '' && _editIdxVal != null &&
+     window._requireDropoffChangeIdx === parseInt(_editIdxVal)) {
+    const _origDof = window._requireDropoffOrigValue || '';
+    if(!dateOfDropoff) {
+      toast('⚠️ Kailangan maglagay ng bagong DATE DROP-OFF para sa ODZ/RTO na parcel.');
+      const _dg = document.getElementById('enc-date-dropoff-group');
+      if(_dg) _dg.scrollIntoView({behavior:'smooth', block:'center'});
+      document.getElementById('enc-date-dropoff')?.focus();
+      return;
+    }
+    if(dateOfDropoff === _origDof) {
+      toast('⚠️ Palitan ang DATE DROP-OFF — na-ODZ/RTO ang parcel kaya kailangan ng bagong petsa.');
+      const _dg = document.getElementById('enc-date-dropoff-group');
+      if(_dg) _dg.scrollIntoView({behavior:'smooth', block:'center'});
+      document.getElementById('enc-date-dropoff')?.focus();
+      return;
+    }
+  }
+
   // Installment payments — always collect if any rows exist (any payment method)
   const payments = getPayments();
   // Validate: if date of payment is entered, at least one ref# is required
@@ -11388,6 +11446,9 @@ async function saveOrder() {
   // Force _lastWrite bump so all other devices detect COD-OP edits via SAR immediately
   window._lastKnownWriteTs = 0;
   await save(); closeModal('modal-encode');
+  // SUCCESSFUL save — now safe to clear the ODZ/RTO dropoff-change requirement.
+  window._requireDropoffChangeIdx = null;
+  window._requireDropoffOrigValue = null;
   const _wasCourierEdit = (_editSource === 'courier-dashboard');
   _editSource = '';
   // Always refresh dash stats + orders table (top section)
@@ -11425,6 +11486,10 @@ async function saveOrder() {
     // ── Always release the encoding lock ─────────────────────────
     window._encodingInProgress = false;
     window._allowVerifiedEditIdx = null; // clear ODZ edit override so it never leaks
+    // NOTE: _requireDropoffChangeIdx is NOT cleared here — it must survive a FAILED
+    // save (blocked dropoff) so a double-click can't bypass the requirement. It is
+    // cleared only on a SUCCESSFUL save (see the success path) or when the edit form
+    // is reopened via openEditOrder.
     document.querySelectorAll('[onclick="saveOrder()"]').forEach(b => {
       b.disabled = false; b.style.opacity = ''; b.textContent = '💾 Save Order';
     });
@@ -12010,7 +12075,7 @@ function _remitItemsTotal(o) {
   if(o.paymentMethod === 'COD - Online Payment' &&
      (o.paymentStatus === 'Partial' || o.paymentStatus === 'Fully Paid')) {
     const _paid = Math.round(
-      (o.payments||[]).reduce((s,pm) => s + (parseFloat(pm.amount)||0), 0) * 100
+      (o.payments||[]).reduce((s,pm) => s + (parseFloat(pm&&pm.amount)||0), 0) * 100
     ) / 100;
     const _signed = Math.round(((o.grandTotal||0) - _paid) * 100) / 100; // negative = overpaid
     // Fully Paid with no overpayment → nothing to add to subtotal
@@ -12072,7 +12137,7 @@ function _computeRemit(delivered, manualBenefits) {
   const codOnlineAmt = Math.round(delivered.reduce((s, o) => {
     if(o.paymentMethod !== 'COD - Online Payment') return s;
     // Online portion = what customer already paid online
-    const _paid = (o.payments||[]).reduce((ps,pm)=>ps+(parseFloat(pm.amount)||0), 0);
+    const _paid = (o.payments||[]).reduce((ps,pm)=>ps+(parseFloat(pm&&pm.amount)||0), 0);
     return s + Math.round(_paid * 100) / 100;
   }, 0) * 100) / 100;
   // codCashAmt = what rider collects in cash: total subtotal minus the online-paid portion
@@ -12294,7 +12359,7 @@ function populateRemitParcels() {
     // COD-OP Partial: net remit = remaining balance only
     const _isCodOpPartialRow = o.paymentMethod === 'COD - Online Payment' && o.paymentStatus === 'Partial';
     const _paidSoFar = _isCodOpPartialRow
-      ? Math.round((o.payments||[]).reduce((s,pm)=>s+(parseFloat(pm.amount)||0),0)*100)/100 : 0;
+      ? Math.round((o.payments||[]).reduce((s,pm)=>s+(parseFloat(pm&&pm.amount)||0),0)*100)/100 : 0;
     const _remainingBalance = _isCodOpPartialRow
       ? Math.max(0, Math.round(((o.grandTotal||0) - _paidSoFar)*100)/100) : 0;
 
@@ -12343,7 +12408,7 @@ function populateRemitParcels() {
         }
         ${o.paymentMethod==='COD - Online Payment' ? (()=>{
           const _pmts2 = o.payments||[];
-          const _paid2 = Math.round(_pmts2.reduce((s,pm)=>s+(parseFloat(pm.amount)||0),0)*100)/100;
+          const _paid2 = Math.round(_pmts2.reduce((s,pm)=>s+(parseFloat(pm&&pm.amount)||0),0)*100)/100;
           const _rem2  = Math.max(0, Math.round(((o.grandTotal||0)-_paid2)*100)/100);
           const _isPartial2 = o.paymentStatus==='Partial' || (_paid2>0 && _rem2>0);
           return (_isPartial2 || o.paymentNotes) ? `
@@ -14947,14 +15012,14 @@ function renderLbcDelivery() {
           <div style="grid-column:1/-1;margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
             ${(lbcDeliveryTab === 'delivered' || lbcDeliveryTab === 'ofd')
               ? ''
-              : `<button class="btn btn-sm" onclick="${(lbcDeliveryTab === 'odz' || lbcDeliveryTab === 'rto') ? `openEditOrder(${i}, true)` : `openEditOrder(${i})`}" style="background:var(--gold);color:#000;font-weight:700;font-size:12px;">✏️ Edit</button>`}
-            ${lbcDeliveryTab === 'odz' ? `
+              : `<button class="btn btn-sm" onclick="${(lbcDeliveryTab === 'odz' || lbcDeliveryTab === 'rto') ? `openEditOrder(${i}, true, true)` : `openEditOrder(${i})`}" style="background:var(--gold);color:#000;font-weight:700;font-size:12px;">✏️ Edit</button>`}
+            ${(lbcDeliveryTab === 'odz' || lbcDeliveryTab === 'rto') ? `
               <button class="btn btn-print btn-sm" onclick="openInvoice(${i})" style="font-weight:700;font-size:12px;" title="Re-print invoice after changes">🖨️ Print</button>
               <div style="display:flex;align-items:center;gap:5px;margin-left:auto;">
                 <span style="font-size:10.5px;color:var(--muted);text-transform:uppercase;font-weight:700;">Update Status:</span>
                 <select class="form-control" style="width:190px;font-size:11px;padding:4px 7px;"
                   onchange="updateLbcStatus(${i},this.value)">
-                  ${ODZ_STATUSES.map(s=>`<option value="${s}"${lst===s?' selected':''}>${s}</option>`).join('')}
+                  ${(lbcDeliveryTab === 'rto' ? RTO_STATUSES : ODZ_STATUSES).map(s=>`<option value="${s}"${lst===s?' selected':''}>${s}</option>`).join('')}
                 </select>
               </div>` : ''}
             ${lbcDeliveryTab === 'ofd' ? `
@@ -15689,7 +15754,16 @@ function renderEmsDelivery() {
           <div style="grid-column:1/-1;margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">
             ${(emsDeliveryTab === 'delivered' || emsDeliveryTab === 'ofd')
               ? ''
-              : `<button class="btn btn-sm" onclick="${emsDeliveryTab === 'rto' ? `openEditOrder(${i}, true)` : `openEditOrder(${i})`}" style="background:var(--gold);color:#000;font-weight:700;font-size:12px;">✏️ Edit</button>`}
+              : `<button class="btn btn-sm" onclick="${emsDeliveryTab === 'rto' ? `openEditOrder(${i}, true, true)` : `openEditOrder(${i})`}" style="background:var(--gold);color:#000;font-weight:700;font-size:12px;">✏️ Edit</button>`}
+            ${emsDeliveryTab === 'rto' ? `
+              <button class="btn btn-print btn-sm" onclick="openInvoice(${i})" style="font-weight:700;font-size:12px;" title="Re-print invoice after changes">🖨️ Print</button>
+              <div style="display:flex;align-items:center;gap:5px;margin-left:auto;">
+                <span style="font-size:10.5px;color:var(--muted);text-transform:uppercase;font-weight:700;">Update Status:</span>
+                <select class="form-control" style="width:190px;font-size:11px;padding:4px 7px;"
+                  onchange="updateLbcStatus(${i},this.value)">
+                  ${['RTO','Ready to Pick-up'].map(s=>`<option value="${s}"${lst===s?' selected':''}>${s}</option>`).join('')}
+                </select>
+              </div>` : ''}
             ${emsDeliveryTab === 'ofd' ? `
               <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                 <span style="font-size:10.5px;color:var(--muted);text-transform:uppercase;font-weight:700;">Date Delivered:</span>
@@ -15724,6 +15798,11 @@ function emsdUpdateStatus(orderIdx, newStatus) {
 function checkerCancelOrder(orderIdx) {
   const o = S.orders[orderIdx];
   if(!o) return;
+  // GUARD: verified orders cannot be cancelled — must unverify first (hard block)
+  if(o.checkerStatus === 'Verified' || o.verificationStatus === 'Verified') {
+    toast('🔒 Verified na ang order — i-UNVERIFY muna bago i-cancel.');
+    return;
+  }
   // Pre-fill info
   document.getElementById('checker-cancel-order-idx').value = orderIdx;
   document.getElementById('checker-cancel-reason').value = '';
@@ -16024,7 +16103,16 @@ function renderFedexDelivery() {
           <div style="grid-column:1/-1;margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">
             ${(fedexDeliveryTab === 'delivered' || fedexDeliveryTab === 'ofd')
               ? ''
-              : `<button class="btn btn-sm" onclick="${fedexDeliveryTab === 'rto' ? `openEditOrder(${i}, true)` : `openEditOrder(${i})`}" style="background:var(--gold);color:#000;font-weight:700;font-size:12px;">✏️ Edit</button>`}
+              : `<button class="btn btn-sm" onclick="${fedexDeliveryTab === 'rto' ? `openEditOrder(${i}, true, true)` : `openEditOrder(${i})`}" style="background:var(--gold);color:#000;font-weight:700;font-size:12px;">✏️ Edit</button>`}
+            ${fedexDeliveryTab === 'rto' ? `
+              <button class="btn btn-print btn-sm" onclick="openInvoice(${i})" style="font-weight:700;font-size:12px;" title="Re-print invoice after changes">🖨️ Print</button>
+              <div style="display:flex;align-items:center;gap:5px;margin-left:auto;">
+                <span style="font-size:10.5px;color:var(--muted);text-transform:uppercase;font-weight:700;">Update Status:</span>
+                <select class="form-control" style="width:190px;font-size:11px;padding:4px 7px;"
+                  onchange="updateLbcStatus(${i},this.value)">
+                  ${['RTO','Ready to Pick-up'].map(s=>`<option value="${s}"${lst===s?' selected':''}>${s}</option>`).join('')}
+                </select>
+              </div>` : ''}
             ${fedexDeliveryTab === 'ofd' ? `
               <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                 <span style="font-size:10.5px;color:var(--muted);text-transform:uppercase;font-weight:700;">Date Delivered:</span>
