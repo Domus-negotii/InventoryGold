@@ -3401,6 +3401,9 @@ function _isRemittedCodOrder(o) {
   const _ordNum = typeof onum === 'function' ? onum((S.orders||[]).indexOf(o)) : '';
   const _date   = o.date || '';
   const _delivDate = (o.dateDelivered || o.date || '').slice(0,10);
+  // COD-OP is scheduled by the checker's Deliver Date — include it in the legacy
+  // date fallback so those orders aren't wrongly treated as un-remitted.
+  const _effDate = typeof _effectiveDate === 'function' ? _effectiveDate(o) : _date;
   return (S.remitLog||[]).some(r => {
     if(!r || r.remitStatus !== 'Remitted') return false;
     if(r.riderName !== _riderName) return false;
@@ -3408,7 +3411,7 @@ function _isRemittedCodOrder(o) {
     if(r.orderIds && (_ordId ? r.orderIds.includes(_ordId) : false)) return true;
     if(r.orderNums && (_ordNum ? r.orderNums.includes(_ordNum) : false)) return true;
     // Legacy fallback: date match
-    if(r.date === _date || r.date === _delivDate) return true;
+    if(r.date === _date || r.date === _delivDate || (_effDate && r.date === _effDate)) return true;
     return false;
   });
 }
@@ -3470,6 +3473,26 @@ function _effectiveDate(o){
 //  - Pure COD → full grandTotal (nothing paid online)
 //  - COD-OP Fully Paid → ₱0.00 (already paid, nothing to collect)
 //  - COD-OP Partial → grandTotal − total already paid online (remaining balance)
+// ── P&L INVENTORY-ONLY ITEM TOTAL ────────────────────────────────────────────
+// Sums ONLY items that exist in Inventory (Other Items are reported separately),
+// excluding cancelled items and partial-cancel quantities.
+// SINGLE SOURCE OF TRUTH — both the P&L Report and the Dashboard net-profit card
+// call this. Do NOT re-declare it locally; duplicated copies silently drift apart.
+function _plInvTotal(o){
+  if(!o) return 0;
+  return (o.items||[]).reduce((s,it,ii)=>{
+    if(!it) return s;
+    const _code=(it.code||'').toUpperCase().trim();
+    if(!_code) return s+(it.total||0);
+    const _inInv=(S.inventory||[]).some(inv=>inv&&inv.code&&inv.code.toUpperCase()===_code);
+    if(!_inInv) return s; // OI item — goes to Other Items Sales, not COD total
+    const iS=o.itemStatuses||{},iCQ=o.itemCancelQty||{};
+    if(iS[ii]==='Cancelled') return s;
+    const cxQty=iCQ[ii]||0;
+    if(cxQty>0){const tQty=it.grams||it.qty||1;const ppu=(it.total||0)/Math.max(1,tQty);return s+Math.max(0,(it.total||0)-cxQty*ppu);}
+    return s+(it.total||0);
+  },0);
+}
 function _amountToCollect(o){
   if(!o) return 0;
   if(o.paymentMethod === 'COD - Online Payment'){
@@ -3960,7 +3983,26 @@ function openEditOrder(i, _allowVerifiedEdit, _requireDropoffChange){
   }
   document.getElementById('enc-shipping').value=o.shipping;
   document.getElementById('enc-edit-idx').value=i;
-  const pm=document.getElementById('enc-payment-method'); if(pm) pm.value=o.paymentMethod||'COD';
+  const pm=document.getElementById('enc-payment-method');
+  if(pm){
+    pm.value = o.paymentMethod || 'COD';
+    // ── SHIPPING METHOD LOCK ─────────────────────────────────────────────────
+    // The shipping method defines the whole downstream flow (checker tab, delivery
+    // page, remit math, tracking fields). Changing it on an existing order would
+    // strand the parcel between flows, so it is READ-ONLY once encoded.
+    pm.disabled = true;
+    pm.style.opacity = '0.75';
+    pm.style.cursor = 'not-allowed';
+    pm.title = '🔒 Hindi na mapapalitan ang Shipping Method ng naka-encode na order.';
+    const _pmGrp = document.getElementById('enc-method-group');
+    if(_pmGrp && !_pmGrp.querySelector('.enc-method-locked-note')){
+      const _n = document.createElement('div');
+      _n.className = 'enc-method-locked-note';
+      _n.style.cssText = 'font-size:9.5px;color:var(--muted);margin-top:3px;';
+      _n.textContent = '🔒 Naka-lock — hindi na mapapalitan pagkatapos i-encode.';
+      _pmGrp.appendChild(_n);
+    }
+  }
   const tnInp=document.getElementById('enc-tracking-number'); if(tnInp) tnInp.value=o.trackingNumber||'';
   document.getElementById('enc-rider').value=o.assignedRider||'';
   populateInvQuickPick();
@@ -6720,13 +6762,19 @@ function addUnassignedRiderSlot() {
 
 // ============ DAILY SALES RECORD ============
 function renderDailySales(){
-  // Default to today in MM/DD/YYYY format if blank or invalid
+  // Default to today ONLY when the field is completely EMPTY.
+  // This runs on every keystroke (oninput), so resetting on "invalid" would
+  // overwrite a half-typed date like "07/1" and make the field impossible to edit.
   const _dsEl = document.getElementById('ds-date');
-  if(_dsEl && !mdy2ymd((_dsEl.value||'').trim())) {
+  const _dsRaw = (_dsEl?.value || '').trim();
+  if(_dsEl && _dsRaw === '') {
     const _n = new Date();
     _dsEl.value = `${String(_n.getMonth()+1).padStart(2,'0')}/${String(_n.getDate()).padStart(2,'0')}/${_n.getFullYear()}`;
   }
   const d=mdy2ymd((document.getElementById('ds-date')?.value||'').trim());
+  // Half-typed / invalid date → keep the previous view instead of rendering an
+  // empty report; the user is still typing.
+  if(!d) return;
   const allO=S.orders;
   // COD: counted on dateDelivered (actual delivery date), falling back to encode date o.date
   // This ensures orders encoded on one day but delivered on another are counted correctly
@@ -6735,8 +6783,10 @@ function renderDailySales(){
     if(o.status!=='Delivered') return false;
     if((o.paymentMethod||'COD')!=='COD') return false;
     const delivDate = o.dateDelivered || o.date;
-    // Match encode date OR delivery date — order encoded on 06/24 may be delivered on 06/25
-    if(delivDate !== d && o.date !== d) return false;
+    // Match delivery date OR encode date OR (for COD-OP) the checker's Deliver Date —
+    // an order encoded on 06/24 may be delivered on 06/25.
+    const _effD = typeof _effectiveDate === 'function' ? _effectiveDate(o) : o.date;
+    if(delivDate !== d && o.date !== d && _effD !== d) return false;
     // REMIT GATE: must be in a Remitted batch before reflecting in Daily Sales
     if(!_isRemittedCodOrder(o)) return false;
     // Exclude all-OI orders — they're counted separately in Other Items Sales
@@ -6751,13 +6801,23 @@ function renderDailySales(){
     })) return false;
     return true;
   });
-  // LBC/EMS/FedEx: counted on Full Payment Date (o.dateOfPayment), must be Verified
-  const courierDel = allO.filter(o=>
-    (o.paymentMethod==='LBC'||o.paymentMethod==='EMS'||o.paymentMethod==='FedEx') &&
-    o.paymentStatus==='Fully Paid' &&
-    o.verificationStatus==='Verified' &&
-    (o.dateOfPayment||'').slice(0,10)===d
-  );
+  // LBC/EMS/FedEx: counted on the Date of Paid (o.dateOfPayment), must be Verified.
+  // Accept EITHER verification field — verifyOrder() writes both verificationStatus
+  // and checkerStatus, but older/synced records may only carry one of them.
+  // Date fallback: if Date of Paid was never filled in, fall back to the drop-off
+  // date, then the delivered date, then the encode date — otherwise a verified
+  // parcel silently never appears in Daily Sales.
+  const courierDel = allO.filter(o=>{
+    if(!o) return false;
+    if(o.paymentMethod!=='LBC' && o.paymentMethod!=='EMS' && o.paymentMethod!=='FedEx') return false;
+    if(o.paymentStatus!=='Fully Paid') return false;
+    if(o.verificationStatus!=='Verified' && o.checkerStatus!=='Verified') return false;
+    if(o.status==='Cancelled' || o.status==='RTO') return false;
+    const _payD = (o.dateOfPayment||'').slice(0,10);
+    const _salesD = _payD || (o.dateOfDropoff||'').slice(0,10) ||
+                    (o.dateDelivered||'').slice(0,10) || (o.date||'').slice(0,10);
+    return _salesD === d;
+  });
   const del=[...codDel,...courierDel];
   // All orders encoded on this date (for the bottom table)
   const dayO=allO.filter(o=>o.date===d);
@@ -6771,6 +6831,12 @@ function renderDailySales(){
   const lbcRemit = del.filter(o=>o.paymentMethod==='LBC').reduce((s,o)=>s+(o.grandTotal||0),0);
   const emsRemit = del.filter(o=>o.paymentMethod==='EMS').reduce((s,o)=>s+(o.grandTotal||0),0);
   const fedexRemit = del.filter(o=>o.paymentMethod==='FedEx').reduce((s,o)=>s+(o.grandTotal||0),0);
+  // ── PER-METHOD DELIVERED PARCEL COUNTS (for daily monitoring) ──────────────
+  // Amount alone doesn't tell you volume; show how many parcels each method moved.
+  const codCnt   = del.filter(o=>!o.paymentMethod||o.paymentMethod==='COD').length;
+  const lbcCnt   = del.filter(o=>o.paymentMethod==='LBC').length;
+  const emsCnt   = del.filter(o=>o.paymentMethod==='EMS').length;
+  const fedexCnt = del.filter(o=>o.paymentMethod==='FedEx').length;
   // Build remitted order nums set for COD-OP partial balance detection
   // Build set of remitted order numbers (from remit log entries marked Remitted)
   const _remittedNumsDS = new Set();
@@ -6784,7 +6850,9 @@ function renderDailySales(){
     if(!o||o.paymentMethod!=='COD - Online Payment') return false;
     if(o.checkerStatus!=='Verified'&&o.verificationStatus!=='Verified') return false;
     if(o.status==='Cancelled'||o.status==='RTO') return false;
-    return (o.date||'')=== d;
+    // COD-OP is scheduled by the checker's Deliver Date — using the raw encode date
+    // makes the sale appear on the wrong day (or disappear from Daily Sales entirely).
+    return _effectiveDate(o) === d;
   });
   // Online portion = what client already paid online (at verify time)
   const codOnlineRemit = _codOpOrders.reduce((s,o)=>{
@@ -6804,11 +6872,14 @@ function renderDailySales(){
     const _id = o._id || '';
     if(!_remittedNumsDS.has(_n) && !_remittedNumsDS.has(_id)) return false; // only after remitted
     const delivDate = o.dateDelivered || o.date;
-    return delivDate===d || o.date===d;
+    // COD-OP is scheduled by the checker's Deliver Date — include it in the match
+    return delivDate===d || o.date===d || _effectiveDate(o)===d;
   }).reduce((s,o)=>{
     const _paid = Math.round((o.payments||[]).reduce((ps,pm)=>ps+(parseFloat(pm&&pm.amount)||0),0)*100)/100;
     return s + Math.max(0, Math.round(((o.grandTotal||0) - _paid)*100)/100);
   },0);
+  // COD-OP delivered parcel count for this date (verified + not cancelled/RTO)
+  const codOpCnt = _codOpOrders.filter(o=>o.status==='Delivered').length;
 
   const overall = codRemit + codOpCashRemit + lbcRemit + emsRemit + fedexRemit + codOnlineRemit;
   // Other Items Sales — sum of remitted OI items for this date
@@ -6827,14 +6898,37 @@ function renderDailySales(){
       <div class="stat-card blue"><div class="stat-label">Total Remit</div><div class="stat-value">${p(overall)}</div></div>
     </div>
     <div class="two-col">
-      <div class="card"><div class="card-header"><span class="card-title">Remit Summary</span></div>
-        <div class="info-row"><span style="color:var(--muted);">COD (Cash on Delivery)</span><strong>${p(codRemit + codOpCashRemit)}${codOpCashRemit>0?` <span style="font-size:9.5px;color:var(--orange);">(+${p(codOpCashRemit)} COD-OP balance)</span>`:''}</strong></div>
-        <div class="info-row"><span style="color:var(--muted);">LBC</span><strong>${p(lbcRemit)}</strong></div>
-        <div class="info-row"><span style="color:var(--muted);">EMS</span><strong>${p(emsRemit)}</strong></div>
-        <div class="info-row"><span style="color:var(--muted);">FedEx</span><strong>${p(fedexRemit)}</strong></div>
-        <div class="info-row"><span style="color:var(--muted);">COD - Online Payment</span><strong>${p(codOnlineRemit)}</strong></div>
-        <div class="info-row"><span style="color:var(--gold);">Other Items Sales</span><strong style="color:var(--gold);">${p(oiRemit)}</strong></div>
-        <div class="info-row" style="border-bottom:none;font-size:14px;"><strong>OVERALL</strong><strong style="color:var(--green);">${p(overall)}</strong></div>
+      <div class="card"><div class="card-header"><span class="card-title">Daily Sales by Shipping Method</span><span style="font-size:10px;color:var(--muted);">Delivered • ${d}</span></div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead><tr style="background:rgba(201,168,76,0.08);">
+            <th style="padding:6px 8px;color:var(--gold);font-size:9.5px;text-align:left;">Method</th>
+            <th style="padding:6px 8px;color:var(--gold);font-size:9.5px;text-align:center;">Parcels</th>
+            <th style="padding:6px 8px;color:var(--gold);font-size:9.5px;text-align:right;">Amount</th>
+          </tr></thead>
+          <tbody>
+            ${[
+              {label:'🏍️ COD',                cnt:codCnt,   amt:codRemit + codOpCashRemit, note:codOpCashRemit>0?`+${p(codOpCashRemit)} COD-OP balance`:''},
+              {label:'📱 COD - Online Payment', cnt:codOpCnt, amt:codOnlineRemit, note:''},
+              {label:'📦 LBC',                 cnt:lbcCnt,   amt:lbcRemit, note:''},
+              {label:'✈️ EMS',                 cnt:emsCnt,   amt:emsRemit, note:''},
+              {label:'🚀 FedEx',               cnt:fedexCnt, amt:fedexRemit, note:''},
+            ].map(r=>`<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+              <td style="padding:7px 8px;color:var(--text);">${r.label}${r.note?`<br><span style="font-size:9px;color:var(--orange);">${r.note}</span>`:''}</td>
+              <td style="padding:7px 8px;text-align:center;color:${r.cnt>0?'var(--blue)':'var(--muted)'};font-weight:600;">${r.cnt}</td>
+              <td style="padding:7px 8px;text-align:right;color:${r.amt>0?'var(--green)':'var(--muted)'};font-weight:700;">${p(r.amt)}</td>
+            </tr>`).join('')}
+            <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+              <td style="padding:7px 8px;color:var(--gold);">🎁 Other Items Sales</td>
+              <td style="padding:7px 8px;text-align:center;color:var(--muted);">—</td>
+              <td style="padding:7px 8px;text-align:right;color:var(--gold);font-weight:700;">${p(oiRemit)}</td>
+            </tr>
+          </tbody>
+          <tfoot><tr style="background:rgba(201,168,76,0.1);border-top:2px solid rgba(201,168,76,0.25);">
+            <td style="padding:8px;color:var(--gold);font-weight:700;">OVERALL</td>
+            <td style="padding:8px;text-align:center;color:var(--blue);font-weight:700;">${codCnt+codOpCnt+lbcCnt+emsCnt+fedexCnt}</td>
+            <td style="padding:8px;text-align:right;color:var(--green);font-weight:700;font-size:14px;">${p(overallWithOi)}</td>
+          </tr></tfoot>
+        </table>
       </div>
       <div class="card"><div class="card-header"><span class="card-title">Admin Incentives (₱25/parcel)</span></div>
         <table style="width:100%;border-collapse:collapse;font-size:12px;">
@@ -8708,18 +8802,6 @@ function renderPnl(){
       .map(e => (e.riderName||'') + '|' + (e.date||''))
   );
   // Helper: inventory-only subtotal per order (excludes OI/non-inventory items)
-  const _plInvTotal = (o) => (o.items||[]).reduce((s,it,ii)=>{
-    const _code=(it.code||'').toUpperCase().trim();
-    if(!_code) return s+(it.total||0);
-    const _inInv=(S.inventory||[]).some(inv=>inv.code&&inv.code.toUpperCase()===_code);
-    if(!_inInv) return s; // OI item — goes to Other Items Sales, not COD total
-    const iS=o.itemStatuses||{},iCQ=o.itemCancelQty||{};
-    if(iS[ii]==='Cancelled') return s;
-    const cxQty=iCQ[ii]||0;
-    if(cxQty>0){const tQty=it.grams||it.qty||1;const ppu=(it.total||0)/Math.max(1,tQty);return s+Math.max(0,(it.total||0)-cxQty*ppu);}
-    return s+(it.total||0);
-  },0);
-
   const codDelivered = S.orders.filter(o=>{
     if(!o||!o.status) return false;
     if(o.status!=='Delivered') return false;
@@ -9076,18 +9158,6 @@ function printPnl(){
   const to   = document.getElementById('pnl-to')?.value   || today();
   const label = from===to ? from : `${from} → ${to}`;
   // Helper: inventory-only subtotal (OI/non-inventory items excluded)
-  const _plInvTotal = (o) => (o.items||[]).reduce((s,it,ii)=>{
-    const _code=(it.code||'').toUpperCase().trim();
-    if(!_code) return s+(it.total||0);
-    const _inInv=(S.inventory||[]).some(inv=>inv.code&&inv.code.toUpperCase()===_code);
-    if(!_inInv) return s;
-    const iS=o.itemStatuses||{},iCQ=o.itemCancelQty||{};
-    if(iS[ii]==='Cancelled') return s;
-    const cxQty=iCQ[ii]||0;
-    if(cxQty>0){const tQty=it.grams||it.qty||1;const ppu=(it.total||0)/Math.max(1,tQty);return s+Math.max(0,(it.total||0)-cxQty*ppu);}
-    return s+(it.total||0);
-  },0);
-
   const codDelivered = S.orders.filter(o=>{if(!o||!o.status)return false;
     if(o.status!=='Delivered') return false;
     if((o.paymentMethod||'COD')!=='COD') return false;
@@ -9101,16 +9171,30 @@ function printPnl(){
   const incomeOrders=[...codDelivered,...courierVerified];
   const totalSales=incomeOrders.reduce((s,o)=>s+_plInvTotal(o),0);
   const totalShippingRevPrint=incomeOrders.reduce((s,o)=>s+(parseFloat(o.shipping)||0),0);
+  // ═══ PRINT COGS GUARD — must mirror the on-screen P&L ══════════════════════
+  // COGS must match revenue: exclude Cancelled and For Update items, and reduce
+  // partial cancels proportionally. Counting the cost of items whose revenue was
+  // excluded overstates the loss.
+  // ═══════════════════════════════════════════════════════════════════════════
   const totalCOGS=incomeOrders.reduce((s,o)=>{
-    return s+(o.items||[]).reduce((is,it)=>{
-      const inv=(S.inventory||[]).find(p=>p.code&&it.code&&p.code.toUpperCase()===it.code.toUpperCase());
+    const iS  = o.itemStatuses  || {};
+    const iCQ = o.itemCancelQty || {};
+    return s+(o.items||[]).reduce((is,it,ii)=>{
+      if(!it) return is;
+      if(iS[ii]==='Cancelled'||iS[ii]==='Update'||iS[ii]==='For Update') return is; // no revenue → no cost
+      // Partial cancel → keep only the delivered proportion of the cost
+      const _totQty = it.grams||it.qty||1;
+      const _cxQty  = iCQ[ii]||0;
+      const _ratio  = _totQty>0 ? Math.max(0,(_totQty-_cxQty))/_totQty : 1;
+      const inv=(S.inventory||[]).find(p=>p&&p.code&&it.code&&p.code.toUpperCase()===it.code.toUpperCase());
+      let _cost=0;
       if(inv){
-        if(inv.itemType==='fixprice') return is+(inv.capitalPerUnit||0)*(it.qty||1);
-        return is+(inv.capitalPerGram||0)*(it.grams||it.qty||0);
-      }
-      if(it.capitalPerGram) return is+it.capitalPerGram*(it.grams||it.qty||0);
-      if(it.capitalPerUnit) return is+it.capitalPerUnit*(it.qty||1);
-      return is;
+        _cost = (inv.itemType==='fixprice')
+          ? (inv.capitalPerUnit||0)*(it.qty||1)
+          : (inv.capitalPerGram||0)*(it.grams||it.qty||0);
+      } else if(it.capitalPerGram) _cost = it.capitalPerGram*(it.grams||it.qty||0);
+      else if(it.capitalPerUnit)   _cost = it.capitalPerUnit*(it.qty||1);
+      return is + _cost*_ratio;
     },0);
   },0);
   const grossProfit=totalSales-totalCOGS;
@@ -10263,7 +10347,10 @@ function renderRiderParcels() {
   // 1. Delivered SF (Gross) — SF from delivered orders only
   // ═══ SF CHARGE GUARD: SF=0 if ALL items in a Delivered order are cancelled ══
   // Prevents charging SF on orders where rider collected nothing.
-  const deliveredSF_dash = del.reduce((s,o)=>{const _iS=o.itemStatuses||{};const _t=(o.items||[]).length;const _cx=Object.values(_iS).filter(v=>v==='Cancelled').length;return s+(_t>_cx?(o.shipping||0):0);},0); // SF=0 if ALL items cancelled
+  // Use _remitOrderSF (single source of truth) so the rider dashboard SF and the
+  // remitter SF can never diverge: SF=0 if ALL items cancelled, and SF=0 when the
+  // customer OVERPAID a COD-OP order (the shipping fee is already covered).
+  const deliveredSF_dash = Math.round(del.reduce((s,o)=>s+_remitOrderSF(o),0)*100)/100;
 
   // 2. Subtotal — Delivered only (For Update excluded), minus cancelled items
   // MUST equal the sum of the AMOUNT column shown on each parcel row, otherwise
@@ -10289,19 +10376,27 @@ function renderRiderParcels() {
       return s + (it.total||0);
     }, 0);
   };
+  // Items-only contribution for the Subtotal line. SF is added separately by
+  // deliveredSF_dash, so anything returned here must EXCLUDE shipping — otherwise
+  // SF gets counted twice (COD-OP grandTotal already contains SF).
+  // This mirrors _remitItemsTotal() so rider and remitter always agree.
   const _dashEffective = (o) => {
     if(!o) return 0;
-    // COD-OP: mirror the AMOUNT column exactly (see the rider parcel row renderer)
     if(o.paymentMethod === 'COD - Online Payment') {
       const _paid = typeof _amountPaidOnline === 'function' ? _amountPaidOnline(o) : 0;
-      // OVERPAYMENT: if the customer paid MORE than grandTotal, the balance goes
-      // NEGATIVE and REDUCES the subtotal (sobra is money the business must account for).
-      const _signed = Math.round(((o.grandTotal||0) - _paid)*100)/100;
-      if(o.paymentStatus === 'Fully Paid') return _signed < 0 ? _signed : 0;
-      if(o.paymentStatus === 'Partial')    return _signed; // may be negative if overpaid
-      return o.grandTotal || 0; // No Payment → collect full
+      const _signed = Math.round(((o.grandTotal||0) - _paid)*100)/100; // negative = overpaid
+      const _sf = Math.round((o.shipping||0)*100)/100;
+      // OVERPAID: _remitOrderSF returns 0 for this order (SF already covered by the
+      // overpayment), so return the signed deficit as-is — no SF to add back.
+      if(_signed < 0) return _signed;
+      // Fully Paid with no overpayment → nothing left to collect
+      if(o.paymentStatus === 'Fully Paid') return 0;
+      // Partial → remaining balance MINUS SF (deliveredSF_dash adds SF back)
+      if(o.paymentStatus === 'Partial') return Math.round((_signed - _sf)*100)/100;
+      // No Payment → collect full grandTotal, minus SF (added back separately)
+      return Math.round(((o.grandTotal||0) - _sf)*100)/100;
     }
-    // Pure COD → active items only
+    // Pure COD → active items only (SF already excluded)
     return _dashActiveItems(o);
   };
   const codSubtotal_dash = Math.round(del.reduce((s,o) => s + _dashEffective(o), 0) * 100) / 100;
@@ -11118,7 +11213,20 @@ async function saveOrder() {
   const date = document.getElementById('enc-date').value;
   if(!date) { toast('⚠️ Date is required. Please enter the date of purchase.'); document.getElementById('enc-date').focus(); return; }
   const shipping = document.getElementById('enc-shipping').value;
-  const paymentMethod = document.getElementById('enc-payment-method')?.value || 'COD';
+  // ── SHIPPING METHOD IMMUTABILITY GUARD ──────────────────────────────────────
+  // On EDIT the method is locked in the UI, but never trust the DOM: always take
+  // the method from the SAVED order. Switching methods mid-flow would strand the
+  // parcel between checker tabs, delivery pages and remit math.
+  let paymentMethod = document.getElementById('enc-payment-method')?.value || 'COD';
+  if(_editIdxVal !== '' && _editIdxVal != null) {
+    const _origOrd = S.orders[parseInt(_editIdxVal)];
+    if(_origOrd && _origOrd.paymentMethod) {
+      if(paymentMethod !== _origOrd.paymentMethod) {
+        toast('🔒 Hindi mapapalitan ang Shipping Method — ' + _origOrd.paymentMethod + ' pa rin ang gagamitin.');
+      }
+      paymentMethod = _origOrd.paymentMethod; // force the original, always
+    }
+  }
 
   // All fields required
   if(!name) { toast('⚠️ Customer Name required'); document.getElementById('enc-name').focus(); return; }
@@ -11526,7 +11634,17 @@ function openEncodeModal() {
   document.getElementById('enc-items-tbody').innerHTML = '';
   document.getElementById('enc-edit-idx').value = '';
   document.getElementById('enc-rider').value = '';
-  const pm = document.getElementById('enc-payment-method'); if(pm) pm.value = 'COD';
+  const pm = document.getElementById('enc-payment-method');
+  if(pm){
+    pm.value = 'COD';
+    // UNLOCK: a NEW order may freely choose its shipping method (the lock in
+    // openEditOrder only applies to already-encoded orders).
+    pm.disabled = false;
+    pm.style.opacity = '';
+    pm.style.cursor = '';
+    pm.title = '';
+  }
+  document.querySelectorAll('.enc-method-locked-note').forEach(n=>n.remove());
   // Reset tracking number field (COD = hidden)
   const tnInp2=document.getElementById('enc-tracking-number'); if(tnInp2) tnInp2.value='';
   const tnErr2=document.getElementById('enc-tracking-err'); if(tnErr2) tnErr2.textContent='';
@@ -12080,8 +12198,11 @@ function _remitItemsTotal(o) {
     const _signed = Math.round(((o.grandTotal||0) - _paid) * 100) / 100; // negative = overpaid
     // Fully Paid with no overpayment → nothing to add to subtotal
     if(o.paymentStatus === 'Fully Paid' && _signed >= 0) return 0;
-    // Subtract SF so _remitOrderSF adds it back correctly in codSubtotal+deliveredSF.
-    // Do NOT floor at 0 — overpayment must be allowed to pull the subtotal down.
+    // OVERPAID: _remitOrderSF returns 0 for this order (SF already covered by the
+    // overpayment), so do NOT subtract SF here — nothing would add it back and the
+    // subtotal would be understated by one SF.
+    if(_signed < 0) return _signed;
+    // Normal partial: subtract SF so _remitOrderSF adds it back in codSubtotal+deliveredSF.
     const _sf = Math.round((o.shipping||0) * 100) / 100;
     return Math.round((_signed - _sf) * 100) / 100;
   }
@@ -12109,6 +12230,14 @@ function _remitItemsTotal(o) {
  */
 function _remitOrderSF(o) {
   if(!o || o.status==='Cancelled' || o.status==='RTO') return 0;
+  // OVERPAID COD-OP: the customer already paid MORE than the full grand total
+  // (which includes SF), so the shipping fee is fully covered by that payment.
+  // Adding it again here would understate the overpayment in the subtotal.
+  if(o.paymentMethod === 'COD - Online Payment' &&
+     (o.paymentStatus === 'Fully Paid' || o.paymentStatus === 'Partial')) {
+    const _paid = Math.round((o.payments||[]).reduce((s,pm)=>s+(parseFloat(pm&&pm.amount)||0),0)*100)/100;
+    if(_paid > (o.grandTotal||0)) return 0;
+  }
   const _iS  = o.itemStatuses || {};
   const total = (o.items||[]).length;
   const cx    = Object.values(_iS).filter(v => v==='Cancelled').length;
@@ -12978,7 +13107,10 @@ function renderRemitPage() {
     }
     // Remitting: live-compute via canonical math engine
     const _rN = e.riderName || '';
-    const _rDel = (S.orders||[]).filter(o=>o&&o.assignedRider===_rN&&o.date===e.date&&o.status==='Delivered');
+    // COD-OP orders are scheduled by the checker's Deliver Date, so compare the
+    // EFFECTIVE date (codopDeliverDate for COD-OP, encode date otherwise) — using
+    // raw o.date silently drops COD-OP parcels from the remit totals.
+    const _rDel = (S.orders||[]).filter(o=>o&&o.assignedRider===_rN&&_effectiveDate(o)===e.date&&o.status==='Delivered');
     const _rBen = e.manualBenefits > 0 ? e.manualBenefits : 0;
     const _rCm = _computeRemit(_rDel, _rBen);
     return s + _rCm.netTotal;
@@ -13019,7 +13151,9 @@ function renderRemitPage() {
         return { sub: (e.codSubtotal||0) + (e.totalSF||0), net: e.netTotal||e.codSubtotal||0 };
       }
       // ── CANONICAL MATH ENGINE — per-entry live compute ─────────────────────
-      const _eDel = (S.orders||[]).filter(o=>o&&o.assignedRider===riderName&&o.date===e.date&&o.status==='Delivered');
+      // Use EFFECTIVE date so COD-OP parcels (scheduled by checker Deliver Date)
+      // are included — matches populateRemitParcels / saveRemit / rider dashboard.
+      const _eDel = (S.orders||[]).filter(o=>o&&o.assignedRider===riderName&&_effectiveDate(o)===e.date&&o.status==='Delivered');
       const _eBen = e.manualBenefits > 0 ? e.manualBenefits : 0;
       const _eCm  = _computeRemit(_eDel, _eBen);
       return { sub: _eCm.grossTotal, net: _eCm.netTotal };
@@ -13061,9 +13195,12 @@ function renderRemitPage() {
     const riderOrders = (S.orders||[]).map((o,oi)=>({...o,oi}))
       .filter(o => {
         if(o.assignedRider !== riderName) return false;
-        if(df && o.date !== df) return false;
-        if(o.date !== entries[0]?.date && !df) {
-          if(!entries.some(e=>e.date===o.date)) return false;
+        // COD-OP parcels are scheduled by the checker's Deliver Date — compare the
+        // EFFECTIVE date so they appear in the correct remit batch.
+        const _oEff = _effectiveDate(o);
+        if(df && _oEff !== df) return false;
+        if(_oEff !== entries[0]?.date && !df) {
+          if(!entries.some(e=>e.date===_oEff)) return false;
         }
 
         const _ordId  = o._id  || onum(o.oi);
@@ -13226,7 +13363,9 @@ function renderRemitPage() {
                   .filter(pe => pe.remitStatus==='Remitted' && pe.remittedAt && pe !== e)
                   .map(pe=>pe.remittedAt).sort().pop() || null;
                 const _liveOrders = (S.orders||[]).filter(o=>{
-                  if(!o || o.assignedRider !== e.riderName || o.date !== e.date) return false;
+                  // COD-OP parcels are scheduled by the checker's Deliver Date, so compare
+                  // the EFFECTIVE date — using raw o.date drops them from the live counts.
+                  if(!o || o.assignedRider !== e.riderName || _effectiveDate(o) !== e.date) return false;
                   if(e.remitStatus !== 'Remitted' && _prevRemittedAt) {
                     const _oc = o.createdAt || o.date;
                     if(_oc < _prevRemittedAt) return false; // belongs to previous remit
@@ -13239,17 +13378,11 @@ function renderRemitPage() {
                 // Recompute COD subtotal live from actual orders (not saved e.codSubtotal)
                 // This corrects old entries saved before the cancel-deduction fix
                 const _liveDelOrders = _liveOrders.filter(o=>o.status==='Delivered');
-                const _liveSF        = _liveDelOrders.reduce((s,o)=>{const _iS=o.itemStatuses||{};const _t=(o.items||[]).length;const _cx=Object.values(_iS).filter(v=>v==='Cancelled').length;return s+(_t>_cx?(o.shipping||0):0);},0);
-                // grandTotal already includes SF (grandTotal = itemsTotal + shipping)
-                // Recompute items from item rows — same as rider dashboard formula
-                const _liveSubtotal  = _liveDelOrders.reduce((s,o)=>{
-                  let _t=0; const _iS=o.itemStatuses||{},_iCQ=o.itemCancelQty||{};
-                  (o.items||[]).forEach((it,ii)=>{
-                    if(_iS[ii]==='Cancelled'||_iS[ii]==='Update'||_iS[ii]==='For Update') return;
-                    const cxQty=_iCQ[ii]||0,tQty=it.grams||it.qty||1,ppu=(it.total||0)/Math.max(1,tQty);
-                    _t+=cxQty>0?Math.max(0,(it.total||0)-ppu*cxQty):(it.total||0);
-                  }); return s+_t;
-                },0);
+                // Use the CANONICAL engine (_remitOrderSF / _remitItemsTotal) instead of
+                // re-deriving the math here — that duplication is how the SF and the
+                // COD-OP overpayment rules silently drift out of sync.
+                const _liveSF       = Math.round(_liveDelOrders.reduce((s,o)=>s+_remitOrderSF(o),0)*100)/100;
+                const _liveSubtotal = Math.round(_liveDelOrders.reduce((s,o)=>s+_remitItemsTotal(o),0)*100)/100;
                 // Net SF for this rider+entry — matches rider dashboard formula
                 const _liveSF90   = _liveSF * 0.90;
                 const _liveCashb  = 100;
@@ -13267,8 +13400,8 @@ function renderRemitPage() {
                   <td style="padding:7px 6px;text-align:center;">${_liveParcels}</td>
                   <td style="padding:7px 6px;text-align:center;color:var(--green);font-weight:600;">${_liveDelivered}</td>
                   <td style="padding:7px 6px;text-align:center;color:${_liveCancelled>0?'var(--red)':'var(--muted)'};">${_liveCancelled}</td>
-                  <td style="padding:7px 10px;text-align:right;">${p(e.totalSF||0)}</td>
-                  <td style="padding:7px 10px;text-align:right;color:var(--red);">-${p(e.sf10||0)}</td>
+                  <td style="padding:7px 10px;text-align:right;">${p(e.remitStatus==='Remitted' ? (e.totalSF||_liveSF) : _liveSF)}</td>
+                  <td style="padding:7px 10px;text-align:right;color:var(--red);">-${p(e.remitStatus==='Remitted' ? (e.sf10||Math.round(_liveSF*10)/100) : Math.round(_liveSF*10)/100)}</td>
                   <td style="padding:7px 10px;text-align:right;color:var(--blue);font-weight:600;">${p(e.remitStatus==='Remitted' ? (e.codSubtotal||(_liveSubtotal+_liveSF)) : (_liveSubtotal+_liveSF))}</td>
                   <td style="padding:7px 10px;text-align:right;color:var(--gold);font-weight:700;">${p(e.remitStatus==='Remitted' ? (e.netTotal||e.codSubtotal||_liveNet) : _liveNet)}</td>
                   <td style="padding:7px 10px;font-weight:600;color:${statusColor(st)};white-space:nowrap;text-align:left;">${statusIcon(st)} ${st}</td>
