@@ -4524,17 +4524,11 @@ function renderChecker(){
     o.checkerStatus === 'Pending' &&
     !['Cancelled','RTO','Delivered','Out for Delivery','Update'].includes(o.status)
   ).length;
-  // COD-OP checker badge: count only orders admin moved to "In Progress"
-  const _pendingCODOP = _safeO.filter(o =>
-    o.paymentMethod === 'COD - Online Payment' &&
-    o.codopInProgress === true &&
-    o.checkerStatus === 'Pending' &&
-    !['Cancelled','RTO','Delivered','Out for Delivery','Update'].includes(o.status)
-  ).length;
-  // Update COD-OP tab badge — same style as COD/LBC/EMS/FedEx (no color change, just count)
+  // Shipping-method tabs show NO count — the parcel count is visible inside the
+  // tab once opened. Badges on every tab made the header noisy and confusing.
   const _codOpBtnEl = document.querySelector('#checker-tabs [data-tab="COD-OP"]');
   if(_codOpBtnEl) {
-    _codOpBtnEl.textContent = '📱 COD-OP' + (_pendingCODOP > 0 ? ' ('+_pendingCODOP+')' : '');
+    _codOpBtnEl.textContent = '📱 COD-OP';
     _codOpBtnEl.style.background = '';
     _codOpBtnEl.style.color = '';
   }
@@ -4554,22 +4548,14 @@ function renderChecker(){
   const delCount = (S.deletedOrders||[]).length;
   const delBtn = document.getElementById('checker-tab-deleted-btn');
   if(delBtn) delBtn.textContent = delCount > 0 ? `🗑️ Recently Deleted (${delCount})` : '🗑️ Recently Deleted';
-  // Update LBC/EMS/FedEx tab badges — exclude terminal courier statuses
-  const _BADGE_DONE = new Set(['ODZ/Incomplete Details','Out for Delivery','RTO','Delivered']);
+  // LBC/EMS/FedEx tabs: NO count badge. Keep the labels clean — the number of
+  // parcels is shown inside the queue once the tab is opened.
+  // Matched by data-tab (not textContent) so a stale badge can't break the lookup.
   ['LBC','EMS','FedEx'].forEach(method=>{
-    const count = _safeO.filter(o=>
-      o.paymentMethod===method &&
-      (o.paymentStatus||'No Payment')==='Fully Paid' &&
-      (o.status!=='Cancelled'&&o.status!=='RTO'&&o.status!=='Delivered') &&
-      !_BADGE_DONE.has(o.lbcStatus||'')
-    ).length;
-    const tabBtn = [...document.querySelectorAll('#checker-tabs .tab-btn')]
-      .find(b=>b.textContent.includes(method));
+    const tabBtn = document.querySelector(`#checker-tabs [data-tab="${method}"]`);
     if(tabBtn){
-      const icon = method==='LBC'?'📦':'✈️';
-      tabBtn.textContent = count > 0
-        ? `${icon} ${method} ✅${count}`
-        : `${icon} ${method}`;
+      const icon = method==='LBC' ? '📦' : method==='EMS' ? '✈️' : '📦';
+      tabBtn.textContent = `${icon} ${method}`;
     }
   });
   const isCOD = checkerTab === 'COD';
@@ -9573,6 +9559,9 @@ function doLogin(){
     currentRole='checker'; currentUser={name:'Checker',role:'checker'};
   }
   sessionKey=Date.now();
+  // Re-arm idle timers for this session — logout disarms them, so every login
+  // must start a fresh countdown (rider: 1 min, staff roles: 1 hour).
+  try { if(window._rearmIdleTimers) window._rearmIdleTimers(); } catch(e) {}
   document.getElementById('login-screen').classList.add('hidden');
   applyRoleUI();
   if(currentRole==='rider'){
@@ -9728,6 +9717,8 @@ function logoutUser(){
   // Show login screen so another role can log in (no confirm needed)
   // Firebase-only: direct write on logout (fire-and-forget)
   if(window._fbReady) _directWriteFirebase().catch(()=>{});
+  // Disarm idle timers so they don't linger past this session
+  try { if(window._clearIdleTimers) window._clearIdleTimers(); } catch(e) {}
   currentRole=null; currentUser=null; currentRider=null; selectedRole=null;
   unlockedPages=new Set();
   backToRoleSelect();
@@ -10277,6 +10268,8 @@ function doRiderLogin() {
   if(!rider.password) { errEl.textContent = '❌ No password set. Contact CEO to enroll.'; return; }
   if(rider.password !== pw) { errEl.textContent = '❌ Incorrect password'; document.getElementById('rider-login-pw').value=''; return; }
   currentRider = { ...rider, idx: +idx };
+  // Re-arm the idle timers for this fresh session (logout disarms them)
+  try { if(window._rearmIdleTimers) window._rearmIdleTimers(); } catch(e) {}
   document.getElementById('rider-login-screen').classList.add('hidden');
   document.getElementById('rider-dash-login-prompt').style.display = 'none';
   document.getElementById('rider-dash-content').style.display = 'block';
@@ -10288,8 +10281,12 @@ function doRiderLogin() {
 
 function logoutRider() {
   currentRider = null;
-  document.getElementById('rider-dash-login-prompt').style.display = 'block';
-  document.getElementById('rider-dash-content').style.display = 'none';
+  // Disarm the 1-minute rider idle timer — no session left to expire
+  try { if(window._clearIdleTimers) window._clearIdleTimers(); } catch(e) {}
+  const _p = document.getElementById('rider-dash-login-prompt');
+  const _c = document.getElementById('rider-dash-content');
+  if(_p) _p.style.display = 'block';
+  if(_c) _c.style.display = 'none';
 }
 
 function closeRiderDash() {
@@ -13415,7 +13412,31 @@ function renderRemitPage() {
               </td>
               <td style="padding:6px 8px;text-align:left;">${renderOrderItems(o)}</td>
               <td style="padding:6px 8px;text-align:right;color:var(--blue);white-space:nowrap;">${p(o.shipping||0)}</td>
-              <td style="padding:6px 8px;text-align:right;font-weight:700;white-space:nowrap;color:${o.status==='Cancelled'?'var(--red)':'var(--green)'};">${p(_effectiveAmount(o))}</td>
+              <td style="padding:6px 8px;text-align:right;font-weight:700;white-space:nowrap;color:${o.status==='Cancelled'?'var(--red)':'var(--green)'};">${(()=>{
+                // Show the SAME payment breakdown the rider sees, so the remitter
+                // has a basis for what was already paid online vs. collected in cash.
+                const _amt = _effectiveAmount(o);
+                if(o.paymentMethod !== 'COD - Online Payment') return p(_amt);
+                const _paidOn = (typeof _amountPaidOnline==='function') ? _amountPaidOnline(o) : 0;
+                const _signed = Math.round(((o.grandTotal||0) - _paidOn)*100)/100; // negative = sobra
+                const _collect = Math.max(0, _signed);
+                const _lines = [
+                  `<div style="font-size:10px;color:var(--muted);font-weight:400;">Total: ${p(o.grandTotal||0)}</div>`,
+                  `<div style="font-size:10px;color:var(--blue);font-weight:400;">Nabayad: ${p(_paidOn)}</div>`,
+                ];
+                if(_signed < 0) {
+                  _lines.push(`<div style="font-size:10px;color:var(--gold);font-weight:700;">💰 Sobra ${p(_signed)}</div>`);
+                  _lines.push(`<div style="font-size:10px;color:var(--muted);font-weight:400;">Kolektahin: ₱0.00</div>`);
+                  return `<span style="color:var(--gold);">${p(_signed)}</span>${_lines.join('')}`;
+                }
+                if(o.paymentStatus === 'Fully Paid') {
+                  _lines.push(`<div style="font-size:10px;color:var(--green);font-weight:700;">✅ Fully Paid</div>`);
+                  _lines.push(`<div style="font-size:10px;color:var(--muted);font-weight:400;">Kolektahin: ₱0.00</div>`);
+                  return `<span style="color:var(--green);">${p(_amt)}</span>${_lines.join('')}`;
+                }
+                _lines.push(`<div style="font-size:10px;color:var(--orange);font-weight:700;">Kolektahin: ${p(_collect)}</div>`);
+                return `<span style="color:var(--orange);">${p(_amt)}</span>${_lines.join('')}`;
+              })()}</td>
               <td style="padding:6px 8px;text-align:left;font-size:13px;color:var(--orange);word-break:break-word;">${o.riderRemarks||'—'}</td>
             </tr>`).join('')}
             <tr style="background:rgba(201,168,76,0.06);font-weight:700;border-top:2px solid rgba(201,168,76,0.2);">
@@ -13424,6 +13445,30 @@ function renderRemitPage() {
               <td style="padding:7px 8px;text-align:right;color:${titleColor};font-size:14px;font-weight:800;">${p(orders.filter(o=>o.status==='Delivered').reduce((s,o)=>s+_effectiveAmount(o),0))}</td>
               <td></td>
             </tr>
+            ${(()=>{
+              // COD-OP summary line — gives the remitter a clear basis: how much the
+              // clients already settled online vs. how much cash the rider should hand over.
+              const _codOp = orders.filter(o=>o && o.paymentMethod==='COD - Online Payment' && o.status==='Delivered');
+              if(!_codOp.length) return '';
+              const _paidTot = Math.round(_codOp.reduce((s,o)=>s+((typeof _amountPaidOnline==='function')?_amountPaidOnline(o):0),0)*100)/100;
+              const _collectTot = Math.round(_codOp.reduce((s,o)=>{
+                const _pd = (typeof _amountPaidOnline==='function') ? _amountPaidOnline(o) : 0;
+                return s + Math.max(0, Math.round(((o.grandTotal||0)-_pd)*100)/100);
+              },0)*100)/100;
+              const _sobraTot = Math.round(_codOp.reduce((s,o)=>{
+                const _pd = (typeof _amountPaidOnline==='function') ? _amountPaidOnline(o) : 0;
+                const _sg = Math.round(((o.grandTotal||0)-_pd)*100)/100;
+                return s + (_sg<0 ? _sg : 0);
+              },0)*100)/100;
+              return `<tr style="background:rgba(74,144,217,0.06);font-size:11px;">
+                <td colspan="3" style="padding:6px 8px;text-align:left;color:var(--blue);">
+                  📱 COD-OP (${_codOp.length}) — bayad na online vs. kolektahin
+                </td>
+                <td style="padding:6px 8px;text-align:right;color:var(--blue);white-space:nowrap;">Nabayad<br><strong>${p(_paidTot)}</strong></td>
+                <td style="padding:6px 8px;text-align:right;color:var(--orange);white-space:nowrap;">Kolektahin<br><strong>${p(_collectTot)}</strong></td>
+                <td style="padding:6px 8px;text-align:left;color:var(--gold);white-space:nowrap;">${_sobraTot<0?`💰 Sobra<br><strong>${p(_sobraTot)}</strong>`:'—'}</td>
+              </tr>`;
+            })()}
           </tbody>
         </table></div>`;
     };
@@ -14434,11 +14479,11 @@ function _applyGlobalClear(fbData) {
 
 function startAutoRefresh(){
   if(_autoRefreshTimer) clearInterval(_autoRefreshTimer);
-  // ── Rider auto-logout: 5 minutes of inactivity ──────────────────────────
-  // Prevents stale rider session from showing old data if device is left idle.
-  // After clear-all-transactions, this ensures rider sees the clean state on next login.
   // ── Idle auto-logout timers ────────────────────────────────────────────────
-  // Rider: 30 seconds (short — prevents stale data after Global Clear)
+  // Prevents a stale rider session from showing old data if the device is left
+  // idle. After clear-all-transactions this ensures the rider sees the clean
+  // state on next login.
+  // Rider: 1 minute (short — prevents stale data after Global Clear)
   // All other roles (owner/CSR/remitter/dispatcher/checker): 1 hour
   // On timeout: toast → 2s delay → full page reload (cleanest reset)
 
@@ -14462,7 +14507,7 @@ function startAutoRefresh(){
     }, 2000);
   }
 
-  // ── Rider: 30-second idle logout ─────────────────────────────────────────
+  // ── Rider: 1-minute idle logout ──────────────────────────────────────────
   let _riderIdleTimer = null;
   function _resetRiderIdleTimer() {
     if(currentRole !== 'rider') return;
@@ -14470,7 +14515,7 @@ function startAutoRefresh(){
     _riderIdleTimer = setTimeout(() => {
       if(currentRole !== 'rider') return;
       _doAutoLogout('Rider');
-    }, 30000); // 30 seconds — ← CHANGE HERE if rider timeout changes
+    }, 60 * 1000); // 1 minute — ← CHANGE HERE if rider timeout changes
   }
 
   // ── Other roles: 1-hour idle logout ──────────────────────────────────────
@@ -14494,6 +14539,20 @@ function startAutoRefresh(){
   );
   _resetRiderIdleTimer();   // start rider timer
   _resetStaffIdleTimer();   // start staff timer
+
+  // Expose control so manual logout can DISARM the timers. Without this the
+  // pending setTimeout survives logout and a new one is armed on the next
+  // login, stacking one orphan timer per session cycle.
+  // (The role guards inside each callback already prevent a wrong logout;
+  //  this stops the timer leak itself.)
+  window._clearIdleTimers = function() {
+    clearTimeout(_riderIdleTimer); _riderIdleTimer = null;
+    clearTimeout(_staffIdleTimer); _staffIdleTimer = null;
+  };
+  window._rearmIdleTimers = function() {
+    _resetRiderIdleTimer();
+    _resetStaffIdleTimer();
+  };
 
   _autoRefreshTimer = setInterval(async ()=>{
     if(!window._fbReady || !window.loadFromFirebase) return;
