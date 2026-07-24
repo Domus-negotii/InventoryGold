@@ -2557,7 +2557,7 @@ function _showRulesHint() {
     <hr class="divider">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;flex-wrap:wrap;gap:7px;">
       <span style="font-size:11px;font-weight:600;color:var(--gold);">ORDER ITEMS</span>
-      <div style="display:flex;gap:6px;">
+      <div id="enc-items-toolbar" style="display:flex;gap:6px;">
         <select class="form-control" id="inv-quick-pick" style="width:230px;font-size:11px;padding:3px 7px;" onchange="addFromInventory()">
           <option value="">📦 Pick from Inventory...</option>
         </select>
@@ -2588,7 +2588,7 @@ function _showRulesHint() {
       &nbsp;|&nbsp; <span style="color:var(--white);">Grand Total (SF + Items): <strong style="color:var(--green);font-size:14px;" id="enc-grand-total-disp">₱0.00</strong></span>
     </div>
     <!-- ── Overall/Global Discount Box ── -->
-    <div class="form-group" style="margin-top:10px;padding:10px 14px;background:rgba(224,85,85,0.06);border:1px solid rgba(224,85,85,0.2);border-radius:8px;">
+    <div class="form-group" id="enc-global-discount-box" style="margin-top:10px;padding:10px 14px;background:rgba(224,85,85,0.06);border:1px solid rgba(224,85,85,0.2);border-radius:8px;">
       <label style="color:var(--red);font-weight:700;font-size:12px;">🏷️ Overall Order Discount (Global)</label>
       <div style="display:flex;align-items:center;gap:10px;margin-top:6px;">
         <input type="number" class="form-control" id="enc-global-discount" min="0" value="0"
@@ -3852,6 +3852,52 @@ function rowTabNext(e, el) {
 // Tracks where openEditOrder was called from (for post-save refresh routing)
 let _editSource = ''; // 'courier-dashboard' | 'orders' | ''
 
+// ── ODZ/RTO FIELD LOCK ───────────────────────────────────────────────────────
+// When a checker edits an ODZ or RTO courier parcel, only the delivery details
+// (drop-off date, address, tracking, etc.) should change. The commercial terms —
+// purchase date, order items, global discount and payment history — are already
+// settled and must NOT be altered, or the sale would be restated after the fact.
+// Pass lock=false to restore the form for normal encoding/editing.
+function _setOdzRtoFieldLock(lock){
+  const _dis = (el, on) => {
+    if(!el) return;
+    el.disabled = !!on;
+    el.style.opacity = on ? '0.6' : '';
+    el.style.cursor  = on ? 'not-allowed' : '';
+    if(on) el.title = '🔒 Naka-lock — ODZ/RTO parcel, hindi na mapapalitan.';
+    else if(el.title && el.title.indexOf('Naka-lock') === 0) el.title = '';
+  };
+  // 1. DATE OF PURCHASE
+  _dis(document.getElementById('enc-date'), lock);
+  // 2. ORDER ITEMS — every input/select inside the items table + its toolbar
+  const _itemsBody = document.getElementById('enc-items-tbody');
+  if(_itemsBody) _itemsBody.querySelectorAll('input,select,button').forEach(el=>_dis(el, lock));
+  const _itemsBar = document.getElementById('enc-items-toolbar');
+  if(_itemsBar) _itemsBar.querySelectorAll('input,select,button').forEach(el=>_dis(el, lock));
+  // 3. OVERALL ORDER DISCOUNT (GLOBAL)
+  _dis(document.getElementById('enc-global-discount'), lock);
+  _dis(document.getElementById('enc-global-discount-reason'), lock);
+  // 4. REFERENCE NO. & PAYMENT HISTORY
+  const _payGrp = document.getElementById('enc-payments-group');
+  if(_payGrp) _payGrp.querySelectorAll('input,select,button').forEach(el=>_dis(el, lock));
+  // Visual banner on each locked section
+  [['enc-date','enc-date'],['enc-items-toolbar','enc-items-toolbar'],
+   ['enc-global-discount-box','enc-global-discount-box'],['enc-payments-group','enc-payments-group']]
+   .forEach(([id])=>{
+     const host = document.getElementById(id);
+     if(!host) return;
+     const existing = host.parentElement && host.parentElement.querySelector('.odz-lock-note');
+     if(lock && !existing){
+       const n = document.createElement('div');
+       n.className = 'odz-lock-note';
+       n.style.cssText = 'font-size:9.5px;color:var(--orange);margin-top:3px;';
+       n.textContent = '🔒 Naka-lock (ODZ/RTO) — delivery details lang ang pwedeng baguhin.';
+       if(host.parentElement) host.parentElement.appendChild(n);
+     }
+   });
+  if(!lock) document.querySelectorAll('.odz-lock-note').forEach(n=>n.remove());
+}
+
 function openEditOrder(i, _allowVerifiedEdit, _requireDropoffChange){
   // ── NULL GUARD ────────────────────────────────────────────────────────────
   if(!S.orders || !S.orders[i]) { toast('⚠️ Hindi mahanap ang order. I-refresh ang page.'); return; }
@@ -3865,6 +3911,8 @@ function openEditOrder(i, _allowVerifiedEdit, _requireDropoffChange){
       if(_rb) _rb.style.display = '';
       const _dof = document.getElementById('enc-date-dropoff');
       if(_dof){ _dof.style.borderColor = 'var(--gold)'; _dof.style.boxShadow = '0 0 0 2px rgba(232,168,56,0.25)'; }
+      // ODZ/RTO: lock the commercial fields (purchase date, items, discount, payments)
+      try { _setOdzRtoFieldLock(true); } catch(e) {}
     }, 60);
   } else {
     window._requireDropoffChangeIdx = null;
@@ -3875,6 +3923,7 @@ function openEditOrder(i, _allowVerifiedEdit, _requireDropoffChange){
       if(_rb) _rb.style.display = 'none';
       const _dof = document.getElementById('enc-date-dropoff');
       if(_dof){ _dof.style.borderColor = ''; _dof.style.boxShadow = ''; }
+      try { _setOdzRtoFieldLock(false); } catch(e) {}
     }, 60);
   }
   // ── VERIFIED LOCK: warn immediately if the order is already verified ───────
@@ -10342,7 +10391,12 @@ function renderRiderParcels() {
     (o.name||'').toLowerCase().includes(q) || (o.contact||'').toLowerCase().includes(q) || onum(o.idx).includes(q));
 
   // ── Earnings Summary — mirrors Riders Remit formula exactly ──
-  const del = myOrders.filter(o => o.status === 'Delivered');
+  // Respect the DATE filter so the summary always matches the parcels listed
+  // above it. Using myOrders here would total every date while the table shows
+  // only one, making Delivered SF look wrong.
+  // (Status/search filters are view-only and must NOT change the earnings math.)
+  const _earnBase = df ? myOrders.filter(o => _effectiveDate(o) === df) : myOrders;
+  const del = _earnBase.filter(o => o.status === 'Delivered');
 
   // 1. Delivered SF (Gross) — SF from delivered orders only
   // ═══ SF CHARGE GUARD: SF=0 if ALL items in a Delivered order are cancelled ══
@@ -10386,11 +10440,13 @@ function renderRiderParcels() {
       const _paid = typeof _amountPaidOnline === 'function' ? _amountPaidOnline(o) : 0;
       const _signed = Math.round(((o.grandTotal||0) - _paid)*100)/100; // negative = overpaid
       const _sf = Math.round((o.shipping||0)*100)/100;
-      // OVERPAID: _remitOrderSF returns 0 for this order (SF already covered by the
-      // overpayment), so return the signed deficit as-is — no SF to add back.
-      if(_signed < 0) return _signed;
-      // Fully Paid with no overpayment → nothing left to collect
-      if(o.paymentStatus === 'Fully Paid') return 0;
+      // deliveredSF_dash always adds SF back (every delivery earns its SF), so
+      // subtract it here in ALL cases — including overpayments, where the signed
+      // balance already accounts for the SF inside grandTotal.
+      if(_signed < 0) return Math.round((_signed - _sf)*100)/100;
+      // Fully Paid with no overpayment → nothing left to collect, but SF was added
+      // by deliveredSF_dash, so cancel it out here.
+      if(o.paymentStatus === 'Fully Paid') return Math.round((0 - _sf)*100)/100;
       // Partial → remaining balance MINUS SF (deliveredSF_dash adds SF back)
       if(o.paymentStatus === 'Partial') return Math.round((_signed - _sf)*100)/100;
       // No Payment → collect full grandTotal, minus SF (added back separately)
@@ -11281,6 +11337,16 @@ async function saveOrder() {
   const dateOfPayment = isLbcMethod ? (document.getElementById('enc-date-payment')?.value||'') : '';
   const dateOfDropoff = isLbcMethod ? (document.getElementById('enc-date-dropoff')?.value||'') : '';
 
+  // ── ODZ/RTO IMMUTABILITY GUARD ────────────────────────────────────────────
+  // The commercial terms of an ODZ/RTO parcel are already settled. The UI locks
+  // them, but never trust the DOM: force the ORIGINAL values back so a tampered
+  // form can't restate the sale. Only delivery details may change.
+  let _odzLockedOrig = null;
+  if(_editIdxVal !== '' && _editIdxVal != null &&
+     window._requireDropoffChangeIdx === parseInt(_editIdxVal)) {
+    _odzLockedOrig = S.orders[parseInt(_editIdxVal)] || null;
+  }
+
   // ── ODZ/RTO edit: DATE DROP-OFF must be CHANGED ───────────────────────────
   // When editing an ODZ or RTO parcel, the drop-off date must be updated (the
   // parcel is being re-dropped). Remind the admin if they forgot to change it.
@@ -11443,6 +11509,25 @@ async function saveOrder() {
     // ── LBC/EMS: preserve In-Progress state across edits (same reason as COD-OP) ──
     o.lbcInProgress = orig.lbcInProgress;
     o.lbcPrevTab = orig.lbcPrevTab;
+    // ── ODZ/RTO LOCK ENFORCEMENT ─────────────────────────────────────────────
+    // Restore the settled commercial terms. The UI disables these fields, but a
+    // tampered DOM must not be able to restate the sale on an ODZ/RTO parcel.
+    if(_odzLockedOrig) {
+      o.date                 = orig.date;
+      o.items                = orig.items;
+      o.itemsTotal           = orig.itemsTotal;
+      o.globalDiscount       = orig.globalDiscount;
+      o.globalDiscountReason = orig.globalDiscountReason;
+      o.totalDiscount        = orig.totalDiscount;
+      o.payments             = orig.payments;
+      o.dateOfPayment        = orig.dateOfPayment;
+      o.paymentStatus        = orig.paymentStatus;
+      // grandTotal is derived from items + SF − discount, so recompute from the
+      // RESTORED figures (SF may legitimately change on a re-drop).
+      o.grandTotal = Math.round(Math.max(0,
+        (parseFloat(orig.itemsTotal)||0) + (parseFloat(o.shipping)||0) - (parseFloat(orig.globalDiscount)||0)
+      )*100)/100;
+    }
     // Preserve rescheduling metadata too
     if(orig.scheduledDelivery) o.scheduledDelivery = orig.scheduledDelivery;
     if(orig.dateDelivered) o.dateDelivered = orig.dateDelivered;
@@ -11645,6 +11730,8 @@ function openEncodeModal() {
     pm.title = '';
   }
   document.querySelectorAll('.enc-method-locked-note').forEach(n=>n.remove());
+  // Clear any ODZ/RTO field lock left over from a previous edit
+  try { _setOdzRtoFieldLock(false); } catch(e) {}
   // Reset tracking number field (COD = hidden)
   const tnInp2=document.getElementById('enc-tracking-number'); if(tnInp2) tnInp2.value='';
   const tnErr2=document.getElementById('enc-tracking-err'); if(tnErr2) tnErr2.textContent='';
@@ -12184,25 +12271,56 @@ function openRemitModal(editIdx=null) {
  * Handles partial cancels using per-item cancel qty.
  * Uses decimal-safe rounding to prevent float accumulation.
  */
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ SF / SUBTOTAL CONTRACT — read before editing either function             ║
+// ║                                                                          ║
+// ║   subtotal = Σ _remitItemsTotal(o)  +  Σ _remitOrderSF(o)                ║
+// ║                                                                          ║
+// ║ _remitOrderSF  ALWAYS adds the shipping fee for a delivered parcel       ║
+// ║                (every trip earns SF; only an all-cancelled order = 0).   ║
+// ║ _remitItemsTotal MUST therefore SUBTRACT that same SF on any path that   ║
+// ║                derives its value from grandTotal — because grandTotal    ║
+// ║                already contains SF. Paths that sum raw item rows must    ║
+// ║                NOT subtract it (item totals are already SF-free).        ║
+// ║                                                                          ║
+// ║ _dashEffective (rider dashboard) is the MIRROR of this function and must ║
+// ║ return the same value for the same order, or the rider's Subtotal will   ║
+// ║ disagree with the remitter. Any change here needs the same change there. ║
+// ║                                                                          ║
+// ║ Payment-side effects (COD-OP overpayment) belong HERE, never in          ║
+// ║ _remitOrderSF — zeroing SF there makes a delivered parcel show ₱0 SF.    ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
 function _remitItemsTotal(o) {
   if(!o || o.status==='Cancelled' || o.status==='RTO') return 0;
 
   // COD-OP Partial/Fully Paid: rider collects the REMAINING BALANCE (grandTotal - already paid).
   // OVERPAYMENT: if the customer paid MORE than grandTotal, the balance is NEGATIVE
   // and must REDUCE the remitter subtotal (the sobra is accounted against what's owed).
+  // COD-OP "No Payment": nothing was paid online, so the rider collects the FULL
+  // grandTotal. Derive from grandTotal (not raw item totals) so any global discount
+  // is respected — summing items would ignore the discount and overstate the remit.
+  if(o.paymentMethod === 'COD - Online Payment' &&
+     o.paymentStatus !== 'Partial' && o.paymentStatus !== 'Fully Paid') {
+    const _sfNp = Math.round((o.shipping||0) * 100) / 100;
+    return Math.round(((o.grandTotal||0) - _sfNp) * 100) / 100;
+  }
+
   if(o.paymentMethod === 'COD - Online Payment' &&
      (o.paymentStatus === 'Partial' || o.paymentStatus === 'Fully Paid')) {
     const _paid = Math.round(
       (o.payments||[]).reduce((s,pm) => s + (parseFloat(pm&&pm.amount)||0), 0) * 100
     ) / 100;
     const _signed = Math.round(((o.grandTotal||0) - _paid) * 100) / 100; // negative = overpaid
-    // Fully Paid with no overpayment → nothing to add to subtotal
-    if(o.paymentStatus === 'Fully Paid' && _signed >= 0) return 0;
-    // OVERPAID: _remitOrderSF returns 0 for this order (SF already covered by the
-    // overpayment), so do NOT subtract SF here — nothing would add it back and the
-    // subtotal would be understated by one SF.
-    if(_signed < 0) return _signed;
-    // Normal partial: subtract SF so _remitOrderSF adds it back in codSubtotal+deliveredSF.
+    // Fully Paid with no overpayment → nothing left to collect. Still subtract SF
+    // below (not an early return), because _remitOrderSF adds SF back for every
+    // delivery; returning 0 here would leave a phantom SF in the subtotal.
+    if(o.paymentStatus === 'Fully Paid' && _signed >= 0) {
+      return Math.round((0 - (Math.round((o.shipping||0)*100)/100)) * 100) / 100;
+    }
+    // Subtract SF because _remitOrderSF always adds it back in codSubtotal+deliveredSF.
+    // This holds for overpayments too: the signed balance is already net of SF
+    // (grandTotal includes SF), so subtracting here keeps the total correct while
+    // the rider still gets full SF credit on the Delivered SF line.
     const _sf = Math.round((o.shipping||0) * 100) / 100;
     return Math.round((_signed - _sf) * 100) / 100;
   }
@@ -12230,14 +12348,12 @@ function _remitItemsTotal(o) {
  */
 function _remitOrderSF(o) {
   if(!o || o.status==='Cancelled' || o.status==='RTO') return 0;
-  // OVERPAID COD-OP: the customer already paid MORE than the full grand total
-  // (which includes SF), so the shipping fee is fully covered by that payment.
-  // Adding it again here would understate the overpayment in the subtotal.
-  if(o.paymentMethod === 'COD - Online Payment' &&
-     (o.paymentStatus === 'Fully Paid' || o.paymentStatus === 'Partial')) {
-    const _paid = Math.round((o.payments||[]).reduce((s,pm)=>s+(parseFloat(pm&&pm.amount)||0),0)*100)/100;
-    if(_paid > (o.grandTotal||0)) return 0;
-  }
+  // EVERY delivered parcel earns its shipping fee — the rider did the trip.
+  // This is GROSS SF (delivery earnings) and is deliberately independent of how
+  // the customer paid. Payment-side effects (e.g. a COD-OP overpayment) are
+  // handled in _remitItemsTotal, NOT here — mixing them would make a delivered
+  // parcel show ₱0 SF, which understates the rider's earnings.
+  // Only exception: SF=0 when ALL items in the order were cancelled (no delivery).
   const _iS  = o.itemStatuses || {};
   const total = (o.items||[]).length;
   const cx    = Object.values(_iS).filter(v => v==='Cancelled').length;
