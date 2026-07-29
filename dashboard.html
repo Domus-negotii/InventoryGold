@@ -3159,8 +3159,6 @@ let S = {
 // _safeOrders(): strips null/undefined entries from S.orders. Use in ALL render fns.
 // _safeInventory(): strips null/undefined from S.inventory. Use in ALL inv display.
 function _safeOrders() { return (S.orders||[]).filter(o=>o&&o.status); }
-// _safeInventory defined alongside _safeOrders for consistent null-safe access
-function _safeInventory() { return (S.inventory||[]).filter(i=>i&&i.code); }
 // Permanent null-guard for inventory access — use this instead of S.inventory directly
 // in any render/calculation function to prevent null-slot crashes from Firebase arrays.
 function _safeInventory() { return (S.inventory||[]).filter(i=>i&&i.code); }
@@ -3880,9 +3878,17 @@ function _setOdzRtoFieldLock(lock){
   // 4. REFERENCE NO. & PAYMENT HISTORY
   const _payGrp = document.getElementById('enc-payments-group');
   if(_payGrp) _payGrp.querySelectorAll('input,select,button').forEach(el=>_dis(el, lock));
+  // 5. SHIPPING FEE — settled at encode; must not change on an ODZ/RTO re-drop
+  _dis(document.getElementById('enc-shipping'), lock);
+  // 6. DATE OF PAID (Full Payment Date) — the sale date is fixed
+  _dis(document.getElementById('enc-date-payment'), lock);
+  // NOTE: TRACKING # stays EDITABLE on ODZ/RTO — the courier often re-issues a new
+  // tracking number when a parcel is re-dropped, so the checker must be able to
+  // update it. (Applies to LBC/EMS/FedEx alike.)
   // Visual banner on each locked section
   [['enc-date','enc-date'],['enc-items-toolbar','enc-items-toolbar'],
-   ['enc-global-discount-box','enc-global-discount-box'],['enc-payments-group','enc-payments-group']]
+   ['enc-global-discount-box','enc-global-discount-box'],['enc-payments-group','enc-payments-group'],
+   ['enc-shipping','enc-shipping'],['enc-date-payment','enc-date-payment']]
    .forEach(([id])=>{
      const host = document.getElementById(id);
      if(!host) return;
@@ -4035,21 +4041,42 @@ function openEditOrder(i, _allowVerifiedEdit, _requireDropoffChange){
   const pm=document.getElementById('enc-payment-method');
   if(pm){
     pm.value = o.paymentMethod || 'COD';
-    // ── SHIPPING METHOD LOCK ─────────────────────────────────────────────────
+    // ── SHIPPING METHOD LOCK (ADMIN/OWNER OVERRIDE) ──────────────────────────
     // The shipping method defines the whole downstream flow (checker tab, delivery
     // page, remit math, tracking fields). Changing it on an existing order would
-    // strand the parcel between flows, so it is READ-ONLY once encoded.
-    pm.disabled = true;
-    pm.style.opacity = '0.75';
-    pm.style.cursor = 'not-allowed';
-    pm.title = '🔒 Hindi na mapapalitan ang Shipping Method ng naka-encode na order.';
+    // strand the parcel between flows, so it is READ-ONLY once encoded — EXCEPT
+    // for admin/owner, who are trusted to correct a mis-encoded method.
+    const _canEditMethod = (currentRole === 'owner' || currentRole === 'admin');
+    // Remove any stale note from a previous open
     const _pmGrp = document.getElementById('enc-method-group');
-    if(_pmGrp && !_pmGrp.querySelector('.enc-method-locked-note')){
-      const _n = document.createElement('div');
-      _n.className = 'enc-method-locked-note';
-      _n.style.cssText = 'font-size:9.5px;color:var(--muted);margin-top:3px;';
-      _n.textContent = '🔒 Naka-lock — hindi na mapapalitan pagkatapos i-encode.';
-      _pmGrp.appendChild(_n);
+    if(_pmGrp){ _pmGrp.querySelectorAll('.enc-method-locked-note').forEach(n=>n.remove()); }
+    if(_canEditMethod){
+      // Admin/owner → unlocked
+      pm.disabled = false;
+      pm.style.opacity = '';
+      pm.style.cursor = '';
+      pm.title = '';
+      if(_pmGrp && !_pmGrp.querySelector('.enc-method-admin-note')){
+        const _n = document.createElement('div');
+        _n.className = 'enc-method-admin-note';
+        _n.style.cssText = 'font-size:9.5px;color:var(--gold);margin-top:3px;';
+        _n.textContent = '✏️ Admin/CEO — pwede mong baguhin ang Shipping Method.';
+        _pmGrp.appendChild(_n);
+      }
+    } else {
+      // Everyone else → locked
+      pm.disabled = true;
+      pm.style.opacity = '0.75';
+      pm.style.cursor = 'not-allowed';
+      pm.title = '🔒 Admin/CEO lang ang pwedeng magpalit ng Shipping Method.';
+      if(_pmGrp){ _pmGrp.querySelectorAll('.enc-method-admin-note').forEach(n=>n.remove()); }
+      if(_pmGrp && !_pmGrp.querySelector('.enc-method-locked-note')){
+        const _n = document.createElement('div');
+        _n.className = 'enc-method-locked-note';
+        _n.style.cssText = 'font-size:9.5px;color:var(--muted);margin-top:3px;';
+        _n.textContent = '🔒 Naka-lock — Admin/CEO lang ang makakapagpalit.';
+        _pmGrp.appendChild(_n);
+      }
     }
   }
   const tnInp=document.getElementById('enc-tracking-number'); if(tnInp) tnInp.value=o.trackingNumber||'';
@@ -7778,6 +7805,7 @@ function saveInv(){
         if(!addQty){ toast('⚠️ Enter quantity to merge'); _relSaveInv(); return; }
         const before = existing.qty;
         existing.qty += addQty;
+        existing._invUpdatedAt = Date.now();
         S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), productCode:code,type:'in',qty:addQty,date:today(),
           notes:'Merged stock-in (same serial code)',before,after:existing.qty});
         save(); closeModal('modal-inventory'); toast(`✅ Stock merged! ${existing.desc||desc} now has ${existing.qty} pcs.`);
@@ -7789,6 +7817,7 @@ function saveInv(){
         if(!addGrams){ toast('⚠️ Enter grams to merge'); _relSaveInv(); return; }
         const before = existing.grams;
         existing.grams += addGrams;
+        existing._invUpdatedAt = Date.now();
         S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), productCode:code,type:'in',qty:addGrams,date:today(),
           notes:'Merged stock-in (same serial code)',before,after:existing.grams});
         save(); closeModal('modal-inventory'); toast(`✅ Stock merged! ${existing.desc||desc} now has ${existing.grams}g.`);
@@ -7823,8 +7852,13 @@ function saveInv(){
     obj={code,desc,itemType:'grams',grams,pergram,capitalPerGram:cap,qty:0,fixPrice:0,category:cat};
   }
 
+  // Stamp every save with a per-item update time. The SAR merge uses this to
+  // decide which side is newer, so a stock EDIT never silently reverts to an
+  // older Firebase copy — the most-recently-edited value always wins.
+  obj._invUpdatedAt = Date.now();
   if(editIdx!=='') {
     const orig = S.inventory[+editIdx];
+    // Carry forward any prior stamp is unnecessary — we just set a fresh one above.
     // Log stock change if qty or grams changed
     if(orig) {
       const roundTo2 = v => Math.round((v||0)*100)/100;
@@ -9851,6 +9885,14 @@ function clearAllTransactions() {
   const clearTs = new Date().toISOString();
   S.lastGlobalClear = clearTs;
 
+  // ── 1b. PROTECT LOCAL INVENTORY EDITS ───────────────────────────────────
+  // Clear Transactions preserves inventory PRODUCTS, but the SAR restart below
+  // could read a Firebase copy whose inventory write hasn't confirmed yet and
+  // revert a just-made stock edit (e.g. 500 → back to 495). Refresh the inventory
+  // write-grace timestamp NOW so the local (edited) inventory is trusted until
+  // Firebase catches up. save() (step 6) writes the current inventory too.
+  window._lastInvWrite = Date.now();
+
   // ── 2. Wipe all transaction arrays ──────────────────────────────────────
   // ═══ TX_KEYS: ONLY transaction data — NEVER add 'inventory','riders','adminAccounts' ═
   const _TX_KEYS = ['orders','returnLog','deletedOrders','stockLog','remitLog','otherItems',
@@ -9863,6 +9905,11 @@ function clearAllTransactions() {
     const _cfgRaw = localStorage.getItem('gce_fb_config');
     if(_cfgRaw) _fbApiKey = (JSON.parse(_cfgRaw).apiKey) || _FB_APIKEY;
   } catch(e) { _fbApiKey = _FB_APIKEY; }
+  // Include the CURRENT inventory in the direct PATCH so Firebase is updated with
+  // any just-made stock edits at the same instant transactions are wiped — this
+  // closes the window where Firebase still holds the pre-edit inventory.
+  let _invField = { arrayValue: { values: [] } };
+  try { _invField = _toFS(S.inventory||[]); } catch(e) { _invField = { arrayValue: { values: [] } }; }
   const _clearPayload = { fields: {
     lastGlobalClear: { stringValue: clearTs },
     orders:        { arrayValue: { values: [] } },
@@ -9875,8 +9922,9 @@ function clearAllTransactions() {
     payroll:       { arrayValue: { values: [] } },
     expenses:      { arrayValue: { values: [] } },
     mergeLog:      { arrayValue: { values: [] } },
+    inventory:     _invField,
   }};
-  const _clearUrl = `${_FB_BASE}/gce_state/main?key=${_fbApiKey}&updateMask.fieldPaths=lastGlobalClear` +
+  const _clearUrl = `${_FB_BASE}/gce_state/main?key=${_fbApiKey}&updateMask.fieldPaths=lastGlobalClear&updateMask.fieldPaths=inventory` +
     _TX_KEYS.map(k=>`&updateMask.fieldPaths=${k}`).join('');
   fetch(_clearUrl, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(_clearPayload) })
     .then(()=>toast('✅ All transactions cleared & synced. All devices will refresh shortly.'))
@@ -11085,6 +11133,7 @@ function _deductOrderItems(items, orderDate, label, orderRef) {
       if(qty <= 0) return; // skip items with zero qty
       const before = parseFloat(inv.qty)||0;
       inv.qty = parseFloat((before - qty).toFixed(4));
+      inv._invUpdatedAt = Date.now(); // real stock-out → newer than any Firebase copy
       S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), productCode:inv.code, productName:inv.desc||inv.name||inv.code,
         type:'out', qty, unit:'pcs',
         date:logDate, notes:'Stock Out: '+(inv.desc||inv.code)+' x'+qty+' – '+label, before, after:inv.qty });
@@ -11099,6 +11148,7 @@ function _deductOrderItems(items, orderDate, label, orderRef) {
       }
       const before = parseFloat(inv.grams)||0;
       inv.grams = parseFloat((before - grams).toFixed(4));
+      inv._invUpdatedAt = Date.now(); // real stock-out → newer than any Firebase copy
       S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), productCode:inv.code, productName:inv.desc||inv.name||inv.code,
         type:'out', qty:grams, unit:'g',
         date:logDate, notes:'Stock Out: '+(inv.desc||inv.code)+' '+grams+'g – '+label, before, after:inv.grams });
@@ -11149,6 +11199,7 @@ function _restoreOrderItems(items, orderDate, label, orderRef) {
       if(qty <= 0) return; // skip items with zero qty
       const before = parseFloat(inv.qty)||0;
       inv.qty = parseFloat((before + qty).toFixed(4));
+      inv._invUpdatedAt = Date.now(); // real stock-in (return) → newer than Firebase copy
       S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), productCode:inv.code, productName:inv.desc||inv.name||inv.code,
         type:'return', qty, unit:'pcs',
         date:logDate, notes:'Stock Return: '+(inv.desc||inv.name||inv.code)+' x'+qty+' – '+label, before, after:inv.qty });
@@ -11163,6 +11214,7 @@ function _restoreOrderItems(items, orderDate, label, orderRef) {
       }
       const before = parseFloat(inv.grams)||0;
       inv.grams = parseFloat((before + grams).toFixed(4));
+      inv._invUpdatedAt = Date.now(); // real stock-in (return) → newer than Firebase copy
       S.stockLog.push({ _id:_uuid(), createdAt:new Date().toISOString(), productCode:inv.code, productName:inv.desc||inv.name||inv.code,
         type:'return', qty:grams, unit:'g',
         date:logDate, notes:'Stock Return: '+(inv.desc||inv.name||inv.code)+' '+grams+'g – '+label, before, after:inv.grams });
@@ -11266,19 +11318,22 @@ async function saveOrder() {
   const date = document.getElementById('enc-date').value;
   if(!date) { toast('⚠️ Date is required. Please enter the date of purchase.'); document.getElementById('enc-date').focus(); return; }
   const shipping = document.getElementById('enc-shipping').value;
-  // ── SHIPPING METHOD IMMUTABILITY GUARD ──────────────────────────────────────
-  // On EDIT the method is locked in the UI, but never trust the DOM: always take
-  // the method from the SAVED order. Switching methods mid-flow would strand the
-  // parcel between checker tabs, delivery pages and remit math.
+  // ── SHIPPING METHOD IMMUTABILITY GUARD (ADMIN/OWNER OVERRIDE) ────────────────
+  // On EDIT the method is locked for non-admin roles: never trust the DOM, force
+  // the SAVED order's method. Switching mid-flow would strand the parcel between
+  // checker tabs, delivery pages and remit math. Admin/owner are trusted to
+  // correct a mis-encoded method, so they may change it.
   let paymentMethod = document.getElementById('enc-payment-method')?.value || 'COD';
   if(_editIdxVal !== '' && _editIdxVal != null) {
     const _origOrd = S.orders[parseInt(_editIdxVal)];
-    if(_origOrd && _origOrd.paymentMethod) {
+    const _canEditMethod = (currentRole === 'owner' || currentRole === 'admin');
+    if(_origOrd && _origOrd.paymentMethod && !_canEditMethod) {
       if(paymentMethod !== _origOrd.paymentMethod) {
-        toast('🔒 Hindi mapapalitan ang Shipping Method — ' + _origOrd.paymentMethod + ' pa rin ang gagamitin.');
+        toast('🔒 Admin/CEO lang ang pwedeng magpalit ng Shipping Method — ' + _origOrd.paymentMethod + ' pa rin ang gagamitin.');
       }
-      paymentMethod = _origOrd.paymentMethod; // force the original, always
+      paymentMethod = _origOrd.paymentMethod; // force the original for non-admins
     }
+    // Admin/owner: keep the DOM value (their chosen method) — trusted change.
   }
 
   // All fields required
@@ -11517,12 +11572,15 @@ async function saveOrder() {
       o.globalDiscountReason = orig.globalDiscountReason;
       o.totalDiscount        = orig.totalDiscount;
       o.payments             = orig.payments;
-      o.dateOfPayment        = orig.dateOfPayment;
+      o.dateOfPayment        = orig.dateOfPayment;   // DATE OF PAID — locked
       o.paymentStatus        = orig.paymentStatus;
-      // grandTotal is derived from items + SF − discount, so recompute from the
-      // RESTORED figures (SF may legitimately change on a re-drop).
+      o.shipping             = orig.shipping;        // SHIPPING FEE — locked
+      // TRACKING # is intentionally NOT forced here — it stays editable so the
+      // checker can enter the courier's re-issued tracking number on a re-drop.
+      // grandTotal is derived from items + SF − discount. Both are the ORIGINAL
+      // values, so grandTotal simply stays the original too.
       o.grandTotal = Math.round(Math.max(0,
-        (parseFloat(orig.itemsTotal)||0) + (parseFloat(o.shipping)||0) - (parseFloat(orig.globalDiscount)||0)
+        (parseFloat(orig.itemsTotal)||0) + (parseFloat(orig.shipping)||0) - (parseFloat(orig.globalDiscount)||0)
       )*100)/100;
     }
     // Preserve rescheduling metadata too
@@ -11727,6 +11785,7 @@ function openEncodeModal() {
     pm.title = '';
   }
   document.querySelectorAll('.enc-method-locked-note').forEach(n=>n.remove());
+  document.querySelectorAll('.enc-method-admin-note').forEach(n=>n.remove());
   // Clear any ODZ/RTO field lock left over from a previous edit
   try { _setOdzRtoFieldLock(false); } catch(e) {}
   // Reset tracking number field (COD = hidden)
@@ -12598,29 +12657,60 @@ function populateRemitParcels() {
         _recomputedItems += cxQty > 0 ? Math.max(0,(it.total||0)-ppu*cxQty) : (it.total||0);
       });
     }
-    // COD-OP Partial: net remit = remaining balance only
-    const _isCodOpPartialRow = o.paymentMethod === 'COD - Online Payment' && o.paymentStatus === 'Partial';
-    const _paidSoFar = _isCodOpPartialRow
+    // ╔════════════════════════════════════════════════════════════════════╗
+    // ║ EDIT-REMIT CELL CONTRACT — mirrors the rider dashboard / remitter list ║
+    // ║ COD-OP big number = _amountToCollect(o) (cash), or the sobra if       ║
+    // ║ overpaid. NEVER the gross grandTotal. Uses the SAME canonical helper   ║
+    // ║ so all three views (rider, remitter list, this modal) always agree.   ║
+    // ║ The MODAL TOTALS come from _computeRemit, not from this cell, so       ║
+    // ║ changing the display here can never desync the Net Total to Remit.     ║
+    // ╚════════════════════════════════════════════════════════════════════╝
+    // COD-OP: show the SAME Nabayad / Kolektahin / Sobra breakdown as the rider
+    // dashboard so the remitter has a clear basis for the cash to expect.
+    const _isCodOp = o.paymentMethod === 'COD - Online Payment';
+    const _isCodOpPartialRow = _isCodOp && o.paymentStatus === 'Partial';
+    const _paidOnline = _isCodOp
       ? Math.round((o.payments||[]).reduce((s,pm)=>s+(parseFloat(pm&&pm.amount)||0),0)*100)/100 : 0;
-    const _remainingBalance = _isCodOpPartialRow
-      ? Math.max(0, Math.round(((o.grandTotal||0) - _paidSoFar)*100)/100) : 0;
+    const _paidSoFar = _paidOnline; // alias kept for existing references below
+    const _signedBal = _isCodOp
+      ? Math.round(((o.grandTotal||0) - _paidOnline)*100)/100 : 0; // negative = sobra
+    const _remainingBalance = _isCodOpPartialRow ? Math.max(0, _signedBal) : 0;
+    // Canonical cash-to-collect (floored at 0) — same helper the rider uses.
+    const _kolek = (_isCodOp && typeof _amountToCollect==='function')
+      ? _amountToCollect(o) : Math.max(0, _signedBal);
 
     const netRemitAmt = isWholeOrderCancelled ? 0
       : _isCodOpPartialRow ? _remainingBalance
       : Math.max(0, _recomputedItems + (o.shipping||0));
 
-    const remitAmtDisplay = isWholeOrderCancelled
-      ? `<span style="color:var(--red);font-weight:700;">₱0.00</span>
-         <div style="font-size:9px;color:var(--muted);text-decoration:line-through;">${p(_recomputedItems + (o.shipping||0))} (orig)</div>`
-      : _isCodOpPartialRow
-        ? `<span style="color:var(--red);font-weight:700;">${p(_remainingBalance)}</span>
-           <div style="font-size:9px;color:var(--muted);margin-top:1px;">Grand Total: ${p(o.grandTotal||0)}</div>
-           <div style="font-size:9px;color:var(--blue);">Nabayad na: ${p(_paidSoFar)}</div>`
-      : hasAnyCancelledItems
-        ? `<span style="color:var(--green);font-weight:700;">${p(netRemitAmt)}</span>
+    let remitAmtDisplay;
+    if(isWholeOrderCancelled) {
+      remitAmtDisplay = `<span style="color:var(--red);font-weight:700;">₱0.00</span>
+         <div style="font-size:9px;color:var(--muted);text-decoration:line-through;">${p(_recomputedItems + (o.shipping||0))} (orig)</div>`;
+    } else if(_isCodOp) {
+      // Full COD-OP breakdown — mirrors the rider dashboard
+      const _detail = `<div style="font-size:9px;color:var(--muted);">Total: ${p(o.grandTotal||0)}</div>
+           <div style="font-size:9px;color:var(--blue);">Nabayad: ${p(_paidOnline)}</div>`;
+      if(_signedBal < 0) {
+        // Overpaid → Sobra (gold, negative)
+        remitAmtDisplay = `<span style="color:var(--gold);font-weight:700;">${p(_signedBal)}</span>${_detail}
+           <div style="font-size:9px;color:var(--gold);font-weight:700;">💰 Sobra</div>`;
+      } else if(o.paymentStatus === 'Fully Paid') {
+        // Fully paid online → nothing to collect
+        remitAmtDisplay = `<span style="color:var(--green);font-weight:700;">₱0.00</span>${_detail}
+           <div style="font-size:9px;color:var(--green);font-weight:700;">✅ Fully Paid</div>`;
+      } else {
+        // Partial / No Payment → cash to collect
+        remitAmtDisplay = `<span style="color:var(--orange);font-weight:700;">${p(_kolek)}</span>${_detail}
+           <div style="font-size:9px;color:var(--orange);font-weight:700;">Kolektahin</div>`;
+      }
+    } else if(hasAnyCancelledItems) {
+      remitAmtDisplay = `<span style="color:var(--green);font-weight:700;">${p(netRemitAmt)}</span>
            <div style="font-size:9px;color:var(--orange);">Orig: <span style="text-decoration:line-through;">${p(_recomputedItems + totalCancelledAmt + (o.shipping||0))}</span></div>
-           <div style="font-size:9px;color:var(--red);">❌ Cancel: -${p(totalCancelledAmt)}</div>`
-        : `<span style="color:var(--green);font-weight:700;">${p(netRemitAmt)}</span>`;
+           <div style="font-size:9px;color:var(--red);">❌ Cancel: -${p(totalCancelledAmt)}</div>`;
+    } else {
+      remitAmtDisplay = `<span style="color:var(--green);font-weight:700;">${p(netRemitAmt)}</span>`;
+    }
 
     const rowBg = isWholeOrderCancelled
       ? 'background:rgba(224,85,85,0.06);'
@@ -13417,25 +13507,40 @@ function renderRemitPage() {
                 // has a basis for what was already paid online vs. collected in cash.
                 const _amt = _effectiveAmount(o);
                 if(o.paymentMethod !== 'COD - Online Payment') return p(_amt);
+                // ╔════════════════════════════════════════════════════════════╗
+                // ║ REMITTER BIG-NUMBER CONTRACT — do not revert to gross total  ║
+                // ║ The big AMOUNT must equal the CASH the rider hands over:      ║
+                // ║   • overpaid  → the sobra (negative)                         ║
+                // ║   • otherwise → _amountToCollect(o)  (0 when Fully Paid)      ║
+                // ║ NEVER show grandTotal here for COD-OP — the client already    ║
+                // ║ paid online, so the gross misleads the remitter about cash.  ║
+                // ║ _amountToCollect() is the SAME canonical helper the rider     ║
+                // ║ dashboard and parcel sorting use, so the number can't drift.  ║
+                // ╚════════════════════════════════════════════════════════════╝
                 const _paidOn = (typeof _amountPaidOnline==='function') ? _amountPaidOnline(o) : 0;
                 const _signed = Math.round(((o.grandTotal||0) - _paidOn)*100)/100; // negative = sobra
-                const _collect = Math.max(0, _signed);
-                const _lines = [
+                // Canonical cash-to-collect (floored at 0). Fallback keeps the cell
+                // safe if the helper is ever unavailable.
+                const _collect = (typeof _amountToCollect==='function')
+                  ? _amountToCollect(o)
+                  : Math.max(0, _signed);
+                const _detail = [
                   `<div style="font-size:10px;color:var(--muted);font-weight:400;">Total: ${p(o.grandTotal||0)}</div>`,
                   `<div style="font-size:10px;color:var(--blue);font-weight:400;">Nabayad: ${p(_paidOn)}</div>`,
                 ];
                 if(_signed < 0) {
-                  _lines.push(`<div style="font-size:10px;color:var(--gold);font-weight:700;">💰 Sobra ${p(_signed)}</div>`);
-                  _lines.push(`<div style="font-size:10px;color:var(--muted);font-weight:400;">Kolektahin: ₱0.00</div>`);
-                  return `<span style="color:var(--gold);">${p(_signed)}</span>${_lines.join('')}`;
+                  // Overpaid → big number is the sobra (negative), gold
+                  _detail.push(`<div style="font-size:10px;color:var(--gold);font-weight:700;">💰 Sobra</div>`);
+                  return `<span style="color:var(--gold);">${p(_signed)}</span>${_detail.join('')}`;
                 }
                 if(o.paymentStatus === 'Fully Paid') {
-                  _lines.push(`<div style="font-size:10px;color:var(--green);font-weight:700;">✅ Fully Paid</div>`);
-                  _lines.push(`<div style="font-size:10px;color:var(--muted);font-weight:400;">Kolektahin: ₱0.00</div>`);
-                  return `<span style="color:var(--green);">${p(_amt)}</span>${_lines.join('')}`;
+                  // Fully paid online → nothing to collect → big number is ₱0.00
+                  _detail.push(`<div style="font-size:10px;color:var(--green);font-weight:700;">✅ Fully Paid</div>`);
+                  return `<span style="color:var(--green);">${p(_collect)}</span>${_detail.join('')}`;
                 }
-                _lines.push(`<div style="font-size:10px;color:var(--orange);font-weight:700;">Kolektahin: ${p(_collect)}</div>`);
-                return `<span style="color:var(--orange);">${p(_amt)}</span>${_lines.join('')}`;
+                // Partial / No Payment → big number is the cash to collect
+                _detail.push(`<div style="font-size:10px;color:var(--orange);font-weight:700;">Kolektahin</div>`);
+                return `<span style="color:var(--orange);">${p(_collect)}</span>${_detail.join('')}`;
               })()}</td>
               <td style="padding:6px 8px;text-align:left;font-size:13px;color:var(--orange);word-break:break-word;">${o.riderRemarks||'—'}</td>
             </tr>`).join('')}
@@ -14717,9 +14822,23 @@ function startAutoRefresh(){
 
         remoteByCode.forEach((fbItem, code) => {
           const localItem = localByCode.get(code);
-          const mergedItem = {...fbItem};
-          // Preserve local _id if Firebase doesn't have one yet
-          if(localItem && localItem._id && !mergedItem._id) mergedItem._id = localItem._id;
+          // ── LAST-WRITE-WINS BY TIMESTAMP ──────────────────────────────────
+          // A stock EDIT or in/out stamps the item with _invUpdatedAt. If the
+          // local copy was edited more recently than the Firebase copy, keep the
+          // LOCAL values — otherwise a stale Firebase read would revert a just-made
+          // stock change (e.g. 500 back to 495). Firebase only wins when it is
+          // genuinely newer (another device did a real in/out transaction).
+          const _localTs = localItem ? (localItem._invUpdatedAt||0) : 0;
+          const _fbTs    = fbItem ? (fbItem._invUpdatedAt||0) : 0;
+          let mergedItem;
+          if(localItem && _localTs > _fbTs) {
+            mergedItem = {...localItem}; // local edit is newer → keep it
+          } else {
+            mergedItem = {...fbItem};    // Firebase is newer or equal → take it
+            if(localItem && localItem._id && !mergedItem._id) mergedItem._id = localItem._id;
+            // Carry the newer timestamp forward so future merges compare correctly
+            if(_localTs > (mergedItem._invUpdatedAt||0)) mergedItem._invUpdatedAt = _localTs;
+          }
           merged.push(mergedItem);
         });
 
@@ -17679,8 +17798,18 @@ document.addEventListener('visibilitychange', async ()=>{
       const _mergedInv = [];
       _remoteMap.forEach((fbIt,code) => {
         const lcIt = _localMap.get(code);
-        const mi = {...fbIt};
-        if(lcIt && lcIt._id && !mi._id) mi._id = lcIt._id;
+        // Last-write-wins by _invUpdatedAt (same rule as the SAR merge) so a local
+        // stock edit is never reverted by a stale Firebase copy on tab focus.
+        const _lTs = lcIt ? (lcIt._invUpdatedAt||0) : 0;
+        const _fTs = fbIt ? (fbIt._invUpdatedAt||0) : 0;
+        let mi;
+        if(lcIt && _lTs > _fTs) { mi = {...lcIt}; }
+        else {
+          mi = {...fbIt};
+          if(lcIt && lcIt._id && !mi._id) mi._id = lcIt._id;
+          if(_lTs > (mi._invUpdatedAt||0)) mi._invUpdatedAt = _lTs;
+        }
+
         _mergedInv.push(mi);
       });
       (S.inventory||[]).forEach(it => {
