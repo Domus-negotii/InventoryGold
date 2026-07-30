@@ -13546,34 +13546,24 @@ function renderRemitPage() {
             </tr>`).join('')}
             <tr style="background:rgba(201,168,76,0.06);font-weight:700;border-top:2px solid rgba(201,168,76,0.2);">
               <td colspan="3" style="padding:7px 8px;color:${titleColor};text-align:left;font-size:13px;">Subtotal</td>
-              <td style="padding:7px 8px;text-align:right;color:var(--blue);font-size:13px;">${p(orders.reduce((s,o)=>s+(o.shipping||0),0))}</td>
-              <td style="padding:7px 8px;text-align:right;color:${titleColor};font-size:14px;font-weight:800;">${p(orders.filter(o=>o.status==='Delivered').reduce((s,o)=>s+_effectiveAmount(o),0))}</td>
+              <td style="padding:7px 8px;text-align:right;color:var(--blue);font-size:13px;">${p(orders.filter(o=>o.status==='Delivered').reduce((s,o)=>s+_remitOrderSF(o),0))}</td>
+              <td style="padding:7px 8px;text-align:right;color:${titleColor};font-size:14px;font-weight:800;">${(()=>{
+                // ╔══════════════════════════════════════════════════════════════════╗
+                // ║ SUBTOTAL CONTRACT — must equal COD SUBTOTAL in the entries table  ║
+                // ║ above AND the rider dashboard Subtotal. Uses the canonical remit   ║
+                // ║ engine (Σ _remitItemsTotal + Σ _remitOrderSF == _computeRemit      ║
+                // ║ .grossTotal). NEVER sum grandTotal here — that double-counts the   ║
+                // ║ online-paid portion of COD-OP and overstates the figure.          ║
+                // ║ Per-row AMOUNT cells (_effectiveAmount for non-COD-OP; collect/    ║
+                // ║ sobra for COD-OP) are DISPLAY only; this line is the true total.   ║
+                // ╚══════════════════════════════════════════════════════════════════╝
+                const _del = orders.filter(o=>o.status==='Delivered');
+                const _sub = Math.round(_del.reduce((s,o)=>s+_remitItemsTotal(o),0)*100)/100;
+                const _sf  = Math.round(_del.reduce((s,o)=>s+_remitOrderSF(o),0)*100)/100;
+                return p(Math.round((_sub+_sf)*100)/100);
+              })()}</td>
               <td></td>
             </tr>
-            ${(()=>{
-              // COD-OP summary line — gives the remitter a clear basis: how much the
-              // clients already settled online vs. how much cash the rider should hand over.
-              const _codOp = orders.filter(o=>o && o.paymentMethod==='COD - Online Payment' && o.status==='Delivered');
-              if(!_codOp.length) return '';
-              const _paidTot = Math.round(_codOp.reduce((s,o)=>s+((typeof _amountPaidOnline==='function')?_amountPaidOnline(o):0),0)*100)/100;
-              const _collectTot = Math.round(_codOp.reduce((s,o)=>{
-                const _pd = (typeof _amountPaidOnline==='function') ? _amountPaidOnline(o) : 0;
-                return s + Math.max(0, Math.round(((o.grandTotal||0)-_pd)*100)/100);
-              },0)*100)/100;
-              const _sobraTot = Math.round(_codOp.reduce((s,o)=>{
-                const _pd = (typeof _amountPaidOnline==='function') ? _amountPaidOnline(o) : 0;
-                const _sg = Math.round(((o.grandTotal||0)-_pd)*100)/100;
-                return s + (_sg<0 ? _sg : 0);
-              },0)*100)/100;
-              return `<tr style="background:rgba(74,144,217,0.06);font-size:11px;">
-                <td colspan="3" style="padding:6px 8px;text-align:left;color:var(--blue);">
-                  📱 COD-OP (${_codOp.length}) — bayad na online vs. kolektahin
-                </td>
-                <td style="padding:6px 8px;text-align:right;color:var(--blue);white-space:nowrap;">Nabayad<br><strong>${p(_paidTot)}</strong></td>
-                <td style="padding:6px 8px;text-align:right;color:var(--orange);white-space:nowrap;">Kolektahin<br><strong>${p(_collectTot)}</strong></td>
-                <td style="padding:6px 8px;text-align:left;color:var(--gold);white-space:nowrap;">${_sobraTot<0?`💰 Sobra<br><strong>${p(_sobraTot)}</strong>`:'—'}</td>
-              </tr>`;
-            })()}
           </tbody>
         </table></div>`;
     };
@@ -13611,6 +13601,8 @@ function renderRemitPage() {
               <th style="padding:8px 6px;text-align:center;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;color:var(--red);border-bottom:1px solid rgba(255,255,255,0.07);">❌ Cx</th>
               <th style="padding:8px 10px;text-align:right;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Total SF</th>
               <th style="padding:8px 10px;text-align:right;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;color:var(--red);border-bottom:1px solid rgba(255,255,255,0.07);">−10%</th>
+              <th style="padding:8px 10px;text-align:right;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;color:var(--red);border-bottom:1px solid rgba(255,255,255,0.07);">Cashbond</th>
+              <th style="padding:8px 10px;text-align:right;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;color:var(--red);border-bottom:1px solid rgba(255,255,255,0.07);">Parcel Fee</th>
               <th style="padding:8px 10px;text-align:right;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;color:var(--blue);border-bottom:1px solid rgba(255,255,255,0.07);">COD Subtotal</th>
               <th style="padding:8px 10px;text-align:right;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;color:var(--gold);border-bottom:1px solid rgba(255,255,255,0.07);">Net to Remit</th>
               <th style="padding:8px 10px;text-align:left;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Status</th>
@@ -13668,6 +13660,8 @@ function renderRemitPage() {
                   <td style="padding:7px 6px;text-align:center;color:${_liveCancelled>0?'var(--red)':'var(--muted)'};">${_liveCancelled}</td>
                   <td style="padding:7px 10px;text-align:right;">${p(e.remitStatus==='Remitted' ? (e.totalSF||_liveSF) : _liveSF)}</td>
                   <td style="padding:7px 10px;text-align:right;color:var(--red);">-${p(e.remitStatus==='Remitted' ? (e.sf10||Math.round(_liveSF*10)/100) : Math.round(_liveSF*10)/100)}</td>
+                  <td style="padding:7px 10px;text-align:right;color:var(--red);">-${p(e.remitStatus==='Remitted' ? (e.cashbondDeduct!=null?e.cashbondDeduct:_liveCashb) : _liveCashb)}</td>
+                  <td style="padding:7px 10px;text-align:right;color:var(--red);">-${p(e.remitStatus==='Remitted' ? (e.parcelFeeDeduct!=null?e.parcelFeeDeduct:_livePFee) : _livePFee)}</td>
                   <td style="padding:7px 10px;text-align:right;color:var(--blue);font-weight:600;">${p(e.remitStatus==='Remitted' ? (e.codSubtotal||(_liveSubtotal+_liveSF)) : (_liveSubtotal+_liveSF))}</td>
                   <td style="padding:7px 10px;text-align:right;color:var(--gold);font-weight:700;">${p(e.remitStatus==='Remitted' ? (e.netTotal||e.codSubtotal||_liveNet) : _liveNet)}</td>
                   <td style="padding:7px 10px;font-weight:600;color:${statusColor(st)};white-space:nowrap;text-align:left;">${statusIcon(st)} ${st}</td>
@@ -13684,7 +13678,7 @@ function renderRemitPage() {
               }).join('')}
               <!-- TOTAL footer row -->
               <tr style="background:rgba(201,168,76,0.1);font-weight:700;font-size:11.5px;border-top:2px solid rgba(201,168,76,0.25);">
-                <td colspan="6" style="padding:8px 10px;color:var(--gold);text-align:left;">TOTAL — ${riderName}</td>
+                <td colspan="8" style="padding:8px 10px;color:var(--gold);text-align:left;">TOTAL — ${riderName}</td>
                 <td style="padding:8px 10px;text-align:right;color:var(--blue);font-size:14px;">${p(grandSubtotal)}</td>
                 <td style="padding:8px 10px;text-align:right;color:var(--gold);font-size:14px;">${p(grandNet)}</td>
                 <td style="pointer-events:none;"></td>
