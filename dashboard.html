@@ -11677,6 +11677,20 @@ async function saveOrder() {
       o.rtoReason = '';
       o.inventoryDeducted = false; // Will be re-deducted when checker re-verifies
     }
+    // If editing an ODZ/Incomplete parcel WITH a new drop-off date, the details have
+    // been corrected and it is being re-dropped — reset it to Ready to Pick-up so it
+    // re-enters the dispatch flow. (The dispatcher's ODZ lock otherwise keeps it
+    // stuck on ODZ; this checker-side re-drop is the intended escape hatch.)
+    // Only reset when the checker actually changed the drop-off date, so a plain
+    // detail-fix edit that keeps the same date doesn't silently un-flag it.
+    if(orig.lbcStatus === 'ODZ/Incomplete Details') {
+      const _newDrop = (o.dateOfDropoff||'');
+      const _oldDrop = (orig.dateOfDropoff||'');
+      if(_newDrop && _newDrop !== _oldDrop) {
+        o.lbcStatus = 'Ready to Pick-up';
+        o.status = 'Preparing';
+      }
+    }
     S.orders[+editIdx] = o;
     // ── If order is Verified, re-capture OtherItems so new/changed items appear in Products ──
     if((o.checkerStatus||'Pending') === 'Verified') {
@@ -14949,8 +14963,22 @@ function renderOrderMgmt() {
     if(st === 'Preparing') return false;
     // Date filter: base on drop-off date ONLY (sorter searches by when parcel was dropped off)
     if(df && (o.dateOfDropoff||'') !== df) return false;
-    if(q && !o.name.toLowerCase().includes(q) && !onum(i).toLowerCase().includes(q)
-       && !(o.contact||'').toLowerCase().includes(q) && !(o.trackingNumber||'').toLowerCase().includes(q)) return false;
+    if(q) {
+      // ── SEARCH BEHAVIOR ──────────────────────────────────────────────────
+      // If the query is purely digits, treat it as a TRACKING NUMBER search and
+      // match ONLY the tracking number — so typing a tracking # returns just that
+      // parcel, not unrelated name/contact hits that happen to contain the digits.
+      // Non-numeric queries still search name / order# / contact / tracking.
+      const _qDigits = q.replace(/\D/g,'');
+      const _isNumeric = _qDigits.length > 0 && /^[0-9\s-]+$/.test(q.trim());
+      if(_isNumeric) {
+        const _trk = (o.trackingNumber||'').toLowerCase().replace(/\D/g,'');
+        if(!_trk.includes(_qDigits)) return false;
+      } else {
+        if(!o.name.toLowerCase().includes(q) && !onum(i).toLowerCase().includes(q)
+           && !(o.contact||'').toLowerCase().includes(q) && !(o.trackingNumber||'').toLowerCase().includes(q)) return false;
+      }
+    }
     return true;
   });
 
@@ -14980,6 +15008,11 @@ function renderOrderMgmt() {
   const OFD_CHOICES_SORTER = ['Out for Delivery','RTO']; // RTO only available when OFD
 
   const getOmStatuses = (currentLbcSt, method) => {
+    // Once a parcel is marked ODZ/Incomplete Details it is LOCKED to that status —
+    // no other choices are offered. The parcel must be corrected/re-dropped via the
+    // checker's ODZ edit flow before it can move forward, so the dispatcher should
+    // not be able to switch it to another status from here. (Applies to LBC/EMS/FedEx.)
+    if(currentLbcSt === 'ODZ/Incomplete Details') return ['ODZ/Incomplete Details'];
     if(currentLbcSt === 'Out for Delivery') return OFD_CHOICES_SORTER;
     // Once dropped off at courier, restrict choices to: drop-off status + next valid steps only.
     // Prevents dispatcher from reverting to Ready to Pick-up after a drop-off.
@@ -15055,8 +15088,18 @@ function omAssignRider(orderIdx, riderName) {
 }
 
 function omUpdateStatus(orderIdx, newStatus) {
-  if((S.orders[orderIdx]?.verificationStatus||'Not Verified') !== 'Verified') {
+  const _ord = S.orders[orderIdx];
+  if(!_ord) { renderOrderMgmt(); return; }
+  if((_ord.verificationStatus||'Not Verified') !== 'Verified') {
     toast('⚠️ Hindi pa na-verify ang payment. I-verify muna sa Checker Verify.');
+    renderOrderMgmt(); return;
+  }
+  // ── ODZ LOCK GUARD ────────────────────────────────────────────────────────
+  // Once a parcel is ODZ/Incomplete Details it is locked to that status here; it
+  // can only move forward after being corrected via the checker's ODZ edit flow.
+  // Reject any attempt to switch it to a different status from this page.
+  if((_ord.lbcStatus||'') === 'ODZ/Incomplete Details' && newStatus !== 'ODZ/Incomplete Details') {
+    toast('🔒 Naka-ODZ/Incomplete ang parcel — ayusin muna sa Checker (ODZ edit) bago palitan ang status.');
     renderOrderMgmt(); return;
   }
   if(newStatus === 'RTO') { _promptRTO(orderIdx,'ordermgmt'); return; }
@@ -15713,9 +15756,9 @@ function renderCodDelivPage() {
   const updateCount= allCOD.filter(o=>o.status==='Update' && (S.remitLog||[]).some(r=>
     r.riderName===o.assignedRider && r.date===o.date && r.remitStatus==='Remitted'
   )).length;
-  const delivCount = allCOD.filter(o=>o.status==='Delivered' && ((o.paymentMethod||'COD')!=='COD' || _isRemittedCodOrder(o))).length;
+  const delivCount = allCOD.filter(o=>o.status==='Delivered' && _isRemittedCodOrder(o)).length;
   const cancelCount= allCOD.filter(o=>o.status==='Cancelled').length;
-  const totalRev   = allCOD.filter(o=>o.status==='Delivered'&&((o.paymentMethod||'COD')!=='COD'||_isRemittedCodOrder(o))).reduce((s,o)=>s+_invOnlyTotal(o),0);
+  const totalRev   = allCOD.filter(o=>o.status==='Delivered'&&_isRemittedCodOrder(o)).reduce((s,o)=>s+_invOnlyTotal(o),0);
 
   if(statsEl) statsEl.innerHTML = `
     <div class="stat-card blue" onclick="setCodDelivTab('ForUpdate')" style="cursor:pointer;">
@@ -15744,7 +15787,10 @@ function renderCodDelivPage() {
       );
       return _remitted;
     }
-    if(tab==='Delivered') return o.status==='Delivered' && ((o.paymentMethod||'COD')!=='COD' || _isRemittedCodOrder(o));
+    // Delivered tab: BOTH pure COD and COD-OP appear only AFTER the rider's remit
+    // is marked Remitted — COD-OP is treated exactly like COD here (was showing
+    // immediately on delivery before). _isRemittedCodOrder already accepts both.
+    if(tab==='Delivered') return o.status==='Delivered' && _isRemittedCodOrder(o);
     if(tab==='Cancelled') return o.status==='Cancelled';
     return false;
   });
