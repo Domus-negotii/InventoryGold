@@ -3413,6 +3413,55 @@ function _isRemittedCodOrder(o) {
     return false;
   });
 }
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ REMIT LOCK HELPER — _isOrderRemitLocked(o)  [SINGLE SOURCE OF TRUTH]        ║
+// ║                                                                            ║
+// ║ True if this order belongs to a Remitted batch — regardless of status.     ║
+// ║ Unlike _isRemittedCodOrder (requires status==='Delivered'), this also      ║
+// ║ covers Cancelled / Update parcels that were part of a remitted batch.      ║
+// ║                                                                            ║
+// ║ USED BY: rider dashboard hide, 5 rider edit locks, remitter edit lock.     ║
+// ║                                                                            ║
+// ║ ⚠️ CONTRACT — DO NOT WEAKEN THESE GUARDS ON FUTURE EDITS:                   ║
+// ║  1. MATCH BY ID/NUMBER FIRST — the only reliable per-order signal.         ║
+// ║  2. DATE FALLBACK IS NARROW — only for legacy batches with NO orderIds/    ║
+// ║     orderNums at all. A modern batch carries orderIds, so a NEW parcel on  ║
+// ║     an already-remitted date is NOT matched (its ID isn't in that batch)   ║
+// ║     → it stays visible & can start a fresh remit entry. Widening this to a ║
+// ║     plain rider+date match re-introduces the "new parcel disappears on a   ║
+// ║     remitted date" bug. Keep the _batchHasIds gate.                        ║
+// ║  3. NULL-SAFE — guards !o, (S.orders||[]), (S.remitLog||[]), onum(-1).     ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+function _isOrderRemitLocked(o) {
+  if(!o) return false;
+  const _riderName = o.assignedRider || '';
+  const _ordId  = o._id || '';
+  // Guard: only derive an order number if the order is actually found in S.orders.
+  // onum(-1) would produce a bogus number that could false-match a remit entry.
+  const _oIdx = (S.orders||[]).indexOf(o);
+  const _ordNum = (_oIdx >= 0 && typeof onum === 'function') ? onum(_oIdx) : '';
+  const _date   = o.date || '';
+  const _delivDate = (o.dateDelivered || o.date || '').slice(0,10);
+  const _effDate = typeof _effectiveDate === 'function' ? _effectiveDate(o) : _date;
+  return (S.remitLog||[]).some(r => {
+    if(!r || r.remitStatus !== 'Remitted') return false;
+    // ── PRECISE MATCH (by order ID / order number) ──────────────────────────
+    // This is the ONLY reliable way to know an order was part of THIS batch.
+    if(r.orderIds  && _ordId  && r.orderIds.includes(_ordId))   return true;
+    if(r.orderNums && _ordNum && r.orderNums.includes(_ordNum)) return true;
+    // ── LEGACY DATE FALLBACK (very narrow) ──────────────────────────────────
+    // ONLY for old remit batches that have NO orderIds/orderNums recorded at all
+    // (pre-ID data). For those we fall back to rider+date. IMPORTANT: a modern
+    // batch DOES carry orderIds, so a brand-new parcel encoded on the same date
+    // will NOT match here (its ID simply isn't in that batch) — it stays visible
+    // and can be added to a fresh remit entry. Without this guard, remitting one
+    // batch on 08/07 would wrongly hide every later 08/07 parcel for that rider.
+    const _batchHasIds = (r.orderIds && r.orderIds.length) || (r.orderNums && r.orderNums.length);
+    if(!_batchHasIds && r.riderName === _riderName &&
+       (r.date === _date || r.date === _delivDate || (_effDate && r.date === _effDate))) return true;
+    return false;
+  });
+}
 // Helper: true if order is courier-flow (LBC/EMS/FedEx — needs tracking, Fully Paid, dropoff)
 const _isCourierFlow= (o) => _LBC_METHODS.has(o?.paymentMethod);
 // Helper: effective tab for COD Online (maps to COD tab in all views)
@@ -4566,11 +4615,14 @@ function renderChecker(){
     !['Cancelled','RTO','Delivered'].includes(o.status)
   ).length;
   const pending = _pendingCOD + _pendingCourier;
-  document.getElementById('checker-pending-count').textContent = pending ? `⚠️ ${pending} pending` : '✅ All verified';
+  // Pending notification removed per request — keep the element empty so no
+  // "⚠️ N pending" / "✅ All verified" text ever shows in the checker header.
+  const _pc = document.getElementById('checker-pending-count');
+  if(_pc) _pc.textContent = '';
   // Update For Update tab badge
   const updateCount = _safeO.filter(o=>o.status==='Update').length;
   const updateBtn = document.getElementById('checker-tab-update-btn');
-  if(updateBtn) updateBtn.textContent = updateCount > 0 ? `🔔 For Update (${updateCount})` : '🔔 For Update';
+  if(updateBtn) updateBtn.textContent = '🔄 For Update';
   // Update Recently Deleted tab badge
   const delCount = (S.deletedOrders||[]).length;
   const delBtn = document.getElementById('checker-tab-deleted-btn');
@@ -4622,6 +4674,16 @@ function renderChecker(){
     if(_isCourierTab && _COURIER_DONE.has(o.lbcStatus||'')) return false;
     // LBC/EMS/FedEx: only show Fully Paid orders — admin sets payment status, not checker
     if(_isCourierTab && (o.paymentStatus||'No Payment') !== 'Fully Paid') return false;
+    // ── TAB OWNERSHIP BY PAYMENT METHOD (prevents double entry) ───────────────
+    // An order belongs to exactly ONE checker tab based on its payment method.
+    // Even if legacy data has both in-progress flags set, this ensures a COD-OP
+    // order shows ONLY in COD-OP, a pure COD order ONLY in COD, etc.
+    const _pm = o.paymentMethod || 'COD';
+    if(checkerTab === 'COD-OP' && _pm !== 'COD - Online Payment') return false;
+    if(checkerTab === 'COD'    && _pm !== 'COD') return false;
+    if(checkerTab === 'LBC'    && _pm !== 'LBC') return false;
+    if(checkerTab === 'EMS'    && _pm !== 'EMS') return false;
+    if(checkerTab === 'FedEx'  && _pm !== 'FedEx') return false;
     // COD-OP checker: only show orders that admin has moved to "In Progress" tab
     if(checkerTab === 'COD-OP' && !o.codopInProgress) return false;
     // LBC/EMS/FedEx checker: only show orders admin has moved to "In Progress"
@@ -4738,7 +4800,7 @@ function renderChecker(){
               </td>
               <td style="font-size:11px;font-weight:700;color:${_remColor};">
                 ${_remaining < 0
-                  ? `<span style="color:var(--gold);">-${p(Math.abs(_remaining))}</span><div style="font-size:8.5px;color:var(--muted);font-weight:400;">💰 Sobra / Tip</div>`
+                  ? `<span style="color:var(--gold);">-${p(Math.abs(_remaining))}</span><div style="font-size:8.5px;color:var(--muted);font-weight:400;">💰 Sobra</div>`
                   : _remaining === 0
                     ? '<span style="color:var(--green);">✅ Fully Paid</span>'
                     : p(_remaining)}
@@ -5500,7 +5562,7 @@ function openInvoice(i){
   <!-- ── HEADER ── -->
   <div style="text-align:center;padding-bottom:4px;border-bottom:2px solid #000;margin-bottom:5px;">
     <div style="font-family:Georgia,serif;font-size:20px;font-weight:900;letter-spacing:-0.5px;color:#000;line-height:1.1;">Goldchelle</div>
-    <div style="font-size:7.5px;font-weight:700;letter-spacing:2px;color:#000;margin-top:1px;">◆ ONLINE ENTERPRISES</div>
+    <div style="font-size:7.5px;font-weight:700;letter-spacing:2px;color:#000;margin-top:1px;">◆ ONLINE MARKETING CORP.</div>
     <div style="font-size:7.5px;color:#000;margin-top:3px;line-height:1.5;">${bizAddress}<br>${bizPhone} | ${bizFb}</div>
   </div>
 
@@ -5611,7 +5673,8 @@ function openInvoice(i){
 
   <!-- ── FOOTER ── -->
   ${DASH_LINE}
-  <div style="text-align:center;font-size:7px;color:#000;margin-top:2px;">Order # ${onum(i)} &nbsp;|&nbsp; Thank you for shopping!</div>
+  <div style="text-align:center;font-size:7px;color:#000;margin-top:2px;">Sales Order # ${onum(i)} &nbsp;|&nbsp; Thank you for shopping!</div>
+  <div style="text-align:center;font-size:6.5px;color:#000;margin-top:3px;line-height:1.4;font-style:italic;">Note: This Sales Order is not an Official Receipt. Official receipt will be issued upon payment confirmation.</div>
 <div>
   </div>
 <div>
@@ -5990,9 +6053,13 @@ function renderReturns() {
   });
   const _isRemitterVisible = (o) => {
     if(currentRole !== 'remitter') return true; // non-remitter: show all
-    const key = (o.assignedRider||'') + '|' + (o.date||'');
-    // Visible ONLY when remitStatus === 'Remitting' (not For Remittance, not Remitted)
-    return _remittingKeysRR.has(key) && !_remittedKeysRR.has(key);
+    // Match the cancelled-items TABLE rule: visible when the rider's batch is
+    // Remitting OR Remitted (date-lenient, rider-keyed), so the count and the
+    // table always agree. 'For Remittance' → still hidden.
+    return (S.remitLog||[]).some(r =>
+      r && r.riderName === (o.assignedRider||'') &&
+      (r.remitStatus === 'Remitting' || r.remitStatus === 'Remitted')
+    );
   };
 
   const updateOrders = S.orders.filter(o=>{
@@ -6000,17 +6067,20 @@ function renderReturns() {
     if(o.status==='Cancelled'||o.status==='Delivered'||o.status==='RTO') return false;
     const _hasItemUpd = Object.values(o.itemStatuses||{}).some(st=>st==='Update');
     if(!(o.status==='Update'||_hasItemUpd)) return false;
-    // Remitter: same direct check as renderUpdateOrders / renderCancelledItems
+    // Remitter: mirror renderUpdateOrders exactly. Use _effectiveDate (COD-OP deliver
+    // date, else encode date) so the STAT CARD count and the LIST agree. This is the
+    // global summary (no per-date filter here — that lives in the list view).
     if(currentRole==='remitter') {
       const _hasItemUpd2 = Object.values(o.itemStatuses||{}).some(st=>st==='Update');
+      const _eff = (typeof _effectiveDate==='function') ? _effectiveDate(o) : o.date;
       const _remitting = o.assignedRider && (S.remitLog||[]).some(r=>
-        r.riderName===o.assignedRider &&
-        (_hasItemUpd2 ? true : r.date===o.date) &&
+        r && r.riderName===o.assignedRider &&
+        (_hasItemUpd2 ? true : r.date===_eff) &&
         r.remitStatus==='Remitting'
       );
       const _remitted = o.assignedRider && (S.remitLog||[]).some(r=>
-        r.riderName===o.assignedRider &&
-        (_hasItemUpd2 ? true : r.date===o.date) &&
+        r && r.riderName===o.assignedRider &&
+        (_hasItemUpd2 ? true : r.date===_eff) &&
         r.remitStatus==='Remitted'
       );
       return _remitting && !_remitted;
@@ -6026,7 +6096,11 @@ function renderReturns() {
   S.orders.forEach((o,oi)=>{
     // Apply SAME filter as renderCancelledItems table so count always matches display
     // Layer 1: checker-cancelled flags
-    if(o.cancelledBy || o.checkerCancelledDirect) return;
+    // Exclude only CHECKER/SYSTEM cancellations (auto-restored, no manual log needed).
+    // RIDER cancellations (cancelledBy='Rider') MUST stay visible here so the remitter
+    // can still see & log them — including after the batch is Remitted.
+    const _isRiderCancel = o.cancelledBy && ['Rider','rider'].includes(o.cancelledBy);
+    if((o.cancelledBy && !_isRiderCancel) || o.checkerCancelledDirect) return;
     // Layer 2: in deletedOrders log (covers old records without flags)
     if(o.status==='Cancelled' && (S.deletedOrders||[]).some(d=>d.orderNum===onum(oi))) return;
     // Layer 3: Remitter visibility — only count if rider is Remitting (not For Remittance, not Remitted)
@@ -6062,9 +6136,9 @@ function renderReturns() {
     <div class="stat-card blue">  <div class="stat-label">Return Log</div><div class="stat-value">${returnLogCount}</div><div class="stat-sub">manual entries</div></div>`;
 
   const updateBtn = document.getElementById('ret-tab-update-btn');
-  if(updateBtn) updateBtn.textContent = updateOrders>0 ? `🔄 For Update (${updateOrders})` : '🔄 For Update';
+  if(updateBtn) updateBtn.textContent = '🔄 For Update';
   const itemsBtn = document.getElementById('ret-tab-items-btn');
-  if(itemsBtn) itemsBtn.textContent = cancelledItemCount>0 ? `📦 Cancelled Items (${cancelledItemCount})` : '📦 Cancelled Items';
+  if(itemsBtn) itemsBtn.textContent = '📦 Cancelled Items';
 
   // Render active tab
   if(returnTab==='update') renderUpdateOrders();
@@ -6088,19 +6162,28 @@ function renderUpdateOrders() {
       if(!_isForUpdate) return false;
       // Exclude fully cancelled/delivered orders
       if(o.status === 'Cancelled' || o.status === 'Delivered' || o.status === 'RTO') return false;
-      if(df && o.date !== df) return false;
-      // Remitter role: visible ONLY kapag "Remitting" — hidden kapag For Remittance OR Remitted
-      // For item-level For Update: match any Remitting entry for this rider (date may differ)
+      // ── STRICT DATE FILTER ────────────────────────────────────────────────
+      // Show ONLY orders whose date matches the selected filter. Use _effectiveDate
+      // (COD-OP scheduled deliver date, else encode date) so it matches the date the
+      // remitter sees elsewhere. When a date is picked, an order on any OTHER date is
+      // hidden — even if its rider has a Remitting batch on a different date.
+      if(df && _effectiveDate(o) !== df) return false;
+      // Remitter role: visible ONLY kapag "Remitting" — hidden kapag For Remittance
+      // OR Remitted. When NO date filter is set, item-level For Update matches any
+      // Remitting entry for the rider (date-lenient). When a date IS set, the strict
+      // filter above already pinned the date, so we don't loosen it here.
       if(currentRole === 'remitter') {
         const _hasItemUpdate = Object.values(o.itemStatuses||{}).some(st => st === 'Update');
+        // date-lenient only when no explicit date filter is active
+        const _dateLenient = _hasItemUpdate && !df;
         const _isRemitting = o.assignedRider && (S.remitLog||[]).some(r =>
-          r.riderName === o.assignedRider &&
-          (_hasItemUpdate ? true : r.date === _effectiveDate(o)) &&
+          r && r.riderName === o.assignedRider &&
+          (_dateLenient ? true : r.date === _effectiveDate(o)) &&
           r.remitStatus === 'Remitting'
         );
         const _isRemitted = o.assignedRider && (S.remitLog||[]).some(r =>
-          r.riderName === o.assignedRider &&
-          (_hasItemUpdate ? true : r.date === _effectiveDate(o)) &&
+          r && r.riderName === o.assignedRider &&
+          (_dateLenient ? true : r.date === _effectiveDate(o)) &&
           r.remitStatus === 'Remitted'
         );
         if(!_isRemitting || _isRemitted) return false;
@@ -6192,25 +6275,34 @@ function renderCancelledItems() {
   const tbody = document.getElementById('cancelled-items-tbody');
   if(!tbody) return;
   const dfRaw = document.getElementById('ret-items-date')?.value || '';
-  const df = mdy2ymd(dfRaw); // convert MM/DD/YYYY → YYYY-MM-DD to match o.date format
+  const df = mdy2ymd(dfRaw); // convert MM/DD/YYYY → YYYY-MM-DD
   const rows = [];
   S.orders.forEach((o,oi)=>{
-    if(df && o.date !== df) return;
+    // STRICT DATE FILTER: show only items whose effective date matches the selected
+    // date (COD-OP deliver date, else encode date). Other dates are hidden.
+    if(df && _effectiveDate(o) !== df) return;
     // UPDATE 2: Skip orders cancelled by checker — inventory already restored automatically.
     // These should NOT appear in Remitter's Cancelled Items to avoid duplicate records.
     // Detection: cancelledBy (confirmCheckerCancel/codDelivCancelOrder)
     //            OR checkerCancelledDirect (resolveUpdate from Checker For Update tab)
     //            OR order is in S.deletedOrders (covers old records without cancelledBy flag)
-    if(o.cancelledBy || o.checkerCancelledDirect) return;
+    // Exclude only CHECKER/SYSTEM cancellations (auto-restored, no manual log needed).
+    // RIDER cancellations (cancelledBy='Rider') MUST stay visible here so the remitter
+    // can still see & log them — including after the batch is Remitted.
+    const _isRiderCancel = o.cancelledBy && ['Rider','rider'].includes(o.cancelledBy);
+    if((o.cancelledBy && !_isRiderCancel) || o.checkerCancelledDirect) return;
     // Also skip whole-order cancellations that are in deletedOrders log (checker-handled)
     if(o.status === 'Cancelled' && (S.deletedOrders||[]).some(d => d.orderNum === onum(oi))) return;
     // Req#3: Remitter view — only show cancelled items whose rider is "Remitting" OR "Remitted".
     // "For Remittance" riders are excluded — their items aren't ready for processing yet.
     if(currentRole === 'remitter') {
-      // Visible ONLY when remitStatus === 'Remitting' (not For Remittance, not Remitted)
+      // Visible when the rider's batch is Remitting OR already Remitted, so the
+      // remitter can still see & log cancelled items during and after remit — same
+      // as the For Update tab. Match by rider (date-lenient) since a cancelled
+      // parcel's date may differ from the batch date.
       const _riderActive = o.assignedRider && (S.remitLog||[]).some(r =>
-        r.riderName === o.assignedRider && r.date === _effectiveDate(o) &&
-        r.remitStatus === 'Remitting'
+        r && r.riderName === o.assignedRider &&
+        (r.remitStatus === 'Remitting' || r.remitStatus === 'Remitted')
       );
       if(!_riderActive) return;
     }
@@ -8332,7 +8424,7 @@ function renderCourierDashboard(){
                      </td>
                      <td style="font-size:11px;font-weight:700;color:${_balColor};">
                        ${_bal < 0
-                         ? `<span style="color:var(--gold);">-${p(Math.abs(_bal))}</span><div style="font-size:8.5px;color:var(--muted);font-weight:400;">💰 Sobra / Tip</div>`
+                         ? `<span style="color:var(--gold);">-${p(Math.abs(_bal))}</span><div style="font-size:8.5px;color:var(--muted);font-weight:400;">💰 Sobra</div>`
                          : _bal === 0
                            ? '<span style="color:var(--green);">✅ Fully Paid</span>'
                            : p(_bal)}
@@ -8415,9 +8507,12 @@ function moveCodOpToInProgress(idx) {
   // Store where this order came from so we can return it correctly
   o.codopPrevTab = o.paymentStatus || 'No Payment';
   o.codopInProgress = true;
+  o.lbcInProgress = false; // MUTUAL EXCLUSION: never both flags → prevents the
+                           // order appearing in two checker tabs (double entry).
   save();
   window._cdPayTab = 'In Progress';
   renderCourierDashboard();
+  try { renderChecker(); } catch(e) {}
   toast('🔄 Order moved to In Progress tab.');
 }
 
@@ -8438,10 +8533,12 @@ function moveCodOpFromInProgress(idx, targetTab) {
   // targetTab passed explicitly from button; fallback to stored codopPrevTab, then paymentStatus
   const backTab = targetTab || o.codopPrevTab || o.paymentStatus || 'No Payment';
   o.codopInProgress = false;
+  o.lbcInProgress = false; // clear both so a returned order leaves the checker entirely
   o.codopPrevTab = '';
   save();
   window._cdPayTab = backTab;
   renderCourierDashboard();
+  try { renderChecker(); } catch(e) {}
   const label = backTab === 'Partial' ? 'Partial' : backTab === 'Fully Paid' ? 'Fully Paid' : backTab;
   toast('↩️ Order returned to ' + label + ' tab.');
 }
@@ -8475,6 +8572,7 @@ function moveLbcToInProgress(idx) {
   // Store where this order came from so we can return it correctly
   o.lbcPrevTab = (_pm === 'COD' || _pm === 'COD - Online Payment') ? 'Encoded' : (o.paymentStatus || 'Fully Paid');
   o.lbcInProgress = true;
+  o.codopInProgress = false; // MUTUAL EXCLUSION: never both flags → prevents double entry.
   save();
   window._cdPayTab = 'In Progress';
   renderCourierDashboard();
@@ -8498,6 +8596,7 @@ function moveLbcFromInProgress(idx, targetTab) {
   const _fpm = o.paymentMethod || '';
   const backTab = targetTab || o.lbcPrevTab || ((_fpm==='COD'||_fpm==='COD - Online Payment') ? 'Encoded' : (o.paymentStatus || 'Fully Paid'));
   o.lbcInProgress = false;
+  o.codopInProgress = false; // clear both so a returned order leaves the checker entirely
   o.lbcPrevTab = '';
   save();
   window._cdPayTab = backTab;
@@ -10370,17 +10469,21 @@ function renderRiderParcels() {
         // Detect via checkerCancelledDirect flag OR cancelledBy='Checker'/'System' (older orders)
         if(o.checkerCancelledDirect === true) return false;
         if(o.cancelledBy && !['Rider','rider'].includes(o.cancelledBy)) return false;
-        // RULE 2: Rider had the order and cancelled item(s) → stay visible until officially remitted
-        const _remitted = (S.remitLog||[]).some(r =>
-          r.riderName === o.assignedRider && r.date === _effectiveDate(o) && r.remitStatus === 'Remitted'
-        );
-        return !_remitted; // show until remitted, then hide
+        // RULE 2: Rider had the order and cancelled item(s) → stay visible until officially
+        // remitted. Use the precise ID-based lock (NOT a loose date match) so a new
+        // parcel on a date that already has a remitted batch is not wrongly hidden.
+        return !_isOrderRemitLocked(o); // show until THIS order is in a Remitted batch
       }
       // Only show orders dispatcher marked Ready or beyond — not Preparing
       // Exception: rescheduled orders (have scheduledDelivery set) stay visible
       // even if status went back to Preparing after reschedule from For Update
       const _isRescheduled = !!o.scheduledDelivery || o.wasForUpdate === true;
       if(!RIDER_VISIBLE_STATUSES.has(o.status) && !_isRescheduled) return false;
+      // ── REMIT HIDE ──────────────────────────────────────────────────────────
+      // Once the order's batch is Remitted the money is settled — hide it from the
+      // rider dashboard entirely (Delivered, Update, RTO, etc.). The Cancelled path
+      // above already applies this; here it covers every other visible status.
+      if(_isOrderRemitLocked(o)) return false;
       return true;
     });
   // Build a map: orderNum/ID → array of Remitted batch dates for this rider
@@ -10843,6 +10946,13 @@ function riderUpdateStatus(orderIdx, newStatus) {
   // GUARD: null-check order and status before any mutation
   if(!S.orders[orderIdx]) { console.warn('[GOE] riderUpdateStatus: invalid orderIdx', orderIdx); return; }
   if(!newStatus) { console.warn('[GOE] riderUpdateStatus: empty newStatus'); return; }
+  // ── REMIT LOCK ────────────────────────────────────────────────────────────
+  // Once the order's batch is Remitted the money is settled — no more status
+  // changes from the rider. (Also hidden from the rider dashboard.)
+  if(_isOrderRemitLocked(S.orders[orderIdx])) {
+    toast('🔒 Na-remit na ang order na ito — hindi na pwedeng baguhin.');
+    renderRiderParcels(); return;
+  }
   // Direct save — no confirmation needed, status applies immediately
   // Map display label to stored value
   const statusMap = {
@@ -10857,6 +10967,15 @@ function riderUpdateStatus(orderIdx, newStatus) {
   }
   // ── SPECIAL PREFIX HOOK: FPG/PGS/PGG/FPS/FPW whole-order status sync ──
   if(storedStatus === 'Cancelled') {
+    // ── RIDER CANCELLATION MARK ──────────────────────────────────────────────
+    // Tag this as a RIDER cancellation so the rider-dashboard visibility filter
+    // keeps it visible (it stays until the batch is Remitted). Without this,
+    // cancelledBy may be empty or hold a stale value, and the filter's Rule 1
+    // ("cancelledBy ≠ Rider → hide") would make the parcel disappear right after
+    // the rider sets Cancelled. Also clear checkerCancelledDirect — this was NOT
+    // a checker pre-dispatch cancel.
+    S.orders[orderIdx].cancelledBy = 'Rider';
+    S.orders[orderIdx].checkerCancelledDirect = false;
     _syncOiPrefixStatus(orderIdx, 'cancelled'); // Cancelled → Other Items Cancelled tab
   }
   // NOTE: OI items do NOT auto-move to Sales on Delivered.
@@ -10879,6 +10998,11 @@ function riderUpdateStatus(orderIdx, newStatus) {
 }
 
 function riderSaveRemarks(orderIdx, remarks) {
+  if(!S.orders || !S.orders[orderIdx]) return;
+  if(_isOrderRemitLocked(S.orders[orderIdx])) {
+    toast('🔒 Na-remit na — hindi na pwedeng baguhin ang remarks.');
+    try { renderRiderParcels(); } catch(e){} return;
+  }
   S.orders[orderIdx].riderRemarks = remarks;
   save();
 }
@@ -10886,6 +11010,10 @@ function riderOiItemStatus(orderIdx, itemIdx, newStatus) {
   // Rider sets status for an OI-prefix item (FPG/PGS/PGG/FPS/FPW)
   const o = S.orders[orderIdx];
   if(!o) return;
+  if(_isOrderRemitLocked(o)) {
+    toast('🔒 Na-remit na ang order na ito — hindi na pwedeng baguhin.');
+    try { renderRiderParcels(); } catch(e){} return;
+  }
   if(!o.oiItemStatus) o.oiItemStatus = {};
   o.oiItemStatus[itemIdx] = newStatus;
   // Sync to S.otherItems
@@ -10926,6 +11054,10 @@ function riderSaveItemRemark(orderIdx, itemIdx, remark) {
 // DO NOT add deductions outside of this function's _isNowOut/_wasOut logic.
 // ═══════════════════════════════════════════════════════════════════════════
 function riderItemStatus(orderIdx, itemIdx, newStatus) {
+  if(_isOrderRemitLocked(S.orders && S.orders[orderIdx])) {
+    toast('🔒 Na-remit na ang order na ito — hindi na pwedeng baguhin.');
+    try { renderRiderParcels(); } catch(e){} return;
+  }
   const _riderItemKey = '_lock_riderItem_'+orderIdx+'_'+itemIdx;
   if(window[_riderItemKey]) { toast('⏳ Please wait...'); return; }
   window[_riderItemKey] = true;
@@ -11041,6 +11173,10 @@ function riderItemStatus(orderIdx, itemIdx, newStatus) {
 // Never deducts the full amount — prevents double-deduction with riderItemStatus.
 // ═══════════════════════════════════════════════════════════════════════════
 function riderItemPartialCancel(orderIdx, itemIdx, cancelQtyStr, totalQty, isGrams) {
+  if(_isOrderRemitLocked(S.orders && S.orders[orderIdx])) {
+    toast('🔒 Na-remit na ang order na ito — hindi na pwedeng baguhin.');
+    try { renderRiderParcels(); } catch(e){} return;
+  }
   const order = S.orders[orderIdx];
   if(!order) return;
   if(order.status === 'Preparing') {
@@ -12292,6 +12428,16 @@ function onRemitStatusChange(val) {
 }
 
 function openRemitModal(editIdx=null) {
+  // ── REMIT LOCK ────────────────────────────────────────────────────────────
+  // A Remitted entry is settled and read-only. The row UI already hides the edit
+  // button, but this hard guard blocks opening the editor even if that is bypassed.
+  if(editIdx !== null && editIdx !== undefined && editIdx !== '') {
+    const _entry = (S.remitLog||[])[+editIdx];
+    if(_entry && _entry.remitStatus === 'Remitted') {
+      toast('🔒 Remitted na ang entry — hindi na pwedeng i-edit.');
+      return;
+    }
+  }
   const sel = document.getElementById('remit-rider');
   sel.innerHTML = '<option value="">-- Select Rider --</option>' +
     S.riders.map((r,i)=>`<option value="${i}">${r.name} — ${(r.locations&&r.locations.length?r.locations:(r.location?[r.location]:[])).join(', ')||'—'}</option>`).join('');
@@ -13093,28 +13239,29 @@ function saveRemit() {
   // RETURN LOG GATE: runs BEFORE push — nothing committed if blocked
   if(remitStatus === 'Remitted') {
     const _unloggedItems = [];
-    myOrders.forEach((o) => {
+    (myOrders||[]).forEach((o) => {
+      if(!o) return; // GUARD: skip null order slots
       const _onum = onum(o.idx);
       const iS = o.itemStatuses || {};
-      // Check if ANY returnLog entry exists for this order (whole-order match)
-      // itemIdx may be null when logged via the Return/Cancel tab (not from item button)
-      const _hasAnyLog = (S.returnLog||[]).some(r => r.orderNum === _onum);
+      const iCQ = o.itemCancelQty || {};
+      // A return-log entry covers this item if: exact item-index match, OR a
+      // whole-order log exists (itemIdx null/undefined — logged from Return/Cancel tab).
+      const _isLogged = (ii) => (S.returnLog||[]).some(r =>
+        r && r.orderNum === _onum && (r.itemIdx === ii || r.itemIdx === null || r.itemIdx === undefined)
+      );
       if(o.status === 'Cancelled' || o.status === 'RTO') {
+        // WHOLE order cancelled/RTO → every item must be logged
         (o.items||[]).forEach((it, ii) => {
-          // Logged if: exact item-index match OR whole-order log exists (itemIdx===null)
-          // OR any log for this order (covers manual logging from Return/Cancel tab)
-          const _logged = (S.returnLog||[]).some(r =>
-            r.orderNum === _onum && (r.itemIdx === ii || r.itemIdx === null || r.itemIdx === undefined)
-          );
-          if(!_logged) _unloggedItems.push(_onum + ' - ' + (it.code||it.desc||'Item '+(ii+1)));
+          if(!it) return; // GUARD: skip null item rows
+          if(!_isLogged(ii)) _unloggedItems.push(_onum + ' - ' + (it.code||it.desc||'Item '+(ii+1)));
         });
       } else {
+        // Partial: only the cancelled item(s) / cancelled-qty item(s) must be logged
         (o.items||[]).forEach((it, ii) => {
-          if((iS[ii]==='Cancelled')||((o.itemCancelQty||{})[ii]>0)) {
-            const _logged = (S.returnLog||[]).some(r =>
-              r.orderNum === _onum && (r.itemIdx === ii || r.itemIdx === null || r.itemIdx === undefined)
-            );
-            if(!_logged) _unloggedItems.push(_onum + ' - ' + (it.code||it.desc||'Item '+(ii+1)));
+          if(!it) return; // GUARD: skip null item rows
+          const _itemCancelled = (iS[ii]==='Cancelled') || ((iCQ[ii]||0) > 0);
+          if(_itemCancelled && !_isLogged(ii)) {
+            _unloggedItems.push(_onum + ' - ' + (it.code||it.desc||'Item '+(ii+1)));
           }
         });
       }
@@ -13517,6 +13664,41 @@ function renderRemitPage() {
               <td style="padding:6px 8px;text-align:left;">${renderOrderItems(o)}</td>
               <td style="padding:6px 8px;text-align:right;color:var(--blue);white-space:nowrap;">${p(o.shipping||0)}</td>
               <td style="padding:6px 8px;text-align:right;font-weight:700;white-space:nowrap;color:${o.status==='Cancelled'?'var(--red)':'var(--green)'};">${(()=>{
+                // ── CANCELLED / FOR-UPDATE / RTO: VIEW-ONLY AMOUNT ────────────────
+                // These parcels are NOT delivered, so they are excluded from the
+                // section Subtotal, COD Subtotal and Net to Remit (those sum only
+                // Delivered orders). But the remitter still wants to SEE the parcel's
+                // value for reference, so show the gross order amount here, clearly
+                // marked "(di kasama)" so no one mistakes it for collectible cash.
+                const _isNonRemit = (o.status === 'Cancelled' || o.status === 'Update' || o.status === 'RTO');
+                if(_isNonRemit) {
+                  // VIEW-ONLY breakdown: show the parcel's TOTAL and how much was
+                  // already paid online / in advance — same detail as delivered rows.
+                  // Still excluded from the section Subtotal / COD Subtotal / Net,
+                  // which sum only Delivered orders. This is purely informational.
+                  // IMPORTANT: for Cancelled / Update orders, o.grandTotal and
+                  // o.itemsTotal are often stale/zeroed. Recompute the ORIGINAL parcel
+                  // value from the raw item rows (all items, even cancelled ones) plus
+                  // the shipping fee, so the remitter sees the true parcel amount —
+                  // not ₱0 or just the SF.
+                  const _rawItems = (o.items||[]).reduce((s,it)=>s+((it&&parseFloat(it.total))||0),0);
+                  const _viewBase = _rawItems > 0
+                    ? Math.round((_rawItems + (o.shipping||0))*100)/100
+                    : Math.round(((o.grandTotal||0))*100)/100; // fallback if no item rows
+                  const _view = _viewBase;
+                  const _clr = o.status === 'Cancelled' ? 'var(--red)' : 'var(--orange)';
+                  const _paidAdv = (typeof _amountPaidOnline==='function') ? _amountPaidOnline(o) : 0;
+                  const _lines = [
+                    `<div style="font-size:9px;color:var(--muted);font-weight:400;">Total: ${p(_view)}</div>`,
+                  ];
+                  // Only show the "Nabayad" line for COD-OP orders that actually have
+                  // an online/advance payment recorded.
+                  if(o.paymentMethod === 'COD - Online Payment' && _paidAdv > 0) {
+                    _lines.push(`<div style="font-size:9px;color:var(--blue);font-weight:400;">Nabayad/Advance: ${p(_paidAdv)}</div>`);
+                  }
+                  _lines.push(`<div style="font-size:9px;color:var(--muted);font-weight:400;">(di kasama sa remit)</div>`);
+                  return `<span style="color:${_clr};">${p(_view)}</span>${_lines.join('')}`;
+                }
                 // Show the SAME payment breakdown the rider sees, so the remitter
                 // has a basis for what was already paid online vs. collected in cash.
                 const _amt = _effectiveAmount(o);
@@ -14890,7 +15072,9 @@ function startAutoRefresh(){
         pnl:()=>renderPnl?.(),
         inventory:()=>switchInvTab(invTab),
         adminsheets:()=>renderAdminSheets?.(),
-        ridersremit:()=>renderRemitPage?.(),
+        // ridersremit handled below with a modal-open guard (avoids double-render
+        // and prevents re-rendering behind an open remit entry modal).
+        ridersremit:()=>{},
         cashbond:()=>renderCashbondPage?.(),
         benefits:()=>renderBenefitsPage?.(),
         incentives:()=>renderIncentivesPage?.(),
@@ -14911,6 +15095,19 @@ function startAutoRefresh(){
       // Always re-render Other Items if it's the active page (real-time updates)
       if(_activePage === 'otheritems') { try { renderOtherItemsPage(); } catch(e) {} }
       if(currentRole==='rider') try{renderRiderParcels();}catch(e){}
+      // Real-time Riders Remit: re-render when active so a rider's parcel edit on
+      // another device reflects here without a manual refresh.
+      // GUARDS:
+      //  • Skip if the remit entry MODAL is open — re-rendering the page behind it
+      //    would not disturb the modal, but we avoid needless work while the remitter
+      //    is mid-edit (their save already refreshes on close).
+      //  • The date-filter <input> value is read live inside renderRemitPage, so a
+      //    re-render preserves whatever the remitter has typed — no input is lost.
+      // renderMap[ridersremit] above may already have run; this stays idempotent.
+      if(_activePage === 'ridersremit') {
+        const _remitModalOpen = document.getElementById('modal-remit')?.classList.contains('active');
+        if(!_remitModalOpen) { try { renderRemitPage(); } catch(e) {} }
+      }
       // Safety net: if checker page is active and new orders arrived, always re-render
       // even if renderMap already called it (idempotent, fast, prevents stuck UI)
       if(window._sarOrdersChanged && _activePage !== 'checker') {
@@ -14918,10 +15115,8 @@ function startAutoRefresh(){
         try {
           const _pendingBadge = document.getElementById('checker-pending-count');
           if(_pendingBadge) {
-            const _p = (S.orders||[]).filter(o=>o&&_isCodFlow(o)&&
-              o.checkerStatus==='Pending'&&
-              !['Cancelled','RTO','Delivered','Out for Delivery','Update'].includes(o.status)).length;
-            _pendingBadge.textContent = _p ? `⚠️ ${_p} pending` : '✅ All verified';
+            // Notification removed per request — always keep it empty.
+            _pendingBadge.textContent = '';
           }
         } catch(_e) {}
       }
