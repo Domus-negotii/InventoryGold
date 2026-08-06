@@ -5257,6 +5257,16 @@ function updateVerifStatus(orderIdx, status) {
     });
   }
   save(); renderChecker();
+  // ── INSTANT REFLECTION ────────────────────────────────────────────────────
+  // Inventory is already deducted/restored synchronously above. Re-render the
+  // pages that depend on verification state RIGHT NOW so the change reflects
+  // instantly on this device (no waiting for the next SAR poll):
+  //   • Dispatcher (LBC/EMS/FedEx Tracking) — a verified parcel becomes actionable
+  //   • Inventory / Products — stock count updated
+  //   • COD Tracking / Delivery pages that gate on verification
+  try { if(typeof renderOrderMgmt==='function') renderOrderMgmt(); } catch(e){}
+  try { if(typeof switchInvTab==='function' && typeof invTab!=='undefined') switchInvTab(invTab); } catch(e){}
+  try { if(typeof refreshUpdateBadge==='function') refreshUpdateBadge(); } catch(e){}
   toast(`✅ Verification: ${status}${status==='Verified'?' — Inventory deducted.':' — Inventory restored.'}`);
   // Refresh ALL inventory tabs + Other Items immediately
   _refreshInvAllTabs();
@@ -15108,6 +15118,13 @@ function startAutoRefresh(){
         const _remitModalOpen = document.getElementById('modal-remit')?.classList.contains('active');
         if(!_remitModalOpen) { try { renderRemitPage(); } catch(e) {} }
       }
+      // Real-time DISPATCHER (LBC/EMS/FedEx Tracking): re-render when active so a
+      // parcel verified by the checker on another device becomes actionable here
+      // within one SAR cycle, without a manual refresh.
+      if(_activePage === 'ordermgmt') { try { renderOrderMgmt(); } catch(e) {} }
+      // Real-time CHECKER already handled below by the sarOrdersChanged block, but
+      // ensure the checker page itself re-renders on any order change too.
+      if(_activePage === 'checker') { try { renderChecker(); } catch(e) {} }
       // Safety net: if checker page is active and new orders arrived, always re-render
       // even if renderMap already called it (idempotent, fast, prevents stuck UI)
       if(window._sarOrdersChanged && _activePage !== 'checker') {
