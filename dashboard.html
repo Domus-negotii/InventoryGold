@@ -5058,6 +5058,34 @@ function _captureOtherItems(orderIdx) {
   const _oNum = onum(orderIdx);
   if(!S.otherItems) S.otherItems = [];
 
+  // ── SELF-HEAL (idempotent re-capture) ─────────────────────────────────────
+  // Wipe ALL prior OI entries for THIS order before recomputing, so a re-verify
+  // always rebuilds them from the current order items with the correct qty/grams
+  // and totals. Without this, stale entries from an earlier (buggy) capture stay
+  // behind and NEW entries get appended → duplicated rows and wrong amounts in
+  // Other Items (the "grams don't match / swapped totals" bug). Matching by both
+  // orderNum and orderId covers legacy rows saved before orderId existed.
+  //
+  // GUARDS:
+  //  • Only wipe when the order actually has items to rebuild from — otherwise a
+  //    call with an empty/malformed order would erase good entries and leave
+  //    nothing behind.
+  //  • Match strictly by this order's identity (orderNum AND/OR orderId), never
+  //    by a looser key, so we never touch another order's rows.
+  //  • Preserve any MANUAL edits: entries flagged _manualEdit are kept as-is
+  //    (checker/admin may have hand-corrected profit/capital in the OI page).
+  const _oId = o._id || '';
+  const _hasItemsToRebuild = Array.isArray(o.items) && o.items.length > 0;
+  if(_hasItemsToRebuild && Array.isArray(S.otherItems) && S.otherItems.length) {
+    S.otherItems = S.otherItems.filter(r => {
+      if(!r) return false; // drop null slots defensively
+      const _belongsToThisOrder = (r.orderNum === _oNum) || (_oId && r.orderId === _oId);
+      if(!_belongsToThisOrder) return true;   // keep other orders' rows untouched
+      if(r._manualEdit) return true;          // keep hand-edited rows (don't wipe)
+      return false;                            // wipe this order's auto rows → rebuild
+    });
+  }
+
   const _itemStatuses  = o.itemStatuses  || {};
   const _itemCancelQty = o.itemCancelQty || {};
 
@@ -5066,12 +5094,28 @@ function _captureOtherItems(orderIdx) {
     if(!_code) return;
     const _prefix = _getOiPrefix(_code);
     const _inInv  = (S.inventory||[]).some(inv => inv.code && inv.code.toUpperCase() === _code);
-    // Only capture: specific OI prefix codes OR not in inventory
-    if(!_prefix && _inInv) return;
+    // ── CAPTURE RULE (fixed) ────────────────────────────────────────────────
+    // An item is an "Other Item" only if:
+    //   (a) it carries an EXPLICIT OI prefix (FPG/PGS/PGG/FPS/FPW), OR
+    //   (b) it is NOT in the inventory master list at all (truly external item).
+    // The generic FP*/PG* catch (_FPGP_GENERIC) must NOT pull in real inventory
+    // products whose code merely starts with FP or PG (e.g. "FPHONE", "PGLASS").
+    // If the code IS in inventory, only an EXPLICIT prefix forces OI capture —
+    // otherwise it's a normal stock item and is skipped. This was the source of
+    // the "encoded items don't match the verified Other Items count" bug.
+    const _isExplicitOiPrefix = _prefix && _prefix !== '_FPGP_GENERIC';
+    if(_inInv && !_isExplicitOiPrefix) return; // real stock product → not an OI
+    if(!_prefix && _inInv) return; // (kept for clarity; covered above)
 
     // ── Determine quantities ───────────────────────────────────────────────
+    // SINGLE SOURCE for the item's measure type. An item is grams-based ONLY when
+    // it.grams > 0. Otherwise it is unit/piece-based and its count is it.qty. This
+    // flag is used consistently for BOTH the delivered and cancelled portions so
+    // the qty and grams fields are never crossed (which caused the Other Items
+    // count to show e.g. "1g" for a 2-piece item). Do NOT re-derive per-portion.
+    const _isGramsItem = (parseFloat(it.grams) || 0) > 0;
     const _isWholeCancel = _itemStatuses[ii] === 'Cancelled';
-    const _totalQty  = it.grams > 0 ? it.grams : (it.qty || 1);
+    const _totalQty  = _isGramsItem ? parseFloat(it.grams) : (parseFloat(it.qty) || 1);
     const _cancelQty = _isWholeCancel ? _totalQty : (parseFloat(_itemCancelQty[ii]) || 0);
     const _delivQty  = Math.max(0, _totalQty - _cancelQty);
 
@@ -5115,8 +5159,10 @@ function _captureOtherItems(orderIdx) {
     );
     if(_delivQty > 0) {
       const _delivTotal = Math.round(_ppu * _delivQty * 100) / 100;
-      const _delivGrams = it.grams > 0 ? _delivQty : 0;
-      const _delivUnits = it.grams > 0 ? (it.qty || 1) : _delivQty;
+      // grams item → the measured amount lives in grams, qty stays 1.
+      // unit item  → the measured amount lives in qty, grams stays 0.
+      const _delivGrams = _isGramsItem ? _delivQty : 0;
+      const _delivUnits = _isGramsItem ? 1 : _delivQty;
       if(_existIdx >= 0) {
         // Re-verify: update qty/total but don't change status (unless cancelled)
         const _e = S.otherItems[_existIdx];
@@ -5129,8 +5175,8 @@ function _captureOtherItems(orderIdx) {
         if(_e.status === 'cancelled') _e.status = 'product'; // re-verify resets
       } else {
         S.otherItems.push(_baseEntry(
-          it.grams > 0 ? (it.qty || 1) : _delivQty,
-          it.grams > 0 ? _delivQty : 0,
+          _isGramsItem ? 1 : _delivQty,   // qty
+          _isGramsItem ? _delivQty : 0,   // grams
           _delivTotal,
           'product'
         ));
@@ -5144,8 +5190,8 @@ function _captureOtherItems(orderIdx) {
     // ── Cancelled portion (partial or whole) ──────────────────────────────
     if(_cancelQty > 0) {
       const _cxTotal = Math.round(_ppu * _cancelQty * 100) / 100;
-      const _cxGrams = it.grams > 0 ? _cancelQty : 0;
-      const _cxUnits = it.grams > 0 ? 0 : _cancelQty; // qty for unit items
+      const _cxGrams = _isGramsItem ? _cancelQty : 0;
+      const _cxUnits = _isGramsItem ? 0 : _cancelQty; // qty for unit items
       // Check if a cancelled entry already exists for this item
       const _cxExistIdx = S.otherItems.findIndex(r =>
         r.orderNum === _oNum && r.itemIdx === ii && r.status === 'cancelled'
@@ -5153,8 +5199,8 @@ function _captureOtherItems(orderIdx) {
       if(_cxExistIdx >= 0) {
         // Update existing cancelled entry
         const _ce = S.otherItems[_cxExistIdx];
-        _ce.qty   = it.grams > 0 ? 0 : _cancelQty;
-        _ce.grams = it.grams > 0 ? _cancelQty : 0;
+        _ce.qty   = _isGramsItem ? 0 : _cancelQty;
+        _ce.grams = _isGramsItem ? _cancelQty : 0;
         _ce.total = _cxTotal;
         _ce.profit = _defaultProfitPerUnit * (_cxGrams || _cxUnits);
         _ce.capital = Math.max(0, _cxTotal - _ce.profit);
@@ -9011,9 +9057,17 @@ function renderPnl(){
   // If new prefixes are added to _OI_PREFIXES, they are automatically excluded here.
   // ═══════════════════════════════════════════════════════════════════════════
   function _oiPrefixTotal(order) {
+    // Mirror _captureOtherItems' rule so P&L and the Other Items page agree:
+    // a code counts as OI only if it has an EXPLICIT prefix, OR it isn't a real
+    // inventory product. A real stock item that merely starts with FP/PG is NOT OI.
+    const _invSet = new Set((S.inventory||[]).map(iv=>(iv.code||'').toUpperCase().trim()).filter(Boolean));
     return (order.items||[]).reduce((s, it) => {
-      const _code = (it.code||'').toUpperCase().trim();
-      const _isOI = typeof _getOiPrefix === 'function' && _getOiPrefix(_code);
+      const _code = (it && it.code||'').toUpperCase().trim();
+      if(!_code) return s;
+      const _pfx = typeof _getOiPrefix === 'function' ? _getOiPrefix(_code) : null;
+      const _explicit = _pfx && _pfx !== '_FPGP_GENERIC';
+      const _inInv = _invSet.has(_code);
+      const _isOI = _explicit || !_inInv; // OI if explicit prefix OR not a stock item
       return _isOI ? s + (it.total||0) : s;
     }, 0);
   }
@@ -12437,6 +12491,27 @@ function onRemitStatusChange(val) {
   if(note) note.style.display = val === 'Remitted' ? '' : 'none';
 }
 
+function overrideRemitBenefits(remitIdx, val) {
+  // Override the Benefits deduction for a remit entry directly from the entries
+  // table. The value is normally auto-summed from the Benefits Log (per rider+date),
+  // but the remitter/owner may override it here. Stored in e.manualBenefits so the
+  // per-entry math (_computeRemit) and the Net figures update on the next render.
+  // Only editable while NOT yet Remitted (a settled entry is read-only).
+  const _log = S.remitLog || [];
+  const e = _log[+remitIdx];
+  if(!e) { toast('⚠️ Hindi mahanap ang remit entry.'); return; }
+  if(e.remitStatus === 'Remitted') {
+    toast('🔒 Remitted na — hindi na pwedeng baguhin ang Benefits.');
+    try { renderRemitPage(); } catch(_e){}
+    return;
+  }
+  const _v = Math.max(0, parseFloat(val) || 0);
+  e.manualBenefits = _v; // 0 is a valid explicit override (means "no benefits")
+  try { save(); } catch(_e){}
+  try { renderRemitPage(); } catch(_e){}
+  toast('✅ Benefits na-override: ₱' + _v.toFixed(2));
+}
+
 function openRemitModal(editIdx=null) {
   // ── REMIT LOCK ────────────────────────────────────────────────────────────
   // A Remitted entry is settled and read-only. The row UI already hides the edit
@@ -12470,6 +12545,17 @@ function openRemitModal(editIdx=null) {
     if(!e) { toast('⚠️ Hindi mahanap ang remit entry. I-refresh ang page.'); return; }
     sel.value = S.riders.findIndex(r=>r.name===e.riderName);
     document.getElementById('remit-date').value = e.date;
+    // ── RESTORE SAVED BENEFITS ────────────────────────────────────────────
+    // When re-editing an entry, show the benefits that were saved (manual override
+    // if one was set, else the auto Benefits-Log sum for this rider+date). This is
+    // the SAME single source (_benefitsForEntry) the entries-table row uses, so the
+    // modal and the dashboard row always agree — edit in one, it reflects in the other.
+    if(benInput) {
+      const _savedBen = (typeof _benefitsForEntry === 'function')
+        ? _benefitsForEntry(e, e.riderName)
+        : (e.manualBenefits != null ? (parseFloat(e.manualBenefits)||0) : 0);
+      benInput.value = String(_savedBen);
+    }
     // Restore status
     document.querySelectorAll('input[name="remit-status-radio"]').forEach(r=>{ r.checked = r.value === (e.remitStatus||'For Remittance'); });
     onRemitStatusChange(e.remitStatus||'For Remittance');
@@ -13415,6 +13501,35 @@ function openCashbondFromRemit() {
 // Tracks which rider sections are currently expanded — persists across re-renders
 if(!window._remitExpandedRiders) window._remitExpandedRiders = new Set();
 
+// ── BENEFITS SINGLE SOURCE ──────────────────────────────────────────────────
+// Returns the Benefits (₱) deduction for one remit entry. This is the ONE place
+// that decides the number, so the entries-table row (editable input), the footer
+// totals, the per-entry Net math (_computeRemit) and the top summary cards all
+// agree. Editing the row (overrideRemitBenefits) sets e.manualBenefits and every
+// consumer re-reads through here on the next render.
+//
+// RULE:
+//  • If e.manualBenefits is explicitly set (not null / not '') → use it, EVEN if 0.
+//    (0 is a real override meaning "no benefits this entry".)
+//  • Otherwise → auto-sum the Benefits Log for this rider+date, adding all
+//    components (other + sss + philhealth + pagibig). Legacy rows may store a flat
+//    `amount` field instead, so that is included too.
+function _benefitsForEntry(e, riderName) {
+  if(!e) return 0;
+  if(e.manualBenefits != null && e.manualBenefits !== '') {
+    return Math.max(0, parseFloat(e.manualBenefits) || 0);
+  }
+  const _name = riderName || e.riderName || '';
+  return (S.benefitsLog || [])
+    .filter(b => b && (b.person === _name) && (!e.date || b.date === e.date))
+    .reduce((s, b) => s
+      + (parseFloat(b.other)      || 0)
+      + (parseFloat(b.sss)        || 0)
+      + (parseFloat(b.philhealth) || 0)
+      + (parseFloat(b.pagibig)    || 0)
+      + (parseFloat(b.amount)     || 0), 0);
+}
+
 function renderRemitPage() {
   try {
   const el = document.getElementById('remit-page-content'); if(!el) return;
@@ -13521,20 +13636,28 @@ function renderRemitPage() {
     // Remitted entries → use their saved e.codSubtotal / e.netTotal (finalized)
     // Remitting entries → live-compute from remaining orders for that date
     const _entryAmounts = entries.map(e => {
+      // Benefits: same SINGLE SOURCE helper the row uses, so totals never drift.
+      const _benForEntry = _benefitsForEntry(e, riderName);
       if(e.remitStatus === 'Remitted') {
-        return { sub: (e.codSubtotal||0) + (e.totalSF||0), net: e.netTotal||e.codSubtotal||0 };
+        return {
+          sub: (e.codSubtotal||0) + (e.totalSF||0),
+          net: e.netTotal||e.codSubtotal||0,
+          netSF: (e.netSF != null ? e.netSF : 0),
+          benefits: _benForEntry
+        };
       }
       // ── CANONICAL MATH ENGINE — per-entry live compute ─────────────────────
       // Use EFFECTIVE date so COD-OP parcels (scheduled by checker Deliver Date)
       // are included — matches populateRemitParcels / saveRemit / rider dashboard.
       const _eDel = (S.orders||[]).filter(o=>o&&o.assignedRider===riderName&&_effectiveDate(o)===e.date&&o.status==='Delivered');
-      const _eBen = e.manualBenefits > 0 ? e.manualBenefits : 0;
-      const _eCm  = _computeRemit(_eDel, _eBen);
-      return { sub: _eCm.grossTotal, net: _eCm.netTotal };
+      const _eCm  = _computeRemit(_eDel, _benForEntry);
+      return { sub: _eCm.grossTotal, net: _eCm.netTotal, netSF: _eCm.netSF, benefits: _benForEntry };
     });
     const grandSubtotal = _entryAmounts.reduce((s,a)=>s+a.sub,0);
     const _allSF        = entries.reduce((s,e)=>s+(e.totalSF||0),0);
     const grandNet      = _entryAmounts.reduce((s,a)=>s+a.net,0);
+    const grandNetSF    = _entryAmounts.reduce((s,a)=>s+(a.netSF||0),0);
+    const grandBenefits = _entryAmounts.reduce((s,a)=>s+(a.benefits||0),0);
     const remittedCount = entries.filter(e=>e.remitStatus==='Remitted').length;
     const allRemitted   = remittedCount===entries.length;
     const safeId = 'rr_'+riderName.replace(/[^a-zA-Z0-9]/g,'_');
@@ -13810,7 +13933,9 @@ function renderRemitPage() {
               <th style="padding:8px 10px;text-align:right;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;color:var(--red);border-bottom:1px solid rgba(255,255,255,0.07);">Cashbond</th>
               <th style="padding:8px 10px;text-align:right;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;color:var(--red);border-bottom:1px solid rgba(255,255,255,0.07);">Parcel Fee</th>
               <th style="padding:8px 10px;text-align:right;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;color:var(--blue);border-bottom:1px solid rgba(255,255,255,0.07);">COD Subtotal</th>
+              <th style="padding:8px 10px;text-align:right;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;color:var(--red);border-bottom:1px solid rgba(255,255,255,0.07);">Less: Benefits (₱)</th>
               <th style="padding:8px 10px;text-align:right;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;color:var(--gold);border-bottom:1px solid rgba(255,255,255,0.07);">Net to Remit</th>
+              <th style="padding:8px 10px;text-align:right;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;color:var(--gold);border-bottom:1px solid rgba(255,255,255,0.07);">Rider's Net SF</th>
               <th style="padding:8px 10px;text-align:left;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Status</th>
               <th style="padding:8px 10px;text-align:left;font-size:13px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid rgba(255,255,255,0.07);">Actions</th>
             </tr></thead>
@@ -13851,11 +13976,11 @@ function renderRemitPage() {
                 const _liveSF90   = _liveSF * 0.90;
                 const _liveCashb  = 100;
                 const _livePFee   = _liveDelivered * 10;
-                // Benefits: use saved e.manualBenefits if present, else S.benefitsLog
-                const _liveBenefits = e.manualBenefits > 0 ? e.manualBenefits : (S.benefitsLog||[])
-                  .filter(b => b.person === riderName)
-                  .reduce((s,b) => s + (parseFloat(b.other)||0) + (parseFloat(b.sss)||0) +
-                    (parseFloat(b.philhealth)||0) + (parseFloat(b.pagibig)||0), 0);
+                // Benefits (SINGLE SOURCE): explicit override e.manualBenefits wins —
+                // including an explicit 0 (means "no benefits"). Otherwise sum the
+                // Benefits Log for THIS rider+date. Uses _benefitsForEntry() so the row,
+                // the footer totals and the top cards ALWAYS show the same number.
+                const _liveBenefits = _benefitsForEntry(e, riderName);
                 const _liveNetSF  = Math.max(0, _liveSF90 - _liveCashb - _livePFee - _liveBenefits);
                 // NET = (items + SF) − Rider's Net SF (benefits inside netSF)
                 const _liveNet   = Math.max(0, (_liveSubtotal + _liveSF) - _liveNetSF);
@@ -13869,7 +13994,17 @@ function renderRemitPage() {
                   <td style="padding:7px 10px;text-align:right;color:var(--red);">-${p(e.remitStatus==='Remitted' ? (e.cashbondDeduct!=null?e.cashbondDeduct:_liveCashb) : _liveCashb)}</td>
                   <td style="padding:7px 10px;text-align:right;color:var(--red);">-${p(e.remitStatus==='Remitted' ? (e.parcelFeeDeduct!=null?e.parcelFeeDeduct:_livePFee) : _livePFee)}</td>
                   <td style="padding:7px 10px;text-align:right;color:var(--blue);font-weight:600;">${p(e.remitStatus==='Remitted' ? (e.codSubtotal||(_liveSubtotal+_liveSF)) : (_liveSubtotal+_liveSF))}</td>
+                  <td style="padding:7px 10px;text-align:right;color:var(--red);">${
+                    st==='Remitted'
+                      ? '-'+p(e.manualBenefits!=null?e.manualBenefits:_liveBenefits)
+                      : `<input type="number" step="any" min="0" value="${_liveBenefits}"
+                           onclick="event.stopPropagation()"
+                           onchange="event.stopPropagation();overrideRemitBenefits(${e.idx}, this.value)"
+                           style="width:80px;text-align:right;font-size:12px;padding:2px 4px;background:var(--navy-dark);border:1px solid var(--navy-border);color:var(--red);border-radius:4px;"
+                           title="Auto mula sa Benefits Log — pwede i-override" />`
+                  }</td>
                   <td style="padding:7px 10px;text-align:right;color:var(--gold);font-weight:700;">${p(e.remitStatus==='Remitted' ? (e.netTotal||e.codSubtotal||_liveNet) : _liveNet)}</td>
+                  <td style="padding:7px 10px;text-align:right;color:var(--gold);font-weight:600;">${p(e.remitStatus==='Remitted' ? (e.netSF!=null?e.netSF:_liveNetSF) : _liveNetSF)}</td>
                   <td style="padding:7px 10px;font-weight:600;color:${statusColor(st)};white-space:nowrap;text-align:left;">${statusIcon(st)} ${st}</td>
                   <td style="padding:7px 10px;text-align:left;overflow:visible;white-space:nowrap;position:relative;z-index:10;" onclick="event.stopPropagation()">
                     <div style="display:flex;gap:4px;align-items:center;">
@@ -13886,7 +14021,9 @@ function renderRemitPage() {
               <tr style="background:rgba(201,168,76,0.1);font-weight:700;font-size:11.5px;border-top:2px solid rgba(201,168,76,0.25);">
                 <td colspan="8" style="padding:8px 10px;color:var(--gold);text-align:left;">TOTAL — ${riderName}</td>
                 <td style="padding:8px 10px;text-align:right;color:var(--blue);font-size:14px;">${p(grandSubtotal)}</td>
+                <td style="padding:8px 10px;text-align:right;color:var(--red);font-size:14px;">-${p(grandBenefits)}</td>
                 <td style="padding:8px 10px;text-align:right;color:var(--gold);font-size:14px;">${p(grandNet)}</td>
+                <td style="padding:8px 10px;text-align:right;color:var(--gold);font-size:14px;">${p(grandNetSF)}</td>
                 <td style="pointer-events:none;"></td>
                 <td style="pointer-events:none;"></td>
               </tr>
