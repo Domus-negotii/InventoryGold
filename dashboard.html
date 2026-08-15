@@ -4853,8 +4853,7 @@ function renderChecker(){
                 : (o.checkerStatus==='Verified' || o.verificationStatus==='Verified')
                   ? `<span style="font-size:9px;color:var(--muted);padding:2px 5px;" title="I-unverify muna bago mag-cancel">🔒</span>`
                   : ''}
-              ${isCODOP && o.status==='Cancelled' ? `<button class="btn btn-red btn-sm" onclick="checkerDeleteCodOp(${i})" title="Permanently delete COD-OP cancelled order">🗑️ Delete</button>` : ''}
-              ${currentRole==='owner'?`<button class="btn btn-red btn-sm" onclick="ownerDeleteOrder(${i})" title="CEO: Permanent Delete">🗑️ Delete</button>`:''}
+              ${(o.checkerStatus!=='Verified' && o.verificationStatus!=='Verified') ? `<button class="btn btn-sm" style="background:rgba(155,111,217,0.15);color:var(--purple);border:1px solid rgba(155,111,217,0.4);white-space:nowrap;" onclick="checkerReEncodeOrder(${i})" title="Ibalik sa Admin Encode (Return to Encode)">↩️ Re-Encode</button>` : ''}
             </td>
           </tr>`;
         });
@@ -4968,9 +4967,9 @@ function renderChecker(){
                       ? '<button class="btn btn-blue btn-sm" onclick="verifyOrder('+i+')">✔ Mark Verified</button>'
                       : '')
                     + '<button class="btn btn-print btn-sm" onclick="openInvoice('+i+')">🖨️</button>'
-                    + '<button class="btn btn-red btn-sm" onclick="checkerCancelOrder('+i+')">❌ Cancel</button>')
+                    + (o.status==='Cancelled' ? '' : '<button class="btn btn-red btn-sm" onclick="checkerCancelOrder('+i+')">❌ Cancel</button>'))
               }
-              ${currentRole==='owner'?'<button class="btn btn-red btn-sm" onclick="ownerDeleteOrder('+i+')" title="CEO: Permanent Delete">🗑️ Delete</button>':''}
+              ${(o.checkerStatus!=='Verified' && o.verificationStatus!=='Verified') ? '<button class="btn btn-sm" style="background:rgba(155,111,217,0.15);color:var(--purple);border:1px solid rgba(155,111,217,0.4);white-space:nowrap;" onclick="checkerReEncodeOrder('+i+')" title="Ibalik sa Admin Encode (Return to Encode)">↩️ Re-Encode</button>' : ''}
             </td>
           </tr>`;
         });
@@ -13600,7 +13599,10 @@ function renderRemitPage() {
     // EFFECTIVE date (codopDeliverDate for COD-OP, encode date otherwise) — using
     // raw o.date silently drops COD-OP parcels from the remit totals.
     const _rDel = (S.orders||[]).filter(o=>o&&o.assignedRider===_rN&&_effectiveDate(o)===e.date&&o.status==='Delivered');
-    const _rBen = e.manualBenefits > 0 ? e.manualBenefits : 0;
+    // Benefits via the SINGLE SOURCE helper so this TOP-CARD total matches the
+    // per-rider table + modal exactly (override wins incl. 0, else Benefits Log).
+    const _rBen = (typeof _benefitsForEntry==='function') ? _benefitsForEntry(e, _rN)
+                  : (e.manualBenefits != null ? (parseFloat(e.manualBenefits)||0) : 0);
     const _rCm = _computeRemit(_rDel, _rBen);
     return s + _rCm.netTotal;
   }, 0);
@@ -13739,28 +13741,35 @@ function renderRemitPage() {
       const iCQ = o.itemCancelQty||{};
       const iR  = o.itemRemarks||{};
       return (o.items||[]).map((it,ii)=>{
+        // ── QTY/GRAMS DISPLAY (single source) ───────────────────────────────
+        // grams item  → measure lives in it.grams, shown as "<n>g" (no × prefix)
+        // pieces item → count lives in it.qty, shown as "×<n>" (with × prefix)
+        // Never mix the two — this is what caused "1g" to show for a 5-pc item.
+        const _isGrams = (parseFloat(it.grams)||0) > 0;
+        const totalQty = _isGrams ? parseFloat(it.grams) : (parseFloat(it.qty)||1);
+        const unit     = _isGrams ? 'g' : 'pcs';
+        // How a quantity reads for THIS item type (grams: "5g", pcs: "×5")
+        const _fmtQ = (n) => _isGrams ? (n + 'g') : ('×' + n);
         const isCx   = iS[ii]==='Cancelled';
-        const cxQty  = iCQ[ii]||0;
+        const cxQty  = parseFloat(iCQ[ii])||0;
         const remark = iR[ii]||'';
-        const totalQty = it.grams||it.qty||1;
-        const unit     = it.grams>0?'g':'pcs';
-        const ppu      = it.total/Math.max(1,totalQty);
+        const ppu      = (it.total||0)/Math.max(1,totalQty);
         const discTag  = it.discount>0
           ? `<span style="color:var(--red);font-size:11px;font-weight:700;"> 🏷️-₱${it.discount.toFixed(2)}</span>`:'';
         const remarkTag = remark
           ? `<div style="font-size:11px;color:var(--orange);margin-top:2px;">💬 ${remark}</div>`:'' ;
         if(isCx)
-          return `<div style="color:var(--red);font-size:13px;">[Cx] ${it.code}: ${it.desc} ×${totalQty}${unit} = ${p(it.total)}${remarkTag}</div>`;
+          return `<div style="color:var(--red);font-size:13px;">[Cx] ${it.code}: ${it.desc} ${_fmtQ(totalQty)} = ${p(it.total)}${remarkTag}</div>`;
         if(cxQty>0){
-          const cxAmt=cxQty*ppu; const remAmt=it.total-cxAmt;
+          const cxAmt=cxQty*ppu; const remAmt=(it.total||0)-cxAmt;
           return `<div style="font-size:13px;">
             <span style="color:var(--text);">${it.code}: ${it.desc}</span>${discTag}
-            <span style="color:var(--red);"> ❌${cxQty}${unit}=-${p(cxAmt)}</span>
-            <span style="color:var(--green);"> ✅${totalQty-cxQty}${unit}=${p(remAmt)}</span>
+            <span style="color:var(--red);"> ❌${_fmtQ(cxQty)}=-${p(cxAmt)}</span>
+            <span style="color:var(--green);"> ✅${_fmtQ(totalQty-cxQty)}=${p(remAmt)}</span>
             ${remarkTag}
           </div>`;
         }
-        return `<div style="font-size:13px;">${it.code}: ${it.desc} ×${totalQty}${unit} = ${p(it.total)}${discTag}${remarkTag}</div>`;
+        return `<div style="font-size:13px;">${it.code}: ${it.desc} ${_fmtQ(totalQty)} = ${p(it.total)}${discTag}${remarkTag}</div>`;
       }).join('') + (o.globalDiscountReason && o.globalDiscountReason.trim()
         ? `<div style="margin-top:4px;padding:3px 7px;background:rgba(74,144,217,0.1);border-left:2px solid var(--blue);border-radius:3px;font-size:11px;"><span style="color:var(--blue);font-weight:700;">🏷️ Order Note:</span> <em style="color:var(--white);">${o.globalDiscountReason.trim()}</em>${o.globalDiscount>0?' — <strong style="color:var(--red);">-'+p(o.globalDiscount)+'</strong>':''}</div>` : '');
     };
@@ -16641,6 +16650,72 @@ function onCancelReasonChange() {
     txt.value = '';
     txt.focus();
   }
+}
+
+function checkerReEncodeOrder(orderIdx) {
+  // ╔══════════════════════════════════════════════════════════════════════════╗
+  // ║ RE-ENCODE — return a Pending/Cancelled checker order back to Admin Encode  ║
+  // ║                                                                            ║
+  // ║ Shows for COD, COD-OP, LBC, EMS, FedEx when the order is NOT verified.     ║
+  // ║                                                                            ║
+  // ║ ⚠️ CONTRACT — DO NOT WEAKEN:                                                ║
+  // ║  1. NEVER re-encode a VERIFIED order — inventory is deducted while verified,║
+  // ║     so it must be UNVERIFIED first (which restores stock). The button is   ║
+  // ║     hidden for verified rows AND this function blocks them as a safety net.║
+  // ║  2. Clear ALL cancel + progress state (cancelledBy, cancelReason,          ║
+  // ║     checkerCancelledDirect, lbcInProgress, codopInProgress) so the order   ║
+  // ║     re-enters Admin Encode cleanly as 'Return to Encode', Not Verified.    ║
+  // ║  3. inventoryDeducted=false so the NEXT verify deducts once (no double).   ║
+  // ║  4. NULL-SAFE: guards !o, invalid index, null remitLog entries.            ║
+  // ╚══════════════════════════════════════════════════════════════════════════╝
+  // A parcel that reached the checker (In Progress) and was then Cancelled — or is
+  // still Pending — can be sent back to Admin Encode for correction. This reverses
+  // the checker state and drops the order out of every checker lane.
+  const o = S.orders[orderIdx];
+  if(!o) { toast('⚠️ Hindi mahanap ang order.'); return; }
+  // GUARD: a VERIFIED order must be unverified first — re-encoding it would leave
+  // inventory deducted while the order goes back to encode. Block it here as a
+  // safety net even though the button is hidden for verified rows.
+  if(o.checkerStatus === 'Verified' || o.verificationStatus === 'Verified') {
+    toast('🔒 Verified na — i-UNVERIFY muna bago i-Re-Encode.');
+    return;
+  }
+  if(!confirm('I-Re-Encode? Babalik ang order na ito sa Admin Encode (status: Return to Encode).')) return;
+
+  // Reset status → back to encode; clear cancel + progress state.
+  o.status                 = 'Return to Encode';
+  o.checkerCancelledDirect = false;
+  o.cancelledBy            = '';
+  o.cancelReason           = '';
+  o.cancelledAt            = '';
+  o.checkerStatus          = 'Pending';
+  o.verificationStatus     = 'Not Verified';
+  // Drop out of every checker lane (mutual-exclusion flags both cleared).
+  o.lbcInProgress          = false;
+  o.codopInProgress        = false;
+  o.lbcPrevTab             = '';
+  o.codopPrevTab           = '';
+  // A returned order re-enters encode as not-yet-verified; inventory was already
+  // restored on cancel, so leave inventoryRestored as-is (re-deduct happens only
+  // when it is verified again). Mark so it can be re-deducted cleanly next verify.
+  o.inventoryDeducted      = false;
+  // Remove any leftover deleted-log entry so it isn't double-counted as cancelled.
+  if(Array.isArray(S.deletedOrders)) {
+    S.deletedOrders = S.deletedOrders.filter(d => d && d.orderNum !== onum(orderIdx));
+  }
+  // Clear any cancel reason stamped on remit entries for this order.
+  const _oNum = onum(orderIdx);
+  (S.remitLog||[]).forEach(entry => {
+    if(entry && entry.cancelledReasons && entry.cancelledReasons[_oNum]) {
+      delete entry.cancelledReasons[_oNum];
+    }
+  });
+  window._lastKnownWriteTs = 0; // force SAR pickup on all devices
+  try { save(); } catch(e){}
+  toast('↩️ Na-Re-Encode — bumalik sa Admin Encode (Return to Encode).');
+  try { renderChecker(); } catch(e){}
+  try { if(typeof renderOrders==='function') renderOrders(); } catch(e){}
+  try { initOrdersPage(); } catch(e){}
 }
 
 function confirmCheckerCancel() {
