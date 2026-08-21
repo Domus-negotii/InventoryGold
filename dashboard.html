@@ -839,7 +839,7 @@ window.loadFromFirebase = async function() {
     if(!Array.isArray(data.adminAccounts)) data.adminAccounts = [];
     if(!Array.isArray(data.adminNames))    data.adminNames    = [];
     if(!data.tabPasswords)     data.tabPasswords     = {checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''};
-    if(!data.specialPasswords) data.specialPasswords = {remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
+    if(!data.specialPasswords) data.specialPasswords = {remitter:'remit2026',sorter:'sort2026',checker:'check2026',auditor:'audit2026'};
     if(!data.lastGlobalClear)  data.lastGlobalClear  = '';
     if(!data.govSettings)      data.govSettings      = {sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
     if(!data.bizInfo)          data.bizInfo          = {};
@@ -968,6 +968,14 @@ function _mergeOrders(fbOrders, localOrders) {
     }
     if (localO.hasOwnProperty('inventoryRestored') && localO.inventoryRestored !== fbO.inventoryRestored) {
       merged.inventoryRestored = localO.inventoryRestored;
+    }
+    // auditorPaid: trust local over Firebase for the same reason — the auditor's
+    // most recent PAID/UNPAID toggle must not be reverted by a stale Firebase read
+    // arriving before the write confirms. (Same trust-local rule as inventory.)
+    if (localO.hasOwnProperty('auditorPaid') && localO.auditorPaid !== fbO.auditorPaid) {
+      merged.auditorPaid   = localO.auditorPaid;
+      merged.auditorPaidAt = localO.auditorPaidAt;
+      merged.auditorPaidBy = localO.auditorPaidBy;
     }
     if (localO.itemInventoryRestored && Object.keys(localO.itemInventoryRestored).length > 0) {
       merged.itemInventoryRestored = {...(fbO.itemInventoryRestored||{}), ...localO.itemInventoryRestored};
@@ -1154,6 +1162,12 @@ function _showRulesHint() {
           <div class="role-desc" style="font-size:9px;">Verify Orders</div>
         </div>
       </div>
+      <div style="margin-top:6px;">
+        <div class="role-btn" id="role-auditor" onclick="selectRole('auditor')" style="display:flex;align-items:center;gap:12px;text-align:left;padding:10px 14px;">
+          <span style="font-size:22px;">🧾</span>
+          <div><div class="role-name">Auditor</div><div class="role-desc">Mark parcels PAID / UNPAID (COD-OP, LBC, EMS, FedEx)</div></div>
+        </div>
+      </div>
     </div>
 
     <!-- Step 2a: Owner -->
@@ -1234,6 +1248,17 @@ function _showRulesHint() {
       <button class="btn btn-outline btn-sm" style="width:100%;justify-content:center;margin-top:8px;" onclick="backToRoleSelect()">← Back</button>
     </div>
 
+    <div id="login-step-auditor" style="display:none;">
+      <div style="font-size:13px;color:var(--gold);font-weight:600;margin-bottom:14px;">🧾 Auditor Login</div>
+      <div class="form-group" style="margin-bottom:10px;"><label>Password</label>
+        <input type="password" class="form-control" id="login-auditor-pw" placeholder="Auditor password"
+          style="text-align:center;letter-spacing:3px;font-size:16px;" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <div class="login-err" id="login-auditor-err"></div>
+      <button class="btn btn-gold" style="width:100%;justify-content:center;padding:10px;margin-top:8px;" onclick="doLogin()">🧾 Login as Auditor</button>
+      <button class="btn btn-outline btn-sm" style="width:100%;justify-content:center;margin-top:8px;" onclick="backToRoleSelect()">← Back</button>
+    </div>
+
     <div class="login-version" style="margin-top:14px;">v4.0 · Goldchelle Logistics</div>
   </div>
 </div>
@@ -1310,6 +1335,7 @@ function _showRulesHint() {
       <div class="nav-label">Orders</div>
       <div class="nav-item" onclick="gotoPage('orders')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>Admin Encode</div>
       <div class="nav-item" onclick="gotoPage('checker')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Checker Verify</div>
+      <div class="nav-item" onclick="gotoPage('auditor')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12l2 2 4-4"/></svg>Auditor</div>
       <div class="nav-item" onclick="gotoPage('tracking')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>COD Tracking</div>
       <div class="nav-item" onclick="gotoPage('coddelivery')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>COD Delivery</div>
       <div class="nav-item" onclick="gotoPage('ordermgmt')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><path d="M9 3h6v4H9z"/><path d="M9 12h6M9 16h4"/></svg>LBC/EMS/FedEx Tracking</div>
@@ -1572,6 +1598,43 @@ function _showRulesHint() {
   </div>
 
 
+
+  <!-- AUDITOR -->
+  <div class="page" id="page-auditor">
+    <div class="page-header">
+      <h1 class="page-title">🧾 Auditor</h1>
+    </div>
+    <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
+      Markahan ang bawat parcel na <strong style="color:var(--green);">PAID</strong> o
+      <strong style="color:var(--red);">UNPAID</strong>. Ang COD-OP ay hindi lalabas sa Checker
+      hangga't hindi PAID. Ang LBC/EMS/FedEx ay makikita ni Checker pero hindi ma-veverify
+      hangga't hindi PAID.
+    </div>
+    <div class="tabs" style="margin-bottom:12px;">
+      <button class="tab-btn active" id="aud-tab-codop-btn" onclick="setAuditorTab('COD - Online Payment')">💳 COD-OP</button>
+      <button class="tab-btn" id="aud-tab-lbc-btn" onclick="setAuditorTab('LBC')">📦 LBC</button>
+      <button class="tab-btn" id="aud-tab-ems-btn" onclick="setAuditorTab('EMS')">✈️ EMS</button>
+      <button class="tab-btn" id="aud-tab-fedex-btn" onclick="setAuditorTab('FedEx')">📦 FedEx</button>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title" id="auditor-queue-title">💳 COD-OP — AUDITOR QUEUE</span>
+        <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;" class="no-print">
+          <input class="form-control" style="width:200px;font-size:11px;padding:4px 8px;" placeholder="🔍 Search name / CP# / order#" id="auditor-search" oninput="renderAuditor()">
+          <input type="text" class="form-control" style="width:148px;font-size:11px;" id="auditor-date" oninput="renderAuditor()" title="Filter by date" placeholder="MM/DD/YYYY" maxlength="10">
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('auditor-date').value='';renderAuditor()">All Dates</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Order #</th><th>Customer</th><th>CP #</th><th>Date</th>
+          <th>Grand Total</th><th>Payment Status</th>
+          <th style="color:var(--gold);">🧾 Audit Status</th><th>Action</th>
+        </tr></thead>
+        <tbody id="auditor-tbody"></tbody>
+      </table></div>
+    </div>
+  </div>
 
   <!-- TRACKING -->
   <div class="page page-lockable" id="page-tracking">
@@ -3043,6 +3106,7 @@ function _showRulesHint() {
         <div class="form-group"><label>💰 Remitter Password</label><input type="password" class="form-control" id="special-pw-remitter" placeholder="e.g. remit2026"></div>
         <div class="form-group"><label>📦 Parcel Sorter Password</label><input type="password" class="form-control" id="special-pw-sorter" placeholder="e.g. sort2026"></div>
         <div class="form-group"><label>✅ Checker Role Password</label><input type="password" class="form-control" id="special-pw-checker" placeholder="e.g. check2026"></div>
+        <div class="form-group"><label>🧾 Auditor Password</label><input type="password" class="form-control" id="special-pw-auditor" placeholder="e.g. audit2026"></div>
       </div>
     </div>
     <div id="tab-pw-status" style="font-size:12px;margin-top:8px;min-height:16px;"></div>
@@ -3151,7 +3215,7 @@ let S = {
   mergeLog:[], otherItems:[], adminNames:[], adminAccounts:[], lastGlobalClear:'',
   govSettings:{sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25},
   bizInfo:{}, tabPasswords:{checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},
-  specialPasswords:{remitter:'remit2026',sorter:'sort2026',checker:'check2026'}
+  specialPasswords:{remitter:'remit2026',sorter:'sort2026',checker:'check2026',auditor:'audit2026'}
 };
 // ── Global data safety: filter null/undefined entries from all arrays ──────
 // Called at the start of each render pass to prevent crashes on malformed Firebase data
@@ -3178,7 +3242,7 @@ if(!S.adminNames)S.adminNames=[];
 if(!S.bizInfo)S.bizInfo={name:'Goldchelle Online Enterprises',address:'Las Pinas City, Metro Manila, PH',contact:'0917-130-7239',social:'fb.com/goldchelleonlineenterprise'};
 // Tab-specific passwords (CEO can set independently)
 if(!S.tabPasswords)S.tabPasswords={checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''};
-if(!S.specialPasswords) S.specialPasswords={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
+if(!S.specialPasswords) S.specialPasswords={remitter:'remit2026',sorter:'sort2026',checker:'check2026',auditor:'audit2026'};
 // Migrate existing inventory items that are missing itemType
 if(S.inventory) S.inventory.forEach(it=>{ if(!it.itemType) it.itemType='grams'; });
 // Migrate existing orders — add new fields if missing
@@ -3632,7 +3696,7 @@ function renderPage(n){
   try {
     ({dashboard:()=>{applyDashCeoLock();if(currentRole==='owner')renderDash();},
       riderdash:()=>{},calendar:()=>{if(currentRole==='owner')renderCalendar();else{const p2=document.getElementById('page-calendar');if(p2)p2.innerHTML='<div style="text-align:center;padding:60px;"><div style="font-size:48px;">🔐</div><div style="font-family:var(--fh);font-size:20px;color:var(--gold);margin:10px 0;">CEO Only</div><p style="color:var(--muted);">Sales Calendar is restricted to CEO access.</p></div>';}},
-      orders:initOrdersPage,checker:()=>setCheckerTab(checkerTab),tracking:()=>{renderTracking();refreshUpdateBadge();},ordermgmt:renderOrderMgmt,lbcdelivery:renderLbcDelivery,emsdelivery:renderEmsDelivery,fedexdelivery:renderFedexDelivery,coddelivery:()=>{ _codDelivTab='ForUpdate'; renderCodDelivPage(); },
+      orders:initOrdersPage,checker:()=>setCheckerTab(checkerTab),auditor:renderAuditor,tracking:()=>{renderTracking();refreshUpdateBadge();},ordermgmt:renderOrderMgmt,lbcdelivery:renderLbcDelivery,emsdelivery:renderEmsDelivery,fedexdelivery:renderFedexDelivery,coddelivery:()=>{ _codDelivTab='ForUpdate'; renderCodDelivPage(); },
       riders:renderRiders,dailyparcels:renderDailyParcels,sorting:renderSorting,returns:renderReturns,deletedorders:renderDeletedOrders,
       dailysales:renderDailySales,payroll:()=>renderPayroll(payTab),expenses:renderExpenses,
       pnl:renderPnl,inventory:()=>switchInvTab(invTab),adminsheets:renderAdminSheets,settings:renderSettings,
@@ -4527,6 +4591,123 @@ function setOrdersTab(tab){ ordersViewTab=tab; initOrdersPage(); }
 
 // ============ CHECKER ============
 let checkerTab = 'COD';
+let auditorTab = 'COD - Online Payment';
+
+// ── AUDITOR ──────────────────────────────────────────────────────────────────
+// The Auditor marks each parcel PAID / UNPAID via a per-order `auditorPaid` flag
+// (default falsy = UNPAID). This flag is SEPARATE from paymentStatus. Effects:
+//   • COD-OP  : hidden from the checker until auditorPaid === true
+//   • LBC/EMS/FedEx : visible to the checker immediately, but the checker cannot
+//     VERIFY until auditorPaid === true.
+function setAuditorTab(method){
+  auditorTab = method;
+  document.querySelectorAll('#page-auditor .tab-btn').forEach(b=>b.classList.remove('active'));
+  const map = {'COD - Online Payment':'aud-tab-codop-btn','LBC':'aud-tab-lbc-btn','EMS':'aud-tab-ems-btn','FedEx':'aud-tab-fedex-btn'};
+  const btn = document.getElementById(map[method]); if(btn) btn.classList.add('active');
+  const titleMap = {'COD - Online Payment':'💳 COD-OP','LBC':'📦 LBC','EMS':'✈️ EMS','FedEx':'📦 FedEx'};
+  const tEl = document.getElementById('auditor-queue-title');
+  if(tEl) tEl.textContent = (titleMap[method]||method) + ' — AUDITOR QUEUE';
+  renderAuditor();
+}
+
+function renderAuditor(){
+  const tbody = document.getElementById('auditor-tbody');
+  if(!tbody) return;
+  const method = auditorTab || 'COD - Online Payment';
+  const search = (document.getElementById('auditor-search')?.value || '').toLowerCase().trim();
+  const dfRaw  = (document.getElementById('auditor-date')?.value || '').trim();
+  const dff = (typeof mdy2ymd==='function') ? mdy2ymd(dfRaw) : dfRaw;
+
+  const rows = (S.orders||[]).map((o,i)=>({o,i})).filter(({o})=>{
+    if(!o) return false;
+    if((o.paymentMethod||'COD') !== method) return false;
+    // Auditor only handles orders the admin has moved to In Progress (same gate as
+    // the checker), so it mirrors what will flow to the checker.
+    const _inProgress = (method==='COD - Online Payment') ? o.codopInProgress : o.lbcInProgress;
+    if(!_inProgress) return false;
+    // Only live parcels — skip cancelled / delivered / returned.
+    if(['Cancelled','Delivered','RTO','Return to Encode'].includes(o.status)) return false;
+    // Strict date filter (effective date) when a date is picked.
+    if(dff && (typeof _effectiveDate==='function' ? _effectiveDate(o) : o.date) !== dff) return false;
+    return true;
+  }).filter(({o,i})=>{
+    if(!search) return true;
+    const hay = ((o.name||'')+' '+(o.contact||'')+' '+onum(i)).toLowerCase();
+    return hay.includes(search);
+  }).map(({o,i})=>{
+    const paid = !!o.auditorPaid;
+    const _isVerified = o.checkerStatus === 'Verified' || o.verificationStatus === 'Verified';
+    const _gt = (o.grandTotal!=null?o.grandTotal:0);
+    const statusPill = paid
+      ? `<span style="color:var(--green);font-weight:700;">✅ PAID${_isVerified?' <span style="color:var(--muted);font-weight:400;font-size:9px;">(verified — locked)</span>':''}</span>`
+      : '<span style="color:var(--red);font-weight:700;">❌ UNPAID</span>';
+    // Button: once VERIFIED, the parcel is locked PAID — show a lock chip instead
+    // of the revert button so it cannot be un-marked.
+    const btn = _isVerified
+      ? '<span style="font-size:9.5px;color:var(--green);white-space:nowrap;padding:3px 6px;">🔒 Verified (locked)</span>'
+      : (paid
+          ? `<button class="btn btn-sm" style="background:rgba(224,138,48,0.12);color:var(--orange);border:1px solid rgba(224,138,48,0.4);white-space:nowrap;" onclick="auditorTogglePaid(${i},false)" title="Ibalik sa UNPAID">↩️ Mark UNPAID</button>`
+          : `<button class="btn btn-sm" style="background:rgba(46,204,138,0.12);color:var(--green);border:1px solid rgba(46,204,138,0.4);white-space:nowrap;" onclick="auditorTogglePaid(${i},true)" title="Markahan bilang PAID">✅ Mark PAID</button>`);
+    return `<tr>
+      <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
+      <td>${o.name||'—'}</td>
+      <td style="font-size:11px;">${o.contact||'—'}</td>
+      <td style="font-size:11px;">${(typeof _effectiveDate==='function'?_effectiveDate(o):o.date)||'—'}</td>
+      <td style="color:var(--gold);">${typeof p==='function'?p(_gt):_gt}</td>
+      <td style="font-size:11px;">${o.paymentStatus||'—'}</td>
+      <td>${statusPill}</td>
+      <td>${btn}</td>
+    </tr>`;
+  }).join('');
+
+  tbody.innerHTML = rows || `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:26px;">Walang parcel sa ${method} na naka In Progress.</td></tr>`;
+}
+
+function auditorTogglePaid(orderIdx, makePaid){
+  // ╔══════════════════════════════════════════════════════════════════════════╗
+  // ║ AUDITOR PAID/UNPAID TOGGLE — CONTRACT (DO NOT WEAKEN)                      ║
+  // ║  1. ONE-CLICK: a 1.2s per-order debounce lock blocks rapid double-clicks   ║
+  // ║     while the save is in flight. Every early return releases the lock.     ║
+  // ║  2. VERIFIED LOCK: once the checker verifies, the parcel can NEVER be      ║
+  // ║     reverted to UNPAID (re-marking PAID is a harmless no-op).              ║
+  // ║  3. IDEMPOTENT: setting the state it's already in does nothing.            ║
+  // ║  4. NULL-SAFE: guards missing order / bad index.                          ║
+  // ║  5. auditorPaid is trust-local on Firebase merge, reset on re-encode and   ║
+  // ║     on any payment-method switch (see those sites).                        ║
+  // ╚══════════════════════════════════════════════════════════════════════════╝
+  // ONE-CLICK GUARD: block rapid multi-clicks on the same row. A 1.2s window per
+  // order stops double-saves while Firebase is writing.
+  const _lockKey = '_auditLock_' + orderIdx;
+  if(window[_lockKey]) { toast('⏳ Sandali lang...'); return; }
+  window[_lockKey] = true;
+  setTimeout(()=>{ window[_lockKey] = false; }, 1200);
+
+  const o = S.orders && S.orders[orderIdx];
+  if(!o){ toast('⚠️ Hindi mahanap ang order.'); window[_lockKey]=false; return; }
+  // ── VERIFIED LOCK ────────────────────────────────────────────────────────
+  // Once the checker has VERIFIED the order, the Auditor can no longer revert it
+  // to UNPAID (the parcel is already committed downstream). Marking PAID again is
+  // harmless (idempotent), but un-marking is blocked.
+  const _isVerified = o.checkerStatus === 'Verified' || o.verificationStatus === 'Verified';
+  if(_isVerified && !makePaid){
+    toast('🔒 Verified na ni checker — hindi na pwedeng gawing UNPAID.');
+    window[_lockKey]=false;
+    renderAuditor();
+    return;
+  }
+  // No-op if already in the requested state (idempotent).
+  if(!!o.auditorPaid === !!makePaid){ window[_lockKey]=false; renderAuditor(); return; }
+
+  o.auditorPaid   = !!makePaid;
+  o.auditorPaidAt = makePaid ? new Date().toISOString() : '';
+  o.auditorPaidBy = makePaid ? (currentUser?.name || 'Auditor') : '';
+  window._lastKnownWriteTs = 0; // force SAR pickup so checker sees it fast
+  try { save(); } catch(e){}
+  try { renderAuditor(); } catch(e){}
+  // Instant reflect to the checker on THIS device too.
+  try { if(typeof renderChecker==='function') renderChecker(); } catch(e){}
+  toast(makePaid ? '✅ Na-mark PAID — pwede nang i-verify ni checker.' : '↩️ Na-mark UNPAID.');
+}
 // _lbcCheckerUnlocked removed — no secondary lock
 
 // unlockLbcChecker removed — no secondary lock
@@ -4686,6 +4867,12 @@ function renderChecker(){
     if(checkerTab === 'FedEx'  && _pm !== 'FedEx') return false;
     // COD-OP checker: only show orders that admin has moved to "In Progress" tab
     if(checkerTab === 'COD-OP' && !o.codopInProgress) return false;
+    // ── AUDITOR GATE (COD-OP) ─────────────────────────────────────────────
+    // A COD-OP parcel does NOT appear for the checker until the Auditor marks it
+    // PAID (o.auditorPaid). This routes every COD-OP parcel through the auditor
+    // first. LBC/EMS/FedEx are NOT hidden — they show but can't be verified (see
+    // the verify gate in verifyOrder / updateVerifStatus).
+    if(checkerTab === 'COD-OP' && !o.auditorPaid) return false;
     // LBC/EMS/FedEx checker: only show orders admin has moved to "In Progress"
     if((checkerTab === 'LBC' || checkerTab === 'EMS' || checkerTab === 'FedEx') && !o.lbcInProgress) return false;
     // COD checker: only show orders admin has moved to "In Progress" (strict, same as couriers)
@@ -4825,6 +5012,15 @@ function renderChecker(){
             </td>
             <td>
               <span class="checker-tag ${o.checkerStatus==='Verified'?'verified':'pending'}" style="margin-bottom:4px;display:block;">${o.checkerStatus}</span>
+              ${(()=>{
+                // AUDIT STATUS badge — show for methods that pass through the Auditor
+                // (COD-OP, LBC, EMS, FedEx). Plain COD has no auditor step.
+                const _am = o.paymentMethod || 'COD';
+                if(!['COD - Online Payment','LBC','EMS','FedEx'].includes(_am)) return '';
+                return o.auditorPaid
+                  ? '<span style="display:block;font-size:9.5px;font-weight:700;color:var(--green);">🧾 PAID</span>'
+                  : '<span style="display:block;font-size:9.5px;font-weight:700;color:var(--red);">🧾 UNPAID</span>';
+              })()}
             </td>
             <td style="text-align:center;">
               ${o.printed
@@ -4933,6 +5129,16 @@ function renderChecker(){
                   </select>
                   ${!canVerify ? '<div style="font-size:9px;color:var(--orange);margin-top:2px;">⚠️ Fully Paid muna</div>' : getMissingFieldsWarning(o, verifSt)}`
               }
+              ${(()=>{
+                // AUDIT STATUS badge (courier lanes) — LBC/EMS/FedEx must be marked
+                // PAID by the Auditor before the checker can verify. Show it so the
+                // checker knows why verify may be blocked.
+                const _am = o.paymentMethod || 'COD';
+                if(!['LBC','EMS','FedEx','COD - Online Payment'].includes(_am)) return '';
+                return o.auditorPaid
+                  ? '<div style="font-size:9.5px;font-weight:700;color:var(--green);margin-top:3px;">🧾 PAID</div>'
+                  : '<div style="font-size:9.5px;font-weight:700;color:var(--red);margin-top:3px;">🧾 UNPAID — hintayin ang Auditor</div>';
+              })()}
             </td>
             <td>
               ${(canVerify && verifSt === 'Verified')
@@ -5221,6 +5427,17 @@ function _captureOtherItems(orderIdx) {
 
 function updateVerifStatus(orderIdx, status) {
   const o = S.orders[orderIdx];
+  if(!o) return; // GUARD: null order
+  // ── AUDITOR GATE (verify) ────────────────────────────────────────────────
+  // Block verify until the Auditor marks the parcel PAID (courier + COD-OP).
+  if(status === 'Verified') {
+    const _am = o.paymentMethod || 'COD';
+    const _needsAudit = ['COD - Online Payment','LBC','EMS','FedEx'].includes(_am);
+    if(_needsAudit && !o.auditorPaid) {
+      toast('🔒 UNPAID pa — hintayin munang i-mark PAID ng Auditor bago i-verify.');
+      return;
+    }
+  }
   if((o.paymentStatus||'No Payment') !== 'Fully Paid') {
     toast('⚠️ Kailangan Fully Paid muna bago i-verify');
     return;
@@ -5333,6 +5550,18 @@ function verifyOrder(i){
   if(!S.orders[i]) { console.warn('[GOE] verifyOrder: invalid index', i); _releaseVerifyLock(); return; }
   // GUARD: already verified — prevent double-entry
   if(S.orders[i].checkerStatus === 'Verified') { toast('⚠️ Verified na ang order na ito.'); _releaseVerifyLock(); return; }
+  // ── AUDITOR GATE (verify) ────────────────────────────────────────────────
+  // No parcel may be verified until the Auditor has marked it PAID. For COD-OP
+  // the order is already hidden until paid; this also protects LBC/EMS/FedEx,
+  // which are visible to the checker but must not be verified while UNPAID.
+  {
+    const _am = S.orders[i].paymentMethod || 'COD';
+    const _needsAudit = ['COD - Online Payment','LBC','EMS','FedEx'].includes(_am);
+    if(_needsAudit && !S.orders[i].auditorPaid) {
+      toast('🔒 UNPAID pa — hintayin munang i-mark PAID ng Auditor bago i-verify.');
+      _releaseVerifyLock(); return;
+    }
+  }
   // GUARD: COD-OP requires a Deliver Date before verifying
   if(S.orders[i].paymentMethod === 'COD - Online Payment' &&
      !(S.orders[i].codopDeliverDate && String(S.orders[i].codopDeliverDate).trim())) {
@@ -8495,11 +8724,18 @@ function renderCourierDashboard(){
                      ${(curPayTab==='In Progress') ? '' : (canEdit(o)
                        ? `<button class="btn btn-outline btn-sm" onclick="_editSource='courier-dashboard';openEditOrder(${o.idx})" title="Edit order">✏️</button>`
                        : '<span style="font-size:9px;color:var(--muted);">Locked</span>')}
-                     ${(curPayTab==='In Progress') ? '' : (isOwner
-                       ? `<button class="btn btn-red btn-sm" onclick="delOrder(${o.idx})" title="Delete order">🗑️</button>`
-                       : (o.checkerStatus!=='Verified'&&o.status==='Preparing'
-                           ? `<button class="btn btn-red btn-sm" onclick="delOrder(${o.idx})" title="Delete order">🗑️</button>`
-                           : ''))}
+                     ${(() => {
+                       // DELETE button: available while the order is NOT yet verified,
+                       // INCLUDING the In Progress tab (a parcel moved there — e.g. a
+                       // COD-OP switched to COD — must still be deletable by owner, or
+                       // by admin while still Preparing/not-verified). Once verified,
+                       // the checker owns it and delete is hidden.
+                       const _verified = o.checkerStatus==='Verified' || o.verificationStatus==='Verified';
+                       if(_verified) return '';
+                       if(isOwner) return `<button class="btn btn-red btn-sm" onclick="delOrder(${o.idx})" title="Delete order">🗑️</button>`;
+                       if(o.status==='Preparing') return `<button class="btn btn-red btn-sm" onclick="delOrder(${o.idx})" title="Delete order">🗑️</button>`;
+                       return '';
+                     })()}
                      ${(curCourier==='COD-OP' && (curPayTab==='Partial'||curPayTab==='Fully Paid') && !o.codopInProgress)
                        ? `<button class="btn btn-sm" style="background:rgba(155,111,217,0.15);color:var(--purple);border:1px solid rgba(155,111,217,0.4);white-space:nowrap;" onclick="moveCodOpToInProgress(${o.idx})" title="Move to In Progress">🔄 In Progress</button>`
                        : (curCourier==='COD-OP' && curPayTab==='In Progress'
@@ -8949,7 +9185,7 @@ function clearAllData(){
      remitLog:[],cashbondLog:[],benefitsLog:[],returnLog:[],
      govSettings:S.govSettings,adminNames:S.adminNames,bizInfo:S.bizInfo,
      adminAccounts:S.adminAccounts||[],tabPasswords:S.tabPasswords||{},
-     specialPasswords:S.specialPasswords||{remitter:'remit2026',sorter:'sort2026',checker:'check2026'}};
+     specialPasswords:S.specialPasswords||{remitter:'remit2026',sorter:'sort2026',checker:'check2026',auditor:'audit2026'}};
   save();toast('All data cleared.');renderDash();
 }
 
@@ -9703,6 +9939,9 @@ function selectRole(role){
   } else if(role==='checker'){
     document.getElementById('login-step-checker').style.display='block';
     setTimeout(()=>document.getElementById('login-checker-pw')?.focus(),50);
+  } else if(role==='auditor'){
+    document.getElementById('login-step-auditor').style.display='block';
+    setTimeout(()=>document.getElementById('login-auditor-pw')?.focus(),50);
   }
 }
 
@@ -9753,6 +9992,13 @@ function doLogin(){
     if(!pw){ err.textContent='Enter password'; return; }
     if(pw!==correct){ err.textContent='❌ Incorrect password'; document.getElementById('login-checker-pw').value=''; document.getElementById('login-checker-pw').focus(); return; }
     currentRole='checker'; currentUser={name:'Checker',role:'checker'};
+  } else if(selectedRole==='auditor'){
+    const pw=document.getElementById('login-auditor-pw').value;
+    const err=document.getElementById('login-auditor-err');
+    const correct=(S.specialPasswords?.auditor)||'audit2026';
+    if(!pw){ err.textContent='Enter password'; return; }
+    if(pw!==correct){ err.textContent='❌ Incorrect password'; document.getElementById('login-auditor-pw').value=''; document.getElementById('login-auditor-pw').focus(); return; }
+    currentRole='auditor'; currentUser={name:'Auditor',role:'auditor'};
   }
   sessionKey=Date.now();
   // Re-arm idle timers for this session — logout disarms them, so every login
@@ -9781,6 +10027,8 @@ function doLogin(){
     initApp().then(()=>{ gotoPage('sorting'); });
   } else if(currentRole==='checker'){
     initApp().then(()=>{ gotoPage('checker'); });
+  } else if(currentRole==='auditor'){
+    initApp().then(()=>{ gotoPage('auditor'); });
   } else if(currentRole==='admin') {
     initApp().then(()=>{ gotoPage('orders'); });
   } else {
@@ -9797,7 +10045,7 @@ function doLogin(){
 function applyRoleUI(){
   const roleTag=document.getElementById('user-role-tag');
   const nameBadge=document.getElementById('user-name-badge');
-  const icons={owner:'👑',admin:'👤',rider:'🏍️',remitter:'💰',sorter:'📦',checker:'✅'};
+  const icons={owner:'👑',admin:'👤',rider:'🏍️',remitter:'💰',sorter:'📦',checker:'✅',auditor:'🧾'};
   if(roleTag){ roleTag.textContent=(icons[currentRole]||'')+' '+(currentUser?.name||currentRole||''); roleTag.className='user-role-tag '+(currentRole||'admin'); }
   if(nameBadge) nameBadge.textContent=currentUser?.name||'User';
 
@@ -9808,6 +10056,7 @@ function applyRoleUI(){
     remitter: ['ridersremit','cashbond','benefits','sorting','returns'],
     sorter:   ['sorting','tracking','ordermgmt'],
     checker:  ['checker','sorting','lbcdelivery','emsdelivery','fedexdelivery','coddelivery'],
+    auditor:  ['auditor'],
   };
   const allowed = rolePages[currentRole] || null;
   document.querySelectorAll('.nav-item').forEach(el=>{
@@ -9831,6 +10080,8 @@ function applyRoleUI(){
       if(lockEl) lockEl.classList.add('unlocked');
     } else if(currentRole==='remitter' && ['ridersremit','cashbond','benefits','sorting','returns','incentives'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
+    } else if(currentRole==='auditor' && page==='auditor'){
+      lockEl.classList.add('unlocked');
     } else if(currentRole==='checker' && ['checker','sorting','lbcdelivery','emsdelivery','fedexdelivery','coddelivery'].includes(page)){
       if(lockEl) lockEl.classList.add('unlocked');
     } else if(currentRole==='sorter' && ['tracking','sorting','ordermgmt','returns'].includes(page)){
@@ -11751,15 +12002,60 @@ async function saveOrder() {
     o.paymentNotes = orig.paymentNotes || '';
     o.verificationStatus = orig.verificationStatus || 'Not Verified';
     o.lbcStatus = orig.lbcStatus || o.lbcStatus;
-    // ── COD-OP: preserve In-Progress state & deliver date across edits ──
-    // When checker edits a COD-OP order (fix contact, add item, etc.), it must
-    // STAY in the checker's In-Progress lane — never bounce back to admin.
-    o.codopInProgress = orig.codopInProgress;
-    o.codopPrevTab = orig.codopPrevTab;
-    o.codopDeliverDate = orig.codopDeliverDate;
-    // ── LBC/EMS: preserve In-Progress state across edits (same reason as COD-OP) ──
-    o.lbcInProgress = orig.lbcInProgress;
-    o.lbcPrevTab = orig.lbcPrevTab;
+    // ── METHOD-SWITCH CLEANUP ──────────────────────────────────────────────
+    // Detect a payment-method change on this edit. When the method changes, the
+    // fields that belong to the OLD method must be wiped so the parcel behaves
+    // purely as its NEW method. Otherwise a COD-OP→COD switch leaves behind
+    // codopDeliverDate / codopInProgress / online payments, and the parcel keeps
+    // acting like COD-OP (wrong lane, stale deliver date, phantom payments).
+    const _methodChanged = orig.paymentMethod && orig.paymentMethod !== paymentMethod;
+    const _newIsCodOp   = paymentMethod === 'COD - Online Payment';
+    const _newIsCourier = paymentMethod === 'LBC' || paymentMethod === 'EMS' || paymentMethod === 'FedEx';
+    const _newIsPlainCod = paymentMethod === 'COD';
+
+    // ── COD-OP In-Progress state & deliver date ──
+    // Preserve ONLY when the order remains COD-OP; clear on any switch away.
+    if(_newIsCodOp && !_methodChanged) {
+      o.codopInProgress = orig.codopInProgress;
+      o.codopPrevTab    = orig.codopPrevTab;
+      o.codopDeliverDate= orig.codopDeliverDate;
+    } else {
+      o.codopInProgress = false;
+      o.codopPrevTab    = '';
+      o.codopDeliverDate= '';
+    }
+    // ── LBC/EMS/FedEx In-Progress state ──
+    // Preserve ONLY when the order remains a courier; clear on any switch away.
+    if(_newIsCourier && !_methodChanged) {
+      o.lbcInProgress = orig.lbcInProgress;
+      o.lbcPrevTab    = orig.lbcPrevTab;
+    } else if(_newIsCourier) {
+      // still a courier but method changed (e.g. LBC→EMS) — keep progress, reset prev tab
+      o.lbcInProgress = orig.lbcInProgress;
+      o.lbcPrevTab    = orig.lbcPrevTab;
+    } else {
+      o.lbcInProgress = false;
+      o.lbcPrevTab    = '';
+    }
+    // ── Switching to PLAIN COD: strip all online/courier payment artefacts ──
+    if(_newIsPlainCod && _methodChanged) {
+      o.paymentStatus = 'COD';
+      o.payments      = [];
+      o.trackingNumber= '';
+      o.dateOfPayment = '';
+      o.dateOfDropoff = '';
+      o.lbcStatus     = '';
+      // Plain COD has no Auditor step — drop any carried-over PAID flag.
+      o.auditorPaid   = false;
+      o.auditorPaidAt = '';
+      o.auditorPaidBy = '';
+    } else if(_methodChanged) {
+      // Switching between audited methods (e.g. COD-OP→LBC) — the parcel must be
+      // re-audited under the new method, so reset the PAID flag.
+      o.auditorPaid   = false;
+      o.auditorPaidAt = '';
+      o.auditorPaidBy = '';
+    }
     // ── ODZ/RTO LOCK ENFORCEMENT ─────────────────────────────────────────────
     // Restore the settled commercial terms. The UI disables these fields, but a
     // tampered DOM must not be able to restate the sale on an ODZ/RTO parcel.
@@ -12437,7 +12733,7 @@ function updateRidersTableHeader() {
 function openTabPasswordsModal() {
   if(currentRole !== 'owner') { toast('🔒 CEO only ang maaaring i-set ang Tab Passwords.'); return; }
   if(!S.tabPasswords) S.tabPasswords = {checker:'', tracking:'', riders:'', ridersremit:'', cashbond:''};
-  if(!S.specialPasswords) S.specialPasswords = {remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
+  if(!S.specialPasswords) S.specialPasswords = {remitter:'remit2026',sorter:'sort2026',checker:'check2026',auditor:'audit2026'};
   document.getElementById('tab-pw-checker')?.value !== undefined && (document.getElementById('tab-pw-checker').value = S.tabPasswords.checker || '');
   document.getElementById('tab-pw-tracking')?.value !== undefined && (document.getElementById('tab-pw-tracking').value = S.tabPasswords.tracking || '');
   document.getElementById('tab-pw-riders')?.value !== undefined && (document.getElementById('tab-pw-riders').value = S.tabPasswords.riders || '');
@@ -12446,6 +12742,7 @@ function openTabPasswordsModal() {
   document.getElementById('special-pw-remitter').value = S.specialPasswords.remitter || '';
   document.getElementById('special-pw-sorter').value = S.specialPasswords.sorter || '';
   document.getElementById('special-pw-checker').value = S.specialPasswords.checker || '';
+  document.getElementById('special-pw-auditor') && (document.getElementById('special-pw-auditor').value = S.specialPasswords.auditor || '');
   document.getElementById('tab-pw-status').textContent = '';
   openModal('modal-tab-passwords');
 }
@@ -12461,9 +12758,11 @@ function saveTabPasswords() {
   const rp = document.getElementById('special-pw-remitter')?.value || '';
   const sp = document.getElementById('special-pw-sorter')?.value   || '';
   const cp = document.getElementById('special-pw-checker')?.value  || '';
+  const ap = document.getElementById('special-pw-auditor')?.value  || '';
   if(rp) S.specialPasswords.remitter = rp;
   if(sp) S.specialPasswords.sorter   = sp;
   if(cp) S.specialPasswords.checker  = cp;
+  if(ap) S.specialPasswords.auditor  = ap;
   save();
   document.getElementById('tab-pw-status').style.color = 'var(--green)';
   document.getElementById('tab-pw-status').textContent = '✅ All passwords saved!';
@@ -14777,7 +15076,7 @@ async function initApp(){
         if(!S.bizInfo)          S.bizInfo={};
         if(!S.tabPasswords)     S.tabPasswords={};
         S.tabPasswords=Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},S.tabPasswords);
-        if(!S.specialPasswords) S.specialPasswords={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
+        if(!S.specialPasswords) S.specialPasswords={remitter:'remit2026',sorter:'sort2026',checker:'check2026',auditor:'audit2026'};
 
         if(syncEl){ syncEl.style.color='var(--green)'; syncEl.textContent='☁ Online'; }
         toast('☁ Loaded from Firebase!');
@@ -15208,7 +15507,7 @@ function startAutoRefresh(){
       // Ensure defaults
       if(!S.tabPasswords) S.tabPasswords={checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''};
       S.tabPasswords=Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},S.tabPasswords);
-      if(!S.specialPasswords) S.specialPasswords={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
+      if(!S.specialPasswords) S.specialPasswords={remitter:'remit2026',sorter:'sort2026',checker:'check2026',auditor:'audit2026'};
       if(!S.govSettings) S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
 
       // Re-render active page
@@ -16699,6 +16998,11 @@ function checkerReEncodeOrder(orderIdx) {
   // restored on cancel, so leave inventoryRestored as-is (re-deduct happens only
   // when it is verified again). Mark so it can be re-deducted cleanly next verify.
   o.inventoryDeducted      = false;
+  // Re-encoded orders must be re-audited — a fresh trip through Admin Encode means
+  // the PAID status is no longer valid until the Auditor marks it again.
+  o.auditorPaid            = false;
+  o.auditorPaidAt          = '';
+  o.auditorPaidBy          = '';
   // Remove any leftover deleted-log entry so it isn't double-counted as cancelled.
   if(Array.isArray(S.deletedOrders)) {
     S.deletedOrders = S.deletedOrders.filter(d => d && d.orderNum !== onum(orderIdx));
@@ -18297,7 +18601,7 @@ document.addEventListener('visibilitychange', async ()=>{
     if(fbData.lastGlobalClear) S.lastGlobalClear = fbData.lastGlobalClear;
     if(!S.tabPasswords) S.tabPasswords={checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''};
     S.tabPasswords=Object.assign({checker:'',tracking:'',riders:'',ridersremit:'',cashbond:''},S.tabPasswords);
-    if(!S.specialPasswords) S.specialPasswords={remitter:'remit2026',sorter:'sort2026',checker:'check2026'};
+    if(!S.specialPasswords) S.specialPasswords={remitter:'remit2026',sorter:'sort2026',checker:'check2026',auditor:'audit2026'};
     if(!S.govSettings) S.govSettings={sss:200,philhealth:100,pagibig:100,tax:0,other:0,parcelRate:25};
 
     try{ renderPage(_activePage); }catch(e){}
