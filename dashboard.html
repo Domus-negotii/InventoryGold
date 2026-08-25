@@ -15594,6 +15594,9 @@ function startAutoRefresh(){
       // Real-time CHECKER already handled below by the sarOrdersChanged block, but
       // ensure the checker page itself re-renders on any order change too.
       if(_activePage === 'checker') { try { renderChecker(); } catch(e) {} }
+      // Real-time AUDITOR: re-render when active so a PAID/UNPAID toggle or a
+      // re-encoded parcel from another device reflects within one SAR cycle.
+      if(_activePage === 'auditor') { try { renderAuditor(); } catch(e) {} }
       // Safety net: if checker page is active and new orders arrived, always re-render
       // even if renderMap already called it (idempotent, fast, prevents stuck UI)
       if(window._sarOrdersChanged && _activePage !== 'checker') {
@@ -18665,4 +18668,3 @@ document.addEventListener('visibilitychange', async ()=>{
 </script>
 </body>
 </html>
-  
