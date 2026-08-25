@@ -3661,7 +3661,14 @@ function toggleTheme(){
   }catch(e){}
 })();
 function openModal(id){document.getElementById(id).classList.add('open');}
-function closeModal(id){document.getElementById(id).classList.remove('open');}
+function closeModal(id){
+  const el = document.getElementById(id);
+  if(el) el.classList.remove('open');
+  // Clear the auditor-cancel refresh flag whenever the cancel modal closes for ANY
+  // reason (Back, ✕, or a validation early-return). This prevents a stale flag from
+  // wrongly refreshing the auditor view after an unrelated later cancel.
+  if(id === 'modal-checker-cancel') window._auditorCancelActive = false;
+}
 (function updateTopbarDate(){
   const el = document.getElementById('topbar-date');
   if(el) el.textContent = new Date().toLocaleDateString('en-PH',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
@@ -4625,8 +4632,9 @@ function renderAuditor(){
     // the checker), so it mirrors what will flow to the checker.
     const _inProgress = (method==='COD - Online Payment') ? o.codopInProgress : o.lbcInProgress;
     if(!_inProgress) return false;
-    // Only live parcels — skip cancelled / delivered / returned.
-    if(['Cancelled','Delivered','RTO','Return to Encode'].includes(o.status)) return false;
+    // Skip terminal states, BUT keep Cancelled visible so the auditor can still
+    // Re-Encode a cancelled parcel back to Admin Encode.
+    if(['Delivered','RTO','Return to Encode'].includes(o.status)) return false;
     // Strict date filter (effective date) when a date is picked.
     if(dff && (typeof _effectiveDate==='function' ? _effectiveDate(o) : o.date) !== dff) return false;
     return true;
@@ -4643,11 +4651,20 @@ function renderAuditor(){
       : '<span style="color:var(--red);font-weight:700;">❌ UNPAID</span>';
     // Button: once VERIFIED, the parcel is locked PAID — show a lock chip instead
     // of the revert button so it cannot be un-marked.
-    const btn = _isVerified
+    const _paidBtn = _isVerified
       ? '<span style="font-size:9.5px;color:var(--green);white-space:nowrap;padding:3px 6px;">🔒 Verified (locked)</span>'
       : (paid
           ? `<button class="btn btn-sm" style="background:rgba(224,138,48,0.12);color:var(--orange);border:1px solid rgba(224,138,48,0.4);white-space:nowrap;" onclick="auditorTogglePaid(${i},false)" title="Ibalik sa UNPAID">↩️ Mark UNPAID</button>`
           : `<button class="btn btn-sm" style="background:rgba(46,204,138,0.12);color:var(--green);border:1px solid rgba(46,204,138,0.4);white-space:nowrap;" onclick="auditorTogglePaid(${i},true)" title="Markahan bilang PAID">✅ Mark PAID</button>`);
+    // Cancel + Re-Encode moved here from Checker Verify. Available only while NOT
+    // verified — once the checker verifies, these lock (like they did in checker).
+    const _cancelBtn = (!_isVerified && o.status!=='Cancelled')
+      ? `<button class="btn btn-red btn-sm" style="white-space:nowrap;" onclick="auditorCancelOrder(${i})" title="Cancel this order">✕ Cancel</button>`
+      : '';
+    const _reEncBtn = (!_isVerified)
+      ? `<button class="btn btn-sm" style="background:rgba(155,111,217,0.15);color:var(--purple);border:1px solid rgba(155,111,217,0.4);white-space:nowrap;" onclick="auditorReEncodeOrder(${i})" title="Ibalik sa Admin Encode (Return to Encode)">↩️ Re-Encode</button>`
+      : '';
+    const btn = `<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;">${_paidBtn}${_cancelBtn}${_reEncBtn}</div>`;
     return `<tr>
       <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
       <td>${o.name||'—'}</td>
@@ -4867,14 +4884,14 @@ function renderChecker(){
     if(checkerTab === 'FedEx'  && _pm !== 'FedEx') return false;
     // COD-OP checker: only show orders that admin has moved to "In Progress" tab
     if(checkerTab === 'COD-OP' && !o.codopInProgress) return false;
-    // ── AUDITOR GATE (COD-OP) ─────────────────────────────────────────────
-    // A COD-OP parcel does NOT appear for the checker until the Auditor marks it
-    // PAID (o.auditorPaid). This routes every COD-OP parcel through the auditor
-    // first. LBC/EMS/FedEx are NOT hidden — they show but can't be verified (see
-    // the verify gate in verifyOrder / updateVerifStatus).
-    if(checkerTab === 'COD-OP' && !o.auditorPaid) return false;
     // LBC/EMS/FedEx checker: only show orders admin has moved to "In Progress"
     if((checkerTab === 'LBC' || checkerTab === 'EMS' || checkerTab === 'FedEx') && !o.lbcInProgress) return false;
+    // ── AUDITOR GATE ──────────────────────────────────────────────────────
+    // A parcel does NOT appear for the checker until the Auditor marks it PAID
+    // (o.auditorPaid). This applies to EVERY audited method — COD-OP, LBC, EMS,
+    // FedEx — so nothing reaches the checker until the auditor clears it. Plain
+    // COD is never audited and is unaffected.
+    if(['COD-OP','LBC','EMS','FedEx'].includes(checkerTab) && !o.auditorPaid) return false;
     // COD checker: only show orders admin has moved to "In Progress" (strict, same as couriers)
     if(checkerTab === 'COD' && !o.lbcInProgress) return false;
     if(filt && o.checkerStatus !== filt) return false;
@@ -5044,12 +5061,12 @@ function renderChecker(){
                   ?`<span style="font-size:9.5px;color:var(--muted);padding:2px 6px;">🔒 ${o.status==='Delivered'?'Delivered':'In Progress'}</span>`
                   :`<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`)}
               <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
-              ${(!isLocked && o.checkerStatus!=='Verified' && o.verificationStatus!=='Verified')
+              ${(!isCODOP && !isLocked && o.checkerStatus!=='Verified' && o.verificationStatus!=='Verified')
                 ? `<button class="btn btn-red btn-sm" onclick="checkerCancelOrder(${i})" title="Cancel this order">✕ Cancel</button>`
-                : (o.checkerStatus==='Verified' || o.verificationStatus==='Verified')
+                : (!isCODOP && (o.checkerStatus==='Verified' || o.verificationStatus==='Verified'))
                   ? `<span style="font-size:9px;color:var(--muted);padding:2px 5px;" title="I-unverify muna bago mag-cancel">🔒</span>`
                   : ''}
-              ${(o.checkerStatus!=='Verified' && o.verificationStatus!=='Verified') ? `<button class="btn btn-sm" style="background:rgba(155,111,217,0.15);color:var(--purple);border:1px solid rgba(155,111,217,0.4);white-space:nowrap;" onclick="checkerReEncodeOrder(${i})" title="Ibalik sa Admin Encode (Return to Encode)">↩️ Re-Encode</button>` : ''}
+              ${(!isCODOP && o.checkerStatus!=='Verified' && o.verificationStatus!=='Verified') ? `<button class="btn btn-sm" style="background:rgba(155,111,217,0.15);color:var(--purple);border:1px solid rgba(155,111,217,0.4);white-space:nowrap;" onclick="checkerReEncodeOrder(${i})" title="Ibalik sa Admin Encode (Return to Encode)">↩️ Re-Encode</button>` : ''}
             </td>
           </tr>`;
         });
@@ -5130,14 +5147,14 @@ function renderChecker(){
                   ${!canVerify ? '<div style="font-size:9px;color:var(--orange);margin-top:2px;">⚠️ Fully Paid muna</div>' : getMissingFieldsWarning(o, verifSt)}`
               }
               ${(()=>{
-                // AUDIT STATUS badge (courier lanes) — LBC/EMS/FedEx must be marked
-                // PAID by the Auditor before the checker can verify. Show it so the
-                // checker knows why verify may be blocked.
+                // AUDIT STATUS badge (courier lanes) — parcels only reach the checker
+                // AFTER the Auditor marks them PAID, so this confirms the audit. (If a
+                // stale UNPAID ever slips through, it's flagged in red.)
                 const _am = o.paymentMethod || 'COD';
                 if(!['LBC','EMS','FedEx','COD - Online Payment'].includes(_am)) return '';
                 return o.auditorPaid
                   ? '<div style="font-size:9.5px;font-weight:700;color:var(--green);margin-top:3px;">🧾 PAID</div>'
-                  : '<div style="font-size:9.5px;font-weight:700;color:var(--red);margin-top:3px;">🧾 UNPAID — hintayin ang Auditor</div>';
+                  : '<div style="font-size:9.5px;font-weight:700;color:var(--red);margin-top:3px;">🧾 UNPAID</div>';
               })()}
             </td>
             <td>
@@ -5172,10 +5189,10 @@ function renderChecker(){
                     + (o.status==='Cancelled' ? '<span style="font-size:9px;color:var(--red);">🚫 Cancelled</span>' : canVerify
                       ? '<button class="btn btn-blue btn-sm" onclick="verifyOrder('+i+')">✔ Mark Verified</button>'
                       : '')
-                    + '<button class="btn btn-print btn-sm" onclick="openInvoice('+i+')">🖨️</button>'
-                    + (o.status==='Cancelled' ? '' : '<button class="btn btn-red btn-sm" onclick="checkerCancelOrder('+i+')">❌ Cancel</button>'))
+                    + '<button class="btn btn-print btn-sm" onclick="openInvoice('+i+')">🖨️</button>')
+                    // NOTE: Cancel + Re-Encode for LBC/EMS/FedEx now live in the
+                    // AUDITOR page (moved out of Checker Verify).
               }
-              ${(o.checkerStatus!=='Verified' && o.verificationStatus!=='Verified') ? '<button class="btn btn-sm" style="background:rgba(155,111,217,0.15);color:var(--purple);border:1px solid rgba(155,111,217,0.4);white-space:nowrap;" onclick="checkerReEncodeOrder('+i+')" title="Ibalik sa Admin Encode (Return to Encode)">↩️ Re-Encode</button>' : ''}
             </td>
           </tr>`;
         });
@@ -7456,12 +7473,12 @@ function renderPayroll(tab){
 
 function backToRoleSelect(){
   selectedRole=null;
-  ['owner','admin','rider','remitter','sorter','checker'].forEach(id=>{const el=document.getElementById('login-step-'+id);if(el)el.style.display='none';});
+  ['owner','admin','rider','remitter','sorter','checker','auditor'].forEach(id=>{const el=document.getElementById('login-step-'+id);if(el)el.style.display='none';});
   const rs=document.getElementById('login-step-role');if(rs)rs.style.display='block';
   document.querySelectorAll('.role-btn').forEach(b=>b.classList.remove('selected'));
-  ['login-owner-pw','login-admin-pw','login-rider-pw-main','login-remitter-pw','login-sorter-pw','login-checker-pw']
+  ['login-owner-pw','login-admin-pw','login-rider-pw-main','login-remitter-pw','login-sorter-pw','login-checker-pw','login-auditor-pw']
     .forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  ['login-owner-err','login-admin-err','login-rider-err','login-remitter-err','login-sorter-err','login-checker-err']
+  ['login-owner-err','login-admin-err','login-rider-err','login-remitter-err','login-sorter-err','login-checker-err','login-auditor-err']
     .forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='';});
 }
 
@@ -8800,6 +8817,10 @@ function moveCodOpToInProgress(idx) {
   o.codopInProgress = true;
   o.lbcInProgress = false; // MUTUAL EXCLUSION: never both flags → prevents the
                            // order appearing in two checker tabs (double entry).
+  // A re-encoded order carries status 'Return to Encode'. Moving it back to In
+  // Progress must restore an ACTIVE status so it reappears in the Auditor queue
+  // (which excludes 'Return to Encode'). Without this it silently vanishes.
+  if(o.status === 'Return to Encode') o.status = 'Preparing';
   save();
   window._cdPayTab = 'In Progress';
   renderCourierDashboard();
@@ -8864,6 +8885,9 @@ function moveLbcToInProgress(idx) {
   o.lbcPrevTab = (_pm === 'COD' || _pm === 'COD - Online Payment') ? 'Encoded' : (o.paymentStatus || 'Fully Paid');
   o.lbcInProgress = true;
   o.codopInProgress = false; // MUTUAL EXCLUSION: never both flags → prevents double entry.
+  // Restore active status for a re-encoded order (see moveCodOpToInProgress note)
+  // so it reappears in the Auditor queue instead of vanishing.
+  if(o.status === 'Return to Encode') o.status = 'Preparing';
   save();
   window._cdPayTab = 'In Progress';
   renderCourierDashboard();
@@ -9889,7 +9913,7 @@ function checkPw(pw){ return checkOwnerPw(pw); }
 
 function selectRole(role){
   selectedRole=role;
-  ['owner','admin','rider','remitter','sorter','checker'].forEach(id=>{
+  ['owner','admin','rider','remitter','sorter','checker','auditor'].forEach(id=>{
     const el=document.getElementById('login-step-'+id); if(el)el.style.display='none';
   });
   document.querySelectorAll('.role-btn').forEach(b=>b.classList.remove('selected'));
@@ -16918,6 +16942,30 @@ function emsdUpdateStatus(orderIdx, newStatus) {
 }
 
 
+// ── AUDITOR Cancel / Re-Encode (moved from Checker Verify) ─────────────────
+// These reuse the exact checker logic so the cancel flow (modal → confirm →
+// inventory restore → return log) and the re-encode flow stay identical. They
+// only differ in that they re-render the AUDITOR page afterwards. A shared flag
+// lets confirmCheckerCancel know to refresh the auditor view.
+function auditorCancelOrder(orderIdx){
+  // GUARD: valid order only. Set the auditor-refresh flag ONLY when we actually
+  // open the modal, so a bad index can't leave a stale flag behind.
+  const o = S.orders && S.orders[orderIdx];
+  if(!o){ toast('⚠️ Hindi mahanap ang order.'); return; }
+  if(o.checkerStatus === 'Verified' || o.verificationStatus === 'Verified'){
+    toast('🔒 Verified na — i-UNVERIFY muna bago i-cancel.'); return;
+  }
+  window._auditorCancelActive = true;   // tell confirmCheckerCancel to re-render auditor
+  checkerCancelOrder(orderIdx);         // opens the same cancel modal + guards
+}
+function auditorReEncodeOrder(orderIdx){
+  // GUARD: valid order only (checkerReEncodeOrder also guards, this is belt-and-braces).
+  const o = S.orders && S.orders[orderIdx];
+  if(!o){ toast('⚠️ Hindi mahanap ang order.'); return; }
+  checkerReEncodeOrder(orderIdx);       // same re-encode logic + guards
+  try { renderAuditor(); } catch(e){}
+}
+
 // ── Checker Cancel (LBC/INTL) ──────────────────────────────
 function checkerCancelOrder(orderIdx) {
   const o = S.orders[orderIdx];
@@ -17115,9 +17163,13 @@ function confirmCheckerCancel() {
   // Force SAR pickup on all devices
   window._lastKnownWriteTs = 0;
   save();
+  // Capture the auditor-refresh flag BEFORE closeModal (which clears it), so a
+  // successful cancel still refreshes the auditor view.
+  const _fromAuditor = !!window._auditorCancelActive;
   closeModal('modal-checker-cancel');
   toast(`❌ Order cancelled${restored ? ' & inventory restored' : ''}. Reason: ${reason}`);
   renderChecker();
+  if(_fromAuditor){ try { renderAuditor(); } catch(e){} }
   try { initOrdersPage(); } catch(e) {}
   if(currentRole==='owner') renderDash();
 }
@@ -18613,3 +18665,4 @@ document.addEventListener('visibilitychange', async ()=>{
 </script>
 </body>
 </html>
+  
