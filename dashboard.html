@@ -969,10 +969,16 @@ function _mergeOrders(fbOrders, localOrders) {
     if (localO.hasOwnProperty('inventoryRestored') && localO.inventoryRestored !== fbO.inventoryRestored) {
       merged.inventoryRestored = localO.inventoryRestored;
     }
-    // auditorPaid: trust local over Firebase for the same reason — the auditor's
-    // most recent PAID/UNPAID toggle must not be reverted by a stale Firebase read
-    // arriving before the write confirms. (Same trust-local rule as inventory.)
-    if (localO.hasOwnProperty('auditorPaid') && localO.auditorPaid !== fbO.auditorPaid) {
+    // auditorPaid: trust local ONLY within a 15-second write-grace window after
+    // THIS device toggled PAID/UNPAID (write may still be in-flight). After that
+    // window — or on any OTHER device that never toggled — Firebase WINS, so the
+    // PAID status propagates to the checker's device in real time. Without this
+    // grace-scoping, the checker's stale local `false` would keep overriding the
+    // auditor's remote `true`, and the parcel would only appear after a manual
+    // refresh (the exact bug this fixes).
+    const _auditGrace = 15000; // 15s — covers one full SAR cycle
+    const _inAuditGrace = window._auditorWriteTs && (Date.now() - window._auditorWriteTs) < _auditGrace;
+    if (_inAuditGrace && localO.hasOwnProperty('auditorPaid') && localO.auditorPaid !== fbO.auditorPaid) {
       merged.auditorPaid   = localO.auditorPaid;
       merged.auditorPaidAt = localO.auditorPaidAt;
       merged.auditorPaidBy = localO.auditorPaidBy;
@@ -4855,6 +4861,7 @@ function auditorTogglePaid(orderIdx, makePaid){
   o.auditorPaidAt = makePaid ? new Date().toISOString() : '';
   o.auditorPaidBy = makePaid ? (currentUser?.name || 'Auditor') : '';
   window._lastKnownWriteTs = 0; // force SAR pickup so checker sees it fast
+  window._auditorWriteTs = Date.now(); // start grace window: trust THIS device's toggle briefly
   try { save(); } catch(e){}
   try { renderAuditor(); } catch(e){}
   // Instant reflect to the checker on THIS device too.
@@ -12019,6 +12026,7 @@ async function saveOrder() {
   const totalDiscountAll = Math.round(((parseFloat(totalDiscount)||0)+(parseFloat(globalDiscount)||0))*100)/100;
   const editIdx = document.getElementById('enc-edit-idx').value;
   const isLbcMethod = paymentMethod === 'LBC' || paymentMethod === 'EMS' || paymentMethod === 'FedEx';
+  const isFedExMethod = paymentMethod === 'FedEx';
   const isCodOnlineMethod = paymentMethod === 'COD - Online Payment';
   const trackingNumber = isLbcMethod ? (document.getElementById('enc-tracking-number')?.value.trim()||'') : '';
   const dateOfPayment = isLbcMethod ? (document.getElementById('enc-date-payment')?.value||'') : '';
@@ -12069,8 +12077,11 @@ async function saveOrder() {
   }
 
   // ── Fully Paid validation: tracking, date of payment, ref#, amount, date & time required ──
+  // FedEx EXEMPTION: FedEx parcels may be saved even as Fully Paid WITHOUT tracking
+  // or the other entry data (tracking/payment details are added after drop-off).
+  // Only LBC/EMS still require the full entry set when Fully Paid.
   const _selectedPayStatus = document.getElementById('enc-order-payment-status')?.value || '';
-  if(isLbcMethod && _selectedPayStatus === 'Fully Paid') {
+  if(isLbcMethod && !isFedExMethod && _selectedPayStatus === 'Fully Paid') {
     // 1. Tracking number required
     if(!trackingNumber) {
       toast('⚠️ Fully Paid requires a Tracking Number. Please enter it first.');
