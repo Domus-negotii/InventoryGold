@@ -17281,7 +17281,11 @@ function checkerReEncodeOrder(orderIdx) {
   window._lastKnownWriteTs = 0; // force SAR pickup on all devices
   try { save(); } catch(e){}
   toast('↩️ Na-Re-Encode — bumalik sa Admin Encode (Return to Encode).');
+  // Instant re-render of every affected view on THIS device (other devices pick it
+  // up on the next SAR cycle ~3s). Auditor included: a re-encoded parcel that was
+  // sitting in the auditor queue must disappear from it immediately.
   try { renderChecker(); } catch(e){}
+  try { if(typeof renderAuditor==='function') renderAuditor(); } catch(e){}
   try { if(typeof renderOrders==='function') renderOrders(); } catch(e){}
   try { initOrdersPage(); } catch(e){}
 }
