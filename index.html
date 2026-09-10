@@ -1635,7 +1635,7 @@ function _showRulesHint() {
         <thead><tr>
           <th>Order #</th><th>Customer</th><th>CP #</th><th>Date</th>
           <th>Grand Total</th><th>Payment Status</th>
-          <th style="color:var(--gold);">🧾 Audit Status</th><th>Action</th>
+          <th style="color:var(--gold);">🧾 Audit Status</th><th>📦 Parcel Status</th><th>Action</th>
         </tr></thead>
         <tbody id="auditor-tbody"></tbody>
       </table></div>
@@ -4702,19 +4702,29 @@ function renderAuditor(){
     const paid = !!o.auditorPaid;
     const _isVerified = o.checkerStatus === 'Verified' || o.verificationStatus === 'Verified';
     const _gt = (o.grandTotal!=null?o.grandTotal:0);
-    // FLOW: parcels reach the auditor only AFTER checker verify. PAID is permanent.
+    // FLOW: parcels reach the auditor only AFTER checker verify.
+    // Couriers need a Date of Drop-off before they can be marked PAID.
+    const _isCourierRow = ['LBC','EMS','FedEx'].includes(o.paymentMethod||'');
+    const _needsDropoff = _isCourierRow && !o.dateOfDropoff;
     const statusPill = paid
-      ? '<span style="color:var(--green);font-weight:700;">✅ PAID <span style="color:var(--muted);font-weight:400;font-size:9px;">(locked)</span></span>'
-      : '<span style="color:var(--orange);font-weight:700;">🕓 To Mark PAID</span>';
-    // Button: PAID is a one-way action. Once PAID, show a permanent lock chip.
-    // Before PAID (parcel is already verified to be here), show Mark PAID.
+      ? '<span style="color:var(--green);font-weight:700;">✅ PAID</span>'
+      : (_needsDropoff
+          ? '<span style="color:var(--red);font-weight:700;">📦 Awaiting Drop-off</span>'
+          : '<span style="color:var(--orange);font-weight:700;">🕓 To Mark PAID</span>');
+    // Button:
+    //  • PAID  → show an UNPAID (undo) button so a mistake can be reverted
+    //            (blocked once the parcel has moved on — enforced in the handler).
+    //  • not PAID + needs drop-off → disabled Mark PAID with a hint.
+    //  • not PAID + ready         → active Mark PAID.
     const _paidBtn = paid
-      ? '<span style="font-size:9.5px;color:var(--green);white-space:nowrap;padding:3px 6px;">🔒 PAID (locked)</span>'
-      : `<button class="btn btn-sm" style="background:rgba(46,204,138,0.12);color:var(--green);border:1px solid rgba(46,204,138,0.4);white-space:nowrap;" onclick="auditorTogglePaid(${i},true)" title="Markahan bilang PAID (permanente)">✅ Mark PAID</button>`;
+      ? `<button class="btn btn-sm" style="background:rgba(224,138,48,0.12);color:var(--orange);border:1px solid rgba(224,138,48,0.4);white-space:nowrap;" onclick="auditorTogglePaid(${i},false)" title="Ibalik sa UNPAID (undo)">↩️ Mark UNPAID</button>`
+      : (_needsDropoff
+          ? `<button class="btn btn-sm" style="opacity:0.5;cursor:not-allowed;background:rgba(46,204,138,0.08);color:var(--muted);border:1px solid rgba(46,204,138,0.2);white-space:nowrap;" disabled title="Kailangan muna ng Date of Drop-off">✅ Mark PAID</button>`
+          : `<button class="btn btn-sm" style="background:rgba(46,204,138,0.12);color:var(--green);border:1px solid rgba(46,204,138,0.4);white-space:nowrap;" onclick="auditorTogglePaid(${i},true)" title="Markahan bilang PAID">✅ Mark PAID</button>`);
     // ── LOCK-ON-PAID ──────────────────────────────────────────────────────
-    // Once PAID (permanent), every other action (View, Cancel, Re-Encode) LOCKS.
-    // The parcel is committed and flows to the Dispatcher. Before PAID the auditor
-    // may still View / Cancel / Re-Encode.
+    // Once PAID, other actions (Cancel, Re-Encode) lock — but UNPAID (undo) stays
+    // available (handler blocks it after the parcel moves on). The parcel flows to
+    // the Dispatcher. Before PAID the auditor may still View / Cancel / Re-Encode.
     const _locked = paid;
     // Cancel + Re-Encode: available only while NOT paid and NOT verified.
     const _cancelBtn = (!_locked && o.status!=='Cancelled')
@@ -4729,6 +4739,22 @@ function renderAuditor(){
       ? `<button class="btn btn-outline btn-sm" onclick="auditorViewOrder(${i})" title="View order details (read-only)">✏️</button>`
       : `<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled title="Locked — PAID na">✏️</button>`;
     const btn = `<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;">${_viewBtn}${_paidBtn}${_cancelBtn}${_reEncBtn}</div>`;
+    // ── PARCEL STATUS CONTROL (moved here from Checker) ────────────────────────
+    // The Auditor now owns the parcel-status change. It only becomes editable AFTER
+    // the parcel is PAID (couriers). Before PAID it shows a read-only chip. Once the
+    // parcel has been dropped off / dispatched, it locks to a read-only chip.
+    const _parcelStatusCell = (() => {
+      const _st = o.lbcStatus || 'Preparing';
+      const _terminal = ['Drop off at LBC','Drop off at EMS','Drop off at FedEx','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'].includes(o.lbcStatus||'');
+      if(!paid || _terminal || !_isCourierRow){
+        // Read-only until PAID (or once dispatched, or for COD-OP which has no lane here)
+        return `<span style="font-size:9.5px;color:var(--muted);padding:2px 8px;background:rgba(148,163,184,0.08);border-radius:4px;">${_terminal?('🔒 '+o.lbcStatus):_st}</span>`;
+      }
+      return `<select class="form-control" style="width:150px;font-size:10.5px;padding:3px 5px;" onchange="updateLbcStatus(${i},this.value)">
+                <option${(!o.lbcStatus||o.lbcStatus==='Preparing')?' selected':''}>Preparing</option>
+                <option${o.lbcStatus==='Ready to Pick-up'?' selected':''}>Ready to Pick-up</option>
+              </select>`;
+    })();
     return `<tr>
       <td style="color:var(--gold);font-weight:600;">${onum(i)}</td>
       <td>${o.name||'—'}</td>
@@ -4737,11 +4763,12 @@ function renderAuditor(){
       <td style="color:var(--gold);">${typeof p==='function'?p(_gt):_gt}</td>
       <td style="font-size:11px;">${o.paymentStatus||'—'}</td>
       <td>${statusPill}</td>
+      <td>${_parcelStatusCell}</td>
       <td>${btn}</td>
     </tr>`;
   }).join('');
 
-  tbody.innerHTML = rows || `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:26px;">Walang parcel sa ${method} na naka In Progress.</td></tr>`;
+  tbody.innerHTML = rows || `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:26px;">Walang parcel sa ${method} na naka In Progress.</td></tr>`;
 }
 
 function checkerPartialEditOrder(orderIdx){
@@ -4862,26 +4889,41 @@ function auditorTogglePaid(orderIdx, makePaid){
 
   const o = S.orders && S.orders[orderIdx];
   if(!o){ toast('⚠️ Hindi mahanap ang order.'); window[_lockKey]=false; return; }
-  // ── PERMANENT PAID ─────────────────────────────────────────────────────────
-  // There is no UNPAID in this flow. Any attempt to un-mark is rejected.
-  if(!makePaid){
-    toast('🔒 PAID ay permanente na — hindi na pwedeng i-UNPAID.');
-    window[_lockKey]=false; renderAuditor(); return;
-  }
   // ── AUDITED-METHOD GUARD ────────────────────────────────────────────────────
   // Only COD-OP / LBC / EMS / FedEx are audited. Plain COD never reaches here.
   if(!_isAuditedMethod(o)){
     toast('⚠️ Ang order na ito ay hindi audited (plain COD).');
     window[_lockKey]=false; renderAuditor(); return;
   }
-  // ── VERIFIED REQUIRED ──────────────────────────────────────────────────────
-  // The parcel must be VERIFIED by the checker before the auditor can mark PAID.
-  if(!_isCheckerVerified(o)){
-    toast('🔒 Hindi pa na-verify ni checker — i-verify muna bago i-mark PAID.');
-    window[_lockKey]=false; renderAuditor(); return;
+  if(makePaid){
+    // ── VERIFIED REQUIRED ────────────────────────────────────────────────────
+    // The parcel must be VERIFIED by the checker before the auditor can mark PAID.
+    if(!_isCheckerVerified(o)){
+      toast('🔒 Hindi pa na-verify ni checker — i-verify muna bago i-mark PAID.');
+      window[_lockKey]=false; renderAuditor(); return;
+    }
+    // ── DROP-OFF REQUIRED (couriers) ──────────────────────────────────────────
+    // LBC/EMS/FedEx may be verified WITHOUT a drop-off date, but the Auditor may
+    // NOT mark them PAID until the Date of Drop-off is set. COD-OP has no drop-off.
+    const _isCourier = ['LBC','EMS','FedEx'].includes(o.paymentMethod||'');
+    if(_isCourier && !o.dateOfDropoff){
+      toast('🔒 Walang Date of Drop-off — i-set muna bago i-mark PAID.');
+      window[_lockKey]=false; renderAuditor(); return;
+    }
+    // No-op if already PAID (idempotent).
+    if(!!o.auditorPaid === true){ window[_lockKey]=false; renderAuditor(); return; }
+  } else {
+    // ── UNPAID (undo) ─────────────────────────────────────────────────────────
+    // Allow reverting PAID → UNPAID so the auditor can correct a mistake, UNLESS
+    // the parcel has already moved onward (Ready/Out for Delivery/Delivered).
+    const _movedOn = ['Ready','Out for Delivery','Delivered','RTO'].includes(o.status);
+    if(_movedOn){
+      toast('🔒 Naka-proceed na sa dispatcher — hindi na pwedeng i-UNPAID.');
+      window[_lockKey]=false; renderAuditor(); return;
+    }
+    // No-op if already UNPAID.
+    if(!o.auditorPaid){ window[_lockKey]=false; renderAuditor(); return; }
   }
-  // No-op if already PAID (idempotent).
-  if(!!o.auditorPaid === true){ window[_lockKey]=false; renderAuditor(); return; }
 
   o.auditorPaid   = !!makePaid;
   o.auditorPaidAt = makePaid ? new Date().toISOString() : '';
@@ -5328,16 +5370,15 @@ function renderChecker(){
               })()}
             </td>
             <td>
-              ${(canVerify && verifSt === 'Verified')
-                ? isDroppedOff
-                  ? `<span style="font-size:9.5px;color:var(--blue);padding:2px 8px;background:rgba(74,144,217,0.1);border-radius:4px;">🔒 ${o.lbcStatus}</span>`
-                  : `<select class="form-control" style="width:150px;font-size:10.5px;padding:3px 5px;"
-                      onchange="updateLbcStatus(${i},this.value)">
-                      <option${(!o.lbcStatus||o.lbcStatus==='Preparing')?' selected':''}>Preparing</option>
-                      <option${o.lbcStatus==='Ready to Pick-up'?' selected':''}>Ready to Pick-up</option>
-                    </select>`
-                : `<span style="font-size:9.5px;color:var(--muted);">—</span>`
-              }
+              ${(() => {
+                // ── PARCEL STATUS — READ-ONLY IN CHECKER ─────────────────────────
+                // The parcel-status control has MOVED to the Auditor. The checker now
+                // only DISPLAYS the current status; changing it happens in the Auditor
+                // page (after the parcel is PAID).
+                const _st = o.lbcStatus || (verifSt === 'Verified' ? 'Preparing' : '');
+                if(!_st) return '<span style="font-size:9.5px;color:var(--muted);">—</span>';
+                return `<span style="font-size:9.5px;color:var(--muted);padding:2px 8px;background:rgba(148,163,184,0.08);border-radius:4px;">${_st}</span>`;
+              })()}
             </td>
             <td style="text-align:center;">
               ${o.printed
@@ -5632,7 +5673,8 @@ function updateVerifStatus(orderIdx, status) {
       const missing = [];
       if(!isFedEx && !o.trackingNumber) missing.push('Tracking Number');
       if(!o.dateOfPayment)  missing.push('Date of Fully Paid');
-      if(!o.dateOfDropoff)  missing.push('Date of Drop-off');
+      // NOTE: Date of Drop-off is NO LONGER required to verify. The checker may
+      // verify without it; the Auditor enforces drop-off before marking PAID.
       if(missing.length > 0) {
         toast('⚠️ Hindi pa mave-verify. I-fill up muna ang: ' + missing.join(', '));
         renderChecker();
@@ -5784,7 +5826,7 @@ function verifyOrder(i){
     const missing = [];
     if(!isFedEx && !o.trackingNumber) missing.push('Tracking Number');
     if(!o.dateOfPayment)  missing.push('Date of Fully Paid');
-    if(!o.dateOfDropoff)  missing.push('Date of Drop-off');
+    // NOTE: Date of Drop-off NOT required to verify (enforced at Auditor PAID).
     if(missing.length > 0) {
       toast('⚠️ Hindi pa mave-verify. I-fill up muna ang: ' + missing.join(', '));
       _releaseVerifyLock(); return;
