@@ -3459,6 +3459,27 @@ const _COD_OP_TAB = 'COD-OP'; // COD Online Payment checker/courier tab name
 // Helper: true if order is COD-flow (goes through checker → dispatcher → rider → remitter)
 const _isCodFlow    = (o) => _COD_METHODS.has(o?.paymentMethod || 'COD');
 
+// ── FLOW HELPERS (In Progress → Checker → verify → Auditor → PAID → Dispatcher) ──
+// Single source of truth for the audited-order flow so every gate agrees.
+// _isAuditedMethod: methods that must pass through the Auditor (COD-OP + couriers).
+//                   Plain COD is NEVER audited.
+// _isCheckerVerified: the parcel has been verified by the checker (either flag).
+// _isInProgress: admin has moved the parcel to the In Progress lane for its method.
+const _AUDITED_METHODS = new Set(['COD - Online Payment','LBC','EMS','FedEx']);
+function _isAuditedMethod(o){ return !!o && _AUDITED_METHODS.has(o.paymentMethod || 'COD'); }
+function _isCheckerVerified(o){ return !!o && (o.checkerStatus === 'Verified' || o.verificationStatus === 'Verified'); }
+function _isInProgress(o){
+  if(!o) return false;
+  return (o.paymentMethod === 'COD - Online Payment') ? !!o.codopInProgress : !!o.lbcInProgress;
+}
+// Auditor should show an audited parcel ONLY after the checker verified it (or if
+// it's already PAID — keep it visible for its final state). Guards null + method.
+function _isReadyForAuditor(o){
+  if(!_isAuditedMethod(o)) return false;   // plain COD never reaches the auditor
+  if(!_isInProgress(o)) return false;      // must be in the In Progress lane
+  return _isCheckerVerified(o) || !!o.auditorPaid;
+}
+
 // ── Remit gate helper ──────────────────────────────────────────────────────
 // Returns true if a COD order has been officially Remitted by the rider.
 // Delivered status alone does NOT count — must be in a Remitted remitLog batch.
@@ -4658,16 +4679,11 @@ function renderAuditor(){
   const rows = (S.orders||[]).map((o,i)=>({o,i})).filter(({o})=>{
     if(!o) return false;
     if((o.paymentMethod||'COD') !== method) return false;
-    // Auditor only handles orders the admin has moved to In Progress.
-    const _inProgress = (method==='COD - Online Payment') ? o.codopInProgress : o.lbcInProgress;
-    if(!_inProgress) return false;
-    // ── FLOW: CHECKER FIRST → THEN AUDITOR ─────────────────────────────────────
-    // A parcel only appears in the Auditor AFTER the checker has VERIFIED it.
-    // Before verification it lives solely in the checker queue. (A parcel that is
-    // already PAID stays visible so the auditor can see its final state, even if
-    // some later step changed checkerStatus.)
-    const _verified = o.checkerStatus==='Verified' || o.verificationStatus==='Verified';
-    if(!_verified && !o.auditorPaid) return false;
+    // ── FLOW GATE: In Progress → Checker → verify → THEN Auditor ───────────────
+    // Single-source helper enforces: audited method + In Progress + checker has
+    // VERIFIED it (or already PAID). Applies uniformly to COD-OP, LBC, EMS, FedEx.
+    // Before the checker verifies, the parcel lives solely in the checker queue.
+    if(!_isReadyForAuditor(o)) return false;
     // Skip terminal states, BUT keep Cancelled visible so the auditor can still
     // Re-Encode a cancelled parcel back to Admin Encode.
     if(['Delivered','RTO','Return to Encode'].includes(o.status)) return false;
@@ -4852,10 +4868,15 @@ function auditorTogglePaid(orderIdx, makePaid){
     toast('🔒 PAID ay permanente na — hindi na pwedeng i-UNPAID.');
     window[_lockKey]=false; renderAuditor(); return;
   }
+  // ── AUDITED-METHOD GUARD ────────────────────────────────────────────────────
+  // Only COD-OP / LBC / EMS / FedEx are audited. Plain COD never reaches here.
+  if(!_isAuditedMethod(o)){
+    toast('⚠️ Ang order na ito ay hindi audited (plain COD).');
+    window[_lockKey]=false; renderAuditor(); return;
+  }
   // ── VERIFIED REQUIRED ──────────────────────────────────────────────────────
   // The parcel must be VERIFIED by the checker before the auditor can mark PAID.
-  const _isVerified = o.checkerStatus === 'Verified' || o.verificationStatus === 'Verified';
-  if(!_isVerified){
+  if(!_isCheckerVerified(o)){
     toast('🔒 Hindi pa na-verify ni checker — i-verify muna bago i-mark PAID.');
     window[_lockKey]=false; renderAuditor(); return;
   }
@@ -10962,7 +10983,7 @@ function renderRiderParcels() {
       // ── COD-OP AUDITOR PAID GATE ──────────────────────────────────────────────
       // A COD-OP parcel must be marked PAID by the Auditor before the rider can see
       // it (belt-and-braces — the dispatcher gate already enforces this upstream).
-      if(o.paymentMethod === 'COD - Online Payment' && !o.auditorPaid) return false;
+      if(_isAuditedMethod(o) && !o.auditorPaid) return false;
       // ── REMIT HIDE ──────────────────────────────────────────────────────────
       // Once the order's batch is Remitted the money is settled — hide it from the
       // rider dashboard entirely (Delivered, Update, RTO, etc.). The Cancelled path
@@ -12753,7 +12774,7 @@ function renderTracking() {
     // in COD Tracking (it delivers like COD, via rider). It must NOT show up for
     // the dispatcher/rider until the Auditor has marked it PAID. Plain COD has no
     // auditor step and is unaffected.
-    if(o.paymentMethod === 'COD - Online Payment' && !o.auditorPaid) return false;
+    if(_isAuditedMethod(o) && !o.auditorPaid) return false;
     // Checker-cancelled orders belong to Recently Deleted, not active tracking
     if(o.status === 'Cancelled' && o.cancelledBy) return false;
     // Delivered and RTO orders belong in COD Delivery — hide from COD Tracking
@@ -15849,7 +15870,7 @@ function renderOrderMgmt() {
     // A parcel may NOT proceed to the dispatcher until the Auditor has marked it
     // PAID. This applies to every audited method (COD-OP, LBC, EMS, FedEx). Plain
     // COD has no auditor step and is unaffected.
-    if(['COD - Online Payment','LBC','EMS','FedEx'].includes(o.paymentMethod||'') && !o.auditorPaid) return false;
+    if(_isAuditedMethod(o) && !o.auditorPaid) return false;
     // Must be Ready to Pick-up (not Preparing)
     const st = o.lbcStatus||'Preparing';
     if(st === 'Preparing') return false;
