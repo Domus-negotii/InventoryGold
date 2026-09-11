@@ -4173,20 +4173,21 @@ function openEditOrder(i, _allowVerifiedEdit, _requireDropoffChange){
     const adminWrapper=document.getElementById('enc-admin-wrapper');
     if(adminWrapper){ adminWrapper.title='Admin name is locked for checkers'; }
   }
-  // FIX3: Date of Drop-off is CHECKER-ONLY — disable for admin/CSR
+  // FIX3: Date of Drop-off — editable by Checker, Owner, AND Auditor (the auditor
+  // is the one who sets the drop-off date in the new flow). Locked for admin/CSR.
   (() => {
     const dofInput = document.getElementById('enc-date-dropoff');
     if(dofInput){
-      const canDof = (currentRole==='checker'||currentRole==='owner');
+      const canDof = (currentRole==='checker'||currentRole==='owner'||currentRole==='auditor');
       dofInput.disabled = !canDof;
       dofInput.style.opacity = canDof ? '1' : '0.5';
-      dofInput.title = canDof ? '' : '🔒 Only Checker can edit Date of Drop-off';
+      dofInput.title = canDof ? '' : '🔒 Checker/Auditor can edit Date of Drop-off';
       const grp = dofInput.closest('.form-group');
       if(grp){
         const lbl = grp.querySelector('label');
         if(lbl) lbl.innerHTML = 'Date of Drop-off ' + (canDof
-          ? '<span style="font-size:10px;color:var(--muted);">(checker only)</span>'
-          : '<span style="font-size:10px;color:var(--red);">🔒 Checker only</span>');
+          ? '<span style="font-size:10px;color:var(--muted);">(checker/auditor)</span>'
+          : '<span style="font-size:10px;color:var(--red);">🔒 Checker/Auditor only</span>');
       }
     }
   })();
@@ -4733,11 +4734,12 @@ function renderAuditor(){
     const _reEncBtn = (!_locked)
       ? `<button class="btn btn-sm" style="background:rgba(155,111,217,0.15);color:var(--purple);border:1px solid rgba(155,111,217,0.4);white-space:nowrap;" onclick="auditorReEncodeOrder(${i})" title="Ibalik sa Admin Encode (Return to Encode)">↩️ Re-Encode</button>`
       : '';
-    // View-only pencil — also locks once PAID/verified (a paid parcel is finalized
-    // for the auditor's purposes; only PAID/UNPAID toggle remains).
+    // Pencil:
+    //  • NOT PAID → EDITABLE (auditor sets Date of Drop-off + fixes contact/address)
+    //  • PAID     → view-only (checker/auditor can only look; parcel is finalized)
     const _viewBtn = (!_locked)
-      ? `<button class="btn btn-outline btn-sm" onclick="auditorViewOrder(${i})" title="View order details (read-only)">✏️</button>`
-      : `<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled title="Locked — PAID na">✏️</button>`;
+      ? `<button class="btn btn-outline btn-sm" onclick="auditorEditOrder(${i})" title="Edit contact/address + Date of Drop-off">✏️</button>`
+      : `<button class="btn btn-outline btn-sm" onclick="auditorViewOrder(${i})" title="View order details (read-only)">👁️</button>`;
     const btn = `<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;">${_viewBtn}${_paidBtn}${_cancelBtn}${_reEncBtn}</div>`;
     // ── PARCEL STATUS CONTROL (moved here from Checker) ────────────────────────
     // The Auditor now owns the parcel-status change. It only becomes editable AFTER
@@ -4833,16 +4835,84 @@ function checkerPartialEditOrder(orderIdx){
   }, 80);
 }
 
+function checkerViewOnlyOrder(orderIdx){
+  // Pure read-only view for the CHECKER once a parcel is PAID by the Auditor.
+  // Opens the encode modal fully locked with a Close-only footer.
+  if(!S.orders || !S.orders[orderIdx]) { toast('⚠️ Hindi mahanap ang order.'); return; }
+  openEditOrder(orderIdx, true);   // bypass verified-lock; this is read-only anyway
+  setTimeout(()=>{
+    const modal = document.getElementById('modal-encode');
+    if(!modal) return;
+    modal.querySelectorAll('input, select, textarea').forEach(el=>{ el.disabled = true; el.style.cursor='not-allowed'; });
+    modal.querySelectorAll('button').forEach(b=>{
+      const oc = b.getAttribute('onclick') || '';
+      if(oc.includes("closeModal('modal-encode')")) return;
+      if(b.classList.contains('modal-close')) return;
+      b.disabled = true; b.style.opacity='0.5'; b.style.cursor='not-allowed';
+    });
+    const fa = document.getElementById('enc-form-actions'); if(fa) fa.style.display='none';
+    const va = document.getElementById('enc-view-actions');  if(va) va.style.display='';
+    window._encViewMode = true;
+  }, 80);
+}
+
+function auditorEditOrder(orderIdx){
+  // ╔══════════════════════════════════════════════════════════════════════════╗
+  // ║ AUDITOR PARTIAL EDIT — CONTRACT (DO NOT WEAKEN)                            ║
+  // ║  After the checker verifies, the parcel reaches the Auditor who must be    ║
+  // ║  able to SET the Date of Drop-off (couriers) + fix delivery contact info.  ║
+  // ║  Editable: Name, CP, Back-up, Address, Landmark, + Date of Drop-off        ║
+  // ║  (LBC/EMS/FedEx). Everything else (items, amounts, payments) stays LOCKED. ║
+  // ║  Save stays active. Reuses the same saveOrder partial-mode guards as the   ║
+  // ║  checker (force original method, preserve in-progress/paymentStatus, etc.) ║
+  // ║  Once PAID the parcel is locked — this edit is blocked (button hidden too). ║
+  // ╚══════════════════════════════════════════════════════════════════════════╝
+  if(!S.orders || !S.orders[orderIdx]) { toast('⚠️ Hindi mahanap ang order.'); return; }
+  const _ord = S.orders[orderIdx];
+  if(_ord.auditorPaid){ toast('🔒 PAID na — locked. I-UNPAID muna bago i-edit.'); return; }
+  const _isCourier = ['LBC','EMS','FedEx'].includes(_ord.paymentMethod||'');
+  // Pass _allowVerifiedEdit=true: the parcel IS verified (that's how it reached the
+  // auditor). The auditor must still edit it to set the Date of Drop-off, so bypass
+  // the verified-lock that would otherwise block openEditOrder.
+  openEditOrder(orderIdx, true);
+  setTimeout(()=>{
+    const modal = document.getElementById('modal-encode');
+    if(!modal) return;
+    const _fields = ['enc-name','enc-contact','enc-backup-contact','enc-address','enc-landmark'];
+    if(_isCourier) _fields.push('enc-date-dropoff');   // Auditor sets Date of Drop-off
+    const EDITABLE = new Set(_fields);
+    modal.querySelectorAll('input, select, textarea').forEach(el=>{
+      const keep = EDITABLE.has(el.id);
+      el.disabled = !keep;
+      el.style.cursor = keep ? '' : 'not-allowed';
+      if(!keep) el.style.opacity = '0.75';
+    });
+    modal.querySelectorAll('button').forEach(b=>{
+      const oc = b.getAttribute('onclick') || '';
+      if(oc.includes('saveOrder()')) return;                    // keep Save
+      if(oc.includes("closeModal('modal-encode')")) return;      // keep Close
+      if(b.classList.contains('modal-close')) return;
+      b.disabled = true; b.style.opacity = '0.5'; b.style.cursor = 'not-allowed';
+    });
+    const fa = document.getElementById('enc-form-actions'); if(fa) fa.style.display='';
+    const va = document.getElementById('enc-view-actions');  if(va) va.style.display='none';
+    // Reuse the checker partial-mode flags so saveOrder applies the same safe path
+    // (force original method, preserve in-progress + paymentStatus, re-enable reads).
+    window._encViewMode = true;
+    window._encPartialCodOp = true;
+  }, 80);
+}
+
 function auditorViewOrder(orderIdx){
   // ── VIEW-ONLY order details for the Auditor ────────────────────────────────
   // Opens the standard encode modal but LOCKS every field and swaps the Save
   // footer for a read-only Close footer. The auditor can inspect the parcel
   // (items, amounts, contact, address) without being able to change anything.
   if(!S.orders || !S.orders[orderIdx]) { toast('⚠️ Hindi mahanap ang order.'); return; }
-  // LOCK-ON-PAID: view button is disabled in the UI once PAID; this guards the
-  // programmatic path too.
-  if(S.orders[orderIdx].auditorPaid){ toast('🔒 PAID na — locked.'); return; }
-  openEditOrder(orderIdx);           // reuse the full render (all fields populated)
+  // NOTE: viewing is ALWAYS allowed (including when PAID) — this is the read-only
+  // path. Editing is a separate function (auditorEditOrder) that is blocked on PAID.
+  // Bypass the verified-lock (the parcel is verified — we're only viewing it).
+  openEditOrder(orderIdx, true);     // reuse the full render (all fields populated)
   // Defer until the modal DOM is populated, then lock it down.
   setTimeout(()=>{
     const modal = document.getElementById('modal-encode');
@@ -5348,8 +5418,8 @@ function renderChecker(){
               }
             </td>
             <td>
-              ${isDroppedOff
-                ? `<span style="font-size:10px;font-weight:700;color:${verifSt==='Verified'?'var(--green)':'var(--orange)'};padding:3px 8px;background:rgba(74,144,217,0.08);border-radius:5px;display:inline-block;">🔒 ${verifSt}</span>`
+              ${(isDroppedOff || o.auditorPaid)
+                ? `<span title="${o.auditorPaid?'🔒 PAID na ng Auditor — locked na ang Verification':'Locked'}" style="font-size:10px;font-weight:700;color:${verifSt==='Verified'?'var(--green)':'var(--orange)'};padding:3px 8px;background:rgba(74,144,217,0.08);border-radius:5px;display:inline-block;cursor:not-allowed;">🔒 ${verifSt}${o.auditorPaid?' <span style="font-size:8px;color:var(--muted);">(PAID)</span>':''}</span>`
                 : `<select class="form-control"
                     style="width:130px;font-size:10.5px;padding:3px 5px;${!canVerify?'opacity:0.5;cursor:not-allowed;':''}"
                     ${!canVerify?'disabled title="Need Fully Paid first"':''}
@@ -5393,8 +5463,12 @@ function renderChecker(){
               ${isDroppedOff
                 ? '<span style="font-size:9.5px;color:var(--blue);padding:2px 6px;background:rgba(74,144,217,0.1);border-radius:4px;">🔒 Dropped Off</span>'
                 : verifSt==='Verified'
-                  // Once VERIFIED: hide Verify + Cancel (locked). Only Unverify + Print remain.
-                  ? ('<button class="btn btn-orange btn-sm" onclick="unverifyOrder('+i+')">↩ Unverify</button>'
+                  // Once VERIFIED: hide Verify + Cancel (locked). Unverify + Print remain,
+                  // BUT once PAID by the Auditor the checker can only VIEW (👁️) — unverify
+                  // is blocked and editing is done in the Auditor page.
+                  ? (( o.auditorPaid
+                        ? '<button class="btn btn-outline btn-sm" onclick="checkerViewOnlyOrder('+i+')" title="View only — PAID na">👁️</button>'
+                        : '<button class="btn btn-orange btn-sm" onclick="unverifyOrder('+i+')">↩ Unverify</button>' )
                      + '<button class="btn btn-print btn-sm" onclick="openInvoice('+i+')">🖨️</button>')
                   : (((!isLocked) ? '<button class="btn btn-outline btn-sm" onclick="checkerPartialEditOrder('+i+')" title="Edit contact/address + drop-off only (rest view-only)">✏️</button>' : '')
                     + (o.status==='Cancelled' ? '<span style="font-size:9px;color:var(--red);">🚫 Cancelled</span>' : canVerify
@@ -5659,6 +5733,13 @@ function _captureOtherItems(orderIdx) {
 function updateVerifStatus(orderIdx, status) {
   const o = S.orders[orderIdx];
   if(!o) return; // GUARD: null order
+  // ── LOCK-ON-PAID ──────────────────────────────────────────────────────────
+  // Once the Auditor marks the parcel PAID, the checker's Verification is locked —
+  // it can no longer be changed (the parcel is committed and flowing onward).
+  if(o.auditorPaid){
+    toast('🔒 PAID na ng Auditor — naka-lock na ang Verification.');
+    return;
+  }
   if((o.paymentStatus||'No Payment') !== 'Fully Paid') {
     toast('⚠️ Kailangan Fully Paid muna bago i-verify');
     return;
@@ -11997,7 +12078,10 @@ async function saveOrder() {
     // ODZ/Incomplete correction bypass: checker fixing incomplete details on a
     // verified LBC parcel. Set when the Edit button in ODZ tab was used.
     const _odzOverride = (window._allowVerifiedEditIdx === parseInt(_editIdxVal));
-    if(!_odzOverride && _lockedOrd && (_lockedOrd.checkerStatus === 'Verified' || _lockedOrd.verificationStatus === 'Verified')) {
+    // PARTIAL-EDIT bypass: checker partial-edit / auditor edit (drop-off) legitimately
+    // saves a VERIFIED parcel. Those set _encPartialCodOp, so allow the save.
+    const _partialOverride = !!(window._encPartialCodOp || window._encViewMode);
+    if(!_odzOverride && !_partialOverride && _lockedOrd && (_lockedOrd.checkerStatus === 'Verified' || _lockedOrd.verificationStatus === 'Verified')) {
       toast('🔒 Verified na ang order na ito — i-UNVERIFY muna bago mag-edit at mag-save.');
       return;
     }
@@ -12559,6 +12643,22 @@ function delOrder(i){
 // ============================================================
 function openEncodeModal() {
   document.getElementById('encode-title').textContent = 'Encode New Order';
+  // ── UNLOCK VIEW/PARTIAL MODE ───────────────────────────────────────────────
+  // A previous checker/auditor view or partial-edit may have left fields DISABLED
+  // and the view/partial flags set. A NEW order must be fully editable, so clear
+  // the flags and re-enable every field + restore the Save footer FIRST.
+  window._encViewMode = false;
+  window._encPartialCodOp = false;
+  {
+    const _m = document.getElementById('modal-encode');
+    if(_m){
+      _m.querySelectorAll('input, select, textarea, button').forEach(el=>{
+        el.disabled = false; el.style.cursor = ''; el.style.opacity = '';
+      });
+    }
+    const _fa = document.getElementById('enc-form-actions'); if(_fa) _fa.style.display='';
+    const _va = document.getElementById('enc-view-actions');  if(_va) _va.style.display='none';
+  }
   ['enc-name','enc-contact','enc-backup-contact','enc-address','enc-landmark'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const cpErr=document.getElementById('enc-contact-err'); if(cpErr) cpErr.textContent='';
   document.getElementById('enc-city').value = '';
@@ -17241,7 +17341,9 @@ function auditorReEncodeOrder(orderIdx){
   if(!o){ toast('⚠️ Hindi mahanap ang order.'); return; }
   // LOCK-ON-PAID: mark UNPAID first before re-encoding a paid parcel.
   if(o.auditorPaid){ toast('🔒 PAID na — i-UNPAID muna bago i-Re-Encode.'); return; }
-  checkerReEncodeOrder(orderIdx);       // same re-encode logic + guards
+  // Orders in the Auditor are ALREADY verified — pass _allowVerified=true so the
+  // re-encode isn't blocked; checkerReEncodeOrder restores inventory in that case.
+  checkerReEncodeOrder(orderIdx, true);
   try { renderAuditor(); } catch(e){}
 }
 
@@ -17278,7 +17380,7 @@ function onCancelReasonChange() {
   }
 }
 
-function checkerReEncodeOrder(orderIdx) {
+function checkerReEncodeOrder(orderIdx, _allowVerified) {
   // ╔══════════════════════════════════════════════════════════════════════════╗
   // ║ RE-ENCODE — return a Pending/Cancelled checker order back to Admin Encode  ║
   // ║                                                                            ║
@@ -17299,14 +17401,33 @@ function checkerReEncodeOrder(orderIdx) {
   // the checker state and drops the order out of every checker lane.
   const o = S.orders[orderIdx];
   if(!o) { toast('⚠️ Hindi mahanap ang order.'); return; }
-  // GUARD: a VERIFIED order must be unverified first — re-encoding it would leave
-  // inventory deducted while the order goes back to encode. Block it here as a
-  // safety net even though the button is hidden for verified rows.
-  if(o.checkerStatus === 'Verified' || o.verificationStatus === 'Verified') {
+  const _isVerifiedNow = (o.checkerStatus === 'Verified' || o.verificationStatus === 'Verified');
+  // GUARD: a VERIFIED order normally must be unverified first — re-encoding it would
+  // leave inventory deducted while the order goes back to encode. EXCEPTION: the
+  // AUDITOR Re-Encode (_allowVerified=true) legitimately re-encodes a verified
+  // parcel; in that case we RESTORE inventory here (same as unverify) before it
+  // returns to Admin Encode, so stock stays correct.
+  if(_isVerifiedNow && !_allowVerified) {
     toast('🔒 Verified na — i-UNVERIFY muna bago i-Re-Encode.');
     return;
   }
   if(!confirm('I-Re-Encode? Babalik ang order na ito sa Admin Encode (status: Return to Encode).')) return;
+  // ── RESTORE INVENTORY for a verified re-encode (auditor path) ───────────────
+  if(_isVerifiedNow && _allowVerified){
+    try {
+      if(!window._sessionRestored) window._sessionRestored = new Set();
+      if(!window._sessionVerified) window._sessionVerified = new Set();
+      const _oKey = o._id || String(orderIdx);
+      window._sessionVerified.delete(_oKey);
+      if((typeof _invDeducted==='function' ? _invDeducted(o) : o.inventoryDeducted) && !window._sessionRestored.has(_oKey)){
+        const _rRef = _oKey + '_reenc_' + Date.now();
+        if(typeof _restoreOrderItems==='function'){
+          _restoreOrderItems(o.items, (typeof today==='function'?today():''), 'Auditor re-encode – '+(o.name||'')+' ('+onum(orderIdx)+')', _rRef);
+        }
+        window._sessionRestored.add(_oKey);
+      }
+    } catch(e){ console.warn('[GOE] re-encode inventory restore failed', e); }
+  }
 
   // Reset status → back to encode; clear cancel + progress state.
   o.status                 = 'Return to Encode';
