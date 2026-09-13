@@ -1635,7 +1635,7 @@ function _showRulesHint() {
         <thead><tr>
           <th>Order #</th><th>Customer</th><th>CP #</th><th>Date</th>
           <th>Grand Total</th><th>Payment Status</th>
-          <th style="color:var(--gold);">🧾 Audit Status</th><th>📦 Parcel Status</th><th>Action</th>
+          <th style="color:var(--gold);">🧾 Audit Status</th><th style="color:var(--green);">📅 Deliver Date</th><th>📦 Parcel Status</th><th>Action</th>
         </tr></thead>
         <tbody id="auditor-tbody"></tbody>
       </table></div>
@@ -4191,6 +4191,30 @@ function openEditOrder(i, _allowVerifiedEdit, _requireDropoffChange){
       }
     }
   })();
+  // ── CHECKER + COD: lock Date of Purchase ───────────────────────────────────
+  // When the CHECKER edits a plain COD order, the Date of Purchase must NOT be
+  // changed (it's the original sale date). Lock it for the checker on COD only.
+  // Admin/owner keep full edit; couriers/COD-OP unaffected by this rule.
+  (() => {
+    const _dp = document.getElementById('enc-date');
+    if(_dp){
+      const _isPlainCod = (o.paymentMethod || 'COD') === 'COD';
+      const _lockDate = (currentRole === 'checker' && _isPlainCod);
+      if(_lockDate){
+        _dp.disabled = true;
+        _dp.style.opacity = '0.6';
+        _dp.style.cursor = 'not-allowed';
+        _dp.title = '🔒 Hindi na pwedeng baguhin ang Date of Purchase (COD)';
+        const _grp = _dp.closest('.form-group');
+        const _lbl = _grp && _grp.querySelector('label');
+        if(_lbl && !_lbl.dataset._codLocked){
+          _lbl.insertAdjacentHTML('beforeend', ' <span style="font-size:10px;color:var(--red);">🔒 locked (COD)</span>');
+          _lbl.dataset._codLocked = '1';
+        }
+      }
+      // NOTE: openEncodeModal + non-checker edits re-enable it (blanket re-enable).
+    }
+  })();
   // FEAT3: Restore global discount if editing existing order
   const gdEl = document.getElementById('enc-global-discount');
   const gdrEl = document.getElementById('enc-global-discount-reason');
@@ -4266,14 +4290,19 @@ function openEditOrder(i, _allowVerifiedEdit, _requireDropoffChange){
   const _tnGrp=document.getElementById('enc-date-payment-group');
   if(_tnGrp) _tnGrp.style.display = _editIsLbc2 ? '' : 'none';
 
-  // Payments group: LBC/EMS/FedEx + COD Online + any order with saved payments
+  // Payments group: LBC/EMS/FedEx + COD Online ONLY.
+  // Plain COD NEVER shows the Reference No. / Payment History section — even if the
+  // order carries leftover payments from a previous method (e.g. it was COD-OP
+  // before being switched to COD). Those stale payments are ignored for plain COD.
   const _pmtsGrp=document.getElementById('enc-payments-group');
   if(_pmtsGrp) {
-    const _showPmts = _editIsLbc2 || _editIsCodOnline2 || (o.payments && o.payments.length > 0);
+    const _isPlainCodEdit = (_em === 'COD');
+    const _showPmts = !_isPlainCodEdit && (_editIsLbc2 || _editIsCodOnline2 || (o.payments && o.payments.length > 0));
     _pmtsGrp.style.display = _showPmts ? '' : 'none';
+    const _tbody = document.getElementById('enc-payments-tbody');
+    if(_isPlainCodEdit && _tbody) _tbody.innerHTML = ''; // clear any stale payment rows for COD
     // Re-render payments here if not already done above (catches cases where renderPayments
     // was skipped due to method check)
-    const _tbody = document.getElementById('enc-payments-tbody');
     if(_showPmts && _tbody && _tbody.children.length === 0 && o.payments && o.payments.length > 0) {
       renderPayments(o.payments, false);
     }
@@ -4704,23 +4733,26 @@ function renderAuditor(){
     const _isVerified = o.checkerStatus === 'Verified' || o.verificationStatus === 'Verified';
     const _gt = (o.grandTotal!=null?o.grandTotal:0);
     // FLOW: parcels reach the auditor only AFTER checker verify.
-    // Couriers need a Date of Drop-off before they can be marked PAID.
+    // Couriers need a Date of Drop-off; COD-OP needs a Deliver Date — before PAID.
     const _isCourierRow = ['LBC','EMS','FedEx'].includes(o.paymentMethod||'');
-    const _needsDropoff = _isCourierRow && !o.dateOfDropoff;
+    const _isCodOpNeedsDate = (o.paymentMethod === 'COD - Online Payment') && !o.codopDeliverDate;
+    const _needsDropoff = (_isCourierRow && !o.dateOfDropoff) || _isCodOpNeedsDate;
+    const _awaitLabel = _isCodOpNeedsDate ? '📅 Awaiting Deliver Date' : '📦 Awaiting Drop-off';
     const statusPill = paid
       ? '<span style="color:var(--green);font-weight:700;">✅ PAID</span>'
       : (_needsDropoff
-          ? '<span style="color:var(--red);font-weight:700;">📦 Awaiting Drop-off</span>'
+          ? `<span style="color:var(--red);font-weight:700;">${_awaitLabel}</span>`
           : '<span style="color:var(--orange);font-weight:700;">🕓 To Mark PAID</span>');
     // Button:
     //  • PAID  → show an UNPAID (undo) button so a mistake can be reverted
     //            (blocked once the parcel has moved on — enforced in the handler).
-    //  • not PAID + needs drop-off → disabled Mark PAID with a hint.
-    //  • not PAID + ready         → active Mark PAID.
+    //  • not PAID + needs date → disabled Mark PAID with a hint.
+    //  • not PAID + ready       → active Mark PAID.
+    const _dateHint = _isCodOpNeedsDate ? 'Kailangan muna ng Deliver Date' : 'Kailangan muna ng Date of Drop-off';
     const _paidBtn = paid
       ? `<button class="btn btn-sm" style="background:rgba(224,138,48,0.12);color:var(--orange);border:1px solid rgba(224,138,48,0.4);white-space:nowrap;" onclick="auditorTogglePaid(${i},false)" title="Ibalik sa UNPAID (undo)">↩️ Mark UNPAID</button>`
       : (_needsDropoff
-          ? `<button class="btn btn-sm" style="opacity:0.5;cursor:not-allowed;background:rgba(46,204,138,0.08);color:var(--muted);border:1px solid rgba(46,204,138,0.2);white-space:nowrap;" disabled title="Kailangan muna ng Date of Drop-off">✅ Mark PAID</button>`
+          ? `<button class="btn btn-sm" style="opacity:0.5;cursor:not-allowed;background:rgba(46,204,138,0.08);color:var(--muted);border:1px solid rgba(46,204,138,0.2);white-space:nowrap;" disabled title="${_dateHint}">✅ Mark PAID</button>`
           : `<button class="btn btn-sm" style="background:rgba(46,204,138,0.12);color:var(--green);border:1px solid rgba(46,204,138,0.4);white-space:nowrap;" onclick="auditorTogglePaid(${i},true)" title="Markahan bilang PAID">✅ Mark PAID</button>`);
     // ── LOCK-ON-PAID ──────────────────────────────────────────────────────
     // Once PAID, other actions (Cancel, Re-Encode) lock — but UNPAID (undo) stays
@@ -4745,11 +4777,30 @@ function renderAuditor(){
     // The Auditor now owns the parcel-status change. It only becomes editable AFTER
     // the parcel is PAID (couriers). Before PAID it shows a read-only chip. Once the
     // parcel has been dropped off / dispatched, it locks to a read-only chip.
+    const _isCodOpRow = (o.paymentMethod === 'COD - Online Payment');
+    // ── DELIVER DATE CELL (COD-OP only — auditor sets it) ──────────────────────
+    // COD-OP delivers via the COD rider flow, so it needs a Deliver Date. The
+    // auditor sets it here; it must be filled before Mark PAID (enforced in
+    // auditorTogglePaid). Locked once PAID. Non-COD-OP rows show a dash.
+    const _deliverDateCell = (() => {
+      if(!_isCodOpRow) return '<span style="font-size:9.5px;color:var(--muted);">—</span>';
+      if(paid){
+        return o.codopDeliverDate
+          ? `<span style="font-size:9.5px;color:var(--green);padding:2px 8px;background:rgba(46,204,138,0.08);border-radius:5px;">📅 ${o.codopDeliverDate} <span style="font-size:8px;color:var(--muted);">(locked)</span></span>`
+          : '<span style="font-size:9.5px;color:var(--muted);">—</span>';
+      }
+      return `<input type="date" value="${o.codopDeliverDate||''}"
+                style="font-size:10.5px;padding:2px 5px;border:1px solid var(--navy-border);border-radius:5px;background:var(--navy-card);color:var(--text);width:140px;"
+                onchange="(function(el){if(!S.orders[${i}])return;S.orders[${i}].codopDeliverDate=el.value;window._lastKnownWriteTs=0;save();toast(el.value?'📅 Deliver date saved.':'📅 Deliver date cleared.');setTimeout(function(){try{renderAuditor();}catch(e){}},50);})(this)">
+              ${o.codopDeliverDate?'':'<div style="font-size:9px;color:var(--red);margin-top:2px;">⚠️ Kailangan bago mag-PAID</div>'}`;
+    })();
+    // ── PARCEL STATUS CELL (Preparing / Ready to Pick-up dropdown) ─────────────
+    // For ALL audited methods. Editable only AFTER PAID; locked once dispatched.
     const _parcelStatusCell = (() => {
       const _st = o.lbcStatus || 'Preparing';
       const _terminal = ['Drop off at LBC','Drop off at EMS','Drop off at FedEx','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'].includes(o.lbcStatus||'');
-      if(!paid || _terminal || !_isCourierRow){
-        // Read-only until PAID (or once dispatched, or for COD-OP which has no lane here)
+      if(!paid || _terminal){
+        // Read-only until PAID (or once dispatched)
         return `<span style="font-size:9.5px;color:var(--muted);padding:2px 8px;background:rgba(148,163,184,0.08);border-radius:4px;">${_terminal?('🔒 '+o.lbcStatus):_st}</span>`;
       }
       return `<select class="form-control" style="width:150px;font-size:10.5px;padding:3px 5px;" onchange="updateLbcStatus(${i},this.value)">
@@ -4765,12 +4816,13 @@ function renderAuditor(){
       <td style="color:var(--gold);">${typeof p==='function'?p(_gt):_gt}</td>
       <td style="font-size:11px;">${o.paymentStatus||'—'}</td>
       <td>${statusPill}</td>
+      <td>${_deliverDateCell}</td>
       <td>${_parcelStatusCell}</td>
       <td>${btn}</td>
     </tr>`;
   }).join('');
 
-  tbody.innerHTML = rows || `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:26px;">Walang parcel sa ${method} na naka In Progress.</td></tr>`;
+  tbody.innerHTML = rows || `<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:26px;">Walang parcel sa ${method} na naka In Progress.</td></tr>`;
 }
 
 function checkerPartialEditOrder(orderIdx){
@@ -4974,10 +5026,17 @@ function auditorTogglePaid(orderIdx, makePaid){
     }
     // ── DROP-OFF REQUIRED (couriers) ──────────────────────────────────────────
     // LBC/EMS/FedEx may be verified WITHOUT a drop-off date, but the Auditor may
-    // NOT mark them PAID until the Date of Drop-off is set. COD-OP has no drop-off.
+    // NOT mark them PAID until the Date of Drop-off is set.
     const _isCourier = ['LBC','EMS','FedEx'].includes(o.paymentMethod||'');
     if(_isCourier && !o.dateOfDropoff){
       toast('🔒 Walang Date of Drop-off — i-set muna bago i-mark PAID.');
+      window[_lockKey]=false; renderAuditor(); return;
+    }
+    // ── DELIVER DATE REQUIRED (COD-OP) ────────────────────────────────────────
+    // COD-OP delivers via the COD rider flow — the Auditor must set the Deliver
+    // Date before marking PAID (the checker no longer sets it).
+    if((o.paymentMethod === 'COD - Online Payment') && !o.codopDeliverDate){
+      toast('🔒 Walang Deliver Date — i-set muna bago i-mark PAID.');
       window[_lockKey]=false; renderAuditor(); return;
     }
     // No-op if already PAID (idempotent).
@@ -4998,6 +5057,51 @@ function auditorTogglePaid(orderIdx, makePaid){
   o.auditorPaid   = !!makePaid;
   o.auditorPaidAt = makePaid ? new Date().toISOString() : '';
   o.auditorPaidBy = makePaid ? (currentUser?.name || 'Auditor') : '';
+  // ╔══════════════════════════════════════════════════════════════════════════╗
+  // ║ INVENTORY DEDUCT/RESTORE ON PAID/UNPAID — CONTRACT (DO NOT WEAKEN)         ║
+  // ║  Audited methods (COD-OP/LBC/EMS/FedEx) move stock at the AUDITOR PAID step,║
+  // ║  NOT at checker verify (verify skips them). Invariants:                    ║
+  // ║   1. auditorPaid === inventoryDeducted ALWAYS (they never disagree).       ║
+  // ║   2. Mark PAID  → deduct EXACTLY once (guarded by !inventoryDeducted).     ║
+  // ║   3. Mark UNPAID→ restore EXACTLY once (guarded by inventoryDeducted).     ║
+  // ║   4. Deduct FAILURE (e.g. no stock) → roll back auditorPaid so #1 holds.   ║
+  // ║   5. Cancel restores via _invDeducted() guard (only if actually deducted). ║
+  // ║   6. Partial-edit MUST preserve inventoryDeducted (see saveOrder).         ║
+  // ║  Session sets (_sessionVerified/_sessionRestored) + the flag defend against║
+  // ║  SAR races so nothing double-applies.                                      ║
+  // ╚══════════════════════════════════════════════════════════════════════════╝
+  try {
+    if(!window._sessionVerified) window._sessionVerified = new Set();
+    if(!window._sessionRestored) window._sessionRestored = new Set();
+    const _invKey = o._id || String(orderIdx);
+    if(makePaid){
+      // Deduct once — only if not already deducted.
+      if(!o.inventoryDeducted){
+        const _ref = _invKey + '_auditPaid_' + Date.now();
+        const did = (typeof _deductOrderItems==='function')
+          ? _deductOrderItems(o.items||[], (typeof today==='function'?today():''), 'Auditor PAID – '+(o.name||'')+' ('+onum(orderIdx)+')', _ref)
+          : true; // if the deduct fn is unavailable, don't block PAID (flagless)
+        if(did){
+          o.inventoryDeducted = true; window._sessionVerified.add(_invKey); window._sessionRestored.delete(_invKey);
+        } else {
+          // Deduction FAILED (e.g. insufficient stock). Roll back PAID so auditorPaid
+          // and inventoryDeducted never disagree (prevents phantom PAID + double-deduct).
+          o.auditorPaid = false; o.auditorPaidAt = ''; o.auditorPaidBy = '';
+          toast('⚠️ Hindi sapat ang stock — hindi na-mark PAID.');
+          window[_lockKey]=false; try{save();}catch(e){} renderAuditor(); return;
+        }
+      }
+    } else {
+      // Restore once — only if currently deducted.
+      if(o.inventoryDeducted){
+        const _rref = _invKey + '_auditUnpaid_' + Date.now();
+        if(typeof _restoreOrderItems==='function'){
+          _restoreOrderItems(o.items||[], (typeof today==='function'?today():''), 'Auditor UNPAID – '+(o.name||'')+' ('+onum(orderIdx)+')', _rref);
+        }
+        o.inventoryDeducted = false; window._sessionRestored.add(_invKey); window._sessionVerified.delete(_invKey);
+      }
+    }
+  } catch(e){ console.warn('[GOE] auditor inventory move failed', e); }
   window._lastKnownWriteTs = 0; // force SAR pickup so checker sees it fast
   window._auditorWriteTs = Date.now(); // start grace window: trust THIS device's toggle briefly
   try { save(); } catch(e){}
@@ -5290,15 +5394,15 @@ function renderChecker(){
               </td>`;
             })() : ''}
             ${isCODOP ? `<td>
-              <input type="date" value="${o.codopDeliverDate||''}"
-                ${(o.checkerStatus==='Verified'||o.verificationStatus==='Verified') ? 'disabled title="🔒 Verified na — i-UNVERIFY muna bago baguhin ang Deliver Date"' : ''}
-                style="font-size:10.5px;padding:2px 5px;border:1px solid var(--navy-border);border-radius:5px;background:var(--navy-card);color:var(--text);width:130px;${(o.checkerStatus==='Verified'||o.verificationStatus==='Verified')?'opacity:0.5;cursor:not-allowed;':''}"
-                onchange="(function(el){if(!S.orders[${i}]){return;}if(S.orders[${i}].checkerStatus==='Verified'||S.orders[${i}].verificationStatus==='Verified'){toast('🔒 Verified na ang order — i-UNVERIFY muna bago baguhin ang Deliver Date.');el.value=S.orders[${i}].codopDeliverDate||'';return;}S.orders[${i}].codopDeliverDate=el.value;save();toast(el.value?'📅 Deliver date saved.':'📅 Deliver date cleared.');setTimeout(function(){try{renderChecker();}catch(e){}},50);})(this)">
-              ${(o.checkerStatus==='Verified'||o.verificationStatus==='Verified')
-                ? '<div style="font-size:9px;color:var(--muted);margin-top:2px;">🔒 Locked (verified)</div>'
-                : o.codopDeliverDate
-                  ? '<div style="font-size:9px;color:var(--green);margin-top:2px;">✅ '+o.codopDeliverDate+'</div>'
-                  : '<div style="font-size:9px;color:var(--muted);">Not set</div>'}
+              ${(() => {
+                // ── DELIVER DATE — VIEW-ONLY IN CHECKER ──────────────────────────
+                // The Deliver Date is now set by the AUDITOR (not the checker). The
+                // checker only DISPLAYS it. The checker can verify even if it's blank;
+                // the Auditor must set it before marking PAID.
+                return o.codopDeliverDate
+                  ? `<span style="font-size:10.5px;color:var(--green);padding:2px 8px;background:rgba(46,204,138,0.08);border-radius:5px;display:inline-block;">📅 ${o.codopDeliverDate}</span>`
+                  : '<span style="font-size:9.5px;color:var(--muted);padding:2px 8px;background:rgba(148,163,184,0.08);border-radius:5px;display:inline-block;">Awaiting Auditor</span>';
+              })()}
             </td>` : ''}
             <td>
               ${isLocked
@@ -5336,9 +5440,9 @@ function renderChecker(){
               ${o.status==='Cancelled'
                 ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
                 :o.checkerStatus!=='Verified'
-                ?(isCODOP && !(o.codopDeliverDate && o.codopDeliverDate.trim())
-                   ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled title="Maglagay muna ng Deliver Date bago i-verify">✔ Verify</button><div style="font-size:8.5px;color:var(--orange);margin-top:1px;">⚠️ Kailangan ng Deliver Date</div>`
-                   :`<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`)
+                ? /* COD-OP: NO deliver-date requirement here — the checker verifies
+                     first, then the AUDITOR sets the Deliver Date. */
+                   `<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`
                 :(isLocked
                   ?`<span style="font-size:9.5px;color:var(--muted);padding:2px 6px;">🔒 ${o.status==='Delivered'?'Delivered':'In Progress'}</span>`
                   :`<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`)}
@@ -5762,7 +5866,10 @@ function updateVerifStatus(orderIdx, status) {
         return;
       }
     }
-    // ── Deduct inventory on Verify ─────────────────────────────────
+    // ── NEW INVENTORY TIMING ───────────────────────────────────────
+    // LBC/EMS/FedEx (all audited) NO LONGER deduct on checker verify. The AUDITOR
+    // deducts on PAID (restores on UNPAID / cancel). Skip deduction entirely here.
+    if(false) { // deduction moved to Auditor PAID — disabled on courier verify
     // PRIMARY guard: inventoryDeducted flag. SECONDARY: stable session key against SAR race.
     if(window._restoredRefs) { [...(window._restoredRefs||[])].forEach(k=>{ if(k.startsWith(o._id||String(orderIdx))) window._restoredRefs.delete(k); }); }
     const _lbcStableKey = (o._id||String(orderIdx)) + '_verified';
@@ -5780,6 +5887,7 @@ function updateVerifStatus(orderIdx, status) {
         }
       }
     }
+    } // end if(false) — courier deduction moved to Auditor PAID
     o.verificationStatus = 'Verified';
     o.checkerStatus = 'Verified';
     window._checkerWriteTs = Date.now(); // grace-window stamp: this device just wrote checkerStatus
@@ -5853,13 +5961,9 @@ function verifyOrder(i){
   if(!S.orders[i]) { console.warn('[GOE] verifyOrder: invalid index', i); _releaseVerifyLock(); return; }
   // GUARD: already verified — prevent double-entry
   if(S.orders[i].checkerStatus === 'Verified') { toast('⚠️ Verified na ang order na ito.'); _releaseVerifyLock(); return; }
-  // GUARD: COD-OP requires a Deliver Date before verifying
-  if(S.orders[i].paymentMethod === 'COD - Online Payment' &&
-     !(S.orders[i].codopDeliverDate && String(S.orders[i].codopDeliverDate).trim())) {
-    toast('⚠️ Maglagay muna ng Deliver Date bago i-verify ang COD-OP order.');
-    _releaseVerifyLock();
-    _releaseVerifyLock(); return;
-  }
+  // NOTE: COD-OP NO LONGER requires a Deliver Date to verify. The checker verifies
+  // first; the AUDITOR sets the Deliver Date afterwards (and can't mark PAID until
+  // it's set). This lets the parcel flow Checker → Auditor as designed.
   // GUARD: block verify if order is in a detected merge group
   // Checker must merge or dismiss the duplicate alert before verifying.
   // ═══ MERGE BLOCK BARRIER ══════════════════════════════════════════════════
@@ -5924,19 +6028,30 @@ function verifyOrder(i){
   if(!window._sessionVerified) window._sessionVerified = new Set();
   if(!window._sessionRestored) window._sessionRestored = new Set();
   const _orderKey = o._id || String(i);
-  // Remove from restored set (checker is re-verifying after an unverify)
-  window._sessionRestored.delete(_orderKey);
-  if(window._sessionVerified.has(_orderKey)) {
-    // Already deducted this session — SAR may have reset the flag; just correct it
-    S.orders[i].inventoryDeducted = true;
-  } else if(!S.orders[i].inventoryDeducted) {
-    // Not yet deducted — do it now
-    const _verifyRef = _orderKey + '_verify_' + Date.now();
-    const didDeduct = _deductOrderItems(o.items, today(),
-      'Checker verified – '+o.name+' ('+onum(i)+')', _verifyRef);
-    if(didDeduct) {
+  // ── NEW INVENTORY TIMING ────────────────────────────────────────────────────
+  // AUDITED methods (COD-OP, LBC, EMS, FedEx) NO LONGER deduct on checker verify.
+  // Deduction now happens when the AUDITOR marks the parcel PAID (and restores on
+  // UNPAID / cancel). Only plain COD still deducts here on verify. This lets the
+  // parcel be verified by the checker without touching stock until it's PAID.
+  const _auditedMethodVerify = ['COD - Online Payment','LBC','EMS','FedEx'].includes(o.paymentMethod||'');
+  if(_auditedMethodVerify){
+    // Skip deduction — the Auditor will deduct on PAID. Leave inventoryDeducted as-is.
+  } else {
+    // Plain COD: deduct on verify (unchanged behaviour).
+    // Remove from restored set (checker is re-verifying after an unverify)
+    window._sessionRestored.delete(_orderKey);
+    if(window._sessionVerified.has(_orderKey)) {
+      // Already deducted this session — SAR may have reset the flag; just correct it
       S.orders[i].inventoryDeducted = true;
-      window._sessionVerified.add(_orderKey);
+    } else if(!S.orders[i].inventoryDeducted) {
+      // Not yet deducted — do it now
+      const _verifyRef = _orderKey + '_verify_' + Date.now();
+      const didDeduct = _deductOrderItems(o.items, today(),
+        'Checker verified – '+o.name+' ('+onum(i)+')', _verifyRef);
+      if(didDeduct) {
+        S.orders[i].inventoryDeducted = true;
+        window._sessionVerified.add(_orderKey);
+      }
     }
   }
   // Save the inventory deduction to Firebase immediately
@@ -12383,18 +12498,26 @@ async function saveOrder() {
       o.lbcInProgress = false;
       o.lbcPrevTab    = '';
     }
-    // ── Switching to PLAIN COD: strip all online/courier payment artefacts ──
-    if(_newIsPlainCod && _methodChanged) {
-      o.paymentStatus = 'COD';
-      o.payments      = [];
-      o.trackingNumber= '';
-      o.dateOfPayment = '';
-      o.dateOfDropoff = '';
-      o.lbcStatus     = '';
+    // ── Switching to PLAIN COD: strip ALL online/courier payment artefacts ──
+    // COD has none of these fields, so a parcel switched to COD must lose the
+    // reference nos., payment history, tracking, drop-off, deliver date, audit
+    // state, and in-progress courier/COD-OP lane flags. Only COD's own data stays.
+    if(_newIsPlainCod) { // strip for ANY plain-COD save (also cleans stale data from a prior method)
+      o.paymentStatus   = 'COD';
+      o.payments        = [];
+      o.trackingNumber  = '';
+      o.dateOfPayment   = '';
+      o.dateOfDropoff   = '';
+      o.lbcStatus       = '';
+      o.codopDeliverDate= '';   // COD-OP deliver date — gone in plain COD
+      o.codopInProgress = false; // drop COD-OP lane flag
+      o.lbcInProgress   = false; // drop courier lane flag
+      o.codopPrevTab    = '';
+      o.lbcPrevTab      = '';
       // Plain COD has no Auditor step — drop any carried-over PAID flag.
-      o.auditorPaid   = false;
-      o.auditorPaidAt = '';
-      o.auditorPaidBy = '';
+      o.auditorPaid     = false;
+      o.auditorPaidAt   = '';
+      o.auditorPaidBy   = '';
     } else if(_methodChanged) {
       // Switching between audited methods (e.g. COD-OP→LBC) — the parcel must be
       // re-audited under the new method, so reset the PAID flag.
@@ -12419,6 +12542,12 @@ async function saveOrder() {
       o.auditorPaid     = orig.auditorPaid;
       o.auditorPaidAt   = orig.auditorPaidAt;
       o.auditorPaidBy   = orig.auditorPaidBy;
+      // CRITICAL: preserve the inventory-deducted flag too. auditorPaid and
+      // inventoryDeducted must stay in sync (PAID⇒deducted). If a partial-edit
+      // reset this flag, a later PAID toggle could double-deduct, or a cancel
+      // could skip the restore. Keep it exactly as the original.
+      o.inventoryDeducted = orig.inventoryDeducted;
+      o.inventoryRestored = orig.inventoryRestored;
     }
     // ── ODZ/RTO LOCK ENFORCEMENT ─────────────────────────────────────────────
     // Restore the settled commercial terms. The UI disables these fields, but a
@@ -16217,7 +16346,16 @@ function onPaymentMethodChange() {
     const dofInp = document.getElementById('enc-date-dropoff'); if(dofInp) dofInp.value = '';
   }
   if(!isLbc && !isCodOnline) {
+    // ── PLAIN COD: strip ALL online/courier artefacts from the form ─────────────
+    // Switching to plain COD removes reference nos., payment history, tracking, and
+    // resets the Order Payment Status — so only COD's own fields remain.
     const pmtsTbody = document.getElementById('enc-payments-tbody'); if(pmtsTbody) pmtsTbody.innerHTML = '';
+    const _tn = document.getElementById('enc-tracking-number'); if(_tn) _tn.value = '';
+    const _dp = document.getElementById('enc-date-payment'); if(_dp) _dp.value = '';
+    const _dof = document.getElementById('enc-date-dropoff'); if(_dof) _dof.value = '';
+    const _ops = document.getElementById('enc-order-payment-status'); if(_ops) _ops.value = 'No Payment';
+    // COD-OP deliver date has no place in plain COD.
+    // (codopDeliverDate is cleared on save via the method-switch cleanup.)
   }
 
   autoAssignRider();
