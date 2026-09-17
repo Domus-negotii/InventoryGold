@@ -4766,12 +4766,17 @@ function renderAuditor(){
     const _reEncBtn = (!_locked)
       ? `<button class="btn btn-sm" style="background:rgba(155,111,217,0.15);color:var(--purple);border:1px solid rgba(155,111,217,0.4);white-space:nowrap;" onclick="auditorReEncodeOrder(${i})" title="Ibalik sa Admin Encode (Return to Encode)">↩️ Re-Encode</button>`
       : '';
-    // Pencil:
-    //  • NOT PAID → EDITABLE (auditor sets Date of Drop-off + fixes contact/address)
-    //  • PAID     → view-only (checker/auditor can only look; parcel is finalized)
-    const _viewBtn = (!_locked)
-      ? `<button class="btn btn-outline btn-sm" onclick="auditorEditOrder(${i})" title="Edit contact/address + Date of Drop-off">✏️</button>`
-      : `<button class="btn btn-outline btn-sm" onclick="auditorViewOrder(${i})" title="View order details (read-only)">👁️</button>`;
+    // Pencil routing:
+    //  • COD-OP           → ALWAYS view-only (👁️). Its Deliver Date is set via the
+    //                       Deliver Date column, so the pencil only inspects details.
+    //  • LBC/EMS/FedEx    → EDITABLE (✏️) while NOT paid, so the auditor can set the
+    //                       Date of Drop-off + fix contact/address; view-only once PAID.
+    //  • PAID (any)       → view-only (👁️); the parcel is finalized.
+    // COD-OP = audited but NOT a courier (couriers = LBC/EMS/FedEx). Only audited
+    // methods appear in the auditor, so !_isCourierRow means COD-OP here.
+    const _viewBtn = (_locked || !_isCourierRow)
+      ? `<button class="btn btn-outline btn-sm" onclick="auditorViewOrder(${i})" title="View order details (read-only)">👁️</button>`
+      : `<button class="btn btn-outline btn-sm" onclick="auditorEditOrder(${i})" title="Edit contact/address + Date of Drop-off">✏️</button>`;
     const btn = `<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;">${_viewBtn}${_paidBtn}${_cancelBtn}${_reEncBtn}</div>`;
     // ── PARCEL STATUS CONTROL (moved here from Checker) ────────────────────────
     // The Auditor now owns the parcel-status change. It only becomes editable AFTER
@@ -4799,10 +4804,20 @@ function renderAuditor(){
     const _parcelStatusCell = (() => {
       const _st = o.lbcStatus || 'Preparing';
       const _terminal = ['Drop off at LBC','Drop off at EMS','Drop off at FedEx','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'].includes(o.lbcStatus||'');
-      if(!paid || _terminal){
-        // Read-only until PAID (or once dispatched)
-        return `<span style="font-size:9.5px;color:var(--muted);padding:2px 8px;background:rgba(148,163,184,0.08);border-radius:4px;">${_terminal?('🔒 '+o.lbcStatus):_st}</span>`;
+      // ── AUDITOR PARCEL-STATUS OWNERSHIP ───────────────────────────────────────
+      // The auditor can set the status to "Ready to Pick-up" ONCE. As soon as it is
+      // Ready (the parcel has reached the Dispatcher) — or any dispatched/terminal
+      // status — the auditor's control becomes VIEW-ONLY. The Dispatcher now owns
+      // the parcel; the auditor can no longer revert it to Preparing. Editable only
+      // while PAID and still "Preparing".
+      const _isReadyOrBeyond = _terminal || (o.lbcStatus === 'Ready to Pick-up');
+      if(!paid || _isReadyOrBeyond){
+        const _lbl = _terminal ? ('🔒 '+o.lbcStatus)
+                   : (o.lbcStatus === 'Ready to Pick-up') ? '🔒 Ready to Pick-up'
+                   : _st;
+        return `<span title="${_isReadyOrBeyond?'🔒 Nasa Dispatcher na — view-only':''}" style="font-size:9.5px;color:${_isReadyOrBeyond?'var(--blue)':'var(--muted)'};padding:2px 8px;background:rgba(148,163,184,0.08);border-radius:4px;">${_lbl}</span>`;
       }
+      // PAID + still Preparing → editable (auditor can move it to Ready to Pick-up).
       return `<select class="form-control" style="width:150px;font-size:10.5px;padding:3px 5px;" onchange="updateLbcStatus(${i},this.value)">
                 <option${(!o.lbcStatus||o.lbcStatus==='Preparing')?' selected':''}>Preparing</option>
                 <option${o.lbcStatus==='Ready to Pick-up'?' selected':''}>Ready to Pick-up</option>
@@ -5429,6 +5444,12 @@ function renderChecker(){
             </td>
             <td style="display:flex;gap:3px;flex-wrap:wrap;">
               ${(()=>{
+                // ── PAID LOCK: once the Auditor marks the parcel PAID, the checker can
+                // only VIEW it (👁️). Nothing is editable. Applies to COD-OP (and any
+                // audited method routed through this path).
+                if(o.auditorPaid){
+                  return `<button class="btn btn-outline btn-sm" onclick="checkerViewOnlyOrder(${i})" title="View only — PAID na ng Auditor">👁️</button>`;
+                }
                 const _isVer = o.checkerStatus==='Verified' || o.verificationStatus==='Verified';
                 if(_isVer) return `<span style="font-size:9px;color:var(--muted);padding:3px 5px;border:1px solid var(--navy-border);border-radius:4px;white-space:nowrap;" title="I-unverify muna bago mag-edit">🔒 Locked</span>`;
                 // COD-OP tab: pencil opens PARTIAL edit (only Name/CP/Backup/Address/Landmark
@@ -5436,23 +5457,24 @@ function renderChecker(){
                 const _editFn = isCODOP ? 'checkerPartialEditOrder' : 'openEditOrder';
                 return !isLocked ? `<button class="btn btn-outline btn-sm" onclick="${_editFn}(${i})" title="${isCODOP?'Edit contact/address only (rest view-only)':'Edit order'}">✏️</button>` : '';
               })()}
-              ${(currentRole==='owner' && !(o.checkerStatus==='Verified'||o.verificationStatus==='Verified'))?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" title="CEO Edit">✏️ Edit</button>`:''}
-              ${o.status==='Cancelled'
-                ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
-                :o.checkerStatus!=='Verified'
-                ? /* COD-OP: NO deliver-date requirement here — the checker verifies
-                     first, then the AUDITOR sets the Deliver Date. */
-                   `<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`
-                :(isLocked
-                  ?`<span style="font-size:9.5px;color:var(--muted);padding:2px 6px;">🔒 ${o.status==='Delivered'?'Delivered':'In Progress'}</span>`
-                  :`<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`)}
+              ${(!o.auditorPaid && currentRole==='owner' && !(o.checkerStatus==='Verified'||o.verificationStatus==='Verified'))?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" title="CEO Edit">✏️ Edit</button>`:''}
+              ${o.auditorPaid
+                ? /* PAID by Auditor → fully locked. Only Print stays. */
+                  `<span style="font-size:9.5px;font-weight:700;color:var(--green);padding:2px 8px;background:rgba(46,204,138,0.08);border-radius:5px;">🔒 PAID</span>`
+                : (o.status==='Cancelled'
+                    ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
+                    :o.checkerStatus!=='Verified'
+                    ? `<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`
+                    :(isLocked
+                      ?`<span style="font-size:9.5px;color:var(--muted);padding:2px 6px;">🔒 ${o.status==='Delivered'?'Delivered':'In Progress'}</span>`
+                      :`<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`))}
               <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
-              ${(!isLocked && o.checkerStatus!=='Verified' && o.verificationStatus!=='Verified')
+              ${(!o.auditorPaid && !isLocked && o.checkerStatus!=='Verified' && o.verificationStatus!=='Verified')
                 ? `<button class="btn btn-red btn-sm" onclick="checkerCancelOrder(${i})" title="Cancel this order">✕ Cancel</button>`
-                : ((o.checkerStatus==='Verified' || o.verificationStatus==='Verified'))
+                : (!o.auditorPaid && (o.checkerStatus==='Verified' || o.verificationStatus==='Verified'))
                   ? `<span style="font-size:9px;color:var(--muted);padding:2px 5px;" title="I-unverify muna bago mag-cancel">🔒</span>`
                   : ''}
-              ${(o.checkerStatus!=='Verified' && o.verificationStatus!=='Verified') ? `<button class="btn btn-sm" style="background:rgba(155,111,217,0.15);color:var(--purple);border:1px solid rgba(155,111,217,0.4);white-space:nowrap;" onclick="checkerReEncodeOrder(${i})" title="Ibalik sa Admin Encode (Return to Encode)">↩️ Re-Encode</button>` : ''}
+              ${(!o.auditorPaid && o.checkerStatus!=='Verified' && o.verificationStatus!=='Verified') ? `<button class="btn btn-sm" style="background:rgba(155,111,217,0.15);color:var(--purple);border:1px solid rgba(155,111,217,0.4);white-space:nowrap;" onclick="checkerReEncodeOrder(${i})" title="Ibalik sa Admin Encode (Return to Encode)">↩️ Re-Encode</button>` : ''}
             </td>
           </tr>`;
         });
@@ -12485,13 +12507,22 @@ async function saveOrder() {
       o.codopPrevTab    = '';
       o.codopDeliverDate= '';
     }
-    // ── LBC/EMS/FedEx In-Progress state ──
-    // Preserve ONLY when the order remains a courier; clear on any switch away.
+    // ── LBC/EMS/FedEx + COD In-Progress state ──
+    // NOTE: plain COD ALSO uses lbcInProgress as its "In Progress" flag (the COD
+    // checker lane filters on it). So preserve lbcInProgress whenever the order
+    // STAYS on a method that uses it (any courier OR plain COD) and the method
+    // wasn't switched. Only a real switch AWAY (e.g. COD-OP→COD would set it via
+    // its own path, or COD→COD-OP) clears it.
     if(_newIsCourier && !_methodChanged) {
       o.lbcInProgress = orig.lbcInProgress;
       o.lbcPrevTab    = orig.lbcPrevTab;
     } else if(_newIsCourier) {
       // still a courier but method changed (e.g. LBC→EMS) — keep progress, reset prev tab
+      o.lbcInProgress = orig.lbcInProgress;
+      o.lbcPrevTab    = orig.lbcPrevTab;
+    } else if(_newIsPlainCod && !_methodChanged) {
+      // Plain COD, no switch → PRESERVE its in-progress flag so an edit doesn't
+      // make the order vanish from the COD checker lane.
       o.lbcInProgress = orig.lbcInProgress;
       o.lbcPrevTab    = orig.lbcPrevTab;
     } else {
@@ -12502,7 +12533,7 @@ async function saveOrder() {
     // COD has none of these fields, so a parcel switched to COD must lose the
     // reference nos., payment history, tracking, drop-off, deliver date, audit
     // state, and in-progress courier/COD-OP lane flags. Only COD's own data stays.
-    if(_newIsPlainCod) { // strip for ANY plain-COD save (also cleans stale data from a prior method)
+    if(_newIsPlainCod) { // strip online/courier artefacts on any plain-COD save
       o.paymentStatus   = 'COD';
       o.payments        = [];
       o.trackingNumber  = '';
@@ -12510,14 +12541,22 @@ async function saveOrder() {
       o.dateOfDropoff   = '';
       o.lbcStatus       = '';
       o.codopDeliverDate= '';   // COD-OP deliver date — gone in plain COD
-      o.codopInProgress = false; // drop COD-OP lane flag
-      o.lbcInProgress   = false; // drop courier lane flag
       o.codopPrevTab    = '';
-      o.lbcPrevTab      = '';
       // Plain COD has no Auditor step — drop any carried-over PAID flag.
       o.auditorPaid     = false;
       o.auditorPaidAt   = '';
       o.auditorPaidBy   = '';
+      // LANE FLAGS: only drop the COURIER/COD-OP flags when the method actually
+      // CHANGED to COD (switched away from a courier/COD-OP). On a normal COD edit
+      // (already COD), lbcInProgress is COD's OWN in-progress flag and MUST be kept
+      // — clearing it would make the order vanish from the COD checker lane.
+      if(_methodChanged){
+        o.codopInProgress = false;
+        o.lbcInProgress   = false;
+        o.lbcPrevTab      = '';
+      }
+      // (When not method-changed, the In-Progress preservation block above already
+      //  kept o.lbcInProgress = orig.lbcInProgress.)
     } else if(_methodChanged) {
       // Switching between audited methods (e.g. COD-OP→LBC) — the parcel must be
       // re-audited under the new method, so reset the PAID flag.
@@ -13020,6 +13059,11 @@ function renderTracking() {
       if((o.paymentMethod||'COD') !== 'COD' && o.paymentMethod !== 'COD - Online Payment') return false;
       // Unverified orders are not visible to dispatcher/sorter — checker must verify first
       if((o.checkerStatus||'Pending') !== 'Verified') return false;
+      // COD-OP: PAID + Ready-to-Pick-up gate (match table logic below)
+      if(_isAuditedMethod(o)){
+        if(!o.auditorPaid) return false;
+        if((o.lbcStatus||'Preparing') !== 'Ready to Pick-up') return false;
+      }
       // Checker-cancelled = has cancelledBy set → goes to Recently Deleted, not tracking
       if(s === 'Cancelled' && o.cancelledBy) return false;
       // Date filter: strict for all roles
@@ -13040,12 +13084,16 @@ function renderTracking() {
     if((o.paymentMethod||'COD') !== 'COD' && o.paymentMethod !== 'COD - Online Payment') return false;
     // Unverified orders not visible to dispatcher/sorter — checker must verify first
     if((o.checkerStatus||'Pending') !== 'Verified') return false;
-    // ── COD-OP AUDITOR PAID GATE ───────────────────────────────────────────────
-    // A COD-OP parcel flows: Checker verify → Auditor PAID → THEN it appears here
-    // in COD Tracking (it delivers like COD, via rider). It must NOT show up for
-    // the dispatcher/rider until the Auditor has marked it PAID. Plain COD has no
-    // auditor step and is unaffected.
-    if(_isAuditedMethod(o) && !o.auditorPaid) return false;
+    // ── COD-OP AUDITOR PAID + READY-TO-PICK-UP GATE ────────────────────────────
+    // A COD-OP parcel flows: Checker verify → Auditor PAID → Auditor sets Parcel
+    // Status to "Ready to Pick-up" → THEN it appears here in COD Tracking. It must
+    // NOT show up until BOTH: (1) the Auditor marked it PAID, and (2) the parcel
+    // status is "Ready to Pick-up". If the auditor puts it back to "Preparing", it
+    // hides again. Plain COD has no auditor step and is unaffected by either check.
+    if(_isAuditedMethod(o)){
+      if(!o.auditorPaid) return false;
+      if((o.lbcStatus||'Preparing') !== 'Ready to Pick-up') return false;
+    }
     // Checker-cancelled orders belong to Recently Deleted, not active tracking
     if(o.status === 'Cancelled' && o.cancelledBy) return false;
     // Delivered and RTO orders belong in COD Delivery — hide from COD Tracking
@@ -13153,6 +13201,18 @@ function renderTracking() {
 function updateLbcStatus(orderIdx, newStatus) {
   if(!S.orders || !S.orders[orderIdx]) { console.warn('[GOE] updateLbcStatus: invalid index', orderIdx); return; }
   if(!newStatus) return;
+  // ── AUDITOR OWNERSHIP GUARD ─────────────────────────────────────────────────
+  // Once a parcel is "Ready to Pick-up" it has reached the Dispatcher, who now owns
+  // it. The AUDITOR may not revert it back to "Preparing" (that would silently pull
+  // it out of the dispatcher). Block that specific revert when the auditor triggers
+  // it. The dispatcher's own forward moves (Ready→Drop off/OFD/etc.) are unaffected.
+  if(currentRole === 'auditor'
+     && (S.orders[orderIdx].lbcStatus === 'Ready to Pick-up')
+     && newStatus === 'Preparing'){
+    toast('🔒 Nasa Dispatcher na — hindi na pwedeng ibalik sa Preparing.');
+    try { renderAuditor(); } catch(e){}
+    return;
+  }
   S.orders[orderIdx].lbcStatus = newStatus;
   // Sync main status so P&L, Daily Parcels, Dashboard reflect correctly
   if(newStatus === 'Delivered') {
