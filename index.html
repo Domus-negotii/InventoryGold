@@ -1635,7 +1635,7 @@ function _showRulesHint() {
         <thead><tr>
           <th>Order #</th><th>Customer</th><th>CP #</th><th>Date</th>
           <th>Grand Total</th><th>Payment Status</th>
-          <th style="color:var(--gold);">🧾 Audit Status</th><th style="color:var(--green);">📅 Deliver Date</th><th>📦 Parcel Status</th><th>Action</th>
+          <th style="color:var(--gold);">🧾 Audit Status</th><th style="color:var(--green);" id="auditor-date-col-header">📅 Deliver Date</th><th>📦 Parcel Status</th><th>Action</th>
         </tr></thead>
         <tbody id="auditor-tbody"></tbody>
       </table></div>
@@ -4178,16 +4178,26 @@ function openEditOrder(i, _allowVerifiedEdit, _requireDropoffChange){
   (() => {
     const dofInput = document.getElementById('enc-date-dropoff');
     if(dofInput){
-      const canDof = (currentRole==='checker'||currentRole==='owner'||currentRole==='auditor');
+      // ╔════════════════════════════════════════════════════════════════════════╗
+      // ║ DATE OF DROP-OFF PERMISSION — CONTRACT (DO NOT WEAKEN)                   ║
+      // ║  Editable ONLY by AUDITOR + OWNER (CEO override). NEVER by checker/admin.║
+      // ║  This rule is duplicated in THREE places (openEditOrder FIX3, the orders-║
+      // ║  page edit opener, and onPaymentMethodChange new-encode) — keep ALL three║
+      // ║  in sync: const canDof = (currentRole==='auditor'||currentRole==='owner')║
+      // ║  UNIFORMITY: owner sees every page (rolePages null) and shares the exact  ║
+      // ║  same guards as each role; owner is an over-all-command role, not a       ║
+      // ║  bypass — the only intentional owner powers are CEO Edit + drop-off edit. ║
+      // ╚════════════════════════════════════════════════════════════════════════╝
+      const canDof = (currentRole==='owner'||currentRole==='auditor');
       dofInput.disabled = !canDof;
       dofInput.style.opacity = canDof ? '1' : '0.5';
-      dofInput.title = canDof ? '' : '🔒 Checker/Auditor can edit Date of Drop-off';
+      dofInput.title = canDof ? '' : '🔒 Auditor lang ang pwedeng mag-set ng Date of Drop-off';
       const grp = dofInput.closest('.form-group');
       if(grp){
         const lbl = grp.querySelector('label');
         if(lbl) lbl.innerHTML = 'Date of Drop-off ' + (canDof
-          ? '<span style="font-size:10px;color:var(--muted);">(checker/auditor)</span>'
-          : '<span style="font-size:10px;color:var(--red);">🔒 Checker/Auditor only</span>');
+          ? '<span style="font-size:10px;color:var(--muted);">(auditor)</span>'
+          : '<span style="font-size:10px;color:var(--red);">🔒 Auditor only</span>');
       }
     }
   })();
@@ -4319,10 +4329,11 @@ function openEditOrder(i, _allowVerifiedEdit, _requireDropoffChange){
   const _tnHint=document.getElementById('enc-tracking-label-hint');
   if(_tnHint) _tnHint.textContent=_em==='LBC'?'LBC Tracking #':_em==='EMS'?'EMS Tracking #':'FedEx Tracking #';
 
-  // Date of Drop-off lock: checker/owner only
+  // Date of Drop-off lock: AUDITOR/OWNER only (checker can no longer edit it —
+  // kept in sync with the openEditOrder FIX3 rule).
   const _dofInp=document.getElementById('enc-date-dropoff');
   if(_dofInp){
-    const _canDof=(currentRole==='checker'||currentRole==='owner');
+    const _canDof=(currentRole==='auditor'||currentRole==='owner');
     _dofInp.disabled=!_canDof;
     _dofInp.style.opacity=_canDof?'1':'0.5';
   }
@@ -4702,6 +4713,16 @@ function renderAuditor(){
   const tbody = document.getElementById('auditor-tbody');
   if(!tbody) return;
   const method = auditorTab || 'COD - Online Payment';
+  // ── DATE COLUMN HEADER (per tab) ────────────────────────────────────────────
+  // COD-OP delivers via rider → "Deliver Date". LBC/EMS/FedEx → "Drop off Date".
+  (() => {
+    const _dh = document.getElementById('auditor-date-col-header');
+    if(_dh){
+      _dh.innerHTML = (method === 'COD - Online Payment')
+        ? '📅 Deliver Date'
+        : '📅 Drop off Date';
+    }
+  })();
   const search = (document.getElementById('auditor-search')?.value || '').toLowerCase().trim();
   const dfRaw  = (document.getElementById('auditor-date')?.value || '').trim();
   const dff = (typeof mdy2ymd==='function') ? mdy2ymd(dfRaw) : dfRaw;
@@ -4776,28 +4797,37 @@ function renderAuditor(){
     // methods appear in the auditor, so !_isCourierRow means COD-OP here.
     const _viewBtn = (_locked || !_isCourierRow)
       ? `<button class="btn btn-outline btn-sm" onclick="auditorViewOrder(${i})" title="View order details (read-only)">👁️</button>`
-      : `<button class="btn btn-outline btn-sm" onclick="auditorEditOrder(${i})" title="Edit contact/address + Date of Drop-off">✏️</button>`;
+      : `<button class="btn btn-outline btn-sm" onclick="auditorEditOrder(${i})" title="Set Date of Drop-off only (rest view-only)">✏️</button>`;
     const btn = `<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;">${_viewBtn}${_paidBtn}${_cancelBtn}${_reEncBtn}</div>`;
     // ── PARCEL STATUS CONTROL (moved here from Checker) ────────────────────────
     // The Auditor now owns the parcel-status change. It only becomes editable AFTER
     // the parcel is PAID (couriers). Before PAID it shows a read-only chip. Once the
     // parcel has been dropped off / dispatched, it locks to a read-only chip.
     const _isCodOpRow = (o.paymentMethod === 'COD - Online Payment');
-    // ── DELIVER DATE CELL (COD-OP only — auditor sets it) ──────────────────────
-    // COD-OP delivers via the COD rider flow, so it needs a Deliver Date. The
-    // auditor sets it here; it must be filled before Mark PAID (enforced in
-    // auditorTogglePaid). Locked once PAID. Non-COD-OP rows show a dash.
+    // ── DATE COLUMN CELL ───────────────────────────────────────────────────────
+    // • COD-OP: "Deliver Date" — set here via a date picker (before PAID).
+    // • LBC/EMS/FedEx: "Drop off Date" — set via the edit PENCIL (auditorEditOrder),
+    //   so this column DISPLAYS o.dateOfDropoff (read-only reflection). Shows a
+    //   red hint if not yet set, so the auditor knows PAID is blocked until it is.
     const _deliverDateCell = (() => {
-      if(!_isCodOpRow) return '<span style="font-size:9.5px;color:var(--muted);">—</span>';
-      if(paid){
-        return o.codopDeliverDate
-          ? `<span style="font-size:9.5px;color:var(--green);padding:2px 8px;background:rgba(46,204,138,0.08);border-radius:5px;">📅 ${o.codopDeliverDate} <span style="font-size:8px;color:var(--muted);">(locked)</span></span>`
-          : '<span style="font-size:9.5px;color:var(--muted);">—</span>';
+      if(_isCodOpRow){
+        if(paid){
+          return o.codopDeliverDate
+            ? `<span style="font-size:9.5px;color:var(--green);padding:2px 8px;background:rgba(46,204,138,0.08);border-radius:5px;">📅 ${o.codopDeliverDate} <span style="font-size:8px;color:var(--muted);">(locked)</span></span>`
+            : '<span style="font-size:9.5px;color:var(--muted);">—</span>';
+        }
+        return `<input type="date" value="${o.codopDeliverDate||''}"
+                  style="font-size:10.5px;padding:2px 5px;border:1px solid var(--navy-border);border-radius:5px;background:var(--navy-card);color:var(--text);width:140px;"
+                  onchange="(function(el){if(!S.orders[${i}])return;S.orders[${i}].codopDeliverDate=el.value;window._lastKnownWriteTs=0;save();toast(el.value?'📅 Deliver date saved.':'📅 Deliver date cleared.');setTimeout(function(){try{renderAuditor();}catch(e){}},50);})(this)">
+                ${o.codopDeliverDate?'':'<div style="font-size:9px;color:var(--red);margin-top:2px;">⚠️ Kailangan bago mag-PAID</div>'}`;
       }
-      return `<input type="date" value="${o.codopDeliverDate||''}"
-                style="font-size:10.5px;padding:2px 5px;border:1px solid var(--navy-border);border-radius:5px;background:var(--navy-card);color:var(--text);width:140px;"
-                onchange="(function(el){if(!S.orders[${i}])return;S.orders[${i}].codopDeliverDate=el.value;window._lastKnownWriteTs=0;save();toast(el.value?'📅 Deliver date saved.':'📅 Deliver date cleared.');setTimeout(function(){try{renderAuditor();}catch(e){}},50);})(this)">
-              ${o.codopDeliverDate?'':'<div style="font-size:9px;color:var(--red);margin-top:2px;">⚠️ Kailangan bago mag-PAID</div>'}`;
+      // Couriers (LBC/EMS/FedEx): DISPLAY the Drop off Date set via the pencil.
+      if(_isCourierRow){
+        return o.dateOfDropoff
+          ? `<span style="font-size:9.5px;color:var(--green);padding:2px 8px;background:rgba(46,204,138,0.08);border-radius:5px;">📅 ${o.dateOfDropoff}${paid?' <span style=\"font-size:8px;color:var(--muted);\">(locked)</span>':''}</span>`
+          : '<span style="font-size:9px;color:var(--red);padding:2px 6px;">⚠️ Wala pang Drop off Date<br><span style="font-size:8px;color:var(--muted);">(set via ✏️ pencil)</span></span>';
+      }
+      return '<span style="font-size:9.5px;color:var(--muted);">—</span>';
     })();
     // ── PARCEL STATUS CELL (Preparing / Ready to Pick-up dropdown) ─────────────
     // For ALL audited methods. Editable only AFTER PAID; locked once dispatched.
@@ -4876,8 +4906,9 @@ function checkerPartialEditOrder(orderIdx){
   setTimeout(()=>{
     const modal = document.getElementById('modal-encode');
     if(!modal) return;
+    // Checker may edit delivery-contact fields only. The Date of Drop-off is NOW
+    // AUDITOR-ONLY — the checker can NO LONGER edit it, so it's NOT in this set.
     const _fields = ['enc-name','enc-contact','enc-backup-contact','enc-address','enc-landmark'];
-    if(_isCourier) _fields.push('enc-date-dropoff');   // + Date of Drop-off for couriers
     const EDITABLE = new Set(_fields);
     modal.querySelectorAll('input, select, textarea').forEach(el=>{
       const keep = EDITABLE.has(el.id);
@@ -4945,8 +4976,13 @@ function auditorEditOrder(orderIdx){
   setTimeout(()=>{
     const modal = document.getElementById('modal-encode');
     if(!modal) return;
-    const _fields = ['enc-name','enc-contact','enc-backup-contact','enc-address','enc-landmark'];
-    if(_isCourier) _fields.push('enc-date-dropoff');   // Auditor sets Date of Drop-off
+    // ── EDITABLE SET — ONLY the Date of Drop-off (couriers) ────────────────────
+    // Per the new rule: in the Auditor pencil, EVERYTHING is view-only EXCEPT the
+    // Date of Drop-off for LBC/EMS/FedEx. Contact/address/etc. are NO LONGER
+    // editable here. COD-OP is routed to auditorViewOrder (fully view-only), so it
+    // never reaches this function.
+    const _fields = [];
+    if(_isCourier) _fields.push('enc-date-dropoff');   // Auditor sets Date of Drop-off ONLY
     const EDITABLE = new Set(_fields);
     modal.querySelectorAll('input, select, textarea').forEach(el=>{
       const keep = EDITABLE.has(el.id);
@@ -16422,13 +16458,13 @@ function onPaymentMethodChange() {
   // FEAT4: Show payment status dropdown for LBC/EMS/FedEx AND COD Online
   const pymStatusGrp = document.getElementById('enc-payment-status-group');
   if(pymStatusGrp) pymStatusGrp.style.display = (isLbc || isCodOnline) ? '' : 'none';
-  // FIX3: Lock Date of Drop-off for non-checker even in new encode
+  // FIX3: Date of Drop-off is AUDITOR/OWNER only (kept in sync everywhere).
   const _dofNew = document.getElementById('enc-date-dropoff');
   if(_dofNew){
-    const _canDof = (currentRole==='checker'||currentRole==='owner');
+    const _canDof = (currentRole==='auditor'||currentRole==='owner');
     _dofNew.disabled = !_canDof;
     _dofNew.style.opacity = _canDof ? '1' : '0.5';
-    _dofNew.title = _canDof ? '' : '🔒 Only Checker can set Date of Drop-off';
+    _dofNew.title = _canDof ? '' : '🔒 Auditor lang ang pwedeng mag-set ng Date of Drop-off';
   }
 }
 
