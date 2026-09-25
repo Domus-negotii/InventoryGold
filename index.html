@@ -19,7 +19,7 @@
     padding:24px; padding-top:env(safe-area-inset-top,24px); padding-bottom:env(safe-area-inset-bottom,24px);
   }
   .gate{
-    width:100%; max-width:420px; background:var(--navy-card);
+    width:100%; max-width:440px; background:var(--navy-card);
     border:1px solid var(--navy-border); border-radius:18px;
     box-shadow:0 24px 60px rgba(0,0,0,0.45); padding:34px 30px 30px; text-align:center;
   }
@@ -39,10 +39,15 @@
     border-radius:10px; cursor:pointer; margin-top:8px; transition:opacity .15s;
   }
   .btn:hover{opacity:.92;} .btn:disabled{opacity:.55; cursor:not-allowed;}
-  .msg{margin-top:16px; font-size:12.5px; min-height:18px;}
+  .msg{margin-top:16px; font-size:12.5px; min-height:18px; line-height:1.5;}
   .msg.error{color:var(--red);} .msg.ok{color:var(--green);} .msg.info{color:var(--muted);}
   .foot{margin-top:22px; font-size:10px; color:var(--muted); letter-spacing:.5px;}
   .show-pw{font-size:11px; color:var(--blue); cursor:pointer; user-select:none; margin-top:4px; display:inline-block;}
+  #debug{margin-top:16px; text-align:left; font-family:monospace; font-size:10.5px; color:#7fd4a8;
+    background:#0a1420; border:1px solid var(--navy-border); border-radius:8px; padding:10px; max-height:160px;
+    overflow:auto; display:none; white-space:pre-wrap; word-break:break-word;}
+  #debug.on{display:block;}
+  .dbg-toggle{font-size:10px;color:var(--muted);cursor:pointer;margin-top:10px;display:inline-block;}
 </style>
 </head>
 <body>
@@ -64,46 +69,63 @@
     <button class="btn" id="g-btn" onclick="doLogin()">Enter System</button>
     <div class="msg info" id="g-msg">Ilagay ang naka-rehistrong email at password.</div>
 
+    <span class="dbg-toggle" onclick="document.getElementById('debug').classList.toggle('on')">🐞 Show/Hide debug</span>
+    <div id="debug"></div>
+
     <div class="foot">© Goldchelle Online Enterprises · Authorized personnel only</div>
   </div>
 
-<!-- Firebase Auth (compat SDK — simplest for a single-file gate) -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script>
-  // ── FIREBASE CONFIG ─────────────────────────────────────────────────────────
-  // Same project as the main system (goldchelle-logistics). Employee emails +
-  // passwords are managed in Firebase Authentication (Console → Authentication →
-  // Users). Add/remove/reset employees there; this gate just checks them.
+  // ── CONFIG ───────────────────────────────────────────────────────────────────
   const firebaseConfig = {
     apiKey: "AIzaSyBXs5CPYgUUWlwwnO99IObzlgyyglEP9Xg",
     authDomain: "goldchelle-logistics.firebaseapp.com",
     projectId: "goldchelle-logistics"
   };
+  const MAIN_SYSTEM_URL = "main.html";   // ← main system file (same folder)
 
-  // ── WHERE TO GO AFTER A SUCCESSFUL LOGIN ────────────────────────────────────
-  // Change this if your main system file has a different name / path.
-  const MAIN_SYSTEM_URL = "index.html";
-
-  let _app, _auth, _fbReady = false;
-  try {
-    _app = firebase.initializeApp(firebaseConfig);
-    _auth = firebase.auth();
-    // Keep the session so the main system can see who logged in (SESSION scope:
-    // clears when the browser tab closes).
-    _auth.setPersistence(firebase.auth.Auth.Persistence.SESSION).catch(()=>{});
-    _fbReady = true;
-  } catch(e){
-    setMsg('⚠️ Hindi ma-load ang Firebase. I-check ang internet.', 'error');
+  // ── DEBUG LOGGER (shows on-screen) ───────────────────────────────────────────
+  function dbg(t){
+    const d = document.getElementById('debug');
+    if(d){ d.classList.add('on'); d.textContent += '• ' + t + '\n'; d.scrollTop = d.scrollHeight; }
+    try{ console.log('[GATE]', t); }catch(e){}
   }
 
   function setMsg(t, cls){
     const m = document.getElementById('g-msg');
-    m.textContent = t; m.className = 'msg ' + (cls||'info');
+    m.innerHTML = t; m.className = 'msg ' + (cls||'info');
   }
   function togglePw(){
     const p = document.getElementById('g-pass');
     p.type = p.type === 'password' ? 'text' : 'password';
+  }
+
+  let _auth, _fbReady = false;
+  dbg('Loading Firebase SDK...');
+  dbg('firebase global: ' + (typeof firebase !== 'undefined' ? 'FOUND' : 'MISSING ❌'));
+  try {
+    firebase.initializeApp(firebaseConfig);
+    _auth = firebase.auth();
+    _auth.setPersistence(firebase.auth.Auth.Persistence.SESSION).catch(()=>{});
+    _fbReady = true;
+    dbg('Firebase initialized ✅ (project: ' + firebaseConfig.projectId + ')');
+    dbg('Current host: ' + location.hostname);
+    dbg('Redirect target: ' + MAIN_SYSTEM_URL);
+  } catch(e){
+    dbg('Firebase init FAILED ❌: ' + (e && e.message));
+    setMsg('⚠️ Hindi ma-load ang Firebase. Tignan ang debug.', 'error');
+  }
+
+  function _go(){
+    dbg('Redirecting to ' + MAIN_SYSTEM_URL + ' ...');
+    try { window.location.assign(MAIN_SYSTEM_URL); } catch(e){ dbg('assign failed: '+e.message); }
+    setTimeout(()=>{ try { window.location.href = MAIN_SYSTEM_URL; } catch(e){} }, 300);
+    setTimeout(()=>{
+      dbg('Still here after 1.2s — showing manual link.');
+      setMsg('✅ Naka-login! I-click para pumasok: <a href="'+MAIN_SYSTEM_URL+'" style="color:var(--gold);font-weight:700;font-size:15px;">➡ PUMASOK SA SYSTEM</a>', 'ok');
+    }, 1200);
   }
 
   async function doLogin(){
@@ -111,39 +133,44 @@
     const pass  = document.getElementById('g-pass').value||'';
     const btn   = document.getElementById('g-btn');
 
-    if(!_fbReady){ setMsg('⚠️ Firebase hindi handa — i-refresh ang page.', 'error'); return; }
+    dbg('--- Login attempt ---');
+    dbg('email: ' + (email||'(blank)'));
+    dbg('fbReady: ' + _fbReady);
+
+    if(!_fbReady){ setMsg('⚠️ Firebase hindi handa — i-refresh.', 'error'); dbg('ABORT: fb not ready'); return; }
     if(!email){ setMsg('⚠️ Ilagay ang email.', 'error'); return; }
     if(!pass){ setMsg('⚠️ Ilagay ang password.', 'error'); return; }
 
     btn.disabled = true;
     setMsg('⏳ Vine-verify...', 'info');
+    dbg('Calling signInWithEmailAndPassword...');
 
     try {
       const cred = await _auth.signInWithEmailAndPassword(email, pass);
-      // Optional: block unverified emails. Comment out kung hindi mo kailangan.
-      // if(cred.user && !cred.user.emailVerified){
-      //   setMsg('⚠️ Hindi pa verified ang email na ito.', 'error');
-      //   btn.disabled = false; return;
-      // }
-      // Save who logged in so the main system can read it if needed.
+      dbg('LOGIN SUCCESS ✅ uid: ' + (cred.user ? cred.user.uid : '?'));
       try {
         sessionStorage.setItem('gce_gate_email', email);
         sessionStorage.setItem('gce_gate_uid', cred.user ? cred.user.uid : '');
         sessionStorage.setItem('gce_gate_ok', '1');
         sessionStorage.setItem('gce_gate_ts', String(Date.now()));
-      } catch(e){}
+        dbg('sessionStorage saved.');
+      } catch(e){ dbg('sessionStorage failed (ok lang): '+e.message); }
       setMsg('✅ Welcome! Redirecting...', 'ok');
-      setTimeout(()=>{ window.location.href = MAIN_SYSTEM_URL; }, 500);
+      _go();
     } catch(err){
       const code = (err && err.code) || '';
+      dbg('LOGIN FAILED ❌ code: ' + code + ' | msg: ' + (err && err.message));
       let m = '❌ Mali ang email o password.';
       if(code === 'auth/invalid-email')            m = '❌ Hindi valid ang email format.';
-      else if(code === 'auth/user-disabled')       m = '🔒 Naka-disable ang account na ito.';
+      else if(code === 'auth/user-disabled')       m = '🔒 Naka-disable ang account.';
       else if(code === 'auth/user-not-found')      m = '❌ Walang account na ganitong email.';
       else if(code === 'auth/wrong-password')      m = '❌ Mali ang password.';
-      else if(code === 'auth/invalid-credential') m = '❌ Mali ang email o password.';
-      else if(code === 'auth/too-many-requests')   m = '⏳ Sobrang daming attempt — sandali muna.';
-      else if(code === 'auth/network-request-failed') m = '⚠️ Walang internet connection.';
+      else if(code === 'auth/invalid-credential')  m = '❌ Mali ang email o password.';
+      else if(code === 'auth/too-many-requests')   m = '⏳ Sobrang daming attempt — sandali.';
+      else if(code === 'auth/network-request-failed') m = '⚠️ Walang internet.';
+      else if(code === 'auth/operation-not-allowed')  m = '⚠️ Email/Password hindi enabled sa Firebase.';
+      else if(code === 'auth/unauthorized-domain')    m = '⚠️ Domain hindi authorized sa Firebase.';
+      if(code) m += ' [' + code + ']';
       setMsg(m, 'error');
       btn.disabled = false;
     }
