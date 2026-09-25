@@ -43,11 +43,6 @@
   .msg.error{color:var(--red);} .msg.ok{color:var(--green);} .msg.info{color:var(--muted);}
   .foot{margin-top:22px; font-size:10px; color:var(--muted); letter-spacing:.5px;}
   .show-pw{font-size:11px; color:var(--blue); cursor:pointer; user-select:none; margin-top:4px; display:inline-block;}
-  #debug{margin-top:16px; text-align:left; font-family:monospace; font-size:10.5px; color:#7fd4a8;
-    background:#0a1420; border:1px solid var(--navy-border); border-radius:8px; padding:10px; max-height:160px;
-    overflow:auto; display:none; white-space:pre-wrap; word-break:break-word;}
-  #debug.on{display:block;}
-  .dbg-toggle{font-size:10px;color:var(--muted);cursor:pointer;margin-top:10px;display:inline-block;}
 </style>
 </head>
 <body>
@@ -69,9 +64,6 @@
     <button class="btn" id="g-btn" onclick="doLogin()">Enter System</button>
     <div class="msg info" id="g-msg">Ilagay ang naka-rehistrong email at password.</div>
 
-    <span class="dbg-toggle" onclick="document.getElementById('debug').classList.toggle('on')">🐞 Show/Hide debug</span>
-    <div id="debug"></div>
-
     <div class="foot">© Goldchelle Online Enterprises · Authorized personnel only</div>
   </div>
 
@@ -86,13 +78,6 @@
   };
   const MAIN_SYSTEM_URL = "main.html";   // ← main system file (same folder)
 
-  // ── DEBUG LOGGER (shows on-screen) ───────────────────────────────────────────
-  function dbg(t){
-    const d = document.getElementById('debug');
-    if(d){ d.classList.add('on'); d.textContent += '• ' + t + '\n'; d.scrollTop = d.scrollHeight; }
-    try{ console.log('[GATE]', t); }catch(e){}
-  }
-
   function setMsg(t, cls){
     const m = document.getElementById('g-msg');
     m.innerHTML = t; m.className = 'msg ' + (cls||'info');
@@ -103,29 +88,22 @@
   }
 
   let _auth, _fbReady = false;
-  dbg('Loading Firebase SDK...');
-  dbg('firebase global: ' + (typeof firebase !== 'undefined' ? 'FOUND' : 'MISSING ❌'));
   try {
     firebase.initializeApp(firebaseConfig);
     _auth = firebase.auth();
     _auth.setPersistence(firebase.auth.Auth.Persistence.SESSION).catch(()=>{});
     _fbReady = true;
-    dbg('Firebase initialized ✅ (project: ' + firebaseConfig.projectId + ')');
-    dbg('Current host: ' + location.hostname);
-    dbg('Redirect target: ' + MAIN_SYSTEM_URL);
   } catch(e){
-    dbg('Firebase init FAILED ❌: ' + (e && e.message));
-    setMsg('⚠️ Hindi ma-load ang Firebase. Tignan ang debug.', 'error');
+    setMsg('⚠️ Hindi ma-load ang Firebase. I-refresh ang page.', 'error');
   }
 
   function _go(){
-    dbg('Redirecting to ' + MAIN_SYSTEM_URL + ' ...');
-    try { window.location.assign(MAIN_SYSTEM_URL); } catch(e){ dbg('assign failed: '+e.message); }
+    try { window.location.assign(MAIN_SYSTEM_URL); } catch(e){}
     setTimeout(()=>{ try { window.location.href = MAIN_SYSTEM_URL; } catch(e){} }, 300);
     setTimeout(()=>{
-      dbg('Still here after 1.2s — showing manual link.');
-      setMsg('✅ Naka-login! I-click para pumasok: <a href="'+MAIN_SYSTEM_URL+'" style="color:var(--gold);font-weight:700;font-size:15px;">➡ PUMASOK SA SYSTEM</a>', 'ok');
-    }, 1200);
+      // Fallback: kung hindi lumipat, bigyan ng manual link (rare).
+      setMsg('✅ Naka-login! <a href="'+MAIN_SYSTEM_URL+'" style="color:var(--gold);font-weight:700;">Pumasok sa System →</a>', 'ok');
+    }, 1500);
   }
 
   async function doLogin(){
@@ -133,44 +111,35 @@
     const pass  = document.getElementById('g-pass').value||'';
     const btn   = document.getElementById('g-btn');
 
-    dbg('--- Login attempt ---');
-    dbg('email: ' + (email||'(blank)'));
-    dbg('fbReady: ' + _fbReady);
-
-    if(!_fbReady){ setMsg('⚠️ Firebase hindi handa — i-refresh.', 'error'); dbg('ABORT: fb not ready'); return; }
+    if(!_fbReady){ setMsg('⚠️ Firebase hindi handa — i-refresh ang page.', 'error'); return; }
     if(!email){ setMsg('⚠️ Ilagay ang email.', 'error'); return; }
     if(!pass){ setMsg('⚠️ Ilagay ang password.', 'error'); return; }
 
     btn.disabled = true;
     setMsg('⏳ Vine-verify...', 'info');
-    dbg('Calling signInWithEmailAndPassword...');
 
     try {
       const cred = await _auth.signInWithEmailAndPassword(email, pass);
-      dbg('LOGIN SUCCESS ✅ uid: ' + (cred.user ? cred.user.uid : '?'));
       try {
         sessionStorage.setItem('gce_gate_email', email);
         sessionStorage.setItem('gce_gate_uid', cred.user ? cred.user.uid : '');
         sessionStorage.setItem('gce_gate_ok', '1');
         sessionStorage.setItem('gce_gate_ts', String(Date.now()));
-        dbg('sessionStorage saved.');
-      } catch(e){ dbg('sessionStorage failed (ok lang): '+e.message); }
+      } catch(e){}
       setMsg('✅ Welcome! Redirecting...', 'ok');
       _go();
     } catch(err){
       const code = (err && err.code) || '';
-      dbg('LOGIN FAILED ❌ code: ' + code + ' | msg: ' + (err && err.message));
       let m = '❌ Mali ang email o password.';
       if(code === 'auth/invalid-email')            m = '❌ Hindi valid ang email format.';
-      else if(code === 'auth/user-disabled')       m = '🔒 Naka-disable ang account.';
+      else if(code === 'auth/user-disabled')       m = '🔒 Naka-disable ang account na ito.';
       else if(code === 'auth/user-not-found')      m = '❌ Walang account na ganitong email.';
       else if(code === 'auth/wrong-password')      m = '❌ Mali ang password.';
       else if(code === 'auth/invalid-credential')  m = '❌ Mali ang email o password.';
-      else if(code === 'auth/too-many-requests')   m = '⏳ Sobrang daming attempt — sandali.';
-      else if(code === 'auth/network-request-failed') m = '⚠️ Walang internet.';
+      else if(code === 'auth/too-many-requests')   m = '⏳ Sobrang daming attempt — sandali muna.';
+      else if(code === 'auth/network-request-failed') m = '⚠️ Walang internet connection.';
       else if(code === 'auth/operation-not-allowed')  m = '⚠️ Email/Password hindi enabled sa Firebase.';
       else if(code === 'auth/unauthorized-domain')    m = '⚠️ Domain hindi authorized sa Firebase.';
-      if(code) m += ' [' + code + ']';
       setMsg(m, 'error');
       btn.disabled = false;
     }
