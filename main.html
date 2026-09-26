@@ -3477,14 +3477,21 @@ function _isInProgress(o){
 function _isReadyForAuditor(o){
   // ╔══════════════════════════════════════════════════════════════════════════╗
   // ║ FLOW SPLIT — CONTRACT (DO NOT WEAKEN)                                      ║
-  // ║  COD-OP:        Admin In Progress → AUDITOR first (NO verify) → PAID →     ║
-  // ║                 CHECKER → verify + Ready to Pick-up → DISPATCHER.          ║
+  // ║  COD-OP:        Admin In Progress → AUDITOR first (NO verify, NO parcel-   ║
+  // ║                 status) → Mark PAID → CHECKER verify/unverify → DISPATCHER ║
+  // ║                 (Parcel Status "Ready to Pick-up" is set HERE, not in the  ║
+  // ║                 auditor). Inventory deducts at AUDITOR PAID (not at verify).║
+  // ║                 Checker verify does NOT re-deduct (audited-skip). The       ║
+  // ║                 verify/unverify PAID-lock is COURIERS-ONLY, so a PAID COD-  ║
+  // ║                 OP can still be verified/unverified by the checker.        ║
   // ║  LBC/EMS/FedEx: Admin In Progress → CHECKER verify → AUDITOR → PAID +      ║
-  // ║                 drop-off + Ready to Pick-up → DISPATCHER.                  ║
+  // ║                 drop-off + Ready to Pick-up → DISPATCHER. PAID locks the   ║
+  // ║                 checker verification.                                       ║
   // ║  Plain COD:     Admin In Progress → CHECKER verify → DISPATCHER (no audit).║
-  // ║  Mirror gates: auditorTogglePaid (verify-required = couriers only), the    ║
-  // ║  checker COD-OP PAID gate, and the dispatcher PAID+Ready gate must all     ║
-  // ║  agree with this split.                                                    ║
+  // ║  Mirror gates that MUST agree: _isReadyForAuditor (COD-OP in-progress =    ║
+  // ║  enough), auditorTogglePaid (verify-required = couriers only), the checker ║
+  // ║  COD-OP PAID gate, the verify/unverify PAID-locks (couriers only), and the ║
+  // ║  dispatcher PAID+Ready gate.                                               ║
   // ╚══════════════════════════════════════════════════════════════════════════╝
   if(!_isAuditedMethod(o)) return false;   // plain COD never reaches the auditor
   if(!_isInProgress(o)) return false;      // must be in the In Progress lane
@@ -4853,14 +4860,14 @@ function renderAuditor(){
     // ── PARCEL STATUS CELL (Preparing / Ready to Pick-up dropdown) ─────────────
     // For ALL audited methods. Editable only AFTER PAID; locked once dispatched.
     const _parcelStatusCell = (() => {
+      // ── COD-OP: NO PARCEL STATUS IN AUDITOR ────────────────────────────────────
+      // COD-OP no longer has a Preparing/Ready dropdown here. Its flow is:
+      //   Auditor PAID → CHECKER verify → DISPATCHER (where Ready to Pick-up is set).
+      // So the auditor only shows a dash for COD-OP.
+      if(_isCodOpRow) return '<span style="font-size:9.5px;color:var(--muted);">—</span>';
+      // ── Couriers (LBC/EMS/FedEx): keep the parcel-status control ────────────────
       const _st = o.lbcStatus || 'Preparing';
       const _terminal = ['Drop off at LBC','Drop off at EMS','Drop off at FedEx','ODZ/Incomplete Details','Out for Delivery','Delivered','RTO'].includes(o.lbcStatus||'');
-      // ── AUDITOR PARCEL-STATUS OWNERSHIP ───────────────────────────────────────
-      // The auditor can set the status to "Ready to Pick-up" ONCE. As soon as it is
-      // Ready (the parcel has reached the Dispatcher) — or any dispatched/terminal
-      // status — the auditor's control becomes VIEW-ONLY. The Dispatcher now owns
-      // the parcel; the auditor can no longer revert it to Preparing. Editable only
-      // while PAID and still "Preparing".
       const _isReadyOrBeyond = _terminal || (o.lbcStatus === 'Ready to Pick-up');
       if(!paid || _isReadyOrBeyond){
         const _lbl = _terminal ? ('🔒 '+o.lbcStatus)
@@ -5535,23 +5542,22 @@ function renderChecker(){
                 return !isLocked ? `<button class="btn btn-outline btn-sm" onclick="${_editFn}(${i})" title="${isCODOP?'Edit contact/address only (rest view-only)':'Edit order'}">✏️</button>` : '';
               })()}
               ${(!o.auditorPaid && currentRole==='owner' && !(o.checkerStatus==='Verified'||o.verificationStatus==='Verified'))?`<button class="btn btn-outline btn-sm" onclick="openEditOrder(${i})" title="CEO Edit">✏️ Edit</button>`:''}
-              ${o.auditorPaid
-                ? /* PAID by Auditor → fully locked. Only Print stays. */
-                  `<span style="font-size:9.5px;font-weight:700;color:var(--green);padding:2px 8px;background:rgba(46,204,138,0.08);border-radius:5px;">🔒 PAID</span>`
-                : (o.status==='Cancelled'
-                    ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
-                    :o.checkerStatus!=='Verified'
-                    ? `<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`
-                    :(isLocked
-                      ?`<span style="font-size:9.5px;color:var(--muted);padding:2px 6px;">🔒 ${o.status==='Delivered'?'Delivered':'In Progress'}</span>`
-                      :`<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`))}
+              ${(o.status==='Cancelled')
+                ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
+                :o.checkerStatus!=='Verified'
+                  /* COD-OP reaches the checker already PAID → checker VERIFIES here.
+                     New flow: Auditor PAID → CHECKER verify → DISPATCHER (parcel status). */
+                  ? `<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`
+                  :(isLocked
+                    ?`<span style="font-size:9.5px;color:var(--muted);padding:2px 6px;">🔒 ${o.status==='Delivered'?'Delivered':'In Progress'}</span>`
+                    :`<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`)}
               <button class="btn btn-print btn-sm" onclick="openInvoice(${i})">🖨️</button>
-              ${(!o.auditorPaid && !isLocked && o.checkerStatus!=='Verified' && o.verificationStatus!=='Verified')
+              ${(!isLocked && o.checkerStatus!=='Verified' && o.verificationStatus!=='Verified')
                 ? `<button class="btn btn-red btn-sm" onclick="checkerCancelOrder(${i})" title="Cancel this order">✕ Cancel</button>`
-                : (!o.auditorPaid && (o.checkerStatus==='Verified' || o.verificationStatus==='Verified'))
+                : ((o.checkerStatus==='Verified' || o.verificationStatus==='Verified'))
                   ? `<span style="font-size:9px;color:var(--muted);padding:2px 5px;" title="I-unverify muna bago mag-cancel">🔒</span>`
                   : ''}
-              ${(!o.auditorPaid && o.checkerStatus!=='Verified' && o.verificationStatus!=='Verified') ? `<button class="btn btn-sm" style="background:rgba(155,111,217,0.15);color:var(--purple);border:1px solid rgba(155,111,217,0.4);white-space:nowrap;" onclick="checkerReEncodeOrder(${i})" title="Ibalik sa Admin Encode (Return to Encode)">↩️ Re-Encode</button>` : ''}
+              ${(o.checkerStatus!=='Verified' && o.verificationStatus!=='Verified') ? `<button class="btn btn-sm" style="background:rgba(155,111,217,0.15);color:var(--purple);border:1px solid rgba(155,111,217,0.4);white-space:nowrap;" onclick="checkerReEncodeOrder(${i})" title="Ibalik sa Admin Encode (Return to Encode)">↩️ Re-Encode</button>` : ''}
             </td>
           </tr>`;
         });
@@ -5943,10 +5949,11 @@ function _captureOtherItems(orderIdx) {
 function updateVerifStatus(orderIdx, status) {
   const o = S.orders[orderIdx];
   if(!o) return; // GUARD: null order
-  // ── LOCK-ON-PAID ──────────────────────────────────────────────────────────
-  // Once the Auditor marks the parcel PAID, the checker's Verification is locked —
-  // it can no longer be changed (the parcel is committed and flowing onward).
-  if(o.auditorPaid){
+  // ── LOCK-ON-PAID (couriers only) ───────────────────────────────────────────
+  // For LBC/EMS/FedEx the checker verifies BEFORE the auditor marks PAID, so once
+  // PAID the verification is locked. COD-OP is the OPPOSITE: it is PAID first, then
+  // the checker verifies it here — so the PAID lock must NOT apply to COD-OP.
+  if(o.auditorPaid && ['LBC','EMS','FedEx'].includes(o.paymentMethod||'')){
     toast('🔒 PAID na ng Auditor — naka-lock na ang Verification.');
     return;
   }
@@ -6210,10 +6217,11 @@ function unverifyOrder(i){
   window._verifyBusy = true;
   setTimeout(()=>{ window._verifyBusy = false; }, 3000);
   const o = S.orders[i];
-  // ── UNVERIFY ONLY IF NOT PAID ──────────────────────────────────────────────
-  // Once the Auditor has marked the parcel PAID, the checker can no longer pull it
-  // back with an unverify — PAID is committed and the parcel is flowing onward.
-  if(o.auditorPaid){
+  // ── UNVERIFY LOCK (couriers only) ──────────────────────────────────────────
+  // For LBC/EMS/FedEx, once PAID the checker can't unverify (PAID committed after
+  // verify). COD-OP is PAID-then-verify, so the checker CAN unverify a PAID COD-OP
+  // (before it's dispatched). Block unverify only for PAID couriers here.
+  if(o.auditorPaid && ['LBC','EMS','FedEx'].includes(o.paymentMethod||'')){
     toast('🔒 PAID na ng Auditor — hindi na pwedeng i-unverify.');
     _relUnverify(); window._verifyBusy = false; return;
   }
