@@ -4792,7 +4792,10 @@ function renderAuditor(){
     // DISPATCHED LOCK: once the parcel is Ready to Pick-up (or beyond), the
     // Dispatcher owns it — UNPAID is no longer allowed, so show a locked chip
     // instead of the Mark UNPAID button.
-    const _dispatched = ['Ready','Out for Delivery','Delivered','RTO'].includes(o.status)
+    // Locked once VERIFIED by checker (COD-OP), or dispatched (any method).
+    const _verifiedLock = (o.checkerStatus === 'Verified' || o.verificationStatus === 'Verified');
+    const _dispatched = _verifiedLock
+      || ['Ready','Out for Delivery','Delivered','RTO'].includes(o.status)
       || ['Ready to Pick-up','Drop off at LBC','Drop off at EMS','Drop off at FedEx','Out for Delivery','Delivered','RTO','ODZ/Incomplete Details'].includes(o.lbcStatus||'');
     const _paidBtn = paid
       ? (_dispatched
@@ -4838,17 +4841,10 @@ function renderAuditor(){
     //   so this column DISPLAYS o.dateOfDropoff (read-only reflection). Shows a
     //   red hint if not yet set, so the auditor knows PAID is blocked until it is.
     const _deliverDateCell = (() => {
-      if(_isCodOpRow){
-        if(paid){
-          return o.codopDeliverDate
-            ? `<span style="font-size:9.5px;color:var(--green);padding:2px 8px;background:rgba(46,204,138,0.08);border-radius:5px;">📅 ${o.codopDeliverDate} <span style="font-size:8px;color:var(--muted);">(locked)</span></span>`
-            : '<span style="font-size:9.5px;color:var(--muted);">—</span>';
-        }
-        return `<input type="date" value="${o.codopDeliverDate||''}"
-                  style="font-size:10.5px;padding:2px 5px;border:1px solid var(--navy-border);border-radius:5px;background:var(--navy-card);color:var(--text);width:140px;"
-                  onchange="(function(el){if(!S.orders[${i}])return;S.orders[${i}].codopDeliverDate=el.value;window._lastKnownWriteTs=0;save();toast(el.value?'📅 Deliver date saved.':'📅 Deliver date cleared.');setTimeout(function(){try{renderAuditor();}catch(e){}},50);})(this)">
-                ${o.codopDeliverDate?'':'<div style="font-size:9px;color:var(--red);margin-top:2px;">⚠️ Kailangan bago mag-PAID</div>'}`;
-      }
+      // ── COD-OP: DELIVER DATE MOVED TO CHECKER ──────────────────────────────────
+      // COD-OP no longer sets/shows the Deliver Date in the auditor. It is now set
+      // by the CHECKER (after PAID). The auditor just shows a dash for COD-OP.
+      if(_isCodOpRow) return '<span style="font-size:9.5px;color:var(--muted);">—</span>';
       // Couriers (LBC/EMS/FedEx): DISPLAY the Drop off Date set via the pencil.
       if(_isCourierRow){
         return o.dateOfDropoff
@@ -5121,27 +5117,24 @@ function auditorTogglePaid(orderIdx, makePaid){
       toast('🔒 Walang Date of Drop-off — i-set muna bago i-mark PAID.');
       window[_lockKey]=false; renderAuditor(); return;
     }
-    // ── DELIVER DATE REQUIRED (COD-OP) ────────────────────────────────────────
-    // COD-OP delivers via the COD rider flow — the Auditor must set the Deliver
-    // Date before marking PAID (the checker no longer sets it).
-    if((o.paymentMethod === 'COD - Online Payment') && !o.codopDeliverDate){
-      toast('🔒 Walang Deliver Date — i-set muna bago i-mark PAID.');
-      window[_lockKey]=false; renderAuditor(); return;
-    }
+    // NOTE: COD-OP Deliver Date is NO LONGER required at PAID — it is set by the
+    // CHECKER after PAID (Admin→Auditor PAID→Checker sets deliver date + verify).
     // No-op if already PAID (idempotent).
     if(!!o.auditorPaid === true){ window[_lockKey]=false; renderAuditor(); return; }
   } else {
-    // ── UNPAID (undo) — LOCK ONCE DISPATCHED ──────────────────────────────────
+    // ── UNPAID (undo) — LOCK ON VERIFY / DISPATCH ─────────────────────────────
     // Allow reverting PAID → UNPAID to fix a mistake, UNLESS the parcel has moved
-    // onward to the Dispatcher. It counts as "moved on" when EITHER:
+    // onward. It counts as "moved on" when ANY of:
+    //   • CHECKER already VERIFIED it (COD-OP flow: PAID→checker verify→dispatcher —
+    //     once verified, the auditor can no longer pull it back), OR
     //   • the main status is Ready/Out for Delivery/Delivered/RTO, OR
-    //   • the parcel status (lbcStatus) is "Ready to Pick-up" or any dispatched/
-    //     terminal courier status — i.e. the Dispatcher already took it.
-    // Once dispatched, UNPAID is locked (the money + stock are committed downstream).
+    //   • the parcel status (lbcStatus) is "Ready to Pick-up" or dispatched/terminal.
+    // Once any of these, UNPAID is locked (money + stock committed downstream).
+    const _isVerifiedNow = (o.checkerStatus === 'Verified' || o.verificationStatus === 'Verified');
     const _statusMoved = ['Ready','Out for Delivery','Delivered','RTO'].includes(o.status);
     const _lbcMoved = ['Ready to Pick-up','Drop off at LBC','Drop off at EMS','Drop off at FedEx','Out for Delivery','Delivered','RTO','ODZ/Incomplete Details'].includes(o.lbcStatus||'');
-    if(_statusMoved || _lbcMoved){
-      toast('🔒 Nasa Dispatcher na (Ready to Pick-up) — hindi na pwedeng i-UNPAID.');
+    if(_isVerifiedNow || _statusMoved || _lbcMoved){
+      toast(_isVerifiedNow ? '🔒 Verified na ni checker — hindi na pwedeng i-UNPAID.' : '🔒 Nasa Dispatcher na — hindi na pwedeng i-UNPAID.');
       window[_lockKey]=false; renderAuditor(); return;
     }
     // No-op if already UNPAID.
@@ -5494,18 +5487,28 @@ function renderChecker(){
             })() : ''}
             ${isCODOP ? `<td>
               ${(() => {
-                // ── DELIVER DATE — VIEW-ONLY IN CHECKER ──────────────────────────
-                // The Deliver Date is now set by the AUDITOR (not the checker). The
-                // checker only DISPLAYS it. The checker can verify even if it's blank;
-                // the Auditor must set it before marking PAID.
-                return o.codopDeliverDate
-                  ? `<span style="font-size:10.5px;color:var(--green);padding:2px 8px;background:rgba(46,204,138,0.08);border-radius:5px;display:inline-block;">📅 ${o.codopDeliverDate}</span>`
-                  : '<span style="font-size:9.5px;color:var(--muted);padding:2px 8px;background:rgba(148,163,184,0.08);border-radius:5px;display:inline-block;">Awaiting Auditor</span>';
+                // ── DELIVER DATE — SET BY CHECKER (COD-OP) ───────────────────────
+                // New flow: COD-OP is PAID by the auditor first, THEN the checker
+                // sets the Deliver Date and verifies. Editable while NOT verified;
+                // once verified it locks to a read-only chip.
+                const _v = (o.checkerStatus==='Verified' || o.verificationStatus==='Verified');
+                if(_v){
+                  return o.codopDeliverDate
+                    ? `<span style="font-size:10.5px;color:var(--green);padding:2px 8px;background:rgba(46,204,138,0.08);border-radius:5px;display:inline-block;">📅 ${o.codopDeliverDate} <span style="font-size:8px;color:var(--muted);">(locked)</span></span>`
+                    : '<span style="font-size:9.5px;color:var(--muted);">—</span>';
+                }
+                return `<input type="date" value="${o.codopDeliverDate||''}"
+                          style="font-size:10.5px;padding:2px 5px;border:1px solid var(--navy-border);border-radius:5px;background:var(--navy-card);color:var(--text);width:140px;"
+                          onchange="(function(el){if(!S.orders[${i}])return;S.orders[${i}].codopDeliverDate=el.value;window._lastKnownWriteTs=0;save();toast(el.value?'📅 Deliver date saved.':'📅 Deliver date cleared.');setTimeout(function(){try{renderChecker();}catch(e){}},50);})(this)">
+                        ${o.codopDeliverDate?'':'<div style="font-size:9px;color:var(--red);margin-top:2px;">⚠️ Kailangan bago i-verify</div>'}`;
               })()}
             </td>` : ''}
             <td>
-              ${isLocked
-                ? '<div style="font-size:11px;color:var(--blue);padding:4px 8px;background:rgba(46,112,204,0.08);border:1px solid rgba(46,112,204,0.2);border-radius:6px;">\uD83D\uDD12 '+(o.assignedRider||'Unassigned')+'<div style=\"font-size:9px;color:var(--muted);margin-top:2px;\">Locked — '+(o.status==='Ready'?'Ready for Pick-up':o.status)+'</div></div>'
+              ${(isLocked || isCODOP)
+                /* COD-OP: the Assign Rider is set by ADMIN and is LOCKED here — the
+                   checker can only view who was assigned, not change it. (Also locked
+                   once the parcel is dispatched, same as before.) */
+                ? '<div style="font-size:11px;color:var(--blue);padding:4px 8px;background:rgba(46,112,204,0.08);border:1px solid rgba(46,112,204,0.2);border-radius:6px;">\uD83D\uDD12 '+(o.assignedRider||'Unassigned')+'<div style=\"font-size:9px;color:var(--muted);margin-top:2px;\">'+(isCODOP && !isLocked ? 'Locked — admin assigned' : ('Locked — '+(o.status==='Ready'?'Ready for Pick-up':o.status)))+'</div></div>'
                 : '<select class=\"form-control\" style=\"width:145px;font-size:10.5px;padding:3px 6px;\" onchange=\"assignRiderFromChecker('+i+',this.value)\">'+riderOpts.replace('value=\"'+(o.assignedRider||'')+'\"','value=\"'+(o.assignedRider||'')+'\" selected')+'</select>'+(o.assignedRider?'<div style=\"font-size:9.5px;color:var(--blue);margin-top:2px;\">\uD83C\uDFCD\uFE0F '+o.assignedRider+'</div>':'')
               }
             </td>
@@ -5545,9 +5548,11 @@ function renderChecker(){
               ${(o.status==='Cancelled')
                 ?`<button class="btn btn-outline btn-sm" style="opacity:0.4;cursor:not-allowed;" disabled>✔ Verify</button>`
                 :o.checkerStatus!=='Verified'
-                  /* COD-OP reaches the checker already PAID → checker VERIFIES here.
-                     New flow: Auditor PAID → CHECKER verify → DISPATCHER (parcel status). */
-                  ? `<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>`
+                  /* COD-OP reaches the checker already PAID → checker sets Deliver Date
+                     then VERIFIES. Verify is DISABLED until the Deliver Date is set. */
+                  ? ( !(o.codopDeliverDate && String(o.codopDeliverDate).trim())
+                        ? `<button class="btn btn-outline btn-sm" style="opacity:0.45;cursor:not-allowed;" disabled title="Maglagay muna ng Deliver Date">✔ Verify</button><div style="font-size:8.5px;color:var(--orange);margin-top:1px;">⚠️ Deliver Date muna</div>`
+                        : `<button class="btn btn-green btn-sm" onclick="verifyOrder(${i})">✔ Verify</button>` )
                   :(isLocked
                     ?`<span style="font-size:9.5px;color:var(--muted);padding:2px 6px;">🔒 ${o.status==='Delivered'?'Delivered':'In Progress'}</span>`
                     :`<button class="btn btn-orange btn-sm" onclick="unverifyOrder(${i})">↩ Unverify</button>`)}
@@ -6074,9 +6079,14 @@ function verifyOrder(i){
   if(!S.orders[i]) { console.warn('[GOE] verifyOrder: invalid index', i); _releaseVerifyLock(); return; }
   // GUARD: already verified — prevent double-entry
   if(S.orders[i].checkerStatus === 'Verified') { toast('⚠️ Verified na ang order na ito.'); _releaseVerifyLock(); return; }
-  // NOTE: COD-OP NO LONGER requires a Deliver Date to verify. The checker verifies
-  // first; the AUDITOR sets the Deliver Date afterwards (and can't mark PAID until
-  // it's set). This lets the parcel flow Checker → Auditor as designed.
+  // ── COD-OP: DELIVER DATE REQUIRED TO VERIFY ─────────────────────────────────
+  // New flow: COD-OP is PAID first (auditor), THEN the checker sets the Deliver
+  // Date and verifies. So the checker must fill the Deliver Date before verifying.
+  if(S.orders[i].paymentMethod === 'COD - Online Payment' &&
+     !(S.orders[i].codopDeliverDate && String(S.orders[i].codopDeliverDate).trim())){
+    toast('⚠️ Maglagay muna ng Deliver Date bago i-verify ang COD-OP.');
+    _releaseVerifyLock(); return;
+  }
   // GUARD: block verify if order is in a detected merge group
   // Checker must merge or dismiss the duplicate alert before verifying.
   // ═══ MERGE BLOCK BARRIER ══════════════════════════════════════════════════
@@ -13156,10 +13166,9 @@ function renderTracking() {
       if((o.paymentMethod||'COD') !== 'COD' && o.paymentMethod !== 'COD - Online Payment') return false;
       // Unverified orders are not visible to dispatcher/sorter — checker must verify first
       if((o.checkerStatus||'Pending') !== 'Verified') return false;
-      // COD-OP: PAID + Ready-to-Pick-up gate (match table logic below)
-      if(_isAuditedMethod(o)){
+      // COD-OP: verified + PAID gate (match table logic below)
+      if(o.paymentMethod === 'COD - Online Payment'){
         if(!o.auditorPaid) return false;
-        if((o.lbcStatus||'Preparing') !== 'Ready to Pick-up') return false;
       }
       // Checker-cancelled = has cancelledBy set → goes to Recently Deleted, not tracking
       if(s === 'Cancelled' && o.cancelledBy) return false;
@@ -13181,15 +13190,16 @@ function renderTracking() {
     if((o.paymentMethod||'COD') !== 'COD' && o.paymentMethod !== 'COD - Online Payment') return false;
     // Unverified orders not visible to dispatcher/sorter — checker must verify first
     if((o.checkerStatus||'Pending') !== 'Verified') return false;
-    // ── COD-OP AUDITOR PAID + READY-TO-PICK-UP GATE ────────────────────────────
-    // A COD-OP parcel flows: Checker verify → Auditor PAID → Auditor sets Parcel
-    // Status to "Ready to Pick-up" → THEN it appears here in COD Tracking. It must
-    // NOT show up until BOTH: (1) the Auditor marked it PAID, and (2) the parcel
-    // status is "Ready to Pick-up". If the auditor puts it back to "Preparing", it
-    // hides again. Plain COD has no auditor step and is unaffected by either check.
-    if(_isAuditedMethod(o)){
-      if(!o.auditorPaid) return false;
-      if((o.lbcStatus||'Preparing') !== 'Ready to Pick-up') return false;
+    // ── COD-OP DISPATCHER GATE ─────────────────────────────────────────────────
+    // New COD-OP flow: Admin → Auditor PAID → Checker verify → DISPATCHER. Once the
+    // checker VERIFIES a PAID COD-OP, it appears here in the dispatcher (COD tab),
+    // where the dispatcher sets the Parcel Status "Ready to Pick-up". So the gate is
+    // just: PAID (auditor) + Verified (checker). The verify check above already
+    // enforces Verified; here we only require PAID for the audited COD-OP.
+    // Plain COD has no auditor step and is unaffected.
+    if(o.paymentMethod === 'COD - Online Payment'){
+      if(!o.auditorPaid) return false;   // must be PAID by auditor first
+      // (Verified already required above; Parcel Status is set HERE by dispatcher.)
     }
     // Checker-cancelled orders belong to Recently Deleted, not active tracking
     if(o.status === 'Cancelled' && o.cancelledBy) return false;
